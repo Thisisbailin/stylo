@@ -544,25 +544,28 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   }, [config.multimodalConfig.provider]);
 
   const setProvider = (p: AgentTextProvider) => {
-    const nextConfig = { ...config.textConfig };
-    const providerChanged = activeAgentProvider !== p;
-    if (p === "openrouter") {
-      nextConfig.agentBaseUrl = OPENROUTER_BASE_URL;
-      nextConfig.agentModel = providerChanged ? "" : resolveAgentModelForProvider(p, nextConfig.agentModel);
-    } else if (p === "ark") {
-      nextConfig.agentBaseUrl = ARK_RESPONSES_BASE_URL;
-      nextConfig.agentModel = providerChanged ? ARK_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
-    } else {
-      nextConfig.agentBaseUrl = QWEN_RESPONSES_BASE_URL;
-      nextConfig.agentModel = providerChanged ? QWEN_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
-    }
+    setConfig((prev) => {
+      const currentProvider = prev.textConfig.agentProvider || prev.textConfig.provider || "qwen";
+      const providerChanged = currentProvider !== p;
+      const nextConfig = { ...prev.textConfig };
+      if (p === "openrouter") {
+        nextConfig.agentBaseUrl = OPENROUTER_BASE_URL;
+        nextConfig.agentModel = providerChanged ? "" : resolveAgentModelForProvider(p, nextConfig.agentModel);
+      } else if (p === "ark") {
+        nextConfig.agentBaseUrl = ARK_RESPONSES_BASE_URL;
+        nextConfig.agentModel = providerChanged ? ARK_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
+      } else {
+        nextConfig.agentBaseUrl = QWEN_RESPONSES_BASE_URL;
+        nextConfig.agentModel = providerChanged ? QWEN_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
+      }
 
-    setConfig({
-      ...config,
-      textConfig: {
-        ...nextConfig,
-        agentProvider: p,
-      },
+      return {
+        ...prev,
+        textConfig: {
+          ...nextConfig,
+          agentProvider: p,
+        },
+      };
     });
   };
 
@@ -1012,6 +1015,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             </button>
                           );
                         })}
+                      </div>
+                      <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 text-[11px] text-[var(--app-text-secondary)]">
+                        <div>Effective provider: <span className="text-[var(--app-text-primary)]">{activeAgentProvider}</span></div>
+                        <div>Effective model: <span className="text-[var(--app-text-primary)]">{activeAgentModel || "unset"}</span></div>
+                        <div className="truncate">Effective baseUrl: <span className="text-[var(--app-text-primary)]">{activeAgentBaseUrl || "unset"}</span></div>
                       </div>
                     </div>
                   )}
