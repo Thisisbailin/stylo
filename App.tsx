@@ -2102,23 +2102,6 @@ const App: React.FC = () => {
     });
   }, [activeTab, addWorkflowNode, navigateToAppView, setActiveTab, workflowNodes, workflowViewport]);
 
-  const handleTimelineNavigate = useCallback((target: "writing" | "world" | "image") => {
-    if (target === "writing") {
-      navigateToAppView("main");
-      setOpenLabModal(null);
-      setShowWorkflow(false);
-      return;
-    }
-    if (target === "world") {
-      navigateToAppView("main");
-      setUnderstandingSection("overview");
-      setOpenLabModal("understanding");
-      return;
-    }
-    navigateToAppView("main");
-    setOpenLabModal(null);
-  }, [navigateToAppView]);
-
   const renderTabContent = (tabKey: ActiveTab) => {
     switch (tabKey) {
       case 'lab':
@@ -2221,9 +2204,7 @@ const App: React.FC = () => {
           appView === "landing" ? null : (
             <IdentityHoverBar
               projectData={projectData}
-              activeTimeline={openLabModal === "understanding" ? "world" : "image"}
               onSelectIdentity={handleLoadIdentityCard}
-              onSelectTimeline={handleTimelineNavigate}
             />
           )
         }

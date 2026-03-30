@@ -3,28 +3,16 @@ import { ChevronDown } from "lucide-react";
 import type { ProjectData } from "../../types";
 import { buildProjectIdentities } from "../../utils/identityCards";
 
-type TimelineKey = "writing" | "world" | "image";
-
 type Props = {
   projectData: ProjectData;
-  activeTimeline: TimelineKey;
   onSelectIdentity: (identityId: string) => void;
-  onSelectTimeline: (target: TimelineKey) => void;
 };
-
-const timelineItems: Array<{ key: TimelineKey; label: string }> = [
-  { key: "writing", label: "写作" },
-  { key: "world", label: "世界观" },
-  { key: "image", label: "影像" },
-];
 
 const getAvatarLabel = (value: string) => value.trim().slice(0, 1).toUpperCase() || "I";
 
 export const IdentityHoverBar: React.FC<Props> = ({
   projectData,
-  activeTimeline,
   onSelectIdentity,
-  onSelectTimeline,
 }) => {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -48,10 +36,6 @@ export const IdentityHoverBar: React.FC<Props> = ({
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [isMoreOpen]);
-
-  const getTimelineActive = (key: TimelineKey) => {
-    return activeTimeline === key;
-  };
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[52] h-24">
@@ -139,32 +123,6 @@ export const IdentityHoverBar: React.FC<Props> = ({
                   </div>
                 </div>
               ) : null}
-            </div>
-
-            <div className="pointer-events-auto inline-flex items-center gap-4 rounded-full px-5 py-2">
-              <div className="h-px w-10 bg-white/20" />
-              {timelineItems.map((item, index) => {
-                const active = getTimelineActive(item.key);
-                return (
-                  <React.Fragment key={item.key}>
-                    <button
-                      type="button"
-                      onClick={() => onSelectTimeline(item.key)}
-                      className={`text-[18px] font-semibold tracking-[0.22em] transition duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        active
-                          ? "text-[var(--text-primary)]"
-                          : "text-[var(--text-secondary)]/62 hover:text-[var(--text-primary)]/92"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                    {index < timelineItems.length - 1 ? (
-                      <span className="text-[14px] tracking-[0.24em] text-[var(--text-secondary)]/34">-</span>
-                    ) : null}
-                  </React.Fragment>
-                );
-              })}
-              <div className="h-px w-10 bg-white/20" />
             </div>
           </div>
         </div>
