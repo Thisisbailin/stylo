@@ -1,6 +1,7 @@
 import { useWorkflowStore } from "./workflowStore";
 import * as MultimodalService from "../../services/multimodalService";
 import * as SoraService from "../../services/soraService";
+import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import * as ViduService from "../../services/viduService";
 import * as WuyinkejiService from "../../services/wuyinkejiService";
 import * as SeedreamService from "../../services/seedreamService";
@@ -13,9 +14,11 @@ import {
   QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL,
   QWEN_WAN_REFERENCE_VIDEO_MODEL,
   QWEN_WAN_VIDEO_MODEL,
+  SEEDANCE_DEFAULT_BASE_URL,
+  SEEDANCE_DEFAULT_MODEL,
 } from "../../constants";
 import { useCallback } from "react";
-import { DesignAssetItem, ProjectRoleIdentity } from "../../types";
+import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types";
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
 
@@ -163,6 +166,45 @@ const normalizeWanReferenceVideos = async (sources: string[]) => {
     if (src.startsWith("data:") || src.startsWith("blob:")) {
       const uploaded = await uploadReferenceFile(src, { bucket: "assets", prefix: "wan-reference-video/" });
       results.push(uploaded);
+      continue;
+    }
+    results.push(src);
+  }
+  return results;
+};
+
+const normalizeSeedanceVideos = async (sources: string[]) => {
+  const results: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("asset://")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-video/" }));
+      continue;
+    }
+    results.push(src);
+  }
+  return results;
+};
+
+const normalizeSeedanceAudios = async (sources: string[]) => {
+  const results: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    if (
+      src.startsWith("http://") ||
+      src.startsWith("https://") ||
+      src.startsWith("asset://") ||
+      src.startsWith("data:audio/")
+    ) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }));
       continue;
     }
     results.push(src);
@@ -728,11 +770,123 @@ export const useLabExecutor = () => {
     }
   }, [config, store]);
 
+  const runSeedanceVideoGen = useCallback(async (nodeId: string) => {
+    const node = store.getNodeById(nodeId);
+    if (!node || !config) return;
+
+    const { images, audios, text: connectedText } = store.getConnectedInputs(nodeId);
+    const data = node.data as any;
+    const prompt = (connectedText || "").trim();
+    const referenceVideos = Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [];
+
+    if (images.length === 0 && referenceVideos.length === 0) {
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: "Seedance 多模态参考生视频至少需要 1 个参考图片或参考视频。",
+      });
+      return;
+    }
+
+    store.updateNodeData(nodeId, { status: "loading", error: null });
+
+    try {
+      const normalizedVideos = await normalizeSeedanceVideos(referenceVideos.slice(0, 3));
+      const normalizedAudios = await normalizeSeedanceAudios(audios.slice(0, 3));
+      const normalizedImages = images.filter(Boolean).slice(0, 9);
+
+      const content: Array<Record<string, any>> = [];
+      if (prompt) {
+        content.push({ type: "text", text: prompt });
+      }
+      normalizedImages.forEach((url) => {
+        content.push({
+          type: "image_url",
+          image_url: { url },
+          role: "reference_image",
+        });
+      });
+      normalizedVideos.forEach((url) => {
+        content.push({
+          type: "video_url",
+          video_url: { url },
+          role: "reference_video",
+        });
+      });
+      normalizedAudios.forEach((url) => {
+        content.push({
+          type: "audio_url",
+          audio_url: { url },
+          role: "reference_audio",
+        });
+      });
+
+      const configToUse = {
+        ...config.videoConfig,
+        baseUrl: SEEDANCE_DEFAULT_BASE_URL,
+        model: (data.model || SEEDANCE_DEFAULT_MODEL) as SeedanceModel,
+      };
+
+      const task = await SeedanceVideoService.createSeedanceTask(
+        {
+          model: configToUse.model,
+          content,
+          generateAudio: data.generateAudio !== false,
+          resolution: data.resolution || "720p",
+          ratio: data.ratio || "adaptive",
+          duration:
+            typeof data.duration === "number" && Number.isFinite(data.duration)
+              ? data.duration
+              : 5,
+          watermark: data.watermark === true,
+        },
+        configToUse
+      );
+
+      store.updateNodeData(nodeId, {
+        status: "loading",
+        videoId: task.id,
+        videoUrl: undefined,
+        error: null,
+      });
+
+      const maxAttempts = 60;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const result = await SeedanceVideoService.getSeedanceTask(task.id, configToUse);
+        if (result.status === "succeeded") {
+          store.updateNodeData(nodeId, {
+            status: "complete",
+            videoUrl: result.url,
+            error: null,
+          });
+          return;
+        }
+        if (result.status === "failed") {
+          store.updateNodeData(nodeId, {
+            status: "error",
+            error: result.errorMsg || "Seedance 生成失败。",
+          });
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+
+      store.updateNodeData(nodeId, { status: "error", error: "Seedance 生成超时。" });
+    } catch (e: any) {
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: e?.message || "Seedance 提交失败。",
+      });
+    }
+  }, [config, store]);
+
   const runVideoGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
     if (node.type === "viduVideoGen") {
       return runViduVideoGen(nodeId);
+    }
+    if (node.type === "seedanceVideoGen") {
+      return runSeedanceVideoGen(nodeId);
     }
     const { images, text: connectedText, atMentions, entityBindings } = store.getConnectedInputs(nodeId);
     const data = node.data as any;
@@ -944,7 +1098,7 @@ export const useLabExecutor = () => {
     } catch (e: any) {
       store.updateNodeData(nodeId, { status: "error", error: e.message || "Video submit failed" });
     }
-  }, [config?.videoConfig, runViduVideoGen, store]);
+  }, [config?.videoConfig, runSeedanceVideoGen, runViduVideoGen, store]);
 
   return {
     runImageGen,

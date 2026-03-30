@@ -26,6 +26,7 @@ const NODE_DIMENSIONS: Record<CreateNodeWorkflowNodeInput["type"], { width: numb
   wanVideoGen: { width: 320, height: 360 },
   wanReferenceVideoGen: { width: 340, height: 460 },
   viduVideoGen: { width: 320, height: 420 },
+  seedanceVideoGen: { width: 360, height: 520 },
 };
 
 const GROUP_PADDING = { x: 80, y: 96 };
@@ -40,6 +41,7 @@ const NODE_HANDLES: Record<CreateNodeWorkflowNodeInput["type"], { inputs: string
   wanVideoGen: { inputs: ["image", "text"], outputs: [] },
   wanReferenceVideoGen: { inputs: ["image", "text"], outputs: [] },
   viduVideoGen: { inputs: ["image", "text"], outputs: [] },
+  seedanceVideoGen: { inputs: ["image", "text", "audio"], outputs: [] },
 };
 
 const buildNodeData = (node: CreateNodeWorkflowNodeInput): Partial<WorkflowNodeData> => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { BookOpen, LayoutPanelTop, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
+import { AudioLines, BookOpen, LayoutPanelTop, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
 import { NodeType } from "../types";
 
 type Props = {
@@ -16,11 +16,13 @@ export const ConnectionDropMenu: React.FC<Props> = ({ position, onCreate, onClos
     { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers },
     { label: "Text", hint: "Input text", type: "text", Icon: MessageSquare },
     { label: "Image Input", hint: "Upload an image", type: "imageInput", Icon: ImageIcon },
+    { label: "Audio Input", hint: "Upload an audio clip", type: "audioInput", Icon: AudioLines },
     { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles },
     { label: "WAN Img", hint: "Wan 2.6 image", type: "wanImageGen", Icon: Sparkles },
     { label: "Sora Video", hint: "Generate Sora clips", type: "soraVideoGen", Icon: Video },
     { label: "WAN Vid", hint: "Wan 2.6 video", type: "wanVideoGen", Icon: Video },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference video", type: "wanReferenceVideoGen", Icon: Video },
+    { label: "Seedance", hint: "Multimodal reference video", type: "seedanceVideoGen", Icon: Video },
     { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool },
   ];
 

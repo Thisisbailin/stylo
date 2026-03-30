@@ -1,35 +1,19 @@
 import React, { useMemo, useState } from "react";
 import {
-  BookOpen,
   ChevronDown,
   ChevronUp,
-  Clapperboard,
-  FileText,
   Film,
   Image as ImageIcon,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
 import { useWorkflowStore } from "../store/workflowStore";
-import { Episode, ProjectData } from "../../types";
 
 type AssetTab =
   | "images"
-  | "videos"
-  | "scripts"
-  | "shots";
-
-type InsertTextPayload = {
-  title: string;
-  text: string;
-  refId?: string;
-};
+  | "videos";
 
 type Props = {
-  projectData: ProjectData;
-  onInsertTextNode: (payload: InsertTextPayload) => void;
-  onImportEpisodeShots: (episodeId: number) => void;
   floating?: boolean;
   inlineAnchor?: boolean;
 };
@@ -37,29 +21,7 @@ type Props = {
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-const buildEpisodeScript = (episode: Episode) => {
-  if (episode.scenes?.length) {
-    return episode.scenes
-      .map((scene) => `${scene.id} ${scene.title}\n${scene.content || ""}`.trim())
-      .filter(Boolean)
-      .join("\n\n");
-  }
-  return episode.content || "";
-};
-
-const getSnippet = (text: string, limit = 120) => {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) return "";
-  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
-};
-
-export const AssetsPanel: React.FC<Props> = ({
-  projectData,
-  onInsertTextNode,
-  onImportEpisodeShots,
-  floating = true,
-  inlineAnchor = false,
-}) => {
+export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = false }) => {
   const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useWorkflowStore();
   const [collapsed, setCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState<AssetTab>("images");
@@ -73,45 +35,15 @@ export const AssetsPanel: React.FC<Props> = ({
     [globalAssetHistory]
   );
 
-  const scriptItems = useMemo(
-    () =>
-      projectData.episodes.map((episode) => ({
-        id: episode.id,
-        title: episode.title || `Episode ${episode.id}`,
-        text: buildEpisodeScript(episode),
-        scenes: episode.scenes?.length || 0,
-      })),
-    [projectData.episodes]
-  );
-
-
   const tabs = [
     { key: "images" as const, label: "Images", count: imageAssets.length },
     { key: "videos" as const, label: "Videos", count: videoAssets.length },
-    { key: "scripts" as const, label: "Scripts", count: scriptItems.length },
-    { key: "shots" as const, label: "Shots", count: projectData.episodes.length },
   ];
 
   const totalCount = tabs.reduce((sum, tab) => sum + tab.count, 0);
 
   const showClear = activeTab === "images" ? imageAssets.length > 0 : activeTab === "videos" && videoAssets.length > 0;
   const clearType = activeTab === "images" ? "image" : "video";
-
-  const insertCharacter = (id: string, name: string, text: string) => {
-    onInsertTextNode({
-      title: name,
-      text,
-      refId: id,
-    });
-  };
-
-  const insertScene = (id: string, name: string, text: string) => {
-    onInsertTextNode({
-      title: name,
-      text,
-      refId: id,
-    });
-  };
 
   const anchorClass = inlineAnchor ? "relative h-12 flex items-center" : floating ? "fixed bottom-4 right-4 z-30" : "";
 
@@ -275,88 +207,6 @@ export const AssetsPanel: React.FC<Props> = ({
                     title="Remove"
                   >
                     <X size={12} className="mx-auto" />
-                  </button>
-                </div>
-              ))
-            )}
-          </>
-        )}
-
-        {activeTab === "scripts" && (
-          <>
-            {scriptItems.length === 0 ? (
-              <div className="p-4 rounded-xl border border-dashed border-[var(--app-border)] text-center text-xs text-[var(--app-text-muted)]">
-                No scripts yet.
-              </div>
-            ) : (
-              scriptItems.map((script) => (
-                <div
-                  key={script.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] hover:bg-[var(--app-panel-soft)] hover:border-[var(--app-border-strong)] transition"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-lg bg-[var(--app-panel-muted)] border border-[var(--app-border)] flex items-center justify-center shrink-0">
-                      <FileText size={16} className="text-sky-300" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[var(--app-text-primary)] truncate">{script.title}</div>
-                      <div className="text-[10px] text-[var(--app-text-muted)] truncate">
-                        {script.scenes > 0 ? `${script.scenes} scenes` : "Script text"}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onInsertTextNode({
-                        title: script.title,
-                        text: script.text,
-                        refId: `episode-${script.id}`,
-                      })
-                    }
-                    className="px-2.5 py-1 rounded-full border border-[var(--app-border)] text-[10px] uppercase tracking-wide text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={!script.text.trim()}
-                  >
-                    Insert
-                  </button>
-                </div>
-              ))
-            )}
-          </>
-        )}
-
-        {activeTab === "shots" && (
-          <>
-            {projectData.episodes.length === 0 ? (
-              <div className="p-4 rounded-xl border border-dashed border-[var(--app-border)] text-center text-xs text-[var(--app-text-muted)]">
-                No episodes yet.
-              </div>
-            ) : (
-              projectData.episodes.map((episode) => (
-                <div
-                  key={episode.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] hover:bg-[var(--app-panel-soft)] hover:border-[var(--app-border-strong)] transition"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-10 w-10 rounded-lg bg-[var(--app-panel-muted)] border border-[var(--app-border)] flex items-center justify-center shrink-0">
-                      <Clapperboard size={16} className="text-emerald-300" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-[var(--app-text-primary)] truncate">
-                        Episode {episode.id}: {episode.title || "Untitled"}
-                      </div>
-                      <div className="text-[10px] text-[var(--app-text-muted)] truncate">
-                        {episode.shots.length} shots
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onImportEpisodeShots(episode.id)}
-                    className="px-2.5 py-1 rounded-full border border-[var(--app-border)] text-[10px] uppercase tracking-wide text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={episode.shots.length === 0}
-                  >
-                    Import
                   </button>
                 </div>
               ))

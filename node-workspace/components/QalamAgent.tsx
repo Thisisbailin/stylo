@@ -112,6 +112,9 @@ const resolvePreferredConnectionHandles = (sourceType: string, targetType: strin
   if (sourceOutputs.includes("text") && targetInputs.includes("text")) {
     return { sourceHandle: "text" as const, targetHandle: "text" as const };
   }
+  if (sourceOutputs.includes("audio") && targetInputs.includes("audio")) {
+    return { sourceHandle: "audio" as const, targetHandle: "audio" as const };
+  }
   return null;
 };
 
@@ -462,10 +465,10 @@ export const QalamAgent: React.FC<Props> = ({
           source_ref: sourceNode.nodeRef || undefined,
           targetRef: targetNode.nodeRef || undefined,
           target_ref: targetNode.nodeRef || undefined,
-          sourceHandle: resolvedSourceHandle as "image" | "text",
-          source_handle: resolvedSourceHandle as "image" | "text",
-          targetHandle: resolvedTargetHandle as "image" | "text",
-          target_handle: resolvedTargetHandle as "image" | "text",
+          sourceHandle: resolvedSourceHandle as WorkflowBuilderHandle,
+          source_handle: resolvedSourceHandle as WorkflowBuilderHandle,
+          targetHandle: resolvedTargetHandle as WorkflowBuilderHandle,
+          target_handle: resolvedTargetHandle as WorkflowBuilderHandle,
         };
       },
       createNodeWorkflow: (input) => {

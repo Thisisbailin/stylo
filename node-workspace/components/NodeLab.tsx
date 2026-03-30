@@ -14,10 +14,11 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodelab.css";
 import { useWorkflowStore } from "../store/workflowStore";
-import { isValidConnection } from "../utils/handles";
-import { WorkflowFile, NodeType, TextNodeData, GroupNodeData, VideoGenNodeData } from "../types";
+import { getNodeHandles, isValidConnection } from "../utils/handles";
+import { WorkflowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
 import {
+  AudioInputNode,
   ImageInputNode, AnnotationNode, TextNode,
   ScriptBoardNode,
   StoryboardBoardNode,
@@ -29,6 +30,7 @@ import {
   WanVideoGenNode,
   WanReferenceVideoGenNode,
   ViduVideoGenNode,
+  SeedanceVideoGenNode,
   ShotNode,
 } from "../nodes";
 import { useLabExecutor } from "../store/useLabExecutor";
@@ -45,10 +47,11 @@ import { ProjectData } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
 import { ArrowUp } from "@phosphor-icons/react";
-import { buildEpisodeShotWorkflow, getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
+import { getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
 
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
+  audioInput: AudioInputNode,
   annotation: AnnotationNode,
   text: TextNode,
   scriptBoard: ScriptBoardNode,
@@ -61,6 +64,7 @@ const nodeTypes: NodeTypes = {
   wanVideoGen: WanVideoGenNode,
   wanReferenceVideoGen: WanReferenceVideoGenNode,
   viduVideoGen: ViduVideoGenNode,
+  seedanceVideoGen: SeedanceVideoGenNode,
   shot: ShotNode,
 };
 
@@ -71,7 +75,7 @@ const edgeTypes: EdgeTypes = {
 interface ConnectionDropState {
   position: { x: number; y: number };
   flowPosition: { x: number; y: number };
-  handleType: "image" | "text" | null;
+  handleType: "image" | "text" | "audio" | null;
   connectionType: "source" | "target";
   sourceNodeId: string | null;
   sourceHandleId: string | null;
@@ -532,10 +536,14 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
 
   useEffect(() => {
     const videoNodes = nodes.filter(
-      (node) => node.type === "soraVideoGen" || node.type === "wanVideoGen" || node.type === "wanReferenceVideoGen"
+      (node) =>
+        node.type === "soraVideoGen" ||
+        node.type === "wanVideoGen" ||
+        node.type === "wanReferenceVideoGen" ||
+        node.type === "seedanceVideoGen"
     );
     videoNodes.forEach((node) => {
-      const data = node.data as VideoGenNodeData;
+      const data = node.data as VideoGenNodeData & { ratio?: string };
       if (!data?.videoUrl) return;
       const alreadyAdded = globalAssetHistory.some(
         (item) => item.type === "video" && (item.sourceId === node.id || item.src === data.videoUrl)
@@ -546,7 +554,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         src: data.videoUrl,
         prompt: "Video Output",
         model: data.model,
-        aspectRatio: data.aspectRatio,
+        aspectRatio: data.aspectRatio || data.ratio,
         sourceId: node.id,
       });
     });
@@ -561,7 +569,10 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       const clientY = e.clientY || e.touches?.[0]?.clientY;
 
       const fromHandleId = connectionState.fromHandle?.id || null;
-      const fromHandleType = fromHandleId === "image" || fromHandleId === "text" ? fromHandleId : null;
+      const fromHandleType =
+        fromHandleId === "image" || fromHandleId === "text" || fromHandleId === "audio"
+          ? fromHandleId
+          : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
       const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
       setConnectionDrop({
@@ -588,6 +599,16 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
     const newId = handleAddNode(type, position);
 
     if (connectionDrop.handleType) {
+      const newNodeHandles = getNodeHandles(type);
+      const canAttach =
+        connectionDrop.connectionType === "source"
+          ? newNodeHandles.inputs.includes(connectionDrop.handleType)
+          : newNodeHandles.outputs.includes(connectionDrop.handleType);
+      if (!canAttach) {
+        showToast(`该节点不支持 ${connectionDrop.handleType} 连接`, "warning");
+        setConnectionDrop(null);
+        return;
+      }
       if (connectionDrop.connectionType === "source") {
         onConnect({
           source: connectionDrop.sourceNodeId!,
@@ -672,7 +693,13 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const runAll = async () => {
     for (const n of nodes) {
       if (n.type === "imageGen" || n.type === "wanImageGen") await runImageGen(n.id);
-      if (n.type === "soraVideoGen" || n.type === "wanVideoGen" || n.type === "wanReferenceVideoGen" || n.type === "viduVideoGen") await runVideoGen(n.id);
+      if (
+        n.type === "soraVideoGen" ||
+        n.type === "wanVideoGen" ||
+        n.type === "wanReferenceVideoGen" ||
+        n.type === "viduVideoGen" ||
+        n.type === "seedanceVideoGen"
+      ) await runVideoGen(n.id);
     }
     alert("Run triggered");
   };
@@ -700,28 +727,6 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const handleToggleLock = useCallback(() => {
     setIsLocked((prev) => !prev);
   }, []);
-
-  const handleInsertTextNode = useCallback(
-    (payload: { title: string; text: string; refId?: string }) => {
-      const origin = getTemplateOrigin();
-      addNode("text", origin, undefined, {
-        title: payload.title,
-        text: payload.text,
-        refId: payload.refId,
-      } as Partial<TextNodeData>);
-      focusTemplate(origin, 0.7);
-    },
-    [addNode, getTemplateOrigin, focusTemplate]
-  );
-
-  const handleImportEpisode = useCallback((episodeId: number) => {
-    const episode = projectData.episodes.find((e) => e.id === episodeId);
-    if (!episode) return;
-    const origin = getTemplateOrigin();
-    const { nodes: newNodes, edges: newEdges } = buildEpisodeShotWorkflow({ episode, origin });
-    addNodesAndEdges(newNodes, newEdges);
-    focusTemplate(origin, 0.7);
-  }, [projectData, addNodesAndEdges, getTemplateOrigin, focusTemplate]);
 
   const displayNodes = nodes;
   const displayEdges = edges;
@@ -1011,11 +1016,13 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
             onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
             onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
+            onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
             onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
             onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
             onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
             onAddWanVideoGen={() => handleAddNode("wanVideoGen", { x: 520, y: 120 })}
             onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+            onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
             onAddGroup={() => handleAddNode("group", { x: 100, y: 100 })}
             onImport={() => fileInputRef.current?.click()}
             onExport={() => saveWorkflow()}
@@ -1091,9 +1098,6 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         <div className="pointer-events-auto qalam-bottom-assets">
           <div className="relative h-12 flex items-center">
             <AssetsPanel
-              projectData={projectData}
-              onInsertTextNode={handleInsertTextNode}
-              onImportEpisodeShots={handleImportEpisode}
               floating={false}
               inlineAnchor
             />

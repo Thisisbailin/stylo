@@ -71,13 +71,13 @@ export type WorkflowNodeLookupResult = {
   outputHandles: WorkflowBuilderHandle[];
 };
 
-export type WorkflowBuilderHandle = "image" | "text";
+export type WorkflowBuilderHandle = "image" | "text" | "audio";
 
 export type CreateNodeWorkflowNodeInput = {
   key: string;
   type: Extract<
     NodeType,
-    "text" | "shot" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanVideoGen" | "wanReferenceVideoGen" | "viduVideoGen"
+    "text" | "shot" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
   >;
   title?: string;
   text?: string;

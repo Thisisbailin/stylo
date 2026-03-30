@@ -12,6 +12,7 @@ import {
   WorkflowNode,
   WorkflowEdge,
   NodeType,
+  AudioInputNodeData,
   ImageInputNodeData,
   AnnotationNodeData,
   ScriptBoardNodeData,
@@ -516,6 +517,7 @@ interface WorkflowStore {
   getNodeById: (id: string) => WorkflowNode | undefined;
   getConnectedInputs: (nodeId: string) => {
     images: string[];
+    audios: string[];
     text: string | null;
     atMentions?: TextNodeData['atMentions'];
     entityBindings?: TextNodeData["entityBindings"];
@@ -547,6 +549,14 @@ const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
         dimensions: null,
         label: "",
       } as ImageInputNodeData;
+    case "audioInput":
+      return {
+        audio: null,
+        filename: null,
+        mimeType: null,
+        durationMs: null,
+        label: "",
+      } as AudioInputNodeData;
     case "annotation":
       return {
         sourceImage: null,
@@ -654,6 +664,23 @@ const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
         movementAmplitude: "auto",
         offPeak: true,
       } as any;
+    case "seedanceVideoGen":
+      return {
+        inputImages: [],
+        referenceVideos: [],
+        referenceAudios: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        model: "doubao-seedance-2-0-260128",
+        mode: "multimodalReference",
+        resolution: "720p",
+        ratio: "adaptive",
+        duration: 5,
+        generateAudio: true,
+        watermark: false,
+      } as any;
     case "group":
       return {
         title: "Node Group",
@@ -750,6 +777,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       scriptBoard: { width: 920 },
       storyboardBoard: { width: 1080 },
       identityCard: { width: 760 },
+      audioInput: { width: 340, height: 280 },
+      seedanceVideoGen: { width: 380, height: 640 },
     };
 
     const dim = defaultDimensions[type];
@@ -902,6 +931,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   getConnectedInputs: (nodeId) => {
     const { edges, nodes, labContext } = get();
     const images: string[] = [];
+    const audios: string[] = [];
     const texts: string[] = [];
     const mentions: TextNodeData['atMentions'] = [];
     const entityBindings: TextNodeData["entityBindings"] = [];
@@ -938,6 +968,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             }
           }
         }
+        if (handleId === "audio" && sourceNode.type === "audioInput") {
+          const src = (sourceNode.data as AudioInputNodeData).audio;
+          if (src) audios.push(src);
+        }
         if (handleId === "text") {
           if (sourceNode.type === "text") {
             const value = (sourceNode.data as TextNodeData).text;
@@ -969,6 +1003,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     const text = texts.length ? texts.join("\n\n") : null;
     return {
       images,
+      audios,
       text,
       atMentions: mentions.length ? mentions : undefined,
       entityBindings: entityBindings.length ? entityBindings : undefined,
@@ -998,6 +1033,23 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         const textConnected = edges.some((e) => e.target === node.id && e.targetHandle === "text");
         if (!imageConnected) errors.push(`VideoGen node "${node.id}" missing image input`);
         if (!textConnected) errors.push(`VideoGen node "${node.id}" missing text input`);
+      });
+    nodes
+      .filter((n) => n.type === "seedanceVideoGen")
+      .forEach((node) => {
+        const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
+        const audioConnected = edges.some((e) => e.target === node.id && e.targetHandle === "audio");
+        const nodeData = node.data as any;
+        const refs =
+          (Array.isArray(nodeData.referenceVideos) ? nodeData.referenceVideos.length : 0) +
+          (imageConnected ? 1 : 0);
+        if (refs === 0) errors.push(`Seedance node "${node.id}" requires at least 1 reference image or video`);
+        if (
+          audioConnected &&
+          refs === 0
+        ) {
+          errors.push(`Seedance node "${node.id}" cannot use audio alone without image/video references`);
+        }
       });
     nodes
       .filter((n) => n.type === "wanReferenceVideoGen")

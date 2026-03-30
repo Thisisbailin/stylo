@@ -29,7 +29,6 @@ import { useSoraGeneration } from './hooks/useSoraGeneration';
 import { useStoryboardGeneration } from './hooks/useStoryboardGeneration';
 import { AppShell } from './components/layout/AppShell';
 import { WorkflowCard } from './components/layout/Header';
-import { IdentityHoverBar } from './components/layout/IdentityHoverBar';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
@@ -2200,14 +2199,7 @@ const App: React.FC = () => {
     <>
       <AppShell
         isDarkMode={isDarkMode}
-        header={
-          appView === "landing" ? null : (
-            <IdentityHoverBar
-              projectData={projectData}
-              onSelectIdentity={handleLoadIdentityCard}
-            />
-          )
-        }
+        header={null}
         banner={
           !isSyncBannerDismissed && (
             <SyncStatusBanner

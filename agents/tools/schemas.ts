@@ -228,6 +228,7 @@ export const createNodeWorkflowSchema = z.object({
           "wanVideoGen",
           "wanReferenceVideoGen",
           "viduVideoGen",
+          "seedanceVideoGen",
         ]),
         title: z.string().optional(),
         text: z.string().optional(),
@@ -244,8 +245,8 @@ export const createNodeWorkflowSchema = z.object({
       z.object({
         from: z.string(),
         to: z.string(),
-        fromHandle: z.enum(["image", "text"]).optional(),
-        toHandle: z.enum(["image", "text"]).optional(),
+        fromHandle: z.enum(["image", "text", "audio"]).optional(),
+        toHandle: z.enum(["image", "text", "audio"]).optional(),
         paused: z.boolean().optional(),
       })
     )

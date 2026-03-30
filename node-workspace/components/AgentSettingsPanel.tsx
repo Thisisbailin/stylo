@@ -26,6 +26,9 @@ import {
   QWEN_RESPONSES_BASE_URL,
   QWEN_WAN_IMAGE_MODEL,
   QWEN_WAN_VIDEO_MODEL,
+  SEEDANCE_DEFAULT_BASE_URL,
+  SEEDANCE_DEFAULT_MODEL,
+  SEEDANCE_FAST_MODEL,
   SORA_DEFAULT_BASE_URL,
   SORA_DEFAULT_MODEL,
   DEFAULT_QALAM_TOOL_SETTINGS,
@@ -284,7 +287,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const { applyViduReferenceDemo } = useWorkflowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<"openrouter" | "qwen">("openrouter");
-  const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu">("sora");
+  const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
   const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "history">("provider");
   const [activeTool, setActiveTool] = useState<ToolKey>("asset-library");
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
@@ -1079,6 +1082,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                           { key: "sora" as const, label: "Sora", Icon: Sparkles },
                           { key: "qwen" as const, label: "Qwen", Icon: QwenIcon },
                           { key: "vidu" as const, label: "Vidu", Icon: Video },
+                          { key: "seedance" as const, label: "Seedance", Icon: Video },
                         ].map(({ key, label, Icon }) => {
                           const active = activeVideoProvider === key;
                           return (
@@ -1493,6 +1497,40 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
               >
                 载入 Vidu 参考演示
               </button>
+            </div>
+          )}
+
+          {activeType === "video" && activeVideoProvider === "seedance" && (
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+              <div className="text-sm font-semibold text-[var(--app-text-primary)]">Seedance</div>
+              <div className="text-[11px] text-[var(--app-text-muted)]">
+                Base URL: {SEEDANCE_DEFAULT_BASE_URL}
+              </div>
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">
+                  <Video size={12} />
+                  video-generation · 2
+                </div>
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[12px] text-[var(--app-text-secondary)] space-y-1">
+                  <div>
+                    可选模型：<span className="text-[var(--app-text-primary)] font-semibold">Seedance 2.0</span>
+                    <span className="text-[var(--app-text-muted)]"> · {SEEDANCE_DEFAULT_MODEL}</span>
+                  </div>
+                  <div>
+                    可选模型：<span className="text-[var(--app-text-primary)] font-semibold">Seedance 2.0 Fast</span>
+                    <span className="text-[var(--app-text-muted)]"> · {SEEDANCE_FAST_MODEL}</span>
+                  </div>
+                </div>
+                <div className="text-[11px] leading-5 text-[var(--app-text-muted)]">
+                  固定模式：多模态参考生视频。输入参考图片（0~9）+ 参考视频（0~3）+ 参考音频（0~3）+ 文本提示词（可选）生成 1 个目标视频。
+                </div>
+                <div className="text-[11px] leading-5 text-[var(--app-text-muted)]">
+                  注意：不可单独输入音频，应至少包含 1 个参考视频或图片。
+                </div>
+              </div>
+              <div className="text-[11px] text-[var(--app-text-muted)]">
+                使用 ARK_API_KEY / VITE_ARK_API_KEY，或沿用 Video API Key。
+              </div>
             </div>
           )}
                 </>

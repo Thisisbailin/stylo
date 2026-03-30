@@ -1,4 +1,5 @@
 export { ImageInputNode } from "./ImageInputNode";
+export { AudioInputNode } from "./AudioInputNode";
 export { AnnotationNode } from "./AnnotationNode";
 export * from "./TextNode";
 export * from "./ScriptBoardNode";
@@ -12,3 +13,4 @@ export { SoraVideoGenNode } from "./SoraVideoGenNode";
 export { WanVideoGenNode } from "./WanVideoGenNode";
 export { WanReferenceVideoGenNode } from "./WanReferenceVideoGenNode";
 export { ViduVideoGenNode } from "./ViduVideoGenNode";
+export { SeedanceVideoGenNode } from "./SeedanceVideoGenNode";

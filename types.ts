@@ -225,6 +225,51 @@ export interface VideoServiceConfig {
   model?: string;
 }
 
+export type SeedanceModel =
+  | "doubao-seedance-2-0-260128"
+  | "doubao-seedance-2-0-fast-260128";
+
+export type SeedanceContentRole =
+  | "reference_image"
+  | "reference_video"
+  | "reference_audio"
+  | "first_frame"
+  | "last_frame";
+
+export interface SeedanceContentItem {
+  type: "text" | "image_url" | "video_url" | "audio_url";
+  text?: string;
+  image_url?: { url: string };
+  video_url?: { url: string };
+  audio_url?: { url: string };
+  role?: SeedanceContentRole;
+}
+
+export interface SeedanceTaskCreateParams {
+  model: SeedanceModel;
+  content: SeedanceContentItem[];
+  generateAudio?: boolean;
+  resolution?: "480p" | "720p";
+  ratio?: "adaptive" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "21:9";
+  duration?: number;
+  watermark?: boolean;
+  useWebSearch?: boolean;
+}
+
+export interface SeedanceTaskSubmissionResult {
+  id: string;
+  status?: string;
+}
+
+export interface SeedanceTaskStatusResult {
+  id: string;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  url?: string;
+  ratio?: string;
+  duration?: number;
+  errorMsg?: string;
+}
+
 // Vidu service config and task types
 export interface ViduServiceConfig {
   baseUrl?: string;
@@ -365,7 +410,7 @@ export interface AppConfig {
   videoConfig: VideoServiceConfig;
   multimodalConfig: MultimodalConfig; // New Phase 4 Config
   viduConfig?: ViduServiceConfig;
-  videoProvider?: 'default' | 'vidu';
+  videoProvider?: 'default' | 'vidu' | 'seedance';
   rememberApiKeys?: boolean;
   syncApiKeys?: boolean;
 }

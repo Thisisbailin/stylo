@@ -2,6 +2,8 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
   switch (nodeType) {
     case "imageInput":
       return { inputs: [], outputs: ["image"] };
+    case "audioInput":
+      return { inputs: [], outputs: ["audio"] };
     case "annotation":
       return { inputs: ["image"], outputs: ["image"] };
     case "prompt":
@@ -23,6 +25,8 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "wanVideoGen":
     case "wanReferenceVideoGen":
       return { inputs: ["image", "text"], outputs: [] };
+    case "seedanceVideoGen":
+      return { inputs: ["image", "text", "audio"], outputs: [] };
     default:
       return { inputs: [], outputs: [] };
   }
@@ -32,5 +36,6 @@ export const isValidConnection = (connection: { sourceHandle?: string | null; ta
   const { sourceHandle, targetHandle } = connection;
   if (sourceHandle === "image" && targetHandle !== "image") return false;
   if (sourceHandle === "text" && targetHandle !== "text") return false;
+  if (sourceHandle === "audio" && targetHandle !== "audio") return false;
   return true;
 };

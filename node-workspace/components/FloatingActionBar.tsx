@@ -49,11 +49,13 @@ type Props = {
   onAddStoryboardBoard: () => void;
   onAddIdentityCard: () => void;
   onAddImage: () => void;
+  onAddAudio: () => void;
   onAddImageGen: () => void;
   onAddWanImageGen: () => void;
   onAddVideoGen: () => void;
   onAddWanVideoGen: () => void;
   onAddWanReferenceVideoGen: () => void;
+  onAddSeedanceVideoGen: () => void;
   onAddGroup: () => void;
   onImport: () => void;
   onExport: () => void;
@@ -104,11 +106,13 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddStoryboardBoard,
   onAddIdentityCard,
   onAddImage,
+  onAddAudio,
   onAddImageGen,
   onAddWanImageGen,
   onAddVideoGen,
   onAddWanVideoGen,
   onAddWanReferenceVideoGen,
+  onAddSeedanceVideoGen,
   onAddGroup,
   onImport,
   onExport,
@@ -277,11 +281,13 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "Text", hint: "Draft prompts, notes, and structure", meta: "Writing", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
     { label: "Group", hint: "Frame a reusable block of nodes", meta: "Layout", onClick: onAddGroup, Icon: BoxSelect, tone: "text-stone-200", surface: "bg-stone-500/12" },
     { label: "Image", hint: "Upload a reference image or still", meta: "Input", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
+    { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "Img Gen", hint: "Generate concept imagery", meta: "Generation", onClick: onAddImageGen, Icon: Sparkles, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
     { label: "Sora Video", hint: "Build Sora motion clips", meta: "Motion", onClick: onAddVideoGen, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
     { label: "WAN Vid", hint: "Wan 2.6 video workflow", meta: "Motion", onClick: onAddWanVideoGen, Icon: Video, tone: "text-violet-300", surface: "bg-violet-500/12" },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
+    { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
   const projectModules = [
     { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },

@@ -1,10 +1,11 @@
 import { Node, Edge } from "@xyflow/react";
-import { DesignAssetItem, Episode, ProjectContext, ViduReferenceMode } from "../../types";
+import { DesignAssetItem, Episode, ProjectContext, SeedanceModel, ViduReferenceMode } from "../../types";
 
-export type HandleType = "image" | "text";
+export type HandleType = "image" | "text" | "audio";
 
 export type NodeType =
   | "imageInput"
+  | "audioInput"
   | "annotation"
   | "text"
   | "scriptBoard"
@@ -16,6 +17,7 @@ export type NodeType =
   | "wanVideoGen"
   | "wanReferenceVideoGen"
   | "viduVideoGen"
+  | "seedanceVideoGen"
   | "group"
   | "shot";
 
@@ -35,6 +37,14 @@ export interface ImageInputNodeData extends BaseNodeData {
   label?: string;
   atMentions?: TextNodeData['atMentions'];
   entityBindings?: EntityBinding[];
+}
+
+export interface AudioInputNodeData extends BaseNodeData {
+  audio: string | null;
+  filename: string | null;
+  mimeType?: string | null;
+  durationMs?: number | null;
+  label?: string;
 }
 
 export type ShapeType = "rectangle" | "circle" | "arrow" | "freehand" | "text";
@@ -218,6 +228,23 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   seed?: number;
 }
 
+export interface SeedanceVideoGenNodeData extends BaseNodeData {
+  inputImages: string[];
+  referenceVideos: string[];
+  referenceAudios: string[];
+  videoId?: string;
+  videoUrl?: string;
+  status: "idle" | "loading" | "complete" | "error";
+  error: string | null;
+  model: SeedanceModel;
+  mode: "multimodalReference";
+  resolution?: "480p" | "720p";
+  ratio?: "adaptive" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "21:9";
+  duration?: number;
+  generateAudio?: boolean;
+  watermark?: boolean;
+}
+
 export interface OutputNodeData extends BaseNodeData {
   image: string | null;
   text?: string | null;
@@ -255,6 +282,7 @@ export interface ShotNodeData extends BaseNodeData {
 
 export type WorkflowNodeData =
   | ImageInputNodeData
+  | AudioInputNodeData
   | AnnotationNodeData
   | TextNodeData
   | ScriptBoardNodeData
@@ -263,6 +291,7 @@ export type WorkflowNodeData =
   | ImageGenNodeData
   | VideoGenNodeData
   | ViduVideoGenNodeData
+  | SeedanceVideoGenNodeData
   | GroupNodeData
   | ShotNodeData;
 
@@ -274,7 +303,7 @@ export interface WorkflowEdgeData extends Record<string, unknown> {
 
 export type WorkflowEdge = Edge<WorkflowEdgeData>;
 
-export type GlobalAssetType = "image" | "video";
+export type GlobalAssetType = "image" | "video" | "audio";
 
 export type GlobalAssetHistoryItem = {
   id: string;
