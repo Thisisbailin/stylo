@@ -72,6 +72,21 @@ const resolveTraceIncludeSensitiveData = (env: Record<string, unknown>) => {
   return value === "1" || value === "true";
 };
 
+const isDebugEnabled = (env: Record<string, unknown>) => {
+  const value = env.AGENT_DEBUG_LOGS;
+  return value === "1" || value === "true";
+};
+
+const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
+  if (!enabled || typeof console === "undefined") return;
+  const prefix = `[Qalam][edge][${runId}] ${label}`;
+  if (payload === undefined) {
+    console.log(prefix);
+    return;
+  }
+  console.log(prefix, payload);
+};
+
 const unwrapProviderEvent = (data: any) => {
   if (data && typeof data === "object" && data.event && typeof data.event === "object") return data.event;
   if (data && typeof data === "object" && data.providerData && typeof data.providerData === "object") return data.providerData;
@@ -194,9 +209,16 @@ export const onRequestPost = async (context: any) => {
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
       const tracingApiKey = resolveTracingApiKey(context.env || {});
+      const debugEnabled = isDebugEnabled(context.env || {});
       const traceId = generateTraceId();
       const tracingEnabled = Boolean(tracingApiKey);
       try {
+        debugLog(debugEnabled, runId, "request received", {
+          provider,
+          runtime: body.runtime,
+          sessionId: body.run.sessionId,
+          userText: body.run.userText,
+        });
         const bridgeState = createEdgeBridgeState(body.projectData);
         const toolCalls: AgentExecutedToolCall[] = [];
         const emitRuntimeEvent = (event: AgentRuntimeEvent) => {
@@ -222,6 +244,12 @@ export const onRequestPost = async (context: any) => {
           baseURL: resolveBaseUrl(provider, body.runtime.baseUrl),
           defaultHeaders: undefined as Record<string, string> | undefined,
         };
+        debugLog(debugEnabled, runId, "provider resolved", {
+          provider,
+          model: body.runtime.model,
+          baseURL: resolvedAuth.baseURL,
+          hasApiKey: Boolean(resolvedAuth.apiKey),
+        });
         const client = new OpenAI({
           apiKey: resolvedAuth.apiKey,
           baseURL: resolvedAuth.baseURL,
@@ -312,6 +340,10 @@ export const onRequestPost = async (context: any) => {
             const rawType = providerEvent?.type || (value as any)?.data?.type;
             if (rawType === "output_text_delta" && typeof providerEvent?.delta === "string") {
               accumulatedText += providerEvent.delta;
+              debugLog(debugEnabled, runId, "output_text_delta", {
+                delta: providerEvent.delta,
+                accumulatedLength: accumulatedText.length,
+              });
               emitEvent(controller, {
                 type: "message_delta",
                 runId,
@@ -348,6 +380,10 @@ export const onRequestPost = async (context: any) => {
               if (candidate) {
                 streamedResponseText = candidate;
               }
+              debugLog(debugEnabled, runId, "response_done", {
+                hasCandidate: Boolean(candidate),
+                candidateLength: candidate?.length || 0,
+              });
             }
           }
         } finally {
@@ -362,6 +398,11 @@ export const onRequestPost = async (context: any) => {
           streamedResponseText ||
           extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output) ||
           synthesizedToolText;
+        debugLog(debugEnabled, runId, "finalized result", {
+          finalText,
+          toolCalls: toolCalls.length,
+          usage: result.rawResponses?.at(-1)?.usage,
+        });
         const runResult: QalamRunResult = {
           finalText,
           sessionId: body.run.sessionId,
@@ -406,6 +447,13 @@ export const onRequestPost = async (context: any) => {
           (toolCall) => toolCall.status === "success" && SUCCESSFUL_ACTION_TOOL_NAMES.has(toolCall.name)
         );
         const fallbackText = accumulatedText.trim() || streamedResponseText.trim() || synthesizedToolText;
+        debugLog(debugEnabled, runId, "run error", {
+          error: error?.message || String(error),
+          isMaxTurns,
+          isGuardrailError,
+          fallbackText,
+          toolCalls,
+        });
         if (isMaxTurns && synthesizedToolText && hasSuccessfulAction) {
           const runResult: QalamRunResult = {
             finalText: synthesizedToolText,
@@ -435,6 +483,10 @@ export const onRequestPost = async (context: any) => {
           return;
         }
         if (fallbackText) {
+          debugLog(debugEnabled, runId, "recovered fallback result", {
+            fallbackText,
+            toolCalls: toolCalls.length,
+          });
           const runResult: QalamRunResult = {
             finalText: fallbackText,
             sessionId: body.run.sessionId,

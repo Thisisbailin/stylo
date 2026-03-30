@@ -4,6 +4,7 @@ import {
   type AgentHttpRunRequest,
   parseAgentStreamPacket,
 } from "./httpProtocol";
+import { browserAgentDebug, browserAgentDebugError } from "./debug";
 
 type HttpRuntimeDeps = {
   endpoint: string;
@@ -55,6 +56,12 @@ export const createHttpQalamAgentRuntime = ({
       runtime: getRuntimeConfig(),
       projectData: getProjectDataSnapshot?.(),
     };
+    browserAgentDebug("httpClient request", {
+      endpoint,
+      runtime: requestBody.runtime,
+      sessionId: requestBody.run.sessionId,
+      userText: requestBody.run.userText,
+    });
     const authToken = await getAuthToken?.();
     const response = await fetch(endpoint, {
       method: "POST",
@@ -69,14 +76,20 @@ export const createHttpQalamAgentRuntime = ({
 
     if (!response.ok || !response.body) {
       const message = await response.text().catch(() => "");
+      browserAgentDebugError("httpClient non-ok response", {
+        status: response.status,
+        message,
+      });
       throw new Error(message || `Agent 请求失败：HTTP ${response.status}`);
     }
 
     let finalResult: QalamRunResult | null = null;
     let streamedError: string | null = null;
     await decodeStreamChunks(response.body, (rawPacket) => {
+      browserAgentDebug("httpClient raw packet", rawPacket);
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
+        browserAgentDebug("httpClient event", packet.event);
         if (packet.event.type === "run_failed") {
           streamedError = packet.event.error;
         }
@@ -84,20 +97,28 @@ export const createHttpQalamAgentRuntime = ({
         return;
       }
       if (packet.kind === "result") {
+        browserAgentDebug("httpClient result", packet.result);
         finalResult = packet.result;
         return;
       }
       if (packet.kind === "error") {
+        browserAgentDebugError("httpClient packet error", packet.error);
         throw new Error(packet.error);
       }
     });
 
     if (!finalResult) {
       if (streamedError) {
+        browserAgentDebugError("httpClient streamed error without result", streamedError);
         throw new Error(streamedError);
       }
+      browserAgentDebugError("httpClient missing final result");
       throw new Error("远端 Agent 没有返回最终结果。");
     }
+    browserAgentDebug("httpClient completed", {
+      finalText: finalResult.finalText,
+      toolCalls: finalResult.toolCalls.length,
+    });
     return finalResult;
   },
 });

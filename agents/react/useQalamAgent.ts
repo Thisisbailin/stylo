@@ -12,6 +12,7 @@ import type {
   QalamRunInput,
   QalamRunResult,
 } from "../runtime/types";
+import { browserAgentDebug, browserAgentDebugError } from "../runtime/debug";
 
 type Options = {
   runtime: QalamAgentRuntime;
@@ -296,6 +297,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
 
   const handleEvent = useCallback(
     (event: AgentRuntimeEvent) => {
+      browserAgentDebug("useQalamAgent event", event);
       if (event.type === "run_started") {
         activeRunIdRef.current = event.runId;
         activeRunStartedAtRef.current = Date.now();
@@ -529,6 +531,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "run_completed") {
+        browserAgentDebug("useQalamAgent run completed", event.result);
         activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
         delete activeReasoningStatusIdRef.current[event.runId];
@@ -541,6 +544,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "run_failed") {
+        browserAgentDebugError("useQalamAgent run failed", event.error);
         activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
         const forcedAbortMessage = runAbortMessageRef.current[event.runId];
@@ -580,11 +584,17 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
 
   const sendMessage = useCallback(
     async (input: Omit<QalamRunInput, "sessionId">): Promise<QalamRunResult> => {
+      browserAgentDebug("useQalamAgent sendMessage", {
+        sessionId,
+        userText: input.userText,
+        attachments: input.attachments?.length || 0,
+        enabledSkillIds: input.enabledSkillIds || [],
+      });
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRunning(true);
       try {
-        return await runtime.run(
+        const result = await runtime.run(
           {
             ...input,
             sessionId,
@@ -594,6 +604,11 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
             onEvent: handleEvent,
           }
         );
+        browserAgentDebug("useQalamAgent runtime result", result);
+        return result;
+      } catch (error: any) {
+        browserAgentDebugError("useQalamAgent runtime error", error);
+        throw error;
       } finally {
         abortRef.current = null;
         setIsRunning(false);
