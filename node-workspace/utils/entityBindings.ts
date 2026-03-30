@@ -11,6 +11,7 @@ export type MentionTarget = {
   search: string;
   aliasValue?: string;
   identityId: string;
+  portraitId?: string;
   mention: string;
   tone: "emerald" | "sky";
   roleKind: "person" | "scene";
@@ -58,7 +59,7 @@ const buildIdentityDetail = (role: ProjectRoleIdentity) =>
   [
     `身份证：@${role.mention}`,
     role.kind === "scene" ? "身份类型：场景" : "身份类型：人物",
-    role.title ? `身份名：${role.title}` : "",
+    `角色名：${role.name}`,
     role.summary ? `摘要：${role.summary}` : "",
     role.episodeUsage ? `区间：${role.episodeUsage}` : "",
     role.visualTags ? `视觉：${role.visualTags}` : "",
@@ -73,20 +74,19 @@ export const buildMentionTargets = (roles: ProjectRoleIdentity[]) => {
       role.mention,
       `@${role.mention}`,
       role.displayName,
-      role.familyName,
+      role.name,
       ...(role.aliases || []).map((item) => item.value),
       ...(role.binding?.aliases || []),
     ]);
-    return aliases.map((alias, index) => ({
+    const baseTargets = aliases.map((alias, index) => ({
       kind: "identity" as const,
       name: alias.replace(/^@/, ""),
-      label: role.displayName || `@${role.mention}`,
+      label: role.displayName || role.name || `@${role.mention}`,
       search: toSearch(
         [
           alias,
           role.displayName,
-          role.familyName,
-          role.givenName,
+          role.name,
           role.summary,
           role.description,
           role.visualTags,
@@ -104,6 +104,39 @@ export const buildMentionTargets = (roles: ProjectRoleIdentity[]) => {
       summary: role.summary,
       detail: buildIdentityDetail(role),
     }));
+    const portraitTargets = (role.portraits || []).map((portrait) => ({
+      kind: "identity" as const,
+      name: portrait.mention,
+      label: `${role.name} · ${portrait.name}`,
+      search: toSearch(
+        [
+          portrait.mention,
+          `@${portrait.mention}`,
+          role.name,
+          portrait.name,
+          portrait.summary,
+          role.summary,
+          role.description,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ),
+      aliasValue: portrait.name,
+      identityId: role.id,
+      portraitId: portrait.id,
+      mention: portrait.mention,
+      tone: role.tone,
+      roleKind: role.kind,
+      summary: portrait.summary || role.summary,
+      detail: [
+        buildIdentityDetail(role),
+        `定妆照：${portrait.name}`,
+        portrait.summary || "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }));
+    return [...baseTargets, ...portraitTargets];
   });
 
   return {
@@ -152,6 +185,7 @@ export const computeMentionData = (
         status: hit ? "match" : "missing",
         kind: hit?.kind || "unknown",
         identityId: hit?.identityId,
+        portraitId: hit?.portraitId,
         mention: hit?.mention,
         summary: hit?.summary,
         detail: hit?.detail,
@@ -167,6 +201,7 @@ export const computeMentionData = (
       entityType: hit?.kind || "unknown",
       entityId: hit?.identityId,
       identityId: hit?.identityId,
+      portraitId: hit?.portraitId,
       mention: hit?.mention,
       aliasValue: hit?.aliasValue,
       summary: hit?.summary,

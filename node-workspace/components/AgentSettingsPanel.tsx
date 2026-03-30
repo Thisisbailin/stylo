@@ -265,7 +265,7 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
 };
 
 export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { config, setConfig } = useConfig("script2video_config_v1");
+  const { config, setConfig } = useConfig("qalam_config_v1");
   const { applyViduReferenceDemo } = useWorkflowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<"openrouter" | "qwen">("openrouter");
@@ -285,7 +285,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runtimeMetaVersion, setRuntimeMetaVersion] = useState(0);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
-    key: "script2video_qalam_conversations_v1",
+    key: "qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {

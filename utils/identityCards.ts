@@ -5,6 +5,7 @@ export type ProjectIdentityTone = ProjectRoleTone;
 export type ProjectIdentity = ProjectRoleIdentity & {
   subtitle?: string;
   detailLines: string[];
+  primaryPortraitUrl?: string;
 };
 
 const findAssetUrl = (assets: DesignAssetItem[], refId: string) =>
@@ -14,19 +15,31 @@ export const buildProjectIdentities = (context: ProjectContext, designAssets: De
   (context.roles || [])
     .map((role) => ({
       ...role,
-      avatarUrl: role.avatarUrl || findAssetUrl(designAssets || [], role.id),
+      primaryPortraitUrl:
+        role.portraits?.find((portrait) => portrait.isPrimary)?.imageUrl ||
+        role.portraits?.[0]?.imageUrl ||
+        role.avatarUrl ||
+        findAssetUrl(designAssets || [], role.id),
+      avatarUrl:
+        role.avatarUrl ||
+        role.portraits?.find((portrait) => portrait.isPrimary)?.imageUrl ||
+        role.portraits?.[0]?.imageUrl ||
+        findAssetUrl(designAssets || [], role.id),
       subtitle: role.episodeUsage,
       detailLines: [
         `身份证：@${role.mention}`,
         `身份ID：${role.id}`,
         role.kind === "person" ? "身份类型：人物" : "身份类型：场景",
-        role.title ? `身份名：${role.title}` : "",
+        `角色名：${role.name}`,
+        role.title ? `标题：${role.title}` : "",
         role.summary ? `摘要：${role.summary}` : "",
         role.episodeUsage ? `适用区间：${role.episodeUsage}` : "",
+        role.portraits?.length ? `定妆照：${role.portraits.length} 张` : "",
+        role.voiceReferenceAudioUrl ? "角色音色：已绑定参考音频" : "",
         role.status ? `状态：${role.status}` : "",
       ].filter(Boolean),
     }))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName, "zh-Hans-CN"));
+    .sort((a, b) => (a.name || a.displayName).localeCompare(b.name || b.displayName, "zh-Hans-CN"));
 
 export const resolveLegacyIdentity = (
   identities: ProjectIdentity[],

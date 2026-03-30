@@ -1,5 +1,5 @@
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "script",
@@ -283,7 +283,7 @@ export const searchProjectResourceToolDef = {
   description:
     "Search project resources when the exact locator is unknown. Supports script, storyboard, understanding, characters, scenes, and guides scopes.",
   parameters: searchProjectResourceParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
     const matches = searchProject(data, args);

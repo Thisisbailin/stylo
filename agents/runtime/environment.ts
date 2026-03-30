@@ -3,7 +3,7 @@ import type {
   AgentEnvironmentCapabilityManifest,
   AgentEnvironmentRecentAction,
   AgentSessionMessage,
-  Script2VideoAgentEnvironment,
+  QalamAgentEnvironment,
 } from "./types";
 import { LIST_PROJECT_RESOURCE_TYPES } from "../tools/listProjectResources";
 import { READ_PROJECT_RESOURCE_TYPES } from "../tools/readProjectResource";
@@ -82,7 +82,7 @@ export const buildAgentEnvironment = ({
   runtimeMode: "browser" | "edge_full";
   enabledTools: string[];
   sessionMessages?: AgentSessionMessage[];
-}): Script2VideoAgentEnvironment => {
+}): QalamAgentEnvironment => {
   const roles = Array.isArray(projectData.context?.roles) ? projectData.context.roles : [];
   const primaryRoles = sortRoles(roles.filter((role) => role.kind === "person"))
     .slice(0, MAX_PRIMARY_ROLES)

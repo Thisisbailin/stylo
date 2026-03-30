@@ -123,11 +123,22 @@ export interface ProjectRoleBindingProfile {
   aliases?: string[];
 }
 
+export interface ProjectRolePortrait {
+  id: string;
+  name: string;
+  mention: string;
+  imageUrl: string;
+  createdAt: number;
+  summary?: string;
+  isPrimary?: boolean;
+}
+
 export interface ProjectRoleIdentity {
   id: string;
-  familyId: string;
-  familyName: string;
-  givenName: string;
+  name: string;
+  familyId?: string;
+  familyName?: string;
+  givenName?: string;
   displayName: string;
   mention: string;
   slug?: string;
@@ -147,12 +158,14 @@ export interface ProjectRoleIdentity {
   voiceId?: string;
   voicePrompt?: string;
   previewAudioUrl?: string;
+  voiceReferenceAudioUrl?: string;
   designPrompt?: string;
   designNotes?: string;
   lightingPalette?: string;
   props?: string;
   assetPriority?: "high" | "medium" | "low";
   avatarUrl?: string;
+  portraits: ProjectRolePortrait[];
 }
 
 export interface ProjectContext {

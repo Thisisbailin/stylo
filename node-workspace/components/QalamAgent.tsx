@@ -21,13 +21,13 @@ import { QWEN_DEFAULT_MODEL } from "../../constants";
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ChatMessage, Message } from "./qalam/types";
 import { useWorkflowStore } from "../store/workflowStore";
-import type { Script2VideoAgentBridge, WorkflowBuilderHandle, WorkflowNodeLookupInput } from "../../agents/bridge/script2videoBridge";
+import type { QalamAgentBridge, WorkflowBuilderHandle, WorkflowNodeLookupInput } from "../../agents/bridge/qalamBridge";
 import { createNodeWorkflowWithBridge } from "../../agents/bridge/workflowBuilder";
-import { createScript2VideoAgentRuntime } from "../../agents/runtime/agent";
-import { createHttpScript2VideoAgentRuntime } from "../../agents/runtime/httpClient";
+import { createQalamAgentRuntime } from "../../agents/runtime/agent";
+import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { LocalSkillLoader } from "../../agents/runtime/skills";
 import { LocalStorageSessionStore } from "../../agents/runtime/session";
-import { useScript2VideoAgent } from "../../agents/react/useScript2VideoAgent";
+import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
 
 type Props = {
@@ -197,7 +197,7 @@ export const QalamAgent: React.FC<Props> = ({
   onCollapsedChange,
   renderCollapsedTrigger = true,
 }) => {
-  const { config } = useConfig("script2video_config_v1");
+  const { config } = useConfig("qalam_config_v1");
   const addNode = useWorkflowStore((state) => state.addNode);
   const updateNodeStyle = useWorkflowStore((state) => state.updateNodeStyle);
   const onConnect = useWorkflowStore((state) => state.onConnect);
@@ -212,7 +212,7 @@ export const QalamAgent: React.FC<Props> = ({
   const [cursorPos, setCursorPos] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
-    key: "script2video_qalam_conversations_v1",
+    key: "qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
@@ -288,7 +288,7 @@ export const QalamAgent: React.FC<Props> = ({
   const skillLoaderRef = useRef(new LocalSkillLoader());
   const sessionStoreRef = useRef(new LocalStorageSessionStore());
   const workflowNodeRefsRef = useRef<Record<string, string>>({});
-  const bridge = useMemo<Script2VideoAgentBridge>(
+  const bridge = useMemo<QalamAgentBridge>(
     () => ({
       getProjectData: () => projectData,
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
@@ -469,7 +469,7 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const browserRuntime = useMemo(
     () =>
-      createScript2VideoAgentRuntime({
+      createQalamAgentRuntime({
         bridge,
         skillLoader: skillLoaderRef.current,
         sessionStore: sessionStoreRef.current,
@@ -484,7 +484,7 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const edgeRuntime = useMemo(
     () =>
-      createHttpScript2VideoAgentRuntime({
+      createHttpQalamAgentRuntime({
         endpoint: "/api/agent",
         getRuntimeConfig: () => ({
           provider: config.textConfig?.agentProvider || config.textConfig?.provider,
@@ -582,7 +582,7 @@ export const QalamAgent: React.FC<Props> = ({
     el.style.height = `${nextHeight}px`;
     el.style.overflowY = el.scrollHeight > 132 ? "auto" : "hidden";
   }, []);
-  const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useScript2VideoAgent({
+  const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useQalamAgent({
     runtime,
     sessionId: activeConversation?.id || conversationState.activeId || "qalam-default",
     setMessages,
@@ -639,13 +639,13 @@ export const QalamAgent: React.FC<Props> = ({
   useEffect(() => {
     if (conversationState.items.length) return;
     try {
-      const stored = localStorage.getItem("script2video_qalam_messages_v1");
+      const stored = localStorage.getItem("qalam_messages_v1");
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length) {
           const migrated = createConversationRecord(clampMessages(parsed));
           setConversationState({ activeId: migrated.id, items: [migrated] });
-          localStorage.removeItem("script2video_qalam_messages_v1");
+          localStorage.removeItem("qalam_messages_v1");
           return;
         }
       }

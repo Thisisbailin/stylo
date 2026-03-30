@@ -31,8 +31,8 @@
 
 ### 3.1 理解模型约束
 来源：
-- `/Users/joe/Documents/APP/Script2Video/types.ts`
-- `/Users/joe/Documents/APP/Script2Video/services/responsesTextService.ts`
+- `/Users/joe/Documents/APP/Qalam/types.ts`
+- `/Users/joe/Documents/APP/Qalam/services/responsesTextService.ts`
 
 当前 `Character` 更像“角色档案”，`CharacterForm` 更像“角色形态定模条目”。
 
@@ -45,9 +45,9 @@
 
 ### 3.2 `@` 绑定约束
 来源：
-- `/Users/joe/Documents/APP/Script2Video/node-workspace/nodes/TextNode.tsx`
-- `/Users/joe/Documents/APP/Script2Video/node-workspace/nodes/ImageInputNode.tsx`
-- `/Users/joe/Documents/APP/Script2Video/node-workspace/store/useLabExecutor.ts`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/TextNode.tsx`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/ImageInputNode.tsx`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/store/useLabExecutor.ts`
 
 当前机制：
 - 文本输入时通过 `@xxx` 做实时解析。
@@ -58,9 +58,9 @@
 
 ### 3.3 AIGC 定模约束
 来源：
-- `/Users/joe/Documents/APP/Script2Video/services/responsesTextService.ts`
-- `/Users/joe/Documents/APP/Script2Video/node-workspace/components/CharacterSceneLibraryPanel.tsx`
-- `/Users/joe/Documents/APP/Script2Video/node-workspace/components/qalam/toolActions.ts`
+- `/Users/joe/Documents/APP/Qalam/services/responsesTextService.ts`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/components/CharacterSceneLibraryPanel.tsx`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/components/qalam/toolActions.ts`
 
 角色定模在当前产品里天然是“形态级”：
 - 一个角色会有多个 forms

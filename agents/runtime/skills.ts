@@ -1,4 +1,4 @@
-import type { Script2VideoSkillDefinition, Script2VideoSkillLoader } from "./types";
+import type { QalamSkillDefinition, QalamSkillLoader } from "./types";
 
 type RawSkillModuleMap = Record<string, string>;
 
@@ -23,7 +23,7 @@ const toSkillId = (path: string) => {
   return match?.[1] || path;
 };
 
-const buildSkillDefinitions = (): Script2VideoSkillDefinition[] =>
+const buildSkillDefinitions = (): QalamSkillDefinition[] =>
   Object.entries(skillMarkdownModules).map(([path, markdown]) => {
     const id = toSkillId(path);
     return {
@@ -34,14 +34,14 @@ const buildSkillDefinitions = (): Script2VideoSkillDefinition[] =>
     };
   });
 
-export class LocalSkillLoader implements Script2VideoSkillLoader {
+export class LocalSkillLoader implements QalamSkillLoader {
   private readonly skills = buildSkillDefinitions();
 
-  listSkills(): Script2VideoSkillDefinition[] {
+  listSkills(): QalamSkillDefinition[] {
     return this.skills;
   }
 
-  getSkill(id: string): Script2VideoSkillDefinition | null {
+  getSkill(id: string): QalamSkillDefinition | null {
     return this.skills.find((skill) => skill.id === id) || null;
   }
 }

@@ -251,7 +251,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
         label: next,
         atMentions: mentions.atMentions,
         entityBindings: mentions.entityBindings,
-        identityTag: match?.name,
+        identityTag: match?.mention || match?.name,
         identityId: identityBinding?.identityId,
       });
     },

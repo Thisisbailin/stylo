@@ -1,7 +1,7 @@
 import type { AgentExecutedToolCall } from "./types";
 
-export const DEFAULT_AGENT_ACTIVITY_STORAGE_KEY = "script2video_agent_tool_activity_v1";
-export const AGENT_ACTIVITY_STORAGE_UPDATED_EVENT = "script2video:agent-activity-storage-updated";
+export const DEFAULT_AGENT_ACTIVITY_STORAGE_KEY = "qalam_agent_tool_activity_v1";
+export const AGENT_ACTIVITY_STORAGE_UPDATED_EVENT = "qalam:agent-activity-storage-updated";
 
 export type AgentToolActivityRecord = {
   toolName: string;

@@ -15,12 +15,12 @@ const EDGE_SESSION_TOOL_OUTPUT_LIMIT = 1200;
 
 const getEdgeSessionMap = () => {
   const scope = globalThis as typeof globalThis & {
-    __SCRIPT2VIDEO_EDGE_AGENT_SESSIONS__?: Map<string, EdgeSessionRecord>;
+    __QALAM_EDGE_AGENT_SESSIONS__?: Map<string, EdgeSessionRecord>;
   };
-  if (!scope.__SCRIPT2VIDEO_EDGE_AGENT_SESSIONS__) {
-    scope.__SCRIPT2VIDEO_EDGE_AGENT_SESSIONS__ = new Map<string, EdgeSessionRecord>();
+  if (!scope.__QALAM_EDGE_AGENT_SESSIONS__) {
+    scope.__QALAM_EDGE_AGENT_SESSIONS__ = new Map<string, EdgeSessionRecord>();
   }
-  return scope.__SCRIPT2VIDEO_EDGE_AGENT_SESSIONS__;
+  return scope.__QALAM_EDGE_AGENT_SESSIONS__;
 };
 
 const cloneItem = <T,>(value: T): T => structuredClone(value);

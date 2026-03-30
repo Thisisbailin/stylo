@@ -78,7 +78,7 @@ export default defineConfig(({ mode }) => {
                   // BUT `vite.config.ts` showed NO proxy config.
                   // This implies there IS a backend server (Express/Next) running on port 3000?
                   // OR the user was running against a distinct backend?
-                  // "APP/Script2Video" suggests a standalone app.
+                  // "APP/Qalam" suggests a standalone app.
                   // If I look at `vite.config.ts` again... "plugins: [react()]". This is a SPA.
                   // If there was no proxy config, how did `fetch('/api/proxy?url=...')` work?
                   // Maybe it DIDN'T work and the user just didn't report it yet because they were stuck on 400?

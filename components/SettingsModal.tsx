@@ -765,8 +765,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                     <div className="relative pl-5 space-y-4">
                                         <span className="absolute left-2 top-2 bottom-2 w-[2px] bg-gray-200 dark:bg-gray-700 rounded-full" />
                                         {[
-                                            { ver: "0.1 · Script2Video", desc: "组件导向：手动点击完成基础逻辑。", active: false },
-                                            { ver: "0.2 · eSheep", desc: "工作流导向：流程化自动批处理。", active: false },
+                                            { ver: "0.1 · Qalam", desc: "组件导向：手动点击完成基础逻辑。", active: false },
+                                            { ver: "0.2 · Qalam", desc: "工作流导向：流程化自动批处理。", active: false },
                                             { ver: "0.3 · NodeLab", desc: "节点导向：自由搭建 AIGC 节点组合。", active: true },
                                             { ver: "0.4 · Qalam", desc: "Agent 主导：助理制定并执行创意计划。", active: false },
                                             { ver: "0.5 · Zendo", desc: "多 Agent：研究小组协作，感知化实时交互。", active: false },
@@ -832,7 +832,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                             {/* Footer / Credits */}
                             <div className="pt-2 text-center border-t border-gray-200 dark:border-gray-800">
                                 <p className="text-xs text-gray-500">
-                                    Designed by <span className="text-gray-700 dark:text-gray-400 font-medium">Bai & Script2Video</span>
+                                    Designed by <span className="text-gray-700 dark:text-gray-400 font-medium">Bai & Qalam</span>
                                 </p>
                             </div>
                         </div>

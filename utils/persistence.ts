@@ -1,6 +1,6 @@
 import { ProjectData } from "../types";
 
-export const FORCE_CLOUD_CLEAR_KEY = "script2video_force_cloud_clear";
+export const FORCE_CLOUD_CLEAR_KEY = "qalam_force_cloud_clear";
 
 export const dropFileReplacer = (_key: string, value: any) => {
   if (typeof File !== "undefined" && value instanceof File) return undefined;

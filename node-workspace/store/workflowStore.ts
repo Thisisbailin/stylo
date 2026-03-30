@@ -31,7 +31,7 @@ import {
   WorkflowViewport,
   WorkflowTemplate,
 } from "../types";
-import type { Episode, Scene } from "../../types";
+import type { Episode, ProjectRoleIdentity, Scene } from "../../types";
 import { buildProjectIdentities, resolveLegacyIdentity } from "../../utils/identityCards";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
@@ -43,7 +43,7 @@ interface ClipboardData {
   edges: WorkflowEdge[];
 }
 
-const TEMPLATE_STORAGE_KEY = "script2video_group_templates_v1";
+const TEMPLATE_STORAGE_KEY = "qalam_group_templates_v1";
 
 const loadTemplates = (): WorkflowTemplate[] => {
   if (typeof window === "undefined") return [];
@@ -538,6 +538,11 @@ interface WorkflowStore {
   // Global Config
   appConfig: any; // Using any to avoid circular dependencies if types are complex, but AppConfig is best
   setAppConfig: (config: any) => void;
+  projectRoleUpdater: ((roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void) | null;
+  setProjectRoleUpdater: (
+    updater: ((roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void) | null
+  ) => void;
+  mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
 }
 
 const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
@@ -740,6 +745,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     },
   },
   appConfig: null,
+  projectRoleUpdater: null,
 
   setAvailableImageModels: (models) => set({ availableImageModels: models }),
   setAvailableVideoModels: (models) => set({ availableVideoModels: models }),
@@ -748,6 +754,12 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   setActiveView: (view) => set({ activeView: view }),
   setAppConfig: (config) => set({ appConfig: config }),
+  setProjectRoleUpdater: (updater) => set({ projectRoleUpdater: updater }),
+  mutateProjectRole: (roleId, updater) => {
+    const apply = get().projectRoleUpdater;
+    if (!apply) return;
+    apply(roleId, updater);
+  },
 
   setEdgeStyle: (style: EdgeStyle) => set({ edgeStyle: style }),
   setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),

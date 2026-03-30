@@ -1,8 +1,8 @@
-# Script2Video Agent Architecture
+# Qalam Agent Architecture
 
 ## Goal
 
-Use `OpenAI Agents SDK JS` as the runtime foundation for a single general-purpose creative agent inside Script2Video.
+Use `OpenAI Agents SDK JS` as the runtime foundation for a single general-purpose creative agent inside Qalam.
 
 The agent's product role is:
 
@@ -217,7 +217,7 @@ That should go through a bridge interface rather than importing React components
 Example bridge shape:
 
 ```ts
-export interface Script2VideoAgentBridge {
+export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   setProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: {
@@ -435,7 +435,7 @@ Each skill should define:
 - preferred capability class and preferred tools
 - constraints
 
-### Example skill categories for Script2Video
+### Example skill categories for Qalam
 
 1. `script-analysis`
 
@@ -589,7 +589,7 @@ agents/
     upsertLocation.ts
     createTextNode.ts
   bridge/
-    script2videoBridge.ts
+    qalamBridge.ts
 skills/
   script-analysis/
     SKILL.md
@@ -709,7 +709,7 @@ Chosen foundation:
 Rejected as primary foundation:
 
 - `LangGraph.js` for now, because the project prefers agent autonomy over graph-first control
-- `OpenClaw`, because it is too product-heavy for embedding into Script2Video
+- `OpenClaw`, because it is too product-heavy for embedding into Qalam
 - `Nanobot`, because it is not mature enough to serve as the core runtime here
 
 ## Immediate Next Step

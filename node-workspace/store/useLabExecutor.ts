@@ -27,6 +27,7 @@ type MentionData = {
   status: "match" | "missing";
   kind?: "identity" | "unknown";
   identityId?: string;
+  portraitId?: string;
   mention?: string;
   aliasValue?: string;
 };
@@ -48,6 +49,7 @@ type ProjectReferenceAsset = {
 type BoundIdentityRef = {
   rawText: string;
   identityId: string;
+  portraitId?: string;
   mention: string;
 };
 
@@ -285,9 +287,33 @@ const mapWanVideoSize = (aspectRatio?: string, resolution?: string) => {
 };
 
 const makeProjectRefKey = (category: "identity", refId: string) => `${category}:${refId}`;
+const makeRoleRefId = (roleId: string) => roleId;
+const makePortraitRefId = (portraitId: string) => `portrait:${portraitId}`;
 
-const buildProjectReferenceIndex = (designAssets: DesignAssetItem[]) => {
+const buildProjectReferenceIndex = (roles: ProjectRoleIdentity[], designAssets: DesignAssetItem[]) => {
   const latestByKey = new Map<string, ProjectReferenceAsset>();
+  roles.forEach((role) => {
+    const primaryPortrait = role.portraits?.find((portrait) => portrait.isPrimary) || role.portraits?.[0];
+    if (primaryPortrait?.imageUrl) {
+      latestByKey.set(makeProjectRefKey("identity", makeRoleRefId(role.id)), {
+        category: "identity",
+        refId: makeRoleRefId(role.id),
+        label: `@${role.mention}`,
+        url: primaryPortrait.imageUrl,
+        createdAt: primaryPortrait.createdAt || 0,
+      });
+    }
+    (role.portraits || []).forEach((portrait) => {
+      if (!portrait.imageUrl) return;
+      latestByKey.set(makeProjectRefKey("identity", makePortraitRefId(portrait.id)), {
+        category: "identity",
+        refId: makePortraitRefId(portrait.id),
+        label: `@${portrait.mention}`,
+        url: portrait.imageUrl,
+        createdAt: portrait.createdAt || 0,
+      });
+    });
+  });
   designAssets.forEach((asset) => {
     if (!asset?.url || !asset?.refId) return;
     const key = makeProjectRefKey(asset.category, asset.refId);
@@ -311,16 +337,30 @@ const resolveMentionReferenceAsset = (
   latestByKey: Map<string, ProjectReferenceAsset>
 ) => {
   const identityId = "entityType" in mention ? mention.identityId : mention.identityId;
+  const portraitId = "entityType" in mention ? mention.portraitId : mention.portraitId;
+  if (portraitId) {
+    const exactPortrait = latestByKey.get(makeProjectRefKey("identity", makePortraitRefId(portraitId)));
+    if (exactPortrait) return exactPortrait;
+  }
   if (identityId) {
-    const exact = latestByKey.get(makeProjectRefKey("identity", identityId));
+    const exact = latestByKey.get(makeProjectRefKey("identity", makeRoleRefId(identityId)));
     if (exact) return exact;
   }
 
   const fallbackMention = (("mention" in mention ? mention.mention : undefined) || ("name" in mention ? mention.name : mention.rawText.replace(/^@/, "")) || "").replace(/^@/, "").toLowerCase();
   if (!fallbackMention) return undefined;
-  const role = roles.find((item) => item.mention.toLowerCase() === fallbackMention || item.displayName.toLowerCase() === `@${fallbackMention}`);
+  const role = roles.find((item) => {
+    if (item.mention.toLowerCase() === fallbackMention) return true;
+    if (item.name.toLowerCase() === fallbackMention) return true;
+    return (item.portraits || []).some((portrait) => portrait.mention.toLowerCase() === fallbackMention);
+  });
   if (role) {
-    const exact = latestByKey.get(makeProjectRefKey("identity", role.id));
+    const portrait = (role.portraits || []).find((item) => item.mention.toLowerCase() === fallbackMention);
+    if (portrait) {
+      const exactPortrait = latestByKey.get(makeProjectRefKey("identity", makePortraitRefId(portrait.id)));
+      if (exactPortrait) return exactPortrait;
+    }
+    const exact = latestByKey.get(makeProjectRefKey("identity", makeRoleRefId(role.id)));
     if (exact) return exact;
   }
   return Array.from(latestByKey.values()).find((asset) => asset.label.toLowerCase().includes(fallbackMention));
@@ -369,7 +409,16 @@ const resolveBoundIdentities = (
   const resolved: BoundIdentityRef[] = [];
   const pushUnique = (item: BoundIdentityRef | null | undefined) => {
     if (!item) return;
-    if (resolved.find((entry) => entry.identityId === item.identityId)) return;
+    if (
+      resolved.find(
+        (entry) =>
+          entry.identityId === item.identityId &&
+          (entry.portraitId || "") === (item.portraitId || "") &&
+          entry.mention === item.mention
+      )
+    ) {
+      return;
+    }
     resolved.push(item);
   };
 
@@ -379,6 +428,7 @@ const resolveBoundIdentities = (
       pushUnique({
         rawText: binding.rawText,
         identityId: binding.identityId,
+        portraitId: binding.portraitId,
         mention: binding.mention || binding.rawText.replace(/^@/, ""),
       });
     }
@@ -391,6 +441,7 @@ const resolveBoundIdentities = (
     pushUnique({
       rawText: `@${mention.name}`,
       identityId: mention.identityId,
+      portraitId: mention.portraitId,
       mention: mention.mention || mention.name,
     });
   });
@@ -999,7 +1050,7 @@ export const useLabExecutor = () => {
       }
       let promptForRequest = prompt;
       if (isWanReferenceVideoNode) {
-        const latestProjectRefs = buildProjectReferenceIndex(store.labContext.designAssets || []);
+        const latestProjectRefs = buildProjectReferenceIndex(store.labContext.context.roles || [], store.labContext.designAssets || []);
         const roles = store.labContext.context.roles || [];
         const { rewrittenPrompt, refs: promptDrivenRefs } = resolvePromptProjectReferences(
           prompt,

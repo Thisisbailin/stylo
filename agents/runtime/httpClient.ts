@@ -1,4 +1,4 @@
-import type { Script2VideoAgentRuntime, Script2VideoRunInput, Script2VideoRunOptions, Script2VideoRunResult } from "./types";
+import type { QalamAgentRuntime, QalamRunInput, QalamRunOptions, QalamRunResult } from "./types";
 import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
   type AgentHttpRunRequest,
@@ -43,13 +43,13 @@ const decodeStreamChunks = async (
   }
 };
 
-export const createHttpScript2VideoAgentRuntime = ({
+export const createHttpQalamAgentRuntime = ({
   endpoint,
   getRuntimeConfig,
   getProjectDataSnapshot,
   getAuthToken,
-}: HttpRuntimeDeps): Script2VideoAgentRuntime => ({
-  async run(input: Script2VideoRunInput, options?: Script2VideoRunOptions): Promise<Script2VideoRunResult> {
+}: HttpRuntimeDeps): QalamAgentRuntime => ({
+  async run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult> {
     const requestBody: AgentHttpRunRequest = {
       run: input,
       runtime: getRuntimeConfig(),
@@ -72,7 +72,7 @@ export const createHttpScript2VideoAgentRuntime = ({
       throw new Error(message || `Agent 请求失败：HTTP ${response.status}`);
     }
 
-    let finalResult: Script2VideoRunResult | null = null;
+    let finalResult: QalamRunResult | null = null;
     await decodeStreamChunks(response.body, (rawPacket) => {
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {

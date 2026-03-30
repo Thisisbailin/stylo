@@ -7,7 +7,7 @@ export const getRoleMentionValue = (role?: ProjectRoleIdentity | null) =>
 
 export const getRoleDisplayLabel = (role?: ProjectRoleIdentity | null) => {
   if (!role) return "";
-  return `${role.displayName} · ${role.summary}`;
+  return `${role.name || role.displayName} · ${role.summary}`;
 };
 
 export const getRoleToneLabel = (role?: ProjectRoleIdentity | null) =>
@@ -18,8 +18,9 @@ export const getCharacterMentionLabel = getRoleMentionValue;
 export const getCharacterMentionAliases = (role?: ProjectRoleIdentity | null) =>
   [
     role?.displayName,
-    role?.familyName,
+    role?.name,
     role?.mention ? `@${role.mention}` : "",
+    ...((role?.portraits || []).map((portrait) => `@${portrait.mention}`)),
     ...((role?.aliases || []).map((item) => item.value)),
   ].filter((item): item is string => !!item);
 

@@ -110,6 +110,7 @@ export interface EntityBinding {
   entityType: "identity" | "unknown";
   entityId?: string;
   identityId?: string;
+  portraitId?: string;
   mention?: string;
   aliasValue?: string;
   summary?: string;
@@ -131,6 +132,7 @@ export interface TextNodeData extends BaseNodeData {
     status: 'match' | 'missing';
     kind?: 'identity' | 'unknown';
     identityId?: string;
+    portraitId?: string;
     mention?: string;
     summary?: string;
     image?: string;

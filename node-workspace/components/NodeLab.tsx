@@ -440,6 +440,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
     loadWorkflow,
     setGlobalStyleGuide,
     setLabContext,
+    setProjectRoleUpdater,
     setViewportState,
     saveGroupTemplate,
     applyGroupTemplate,
@@ -490,6 +491,19 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       context: projectData.context,
     });
   }, [projectData, setLabContext]);
+
+  useEffect(() => {
+    setProjectRoleUpdater((roleId, updater) => {
+      setProjectData((prev) => ({
+        ...prev,
+        context: {
+          ...prev.context,
+          roles: (prev.context.roles || []).map((role) => (role.id === roleId ? updater(role) : role)),
+        },
+      }));
+    });
+    return () => setProjectRoleUpdater(null);
+  }, [setProjectData, setProjectRoleUpdater]);
 
   useEffect(() => {
     setViewportState(getViewport());

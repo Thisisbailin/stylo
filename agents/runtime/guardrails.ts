@@ -8,9 +8,9 @@ import {
   type ToolOutputGuardrailDefinition,
 } from "@openai/agents";
 import { sanitizeShotList } from "../../utils/shotSchema";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
-export type Script2VideoGuardrailContext = {
+export type QalamGuardrailContext = {
   runtimeMode: "browser" | "edge_full";
 };
 
@@ -65,7 +65,7 @@ const extractStoryboardRows = (args: Record<string, unknown>) => {
   });
 };
 
-export const createScript2VideoInputGuardrails = (): InputGuardrail[] => [
+export const createQalamInputGuardrails = (): InputGuardrail[] => [
   {
     name: "input_size_guardrail",
     runInParallel: false,
@@ -91,7 +91,7 @@ export const createScript2VideoInputGuardrails = (): InputGuardrail[] => [
   },
 ];
 
-export const createScript2VideoOutputGuardrails = (): OutputGuardrail[] => [
+export const createQalamOutputGuardrails = (): OutputGuardrail[] => [
   {
     name: "non_empty_output_guardrail",
     execute: async ({ agentOutput }) => {
@@ -112,9 +112,9 @@ export const createScript2VideoOutputGuardrails = (): OutputGuardrail[] => [
   },
 ];
 
-export const createScript2VideoToolInputGuardrails = (
+export const createQalamToolInputGuardrails = (
   toolName: string,
-  bridge: Script2VideoAgentBridge
+  bridge: QalamAgentBridge
 ): ToolInputGuardrailDefinition[] => {
   if (toolName === "search_project_resource") {
     return [
@@ -243,7 +243,7 @@ export const createScript2VideoToolInputGuardrails = (
   return [];
 };
 
-export const createScript2VideoToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
+export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
   if (toolName === "edit_project_resource") {
     return [
       defineToolOutputGuardrail({

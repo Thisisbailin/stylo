@@ -125,7 +125,7 @@ export const sendMessage = async (
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${resolvedApiKey}`,
                 "HTTP-Referer": window.location.origin,
-                "X-Title": "eSheep"
+                "X-Title": "Qalam"
             },
             body: JSON.stringify(payload)
         });

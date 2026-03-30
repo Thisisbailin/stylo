@@ -119,7 +119,7 @@ export type CreateNodeWorkflowResult = {
   edgeCount: number;
 };
 
-export interface Script2VideoAgentBridge {
+export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;

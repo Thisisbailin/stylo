@@ -301,7 +301,7 @@ const createOpenRouterResponse = async (
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
       "HTTP-Referer": window.location.origin,
-      "X-Title": "Script2Video",
+      "X-Title": "Qalam",
     },
     body: JSON.stringify({
       model: config.model || "openai/gpt-4.1-mini",
@@ -309,7 +309,7 @@ const createOpenRouterResponse = async (
       text: {
         format: {
           type: "json_schema",
-          name: "script2video_output",
+          name: "qalam_output",
           schema: jsonSchema,
           strict: true,
         },
@@ -360,7 +360,7 @@ You are operating in strict structured-output mode. Return only valid JSON that 
       ],
       textFormat: {
         type: "json_schema",
-        name: "script2video_output",
+        name: "qalam_output",
         schema: jsonSchema,
         strict: true,
       },
@@ -425,7 +425,7 @@ export const fetchTextModels = async (baseUrl: string, apiKey: string): Promise<
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "HTTP-Referer": window.location.origin,
-        "X-Title": "Script2Video",
+        "X-Title": "Qalam",
       }
     });
     if (!response.ok) return [];

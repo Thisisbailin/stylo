@@ -154,7 +154,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                 一支会读项目、会写知识、会搭工作流的 Agent 之笔。
               </h1>
               <p className="mt-4 max-w-[58ch] text-[14px] leading-7 text-zinc-700 dark:text-zinc-300">
-                对 Script2Video 来说，Qalam 不该只是名字。它应该先读取剧本与项目证据，再沉淀长期事实，最后把理解继续变成可执行的 NodeLab 图。
+                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再沉淀长期事实，最后把理解继续变成可执行的 NodeLab 图。
               </p>
             </div>
 

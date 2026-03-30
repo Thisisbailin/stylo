@@ -1,7 +1,7 @@
 import { tool } from "@openai/agents";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import type { AgentExecutedToolCall, AgentRuntimeEvent } from "../runtime/types";
-import { createScript2VideoToolInputGuardrails, createScript2VideoToolOutputGuardrails } from "../runtime/guardrails";
+import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
 import { listProjectResourcesToolDef } from "./listProjectResources";
 import { operateProjectResourceToolDef } from "./operateProjectResource";
 import { pingToolDef } from "./ping";
@@ -38,12 +38,12 @@ const stableSerialize = (value: unknown): string => {
   return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
 };
 
-export const createScript2VideoTools = ({
+export const createQalamTools = ({
   bridge,
   emitEvent,
   disabledTools = [],
 }: {
-  bridge: Script2VideoAgentBridge;
+  bridge: QalamAgentBridge;
   emitEvent?: (event: AgentRuntimeEvent) => void;
   disabledTools?: string[];
 }) => {
@@ -55,8 +55,8 @@ export const createScript2VideoTools = ({
       name: toolDef.name,
       description: toolDef.description,
       parameters: toolDef.parameters as any,
-      inputGuardrails: createScript2VideoToolInputGuardrails(toolDef.name, bridge),
-      outputGuardrails: createScript2VideoToolOutputGuardrails(toolDef.name),
+      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge),
+      outputGuardrails: createQalamToolOutputGuardrails(toolDef.name),
       execute: async (input) => {
         const callId = `${toolDef.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const runningCall: AgentExecutedToolCall = {

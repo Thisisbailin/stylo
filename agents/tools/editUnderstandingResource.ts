@@ -1,7 +1,7 @@
 import type { Episode, ProjectRoleIdentity, Shot } from "../../types";
 import { sanitizeShotList, SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
 import { ensureStableId, ensureTypedStableId } from "../../utils/id";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 export const EDIT_PROJECT_RESOURCE_TYPES = [
   "project_summary",
@@ -430,7 +430,7 @@ export const editUnderstandingResourceToolDef = {
   description:
     "Edit project resources in the knowledge base. Supports project_summary, episode_summary, character_profile, scene_profile, and episode_storyboard.",
   parameters: editUnderstandingResourceParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
     if (args.resourceType === "project_summary") {

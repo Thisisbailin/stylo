@@ -1,5 +1,5 @@
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
-import type { WorkflowBuilderHandle } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { WorkflowBuilderHandle } from "../bridge/qalamBridge";
 
 export const OPERATE_PROJECT_RESOURCE_TYPES = ["workflow_node", "workflow_connection"] as const;
 export const OPERATE_WORKFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
@@ -229,7 +229,7 @@ export const operateProjectResourceToolDef = {
   description:
     "Operate workflow resources in NodeLab. Supports creating a workflow_node (text, script_board, storyboard_board, character_card) or a workflow_connection between existing nodes.",
   parameters: operateProjectResourceParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
     if (args.resourceType === "workflow_node") {

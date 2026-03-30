@@ -9,10 +9,10 @@ import {
   setOpenAIAPI,
 } from "@openai/agents";
 import OpenAI from "openai";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
-import { createScript2VideoTools } from "../tools";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { createQalamTools } from "../tools";
 import { normalizeQalamToolSettings } from "../../node-workspace/components/qalam/tooling";
-import { createScript2VideoInputGuardrails, createScript2VideoOutputGuardrails } from "./guardrails";
+import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guardrails";
 import { buildAgentEnvironment } from "./environment";
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems, createAgentSessionInputCallback } from "./memory";
@@ -21,16 +21,16 @@ import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../co
 import type {
   AgentExecutedToolCall,
   AgentTraceEntry,
-  Script2VideoAgentRuntime,
+  QalamAgentRuntime,
   AgentRuntimeEvent,
-  Script2VideoAgentConfigProvider,
-  Script2VideoAgentTracer,
-  Script2VideoRunInput,
-  Script2VideoRunOptions,
-  Script2VideoRunResult,
-  Script2VideoRunContext,
-  Script2VideoSessionStore,
-  Script2VideoSkillLoader,
+  QalamAgentConfigProvider,
+  QalamAgentTracer,
+  QalamRunInput,
+  QalamRunOptions,
+  QalamRunResult,
+  QalamRunContext,
+  QalamSessionStore,
+  QalamSkillLoader,
 } from "./types";
 
 const STABILIZATION_DISABLED_TOOLS = [
@@ -44,11 +44,11 @@ const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
 ]);
 
 type RuntimeDeps = {
-  bridge: Script2VideoAgentBridge;
-  skillLoader: Script2VideoSkillLoader;
-  configProvider: Script2VideoAgentConfigProvider;
-  sessionStore: Script2VideoSessionStore;
-  tracer?: Script2VideoAgentTracer;
+  bridge: QalamAgentBridge;
+  skillLoader: QalamSkillLoader;
+  configProvider: QalamAgentConfigProvider;
+  sessionStore: QalamSessionStore;
+  tracer?: QalamAgentTracer;
 };
 
 const resolveApiKey = (provider: "qwen" | "openrouter" | undefined, apiKey?: string) => {
@@ -252,14 +252,14 @@ const extractReasoningSummaryFromResponseOutput = (output: unknown): string => {
   return parts.join("\n").trim();
 };
 
-export const createScript2VideoAgentRuntime = ({
+export const createQalamAgentRuntime = ({
   bridge,
   skillLoader,
   configProvider,
   sessionStore,
   tracer,
-}: RuntimeDeps): Script2VideoAgentRuntime => ({
-  async run(input: Script2VideoRunInput, options?: Script2VideoRunOptions): Promise<Script2VideoRunResult> {
+}: RuntimeDeps): QalamAgentRuntime => ({
+  async run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult> {
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const emitTrace = (
       stage: AgentTraceEntry["stage"],
@@ -375,13 +375,13 @@ export const createScript2VideoAgentRuntime = ({
     if (!toolSettings.workflowBuilder.enabled) {
       disabledTools.push("operate_project_resource");
     }
-    const enabledToolNames = createScript2VideoTools({
+    const enabledToolNames = createQalamTools({
       bridge,
       disabledTools,
     }).map((tool) => tool.name);
     const sessionMessages = readPersistedAgentSessionMessages(input.sessionId);
     const agentMemory = buildAgentMemorySnapshot(sessionMessages);
-    const runContext: Script2VideoRunContext = {
+    const runContext: QalamRunContext = {
       runtimeMode: "browser",
       agentEnvironment: buildAgentEnvironment({
         projectData: bridge.getProjectData(),
@@ -407,21 +407,21 @@ export const createScript2VideoAgentRuntime = ({
       `enabled=${enabledToolNames.length} · disabled=${Array.from(new Set(disabledTools)).length}`,
       enabledToolNames.join(", ")
     );
-    const agent = new Agent<Script2VideoRunContext>({
-      name: "Script2Video Agent",
+    const agent = new Agent<QalamRunContext>({
+      name: "Qalam Agent",
       instructions: composeAgentInstructions({
         enabledSkills: enabledSkills as any,
       }),
-      handoffDescription: "Single all-purpose Script2Video creative agent.",
+      handoffDescription: "Single all-purpose Qalam creative agent.",
       model: config.model,
       modelSettings: {
         toolChoice: resolvedToolChoice,
         parallelToolCalls: false,
       },
-      inputGuardrails: createScript2VideoInputGuardrails(),
-      outputGuardrails: createScript2VideoOutputGuardrails(),
+      inputGuardrails: createQalamInputGuardrails(),
+      outputGuardrails: createQalamOutputGuardrails(),
       resetToolChoice: true,
-      tools: createScript2VideoTools({
+      tools: createQalamTools({
         bridge,
         emitEvent: emitToolEvent,
         disabledTools,
@@ -585,7 +585,7 @@ export const createScript2VideoAgentRuntime = ({
       const synthesizedToolText = summarizeSuccessfulToolCalls(toolEvents);
       const finalText =
         normalizeText(result.finalOutput) || streamedTextDelta.trim() || streamedResponseText.trim() || synthesizedToolText;
-      const runResult: Script2VideoRunResult = {
+      const runResult: QalamRunResult = {
         finalText,
         sessionId: input.sessionId,
         outputItems: [
@@ -641,7 +641,7 @@ export const createScript2VideoAgentRuntime = ({
         fallbackText,
       });
       if (isMaxTurns && fallbackText && (!toolEvents.length || hasSuccessfulAction)) {
-        const runResult: Script2VideoRunResult = {
+        const runResult: QalamRunResult = {
           finalText: fallbackText,
           sessionId: input.sessionId,
           outputItems: [

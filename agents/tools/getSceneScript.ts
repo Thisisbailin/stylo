@@ -1,5 +1,5 @@
 import { getSceneScript } from "../../node-workspace/components/qalam/toolActions";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 const getSceneScriptParameters = {
   type: "object",
@@ -65,7 +65,7 @@ export const getSceneScriptToolDef = {
   name: "get_scene_script",
   description: "Read the full script text of a specific scene by scene id, or by episode id plus scene index.",
   parameters: getSceneScriptParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const result = getSceneScript(bridge.getProjectData(), {
       sceneId: args.sceneId,

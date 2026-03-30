@@ -13,10 +13,10 @@ import {
 } from "@openai/agents";
 import OpenAI from "openai";
 import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
-import { createScript2VideoTools } from "../../agents/tools";
+import { createQalamTools } from "../../agents/tools";
 import { EdgeMemorySession, readEdgeSessionMessages } from "../../agents/runtime/edgeSession";
 import { buildAgentEnvironment } from "../../agents/runtime/environment";
-import { createScript2VideoInputGuardrails, createScript2VideoOutputGuardrails } from "../../agents/runtime/guardrails";
+import { createQalamInputGuardrails, createQalamOutputGuardrails } from "../../agents/runtime/guardrails";
 import { composeAgentInstructions } from "../../agents/runtime/instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems, createAgentSessionInputCallback } from "../../agents/runtime/memory";
 import {
@@ -24,7 +24,7 @@ import {
   serializeAgentStreamPacket,
   type AgentHttpRunRequest,
 } from "../../agents/runtime/httpProtocol";
-import type { AgentRuntimeEvent, Script2VideoRunContext, Script2VideoRunResult } from "../../agents/runtime/types";
+import type { AgentRuntimeEvent, QalamRunContext, QalamRunResult } from "../../agents/runtime/types";
 import type { AgentExecutedToolCall } from "../../agents/runtime/types";
 import type { ProjectData } from "../../types";
 
@@ -149,7 +149,7 @@ const emitEvent = (controller: ReadableStreamDefaultController<Uint8Array>, even
   );
 };
 
-const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: Script2VideoRunResult) => {
+const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: QalamRunResult) => {
   controller.enqueue(
     new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))
   );
@@ -240,7 +240,7 @@ export const onRequestPost = async (context: any) => {
           },
         });
 
-        const enabledTools = createScript2VideoTools({
+        const enabledTools = createQalamTools({
           bridge: bridgeState.bridge,
           emitEvent: emitRuntimeEvent,
           disabledTools: [
@@ -250,7 +250,7 @@ export const onRequestPost = async (context: any) => {
         });
         const sessionMessages = readEdgeSessionMessages(body.run.sessionId);
         const agentMemory = buildAgentMemorySnapshot(sessionMessages);
-        const runContext: Script2VideoRunContext = {
+        const runContext: QalamRunContext = {
           runtimeMode: "edge_full",
           agentEnvironment: buildAgentEnvironment({
             projectData: bridgeState.bridge.getProjectData(),
@@ -263,19 +263,19 @@ export const onRequestPost = async (context: any) => {
         };
         const runInputItems = buildRunInputItems(body.run);
 
-        const agent = new Agent<Script2VideoRunContext>({
-          name: "Script2Video Edge Agent",
+        const agent = new Agent<QalamRunContext>({
+          name: "Qalam Edge Agent",
           instructions: composeAgentInstructions({
             enabledSkills: [],
           }),
-          handoffDescription: "Edge runtime scaffold for Script2Video.",
+          handoffDescription: "Edge runtime scaffold for Qalam.",
           model: body.runtime.model,
           modelSettings: {
             toolChoice: "auto",
             parallelToolCalls: false,
           },
-          inputGuardrails: createScript2VideoInputGuardrails(),
-          outputGuardrails: createScript2VideoOutputGuardrails(),
+          inputGuardrails: createQalamInputGuardrails(),
+          outputGuardrails: createQalamOutputGuardrails(),
           resetToolChoice: true,
           tools: enabledTools,
         });
@@ -283,7 +283,7 @@ export const onRequestPost = async (context: any) => {
         const runner = new Runner({
           tracingDisabled: !tracingEnabled,
           traceIncludeSensitiveData: resolveTraceIncludeSensitiveData(context.env || {}),
-          workflowName: "Script2Video Agent",
+          workflowName: "Qalam Agent",
           traceId,
           groupId: body.run.sessionId,
           traceMetadata: {
@@ -358,7 +358,7 @@ export const onRequestPost = async (context: any) => {
           accumulatedText ||
           extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output) ||
           synthesizedToolText;
-        const runResult: Script2VideoRunResult = {
+        const runResult: QalamRunResult = {
           finalText,
           sessionId: body.run.sessionId,
           outputItems: [
@@ -402,7 +402,7 @@ export const onRequestPost = async (context: any) => {
           (toolCall) => toolCall.status === "success" && SUCCESSFUL_ACTION_TOOL_NAMES.has(toolCall.name)
         );
         if (isMaxTurns && synthesizedToolText && hasSuccessfulAction) {
-          const runResult: Script2VideoRunResult = {
+          const runResult: QalamRunResult = {
             finalText: synthesizedToolText,
             sessionId: body.run.sessionId,
             outputItems: [

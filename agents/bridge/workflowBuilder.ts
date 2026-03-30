@@ -4,7 +4,7 @@ import type {
   CreateNodeWorkflowInput,
   CreateNodeWorkflowNodeInput,
   CreateNodeWorkflowResult,
-} from "./script2videoBridge";
+} from "./qalamBridge";
 import type { NodeType, WorkflowNodeData } from "../../node-workspace/types";
 
 type WorkflowBuilderDeps = {

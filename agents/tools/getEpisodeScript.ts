@@ -1,5 +1,5 @@
 import { getEpisodeScript } from "../../node-workspace/components/qalam/toolActions";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 const getEpisodeScriptParameters = {
   type: "object",
@@ -45,7 +45,7 @@ export const getEpisodeScriptToolDef = {
   name: "get_episode_script",
   description: "Read the full script text of a specific episode by episode id.",
   parameters: getEpisodeScriptParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const result = getEpisodeScript(bridge.getProjectData(), {
       episodeId: args.episodeId,

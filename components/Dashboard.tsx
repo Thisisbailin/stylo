@@ -114,8 +114,8 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
       <div className="bg-[var(--bg-panel)]/90 p-4 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h3 className="text-[var(--text-secondary)] text-xs uppercase font-bold tracking-wider">Account</h3>
-          <p className="text-lg font-semibold text-[var(--text-primary)] mt-1">eSheep Workspace</p>
-          <p className="text-sm text-[var(--text-secondary)]">Dreaming Electric Sheep · 在头像菜单可切换账户、主题与项目追踪。</p>
+          <p className="text-lg font-semibold text-[var(--text-primary)] mt-1">Qalam Workspace</p>
+          <p className="text-sm text-[var(--text-secondary)]">Qalam · 在头像菜单可切换账户、主题与项目追踪。</p>
         </div>
         <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-muted)]/60 px-3 py-1.5 rounded-full border border-[var(--border-subtle)]">
           Dashboard · 账户入口

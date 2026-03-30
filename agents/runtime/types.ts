@@ -82,13 +82,13 @@ export type AgentMemoryToolRecord = {
   createdAt?: number;
 };
 
-export type Script2VideoAgentMemory = {
+export type QalamAgentMemory = {
   recentTurns: AgentMemoryTurn[];
   recentSuccessfulTools: AgentMemoryToolRecord[];
   recentFailedTools: AgentMemoryToolRecord[];
 };
 
-export type Script2VideoAgentEnvironment = {
+export type QalamAgentEnvironment = {
   project: AgentEnvironmentProjectDigest;
   capabilityManifest: AgentEnvironmentCapabilityManifest;
   runtimeCapabilities: {
@@ -101,10 +101,10 @@ export type Script2VideoAgentEnvironment = {
   recentSuccessfulActions: AgentEnvironmentRecentAction[];
 };
 
-export type Script2VideoRunContext = {
+export type QalamRunContext = {
   runtimeMode: "browser" | "edge_full";
-  agentEnvironment: Script2VideoAgentEnvironment;
-  agentMemory: Script2VideoAgentMemory;
+  agentEnvironment: QalamAgentEnvironment;
+  agentMemory: QalamAgentMemory;
   uiContext?: AgentUiContext;
 };
 
@@ -134,7 +134,7 @@ export type AgentTraceEntry = {
   payload?: string;
 };
 
-export type Script2VideoRunInput = {
+export type QalamRunInput = {
   sessionId: string;
   userText: string;
   attachments?: AgentAttachment[];
@@ -142,7 +142,7 @@ export type Script2VideoRunInput = {
   uiContext?: AgentUiContext;
 };
 
-export type Script2VideoRunResult = {
+export type QalamRunResult = {
   finalText: string;
   sessionId: string;
   outputItems: AgentOutputItem[];
@@ -159,8 +159,8 @@ export type Script2VideoRunResult = {
   };
 };
 
-export interface Script2VideoAgentRuntime {
-  run(input: Script2VideoRunInput, options?: Script2VideoRunOptions): Promise<Script2VideoRunResult>;
+export interface QalamAgentRuntime {
+  run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult>;
 }
 
 export type AgentRuntimeEvent =
@@ -173,15 +173,15 @@ export type AgentRuntimeEvent =
   | { type: "tool_completed"; call: AgentExecutedToolCall }
   | { type: "tool_failed"; call: AgentExecutedToolCall; error: string }
   | { type: "message_completed"; runId: string; text: string }
-  | { type: "run_completed"; runId: string; result: Script2VideoRunResult }
+  | { type: "run_completed"; runId: string; result: QalamRunResult }
   | { type: "run_failed"; runId: string; error: string };
 
-export type Script2VideoRunOptions = {
+export type QalamRunOptions = {
   onEvent?: (event: AgentRuntimeEvent) => void;
   signal?: AbortSignal;
 };
 
-export type Script2VideoAgentConfig = {
+export type QalamAgentConfig = {
   provider?: "qwen" | "openrouter";
   runtimeTarget?: "browser" | "edge";
   apiKey?: string;
@@ -192,11 +192,11 @@ export type Script2VideoAgentConfig = {
   tracingDisabled?: boolean;
 };
 
-export interface Script2VideoAgentConfigProvider {
-  getConfig(): Promise<Script2VideoAgentConfig> | Script2VideoAgentConfig;
+export interface QalamAgentConfigProvider {
+  getConfig(): Promise<QalamAgentConfig> | QalamAgentConfig;
 }
 
-export type Script2VideoSkillDefinition = {
+export type QalamSkillDefinition = {
   id: string;
   title: string;
   description: string;
@@ -205,9 +205,9 @@ export type Script2VideoSkillDefinition = {
   disabledTools?: string[];
 };
 
-export interface Script2VideoSkillLoader {
-  listSkills(): Promise<Script2VideoSkillDefinition[]> | Script2VideoSkillDefinition[];
-  getSkill(id: string): Promise<Script2VideoSkillDefinition | null> | Script2VideoSkillDefinition | null;
+export interface QalamSkillLoader {
+  listSkills(): Promise<QalamSkillDefinition[]> | QalamSkillDefinition[];
+  getSkill(id: string): Promise<QalamSkillDefinition | null> | QalamSkillDefinition | null;
 }
 
 export type AgentSessionMessage =
@@ -226,20 +226,20 @@ export type AgentSessionMessage =
       toolOutput?: unknown;
     };
 
-export type Script2VideoSessionRecord = {
+export type QalamSessionRecord = {
   id: string;
   messages: AgentSessionMessage[];
   updatedAt: number;
 };
 
-export interface Script2VideoSessionStore {
+export interface QalamSessionStore {
   getSession(sessionId: string): Promise<Session> | Session;
 }
 
-export interface Script2VideoAgentTracer {
-  onRunStarted(input: Script2VideoRunInput): void;
+export interface QalamAgentTracer {
+  onRunStarted(input: QalamRunInput): void;
   onToolCalled(call: AgentExecutedToolCall): void;
   onToolCompleted(call: AgentExecutedToolCall): void;
-  onRunCompleted(result: Script2VideoRunResult): void;
+  onRunCompleted(result: QalamRunResult): void;
   onRunFailed(error: string): void;
 }

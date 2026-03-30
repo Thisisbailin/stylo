@@ -8,13 +8,13 @@ import {
 } from "../runtime/activity";
 import type {
   AgentRuntimeEvent,
-  Script2VideoAgentRuntime,
-  Script2VideoRunInput,
-  Script2VideoRunResult,
+  QalamAgentRuntime,
+  QalamRunInput,
+  QalamRunResult,
 } from "../runtime/types";
 
 type Options = {
-  runtime: Script2VideoAgentRuntime;
+  runtime: QalamAgentRuntime;
   sessionId: string;
   setMessages: (updater: Message[] | ((prev: Message[]) => Message[])) => void;
 };
@@ -117,7 +117,7 @@ const completeStatusMessage = (
     };
   });
 
-export const useScript2VideoAgent = ({ runtime, sessionId, setMessages }: Options) => {
+export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
@@ -579,7 +579,7 @@ export const useScript2VideoAgent = ({ runtime, sessionId, setMessages }: Option
   );
 
   const sendMessage = useCallback(
-    async (input: Omit<Script2VideoRunInput, "sessionId">): Promise<Script2VideoRunResult> => {
+    async (input: Omit<QalamRunInput, "sessionId">): Promise<QalamRunResult> => {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsRunning(true);

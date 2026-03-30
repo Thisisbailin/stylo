@@ -1,8 +1,8 @@
 import type { AgentInputItem, Session } from "@openai/agents";
-import type { AgentSessionMessage, Script2VideoSessionRecord, Script2VideoSessionStore } from "./types";
+import type { AgentSessionMessage, QalamSessionRecord, QalamSessionStore } from "./types";
 
-export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "script2video_agent_sessions_v1";
-export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "script2video:agent-session-storage-updated";
+export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "qalam_agent_sessions_v1";
+export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "qalam:agent-session-storage-updated";
 
 type PersistedAgentSessionRecord = {
   id: string;
@@ -168,7 +168,7 @@ const getOrCreateRecord = (
     updatedAt: Date.now(),
   };
 
-const toSessionRecordView = (record: PersistedAgentSessionRecord): Script2VideoSessionRecord => ({
+const toSessionRecordView = (record: PersistedAgentSessionRecord): QalamSessionRecord => ({
   id: record.id,
   messages: record.messages,
   updatedAt: record.updatedAt,
@@ -176,7 +176,7 @@ const toSessionRecordView = (record: PersistedAgentSessionRecord): Script2VideoS
 
 export const listPersistedAgentSessions = (
   storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY
-): Script2VideoSessionRecord[] =>
+): QalamSessionRecord[] =>
   Object.values(readLocalStorageSessions(storageKey))
     .map(toSessionRecordView)
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -184,7 +184,7 @@ export const listPersistedAgentSessions = (
 export const readPersistedAgentSession = (
   sessionId: string,
   storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY
-): Script2VideoSessionRecord | null => {
+): QalamSessionRecord | null => {
   const record = readLocalStorageSessions(storageKey)[sessionId];
   return record ? toSessionRecordView(record) : null;
 };
@@ -258,7 +258,7 @@ class LocalStorageAgentSession implements Session {
   }
 }
 
-export class InMemorySessionStore implements Script2VideoSessionStore {
+export class InMemorySessionStore implements QalamSessionStore {
   private readonly sessions = new Map<string, Session>();
 
   getSession(sessionId: string): Session {
@@ -284,7 +284,7 @@ export class InMemorySessionStore implements Script2VideoSessionStore {
   }
 }
 
-export class LocalStorageSessionStore implements Script2VideoSessionStore {
+export class LocalStorageSessionStore implements QalamSessionStore {
   private readonly sessions = new Map<string, Session>();
 
   constructor(private readonly storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY) {}

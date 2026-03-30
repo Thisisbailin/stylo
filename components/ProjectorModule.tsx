@@ -36,7 +36,7 @@ type ProjectorProps = {
 };
 
 export const ProjectorModule: React.FC<ProjectorProps> = ({ projectData, setProjectData }) => {
-    const { config, setConfig } = useConfig("script2video_config_v1");
+    const { config, setConfig } = useConfig("qalam_config_v1");
     const [activeType, setActiveType] = useState<'visuals' | 'audio'>('audio');
     const [stage, setStage] = useState<LabStage>('design');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);

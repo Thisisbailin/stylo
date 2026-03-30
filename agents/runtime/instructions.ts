@@ -1,14 +1,14 @@
 import type { RunContext } from "@openai/agents";
 import type {
   AgentUiContext,
-  Script2VideoAgentEnvironment,
-  Script2VideoAgentMemory,
-  Script2VideoRunContext,
-  Script2VideoSkillDefinition,
+  QalamAgentEnvironment,
+  QalamAgentMemory,
+  QalamRunContext,
+  QalamSkillDefinition,
 } from "./types";
 
 const BASE_INSTRUCTION = [
-  "You are the Script2Video creative operating agent.",
+  "You are the Qalam creative operating agent.",
   "You are a single all-purpose agent.",
   "Work in Chinese unless the user explicitly requests another language.",
   "Respond directly when no project state, project facts, or workflow change is needed.",
@@ -45,19 +45,19 @@ const toJsonBlock = (label: string, value: unknown) => {
   return `[${label}]\n${JSON.stringify(value, null, 2)}`;
 };
 
-const formatEnvironmentInstruction = (environment?: Script2VideoAgentEnvironment) =>
+const formatEnvironmentInstruction = (environment?: QalamAgentEnvironment) =>
   environment ? toJsonBlock("Environment Snapshot", environment) : "";
 
-const formatMemoryInstruction = (memory?: Script2VideoAgentMemory) =>
+const formatMemoryInstruction = (memory?: QalamAgentMemory) =>
   memory ? toJsonBlock("Session Memory", memory) : "";
 
 export const composeAgentInstructions = ({
   enabledSkills,
 }: {
-  enabledSkills: Script2VideoSkillDefinition[];
+  enabledSkills: QalamSkillDefinition[];
 }) => {
   const overlays = enabledSkills.map((skill) => `# Skill: ${skill.title}\n${skill.systemOverlay.trim()}`);
-  return (runContext: RunContext<Script2VideoRunContext>) => {
+  return (runContext: RunContext<QalamRunContext>) => {
     const environmentBlock = formatEnvironmentInstruction(runContext.context?.agentEnvironment);
     const memoryBlock = formatMemoryInstruction(runContext.context?.agentMemory);
     const uiBlock = uiContextInstruction(runContext.context?.uiContext as AgentUiContext | undefined);

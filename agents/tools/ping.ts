@@ -1,4 +1,4 @@
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 type PingArgs = {
   message?: string;
@@ -29,7 +29,7 @@ export const pingToolDef = {
   name: "ping_tool",
   description: "Minimal verification tool used to confirm that function calling works end-to-end.",
   parameters: pingParameters,
-  execute: (input: unknown, _bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, _bridge: QalamAgentBridge) => {
     const args = parsePingArgs(input);
     return {
       ok: true,

@@ -1,5 +1,5 @@
 import type { ProjectData } from "../../types";
-import type { AgentRuntimeEvent, Script2VideoRunInput, Script2VideoRunResult } from "./types";
+import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
 
 export type AgentHttpRuntimeConfig = {
   provider?: "qwen" | "openrouter";
@@ -8,14 +8,14 @@ export type AgentHttpRuntimeConfig = {
 };
 
 export type AgentHttpRunRequest = {
-  run: Script2VideoRunInput;
+  run: QalamRunInput;
   runtime: AgentHttpRuntimeConfig;
   projectData?: ProjectData;
 };
 
 export type AgentHttpStreamPacket =
   | { kind: "event"; event: AgentRuntimeEvent }
-  | { kind: "result"; result: Script2VideoRunResult }
+  | { kind: "result"; result: QalamRunResult }
   | { kind: "error"; error: string };
 
 export const AGENT_HTTP_STREAM_CONTENT_TYPE = "text/event-stream; charset=utf-8";

@@ -8,7 +8,7 @@ type Options<T> = {
   debounceMs?: number;
 };
 
-const PERSISTED_STATE_SYNC_EVENT = "script2video:persisted-state-sync";
+const PERSISTED_STATE_SYNC_EVENT = "qalam:persisted-state-sync";
 
 /**
  * usePersistedState

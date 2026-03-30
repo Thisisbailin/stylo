@@ -1,4 +1,4 @@
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 export const LIST_PROJECT_RESOURCE_TYPES = [
   "episodes",
@@ -75,7 +75,7 @@ export const listProjectResourcesToolDef = {
   description:
     "List available script and understanding resources before reading them. Use this to inspect episode directories or understanding coverage.",
   parameters: listProjectResourcesParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
     const roles = data.context?.roles || [];

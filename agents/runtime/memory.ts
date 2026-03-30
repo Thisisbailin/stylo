@@ -1,5 +1,5 @@
 import type { AgentInputItem } from "@openai/agents";
-import type { AgentSessionMessage, Script2VideoAgentMemory, Script2VideoRunInput } from "./types";
+import type { AgentSessionMessage, QalamAgentMemory, QalamRunInput } from "./types";
 
 const MAX_RECENT_TURNS = 8;
 const MAX_RECENT_TOOLS = 6;
@@ -12,7 +12,7 @@ const clipText = (value: string, limit = MAX_MEMORY_TEXT) => {
   return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit)}...`;
 };
 
-const buildUserMessageContent = (input: Script2VideoRunInput) => {
+const buildUserMessageContent = (input: QalamRunInput) => {
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
@@ -32,14 +32,14 @@ const buildUserMessageContent = (input: Script2VideoRunInput) => {
   return content;
 };
 
-export const buildRunInputItems = (input: Script2VideoRunInput): AgentInputItem[] => [
+export const buildRunInputItems = (input: QalamRunInput): AgentInputItem[] => [
   {
     role: "user",
     content: buildUserMessageContent(input) as any,
   } as AgentInputItem,
 ];
 
-export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undefined): Script2VideoAgentMemory => {
+export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undefined): QalamAgentMemory => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return {
       recentTurns: [],
@@ -119,8 +119,8 @@ const extractItemText = (item: AgentInputItem) => {
 
 const buildMemoryFromHistoryItems = (
   historyItems: AgentInputItem[],
-  seedMemory?: Script2VideoAgentMemory
-): Script2VideoAgentMemory => {
+  seedMemory?: QalamAgentMemory
+): QalamAgentMemory => {
   const recentTurns = historyItems
     .filter((item) => (item as any)?.role === "user" || (item as any)?.role === "assistant")
     .slice(-MAX_RECENT_TURNS)
@@ -186,7 +186,7 @@ const compactHistoryItem = (item: AgentInputItem): AgentInputItem => {
   return cloned;
 };
 
-const buildMemoryNote = (memory: Script2VideoAgentMemory) => {
+const buildMemoryNote = (memory: QalamAgentMemory) => {
   const lines: string[] = [];
 
   if (memory.recentTurns.length) {
@@ -223,7 +223,7 @@ const buildMemoryNote = (memory: Script2VideoAgentMemory) => {
 };
 
 export const createAgentSessionInputCallback =
-  (seedMemory?: Script2VideoAgentMemory, historyWindow = HISTORY_REPLAY_WINDOW) =>
+  (seedMemory?: QalamAgentMemory, historyWindow = HISTORY_REPLAY_WINDOW) =>
   async (historyItems: AgentInputItem[], newItems: AgentInputItem[]) => {
     const trimmedHistory = historyItems.slice(-historyWindow).map(compactHistoryItem);
     const memory = buildMemoryFromHistoryItems(historyItems, seedMemory);

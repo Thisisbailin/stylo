@@ -335,7 +335,7 @@ export const exportToCSV = (episodes: Episode[]) => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `script2video_export_${Date.now()}.csv`);
+  link.setAttribute('download', `qalam_export_${Date.now()}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -757,7 +757,7 @@ export const exportUnderstandingToJSON = (data: ProjectData) => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.setAttribute("href", url);
-  link.setAttribute("download", `script2video_understanding_${Date.now()}.json`);
+  link.setAttribute("download", `qalam_understanding_${Date.now()}.json`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

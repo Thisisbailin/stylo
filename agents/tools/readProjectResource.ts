@@ -2,7 +2,7 @@ import { getEpisodeScript } from "../../node-workspace/components/qalam/toolActi
 import { getSceneScript } from "../../node-workspace/components/qalam/toolActions";
 import type { ProjectRoleIdentity } from "../../types";
 import { SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
-import type { Script2VideoAgentBridge } from "../bridge/script2videoBridge";
+import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 export const READ_PROJECT_RESOURCE_TYPES = [
   "episode_script",
@@ -153,7 +153,7 @@ export const readProjectResourceToolDef = {
   description:
     "Read a concrete script, storyboard, or understanding resource from the current project. Supports episode script, episode storyboard, scene script, project summary, episode summary, character profile, and scene profile.",
   parameters: readProjectResourceParameters,
-  execute: (input: unknown, bridge: Script2VideoAgentBridge) => {
+  execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
 

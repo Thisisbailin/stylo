@@ -339,12 +339,12 @@ const mergeLocationZonesByName = (
   return Array.from(map.values());
 };
 
-const PROJECT_STORAGE_KEY = 'script2video_project_v1';
-const CONFIG_STORAGE_KEY = 'script2video_config_v1';
-const UI_STATE_STORAGE_KEY = 'script2video_ui_state_v1';
-const THEME_STORAGE_KEY = 'script2video_theme_v1';
-const LOCAL_BACKUP_KEY = 'script2video_local_backup';
-const REMOTE_BACKUP_KEY = 'script2video_remote_backup';
+const PROJECT_STORAGE_KEY = 'qalam_project_v1';
+const CONFIG_STORAGE_KEY = 'qalam_config_v1';
+const UI_STATE_STORAGE_KEY = 'qalam_ui_state_v1';
+const THEME_STORAGE_KEY = 'qalam_theme_v1';
+const LOCAL_BACKUP_KEY = 'qalam_local_backup';
+const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
 const LANDING_ROUTE_HASH = "#/landing";
 
 const readAppViewFromLocation = (): "main" | "landing" => {
@@ -493,7 +493,7 @@ const App: React.FC = () => {
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
-    key: 'script2video_avatar_url',
+    key: 'qalam_avatar_url',
     initialValue: '',
     deserialize: (v) => JSON.parse(v),
     serialize: (v) => JSON.stringify(v)

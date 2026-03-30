@@ -1,4 +1,4 @@
-# Script2Video Agent Technical Design
+# Qalam Agent Technical Design
 
 ## Scope
 
@@ -82,7 +82,7 @@ Suggested file:
 Suggested API:
 
 ```ts
-export type Script2VideoRunInput = {
+export type QalamRunInput = {
   sessionId: string;
   userText: string;
   attachments?: AgentAttachment[];
@@ -90,12 +90,12 @@ export type Script2VideoRunInput = {
   uiContext?: AgentUiContext;
 };
 
-export type Script2VideoRunOptions = {
+export type QalamRunOptions = {
   onEvent?: (event: AgentRuntimeEvent) => void;
   signal?: AbortSignal;
 };
 
-export type Script2VideoRunResult = {
+export type QalamRunResult = {
   finalText: string;
   sessionId: string;
   outputItems: AgentOutputItem[];
@@ -107,24 +107,24 @@ export type Script2VideoRunResult = {
   };
 };
 
-export interface Script2VideoAgentRuntime {
-  run(input: Script2VideoRunInput, options?: Script2VideoRunOptions): Promise<Script2VideoRunResult>;
+export interface QalamAgentRuntime {
+  run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult>;
 }
 
-export function createScript2VideoAgentRuntime(
-  deps: Script2VideoAgentRuntimeDeps
-): Script2VideoAgentRuntime;
+export function createQalamAgentRuntime(
+  deps: QalamAgentRuntimeDeps
+): QalamAgentRuntime;
 ```
 
 ## Runtime Dependencies
 
 ```ts
-export type Script2VideoAgentRuntimeDeps = {
-  bridge: Script2VideoAgentBridge;
-  skillLoader: Script2VideoSkillLoader;
-  configProvider: Script2VideoAgentConfigProvider;
-  sessionStore: Script2VideoSessionStore;
-  tracer?: Script2VideoAgentTracer;
+export type QalamAgentRuntimeDeps = {
+  bridge: QalamAgentBridge;
+  skillLoader: QalamSkillLoader;
+  configProvider: QalamAgentConfigProvider;
+  sessionStore: QalamSessionStore;
+  tracer?: QalamAgentTracer;
 };
 ```
 
@@ -166,7 +166,7 @@ export type AgentRuntimeEvent =
   | { type: "tool_completed"; call: AgentExecutedToolCall }
   | { type: "tool_failed"; call: AgentExecutedToolCall; error: string }
   | { type: "message_completed"; runId: string; text: string }
-  | { type: "run_completed"; runId: string; result: Script2VideoRunResult }
+  | { type: "run_completed"; runId: string; result: QalamRunResult }
   | { type: "run_failed"; runId: string; error: string };
 ```
 
@@ -189,7 +189,7 @@ Suggested file:
 - `agents/runtime/session.ts`
 
 ```ts
-export type Script2VideoSessionRecord = {
+export type QalamSessionRecord = {
   id: string;
   messages: AgentSessionMessage[];
   updatedAt: number;
@@ -205,9 +205,9 @@ export type AgentSessionMessage = {
   createdAt: number;
 };
 
-export interface Script2VideoSessionStore {
-  getSession(sessionId: string): Promise<Script2VideoSessionRecord | null> | Script2VideoSessionRecord | null;
-  saveSession(record: Script2VideoSessionRecord): Promise<void> | void;
+export interface QalamSessionStore {
+  getSession(sessionId: string): Promise<QalamSessionRecord | null> | QalamSessionRecord | null;
+  saveSession(record: QalamSessionRecord): Promise<void> | void;
 }
 ```
 
@@ -224,20 +224,20 @@ Suggested file:
 - `agents/runtime/config.ts`
 
 ```ts
-export type Script2VideoAgentModelConfig = {
+export type QalamAgentModelConfig = {
   model: string;
   temperature?: number;
   maxOutputTokens?: number;
 };
 
-export type Script2VideoAgentConfig = {
-  model: Script2VideoAgentModelConfig;
+export type QalamAgentConfig = {
+  model: QalamAgentModelConfig;
   enableTracing?: boolean;
   enableStreaming?: boolean;
 };
 
-export interface Script2VideoAgentConfigProvider {
-  getConfig(): Promise<Script2VideoAgentConfig> | Script2VideoAgentConfig;
+export interface QalamAgentConfigProvider {
+  getConfig(): Promise<QalamAgentConfig> | QalamAgentConfig;
 }
 ```
 
@@ -250,7 +250,7 @@ Normalize them first, then hand one clean config object to the runtime.
 
 Suggested file:
 
-- `agents/bridge/script2videoBridge.ts`
+- `agents/bridge/qalamBridge.ts`
 
 ```ts
 import type { ProjectData } from "../types";
@@ -269,7 +269,7 @@ export type CreateTextNodeResult = {
   title: string;
 };
 
-export interface Script2VideoAgentBridge {
+export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
@@ -292,20 +292,20 @@ Suggested file:
 - `agents/tools/index.ts`
 
 ```ts
-export type Script2VideoToolFactoryDeps = {
-  bridge: Script2VideoAgentBridge;
+export type QalamToolFactoryDeps = {
+  bridge: QalamAgentBridge;
 };
 
-export type Script2VideoRegisteredTool = {
+export type QalamRegisteredTool = {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
   run: (input: unknown) => Promise<unknown> | unknown;
 };
 
-export function createScript2VideoTools(
-  deps: Script2VideoToolFactoryDeps
-): Script2VideoRegisteredTool[];
+export function createQalamTools(
+  deps: QalamToolFactoryDeps
+): QalamRegisteredTool[];
 ```
 
 ### Tool execution rules
@@ -636,7 +636,7 @@ export type ValidatedTool<I, O> = {
   description: string;
   inputSchema: Record<string, unknown>;
   validate: (input: unknown) => I;
-  execute: (input: I, deps: Script2VideoToolFactoryDeps) => Promise<O> | O;
+  execute: (input: I, deps: QalamToolFactoryDeps) => Promise<O> | O;
   summarize?: (output: O) => string;
 };
 ```
@@ -653,7 +653,7 @@ Suggested file:
 - `agents/runtime/skills.ts`
 
 ```ts
-export type Script2VideoSkillDefinition = {
+export type QalamSkillDefinition = {
   id: string;
   title: string;
   description: string;
@@ -667,9 +667,9 @@ export type Script2VideoSkillDefinition = {
   }>;
 };
 
-export interface Script2VideoSkillLoader {
-  listSkills(): Promise<Script2VideoSkillDefinition[]> | Script2VideoSkillDefinition[];
-  getSkill(id: string): Promise<Script2VideoSkillDefinition | null> | Script2VideoSkillDefinition | null;
+export interface QalamSkillLoader {
+  listSkills(): Promise<QalamSkillDefinition[]> | QalamSkillDefinition[];
+  getSkill(id: string): Promise<QalamSkillDefinition | null> | QalamSkillDefinition | null;
 }
 ```
 
@@ -703,7 +703,7 @@ Suggested function:
 ```ts
 export type ComposeAgentInstructionsInput = {
   baseInstruction: string;
-  enabledSkills: Script2VideoSkillDefinition[];
+  enabledSkills: QalamSkillDefinition[];
   uiContext?: AgentUiContext;
 };
 
@@ -723,7 +723,7 @@ export function composeAgentInstructions(
 
 The base instruction should say:
 
-- the agent is the Script2Video creative operating layer
+- the agent is the Qalam creative operating layer
 - use tools when facts or mutations are involved
 - cite episode/scene evidence when relevant
 - never invent successful writes
@@ -762,18 +762,18 @@ The UI should call one runtime method and render events.
 
 Suggested hook:
 
-- `agents/react/useScript2VideoAgent.ts`
+- `agents/react/useQalamAgent.ts`
 
 ```ts
-export type UseScript2VideoAgentOptions = {
-  runtime: Script2VideoAgentRuntime;
+export type UseQalamAgentOptions = {
+  runtime: QalamAgentRuntime;
   sessionId: string;
   onEvent?: (event: AgentRuntimeEvent) => void;
 };
 
-export type UseScript2VideoAgentResult = {
+export type UseQalamAgentResult = {
   isRunning: boolean;
-  sendMessage: (input: Script2VideoRunInput) => Promise<Script2VideoRunResult>;
+  sendMessage: (input: QalamRunInput) => Promise<QalamRunResult>;
   cancel: () => void;
 };
 ```
@@ -818,11 +818,11 @@ export function mapRuntimeEventToUiMessage(
 Optional but recommended.
 
 ```ts
-export interface Script2VideoAgentTracer {
-  onRunStarted(input: Script2VideoRunInput): void;
+export interface QalamAgentTracer {
+  onRunStarted(input: QalamRunInput): void;
   onToolCalled(call: AgentExecutedToolCall): void;
   onToolCompleted(call: AgentExecutedToolCall): void;
-  onRunCompleted(result: Script2VideoRunResult): void;
+  onRunCompleted(result: QalamRunResult): void;
   onRunFailed(error: string): void;
 }
 ```
@@ -862,7 +862,7 @@ The runtime should preserve machine-readable error codes.
 ```txt
 agents/
   bridge/
-    script2videoBridge.ts
+    qalamBridge.ts
   runtime/
     agent.ts
     config.ts
@@ -879,7 +879,7 @@ agents/
     createTextNode.ts
     schemas.ts
   react/
-    useScript2VideoAgent.ts
+    useQalamAgent.ts
 ```
 
 ## Implementation Sequence
