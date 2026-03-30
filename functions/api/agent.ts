@@ -210,9 +210,6 @@ const extractTextFromResponseOutput = (output: unknown): string => {
   return parts.join("\n").trim();
 };
 
-const isLateStreamEnqueueError = (error: unknown) =>
-  String((error as any)?.message || error || "").includes("Unable to enqueue");
-
 const summarizeSuccessfulToolCalls = (toolCalls: AgentExecutedToolCall[]) => {
   const successfulCalls = toolCalls.filter((toolCall) => toolCall.status === "success" && toolCall.summary?.trim());
   if (!successfulCalls.length) return "";
@@ -589,39 +586,7 @@ export const onRequestPost = async (context: any) => {
           streamReader.releaseLock();
         }
 
-        try {
-          await (result as any)?.completed;
-        } catch (error: any) {
-          const completedTextCandidate =
-            String(result.finalOutput || "").trim() ||
-            accumulatedText ||
-            streamedResponseText ||
-            extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output);
-          if (!isLateStreamEnqueueError(error) || !completedTextCandidate) {
-            throw error;
-          }
-          debugLog(debugEnabled, runId, "ignored late stream enqueue error after completed response", {
-            error: error?.message || String(error),
-            completedTextLength: completedTextCandidate.length,
-            rawResponses: result.rawResponses?.length || 0,
-          });
-          emitTrace(
-            controller,
-            runId,
-            "result",
-            "info",
-            "Ignored late stream enqueue error",
-            error?.message || String(error),
-            JSON.stringify(
-              {
-                completedTextLength: completedTextCandidate.length,
-                rawResponses: result.rawResponses?.length || 0,
-              },
-              null,
-              2
-            )
-          );
-        }
+        await (result as any)?.completed;
         const synthesizedToolText = summarizeSuccessfulToolCalls(toolCalls);
         const finalText =
           String(result.finalOutput || "").trim() ||

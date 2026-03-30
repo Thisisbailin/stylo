@@ -86,85 +86,6 @@ export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undef
   };
 };
 
-const extractItemText = (item: AgentInputItem) => {
-  if (!item || typeof item !== "object") return "";
-  if ((item as any).role === "user" || (item as any).role === "assistant") {
-    const content = (item as any).content;
-    if (typeof content === "string") return content.trim();
-    if (!Array.isArray(content)) return "";
-    return content
-      .map((part) => {
-        if (!part || typeof part !== "object") return "";
-        if (typeof (part as any).text === "string") return (part as any).text;
-        if (typeof (part as any).transcript === "string") return (part as any).transcript;
-        if (typeof (part as any).refusal === "string") return (part as any).refusal;
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-  }
-  if ((item as any).type === "function_call_result") {
-    const output = (item as any).output;
-    if (typeof output === "string") return clipText(output);
-    if (output == null) return "";
-    try {
-      return clipText(JSON.stringify(output));
-    } catch {
-      return clipText(String(output));
-    }
-  }
-  return "";
-};
-
-const buildMemoryFromHistoryItems = (
-  historyItems: AgentInputItem[],
-  seedMemory?: QalamAgentMemory
-): QalamAgentMemory => {
-  const recentTurns = historyItems
-    .filter((item) => (item as any)?.role === "user" || (item as any)?.role === "assistant")
-    .slice(-MAX_RECENT_TURNS)
-    .map((item) => ({
-      role: (item as any).role as "user" | "assistant",
-      text: clipText(extractItemText(item), 280),
-      createdAt: undefined,
-    }))
-    .filter((item) => item.text);
-
-  const toolResults = historyItems
-    .filter((item) => (item as any)?.type === "function_call_result")
-    .map((item) => {
-      const raw = item as any;
-      return {
-        toolName: typeof raw.name === "string" ? raw.name : "tool",
-        status: raw.status === "completed" ? ("success" as const) : ("error" as const),
-        summary: clipText(extractItemText(item)),
-        createdAt: undefined,
-      };
-    })
-    .filter((item) => item.summary);
-
-  const mergeRecords = (
-    seed: typeof seedMemory.recentSuccessfulTools,
-    next: typeof seedMemory.recentSuccessfulTools
-  ) =>
-    [...(seed || []), ...next]
-      .filter((item) => item?.summary)
-      .slice(-MAX_RECENT_TOOLS);
-
-  return {
-    recentTurns: recentTurns.length ? recentTurns : seedMemory?.recentTurns || [],
-    recentSuccessfulTools: mergeRecords(
-      seedMemory?.recentSuccessfulTools || [],
-      toolResults.filter((item) => item.status === "success")
-    ),
-    recentFailedTools: mergeRecords(
-      seedMemory?.recentFailedTools || [],
-      toolResults.filter((item) => item.status === "error")
-    ),
-  };
-};
-
 const compactHistoryItem = (item: AgentInputItem): AgentInputItem => {
   if (!item || typeof item !== "object") return item;
   const cloned = structuredClone(item);
@@ -186,47 +107,9 @@ const compactHistoryItem = (item: AgentInputItem): AgentInputItem => {
   return cloned;
 };
 
-const buildMemoryNote = (memory: QalamAgentMemory) => {
-  const lines: string[] = [];
-
-  if (memory.recentTurns.length) {
-    lines.push(
-      `Recent Turns: ${memory.recentTurns.map((turn) => `${turn.role}: ${turn.text}`).join(" | ")}`
-    );
-  }
-  if (memory.recentSuccessfulTools.length) {
-    lines.push(
-      `Recent Successful Tool Results: ${memory.recentSuccessfulTools
-        .map((tool) => `${tool.toolName}: ${tool.summary}`)
-        .join(" | ")}`
-    );
-  }
-  if (memory.recentFailedTools.length) {
-    lines.push(
-      `Recent Failed Tool Results: ${memory.recentFailedTools
-        .map((tool) => `${tool.toolName}: ${tool.summary}`)
-        .join(" | ")}`
-    );
-  }
-
-  if (!lines.length) return null;
-
-  return {
-    role: "assistant",
-    content: [
-      {
-        type: "output_text",
-        text: `[Session Memory Snapshot]\n${lines.join("\n")}`,
-      },
-    ],
-  } as AgentInputItem;
-};
-
 export const createAgentSessionInputCallback =
-  (seedMemory?: QalamAgentMemory, historyWindow = HISTORY_REPLAY_WINDOW) =>
+  (_seedMemory?: QalamAgentMemory, historyWindow = HISTORY_REPLAY_WINDOW) =>
   async (historyItems: AgentInputItem[], newItems: AgentInputItem[]) => {
     const trimmedHistory = historyItems.slice(-historyWindow).map(compactHistoryItem);
-    const memory = buildMemoryFromHistoryItems(historyItems, seedMemory);
-    const memoryNote = buildMemoryNote(memory);
-    return [...trimmedHistory, ...(memoryNote ? [memoryNote] : []), ...newItems];
+    return [...trimmedHistory, ...newItems];
   };
