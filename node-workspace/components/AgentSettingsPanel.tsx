@@ -522,15 +522,16 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const setProvider = (p: AgentTextProvider) => {
     const nextConfig = { ...config.textConfig };
+    const providerChanged = activeAgentProvider !== p;
     if (p === "openrouter") {
-      nextConfig.agentBaseUrl = nextConfig.agentBaseUrl || OPENROUTER_BASE_URL;
-      nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
+      nextConfig.agentBaseUrl = OPENROUTER_BASE_URL;
+      nextConfig.agentModel = providerChanged ? "" : resolveAgentModelForProvider(p, nextConfig.agentModel);
     } else if (p === "ark") {
       nextConfig.agentBaseUrl = ARK_RESPONSES_BASE_URL;
-      nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
+      nextConfig.agentModel = providerChanged ? ARK_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
     } else {
       nextConfig.agentBaseUrl = QWEN_RESPONSES_BASE_URL;
-      nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
+      nextConfig.agentModel = providerChanged ? QWEN_DEFAULT_MODEL : resolveAgentModelForProvider(p, nextConfig.agentModel);
     }
 
     setConfig({
