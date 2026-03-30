@@ -46,7 +46,11 @@ export const onRequestPost = async ({ request, env }) => {
     const supabaseUrl = env.SUPABASE_URL;
     const serviceRole = env.SUPABASE_SERVICE_ROLE;
     if (!supabaseUrl || !serviceRole) {
-      return new Response('Supabase env missing', { status: 500 });
+      const missing = [
+        !supabaseUrl ? 'SUPABASE_URL' : null,
+        !serviceRole ? 'SUPABASE_SERVICE_ROLE' : null,
+      ].filter(Boolean).join(', ');
+      return new Response(`Supabase env missing: ${missing}`, { status: 500 });
     }
 
     const supabase = createClient(supabaseUrl, serviceRole);
