@@ -67,6 +67,11 @@ const resolveTracingApiKey = (env: Record<string, unknown>) => {
   return value.trim();
 };
 
+const resolveTracingEnabled = (env: Record<string, unknown>) => {
+  const value = env.AGENT_ENABLE_OPENAI_TRACING;
+  return value === "1" || value === "true";
+};
+
 const resolveTraceIncludeSensitiveData = (env: Record<string, unknown>) => {
   const value = env.AGENT_TRACE_INCLUDE_SENSITIVE_DATA;
   return value === "1" || value === "true";
@@ -233,9 +238,10 @@ export const onRequestPost = async (context: any) => {
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
       const tracingApiKey = resolveTracingApiKey(context.env || {});
+      const tracingAllowed = resolveTracingEnabled(context.env || {});
       const debugEnabled = isDebugEnabled(context.env || {});
-      const traceId = generateTraceId();
-      const tracingEnabled = Boolean(tracingApiKey);
+      const tracingEnabled = tracingAllowed && Boolean(tracingApiKey);
+      const traceId = tracingEnabled ? generateTraceId() : undefined;
       const bridgeState = createEdgeBridgeState(body.projectData);
       const toolCalls: AgentExecutedToolCall[] = [];
       let accumulatedText = "";
@@ -301,6 +307,7 @@ export const onRequestPost = async (context: any) => {
           JSON.stringify({
             baseURL: resolvedAuth.baseURL,
             hasApiKey: Boolean(resolvedAuth.apiKey),
+            tracingAllowed,
             tracingEnabled,
           }, null, 2)
         );
