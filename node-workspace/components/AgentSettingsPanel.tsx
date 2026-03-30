@@ -697,7 +697,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
           const designDefault = audioIds.find((id) => id.toLowerCase().includes("tts-vd")) || audioIds[0];
           const dubbingDefault = audioIds.find((id) => id.toLowerCase().includes("tts-vc")) || audioIds[0];
           if (!nextText.agentModel || !models.find((m) => m.id === nextText.agentModel)) {
-            nextText.agentModel = models[0].id;
+            nextText.agentModel = models.find((m) => m.id === QWEN_DEFAULT_MODEL)?.id || QWEN_DEFAULT_MODEL;
           }
           if (designDefault && (!nextText.voiceDesignModel || !audioIds.includes(nextText.voiceDesignModel))) {
             nextText.voiceDesignModel = designDefault;
@@ -1137,7 +1137,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="text-xs text-[var(--app-text-secondary)]">Volcengine Ark</div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                主选路线之一。edge runtime 仅读取 Cloudflare Pages Functions 环境变量 `ARK_API_KEY`，不会把密钥下发到浏览器。
+                主选路线之一。edge runtime 仅读取 Cloudflare Pages Functions 环境变量 `ARK_API_KEY`，不会把密钥下发到浏览器。Agent 建议优先使用 `doubao-seed-*` 或已开通权限的 `ep-*` 接入点 ID，旧的 `doubao-lite/pro-*` 常会在 Responses 路线上直接 404。
               </div>
 
               <div className="space-y-4">
@@ -1243,7 +1243,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                主选路线。使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。
+                主选路线。使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。模型列表接口返回的是平台可见模型，不等于当前 API Key 一定已开通全部权限；若 404，请先回退到 `qwen-plus`。
               </div>
 
               <div className="space-y-4">

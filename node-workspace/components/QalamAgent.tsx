@@ -134,7 +134,13 @@ const resolveAgentRuntimeModel = (textConfig: any) => {
   const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
   const explicitAgentModel = (textConfig?.agentModel || "").trim();
   if (provider === "ark") {
-    if (!explicitAgentModel || explicitAgentModel === QWEN_DEFAULT_MODEL || explicitAgentModel.startsWith("qwen")) {
+    if (
+      !explicitAgentModel ||
+      explicitAgentModel === QWEN_DEFAULT_MODEL ||
+      explicitAgentModel.startsWith("qwen") ||
+      explicitAgentModel.startsWith("doubao-lite-") ||
+      explicitAgentModel.startsWith("doubao-pro-")
+    ) {
       return ARK_DEFAULT_MODEL;
     }
     return explicitAgentModel;

@@ -104,10 +104,11 @@ const normalizePortrait = (
   portrait: any,
   roleMention: string,
   fallbackName: string,
-  fallbackImageUrl?: string
+  fallbackImageUrl?: string,
+  allowEmptyImage = false
 ): ProjectRolePortrait | null => {
   const imageUrl = toOptionalString(portrait?.imageUrl || portrait?.url || fallbackImageUrl);
-  if (!imageUrl) return null;
+  if (!imageUrl && !allowEmptyImage) return null;
   const name = sanitizeIdentityToken(
     toSafeString(portrait?.name || portrait?.label || portrait?.title || fallbackName),
     fallbackName
@@ -116,7 +117,7 @@ const normalizePortrait = (
     id: ensureStableId(portrait?.id, "portrait"),
     name,
     mention: buildPortraitMention(roleMention, name),
-    imageUrl,
+    imageUrl: imageUrl || "",
     createdAt: typeof portrait?.createdAt === "number" ? portrait.createdAt : Date.now(),
     summary: toOptionalString(portrait?.summary || portrait?.description),
     isPrimary: !!portrait?.isPrimary || name === "normal",
@@ -133,7 +134,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
         : [];
 
   const portraits = rawPortraits
-    .map((portrait: any, index: number) => normalizePortrait(portrait, mention, index === 0 ? "normal" : `look${index + 1}`))
+    .map((portrait: any, index: number) => normalizePortrait(portrait, mention, index === 0 ? "normal" : `look${index + 1}`, undefined, true))
     .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
 
   if (portraits.length > 0) {

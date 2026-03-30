@@ -9,7 +9,7 @@ import {
   setOpenAIAPI,
 } from "@openai/agents";
 import OpenAI from "openai";
-import { ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import { ARK_DEFAULT_MODEL, ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_DEFAULT_MODEL, QWEN_RESPONSES_BASE_URL } from "../../constants";
 import { createQalamTools } from "../../agents/tools";
 import { EdgeMemorySession, readEdgeSessionMessages } from "../../agents/runtime/edgeSession";
 import { buildAgentEnvironment } from "../../agents/runtime/environment";
@@ -58,6 +58,42 @@ const resolveBaseUrl = (provider: "qwen" | "openrouter" | "ark", baseUrl?: strin
   return QWEN_RESPONSES_BASE_URL;
 };
 
+const resolveProviderModel = (provider: "qwen" | "openrouter" | "ark", requestedModel?: string) => {
+  const model = (requestedModel || "").trim();
+  if (provider === "ark") {
+    if (!model || model.startsWith("qwen") || model.startsWith("doubao-lite-") || model.startsWith("doubao-pro-")) {
+      return ARK_DEFAULT_MODEL;
+    }
+    return model;
+  }
+  if (provider === "qwen") {
+    if (!model || model.startsWith("doubao-")) {
+      return QWEN_DEFAULT_MODEL;
+    }
+    return model;
+  }
+  return model;
+};
+
+const isModelAccessError = (message: string) =>
+  /model or endpoint/i.test(message) &&
+  /(does not exist|do not have access)/i.test(message);
+
+const formatModelAccessError = (
+  provider: "qwen" | "openrouter" | "ark",
+  requestedModel: string,
+  effectiveModel: string,
+  message: string
+) => {
+  if (provider === "ark") {
+    return `Ark 模型不可用：当前请求使用的是 \`${effectiveModel}\`。方舟 Agent 路线请优先使用 \`doubao-seed-*\` 或已开通权限的 \`ep-*\` 接入点 ID；旧的 \`doubao-lite/pro-*\` 常会在 Responses 路线上 404。原始错误：${message}`;
+  }
+  if (provider === "qwen") {
+    return `Qwen 模型不可用：当前请求使用的是 \`${effectiveModel}\`。这通常表示当前 API Key 对该模型未开通权限，或该模型不在当前兼容路线上可用。建议先切回 \`${QWEN_DEFAULT_MODEL}\` 再试。原始错误：${message}`;
+  }
+  return message;
+};
+
 const isDebugEnabled = (env: Record<string, unknown>) => {
   const value = env.AGENT_DEBUG_LOGS;
   return value === "1" || value === "true";
@@ -71,6 +107,84 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
     return;
   }
   console.log(prefix, payload);
+};
+
+const clipPayload = (value: unknown, limit = 12000) => {
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return text.length <= limit ? text : `${text.slice(0, limit)}\n... [truncated]`;
+  } catch {
+    const text = String(value);
+    return text.length <= limit ? text : `${text.slice(0, limit)}\n... [truncated]`;
+  }
+};
+
+const instrumentOpenAIResponsesClient = (
+  client: OpenAI,
+  opts: {
+    controller: ReadableStreamDefaultController<Uint8Array>;
+    runId: string;
+    debugEnabled: boolean;
+  }
+) => {
+  const responsesApi = client.responses as OpenAI["responses"] & {
+    create: (...args: any[]) => Promise<any>;
+  };
+  const originalCreate = responsesApi.create.bind(responsesApi);
+  responsesApi.create = (async (...args: any[]) => {
+    const [request, options] = args;
+    debugLog(opts.debugEnabled, opts.runId, "responses.create request", request);
+    emitTrace(
+      opts.controller,
+      opts.runId,
+      "model",
+      "info",
+      "responses.create request",
+      `model=${request?.model || "unknown"} · tools=${Array.isArray(request?.tools) ? request.tools.length : 0} · stream=${Boolean(request?.stream)}`,
+      clipPayload({
+        model: request?.model,
+        instructions: request?.instructions,
+        input: request?.input,
+        tools: request?.tools,
+        tool_choice: request?.tool_choice,
+        parallel_tool_calls: request?.parallel_tool_calls,
+        previous_response_id: request?.previous_response_id,
+        conversation: request?.conversation,
+        text: request?.text,
+        store: request?.store,
+      })
+    );
+    if (options) {
+      debugLog(opts.debugEnabled, opts.runId, "responses.create options", options);
+    }
+    try {
+      const response = await originalCreate(...args);
+      debugLog(opts.debugEnabled, opts.runId, "responses.create response", {
+        hasWithResponse: typeof response?.withResponse === "function",
+        hasAsyncIterator: typeof response?.[Symbol.asyncIterator] === "function",
+      });
+      return response;
+    } catch (error: any) {
+      emitTrace(
+        opts.controller,
+        opts.runId,
+        "result",
+        "error",
+        "responses.create failed",
+        error?.message || "unknown error",
+        clipPayload({
+          message: error?.message,
+          status: error?.status,
+          code: error?.code,
+          type: error?.type,
+          cause: error?.cause,
+          error: error?.error,
+          headers: error?.headers,
+        })
+      );
+      throw error;
+    }
+  }) as typeof responsesApi.create;
 };
 
 const unwrapProviderEvent = (data: any) => {
@@ -265,6 +379,7 @@ export const onRequestPost = async (context: any) => {
           tracingEnabled,
         });
 
+        const effectiveModel = resolveProviderModel(provider, body.runtime.model);
         const resolvedAuth = {
           apiKey: resolveApiKey(context.env || {}, provider),
           baseURL: resolveBaseUrl(provider, body.runtime.baseUrl),
@@ -272,7 +387,7 @@ export const onRequestPost = async (context: any) => {
         };
         debugLog(debugEnabled, runId, "provider resolved", {
           provider,
-          model: body.runtime.model,
+          model: effectiveModel,
           baseURL: resolvedAuth.baseURL,
           hasApiKey: Boolean(resolvedAuth.apiKey),
         });
@@ -282,8 +397,9 @@ export const onRequestPost = async (context: any) => {
           "runtime",
           "success",
           "Provider resolved",
-          `provider=${provider} · model=${body.runtime.model}`,
+          `provider=${provider} · model=${effectiveModel}`,
           JSON.stringify({
+            requestedModel: body.runtime.model,
             baseURL: resolvedAuth.baseURL,
             hasApiKey: Boolean(resolvedAuth.apiKey),
             tracingEnabled,
@@ -293,6 +409,11 @@ export const onRequestPost = async (context: any) => {
           apiKey: resolvedAuth.apiKey,
           baseURL: resolvedAuth.baseURL,
           defaultHeaders: resolvedAuth.defaultHeaders,
+        });
+        instrumentOpenAIResponsesClient(client, {
+          controller,
+          runId,
+          debugEnabled,
         });
         setOpenAIAPI("responses");
         setDefaultOpenAIClient(client);
@@ -340,7 +461,7 @@ export const onRequestPost = async (context: any) => {
             enabledSkills: [],
           }),
           handoffDescription: "Edge runtime scaffold for Qalam.",
-          model: body.runtime.model,
+          model: effectiveModel,
           modelSettings: {
             toolChoice: "auto",
             parallelToolCalls: false,
@@ -356,8 +477,9 @@ export const onRequestPost = async (context: any) => {
           "model",
           "running",
           "Agent run started",
-          `model=${body.runtime.model} · sessionMemory=${sessionMessages.length}`,
+          `model=${effectiveModel} · sessionMemory=${sessionMessages.length}`,
           JSON.stringify({
+            requestedModel: body.runtime.model,
             runtimeMode: runContext.runtimeMode,
             projectEpisodes: runContext.agentEnvironment.project.episodeCount,
             enabledTools: enabledTools.map((tool) => tool.name),
@@ -602,7 +724,9 @@ export const onRequestPost = async (context: any) => {
         }
         const message = isGuardrailError
           ? `Guardrail 已拦截当前请求：${error?.message || "请求不符合运行边界。"}`
-          : error?.message || "Cloudflare Agent runtime 执行失败";
+          : isModelAccessError(error?.message || String(error))
+            ? formatModelAccessError(provider, body.runtime.model, effectiveModel, error?.message || String(error))
+            : error?.message || "Cloudflare Agent runtime 执行失败";
         emitTrace(
           controller,
           runId,
