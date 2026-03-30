@@ -5,6 +5,7 @@ import {
   ToolInputGuardrailTripwireTriggered,
   ToolOutputGuardrailTripwireTriggered,
   run,
+  Runner,
   setDefaultOpenAIClient,
   setOpenAIAPI,
 } from "@openai/agents";
@@ -461,8 +462,13 @@ export const createQalamAgentRuntime = ({
         maxTurns: AGENT_MAX_TURNS,
         stream: useStreaming,
       });
+      const runner = new Runner({
+        tracingDisabled: true,
+        traceIncludeSensitiveData: false,
+        workflowName: "Qalam Browser Agent",
+      });
       const result = useStreaming
-        ? await run(agent, runInputItems, {
+        ? await runner.run(agent, runInputItems, {
           signal: options?.signal,
           maxTurns: AGENT_MAX_TURNS,
           session,
@@ -470,7 +476,7 @@ export const createQalamAgentRuntime = ({
           context: runContext,
           stream: true,
         })
-        : await run(agent, runInputItems, {
+        : await runner.run(agent, runInputItems, {
             signal: options?.signal,
             maxTurns: AGENT_MAX_TURNS,
             session,

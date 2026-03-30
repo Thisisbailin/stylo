@@ -2,14 +2,11 @@ import {
   Agent,
   InputGuardrailTripwireTriggered,
   OutputGuardrailTripwireTriggered,
-  run,
+  Runner,
   ToolInputGuardrailTripwireTriggered,
   ToolOutputGuardrailTripwireTriggered,
-  generateTraceId,
-  getGlobalTraceProvider,
   setDefaultOpenAIClient,
   setOpenAIAPI,
-  setTracingExportApiKey,
 } from "@openai/agents";
 import OpenAI from "openai";
 import { ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
@@ -59,22 +56,6 @@ const resolveBaseUrl = (provider: "qwen" | "openrouter" | "ark", baseUrl?: strin
   if (provider === "openrouter") return OPENROUTER_RESPONSES_BASE_URL;
   if (provider === "ark") return ARK_RESPONSES_BASE_URL;
   return QWEN_RESPONSES_BASE_URL;
-};
-
-const resolveTracingApiKey = (env: Record<string, unknown>) => {
-  const value = env.OPENAI_TRACING_API_KEY;
-  if (typeof value !== "string" || !value.trim()) return "";
-  return value.trim();
-};
-
-const resolveTracingEnabled = (env: Record<string, unknown>) => {
-  const value = env.AGENT_ENABLE_OPENAI_TRACING;
-  return value === "1" || value === "true";
-};
-
-const resolveTraceIncludeSensitiveData = (env: Record<string, unknown>) => {
-  const value = env.AGENT_TRACE_INCLUDE_SENSITIVE_DATA;
-  return value === "1" || value === "true";
 };
 
 const isDebugEnabled = (env: Record<string, unknown>) => {
@@ -237,11 +218,9 @@ export const onRequestPost = async (context: any) => {
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
-      const tracingApiKey = resolveTracingApiKey(context.env || {});
-      const tracingAllowed = resolveTracingEnabled(context.env || {});
       const debugEnabled = isDebugEnabled(context.env || {});
-      const tracingEnabled = tracingAllowed && Boolean(tracingApiKey);
-      const traceId = tracingEnabled ? generateTraceId() : undefined;
+      const tracingEnabled = false;
+      const traceId = `local-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const bridgeState = createEdgeBridgeState(body.projectData);
       const toolCalls: AgentExecutedToolCall[] = [];
       let accumulatedText = "";
@@ -307,7 +286,6 @@ export const onRequestPost = async (context: any) => {
           JSON.stringify({
             baseURL: resolvedAuth.baseURL,
             hasApiKey: Boolean(resolvedAuth.apiKey),
-            tracingAllowed,
             tracingEnabled,
           }, null, 2)
         );
@@ -318,9 +296,6 @@ export const onRequestPost = async (context: any) => {
         });
         setOpenAIAPI("responses");
         setDefaultOpenAIClient(client);
-        if (tracingEnabled) {
-          setTracingExportApiKey(tracingApiKey);
-        }
 
         const session = new EdgeMemorySession(body.run.sessionId);
         const sessionId = await session.getSessionId();
@@ -388,7 +363,12 @@ export const onRequestPost = async (context: any) => {
             enabledTools: enabledTools.map((tool) => tool.name),
           }, null, 2)
         );
-        const result = await run(agent, runInputItems, {
+        const runner = new Runner({
+          tracingDisabled: true,
+          traceIncludeSensitiveData: false,
+          workflowName: "Qalam Edge Agent",
+        });
+        const result = await runner.run(agent, runInputItems, {
           stream: true,
           maxTurns: EDGE_AGENT_MAX_TURNS,
           signal: context.request.signal,
@@ -648,9 +628,6 @@ export const onRequestPost = async (context: any) => {
         });
         emitError(controller, message);
       } finally {
-        if (tracingEnabled) {
-          await getGlobalTraceProvider().forceFlush().catch(() => undefined);
-        }
         controller.close();
       }
     },
