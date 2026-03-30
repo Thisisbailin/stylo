@@ -5,9 +5,46 @@ const root = process.cwd();
 
 const patches = [
   {
+    file: "node_modules/@openai/agents-core/dist/shims/shims.mjs",
+    transform: (source) =>
+      source.replace('export * from "./shims-node.mjs";', 'export * from "./shims-workerd.mjs";'),
+  },
+  {
+    file: "node_modules/@openai/agents-core/dist/shims/shims.js",
+    transform: (source) =>
+      source.replace('__exportStar(require("./shims-node.js"), exports);', '__exportStar(require("./shims-workerd.js"), exports);'),
+  },
+  {
     file: "node_modules/@openai/agents-core/dist/shims/shims-workerd.mjs",
     transform: (source) =>
       source
+        .replace(
+          "import { AsyncLocalStorage as BuiltinAsyncLocalStorage } from 'node:async_hooks';\n",
+          "",
+        )
+        .replace(
+          /export class AsyncLocalStorage extends BuiltinAsyncLocalStorage \{[\s\S]*?\n\}/,
+          `export class AsyncLocalStorage {
+    context = undefined;
+    constructor() { }
+    run(context, fn) {
+        const previous = this.context;
+        this.context = context;
+        try {
+            return fn();
+        }
+        finally {
+            this.context = previous;
+        }
+    }
+    getStore() {
+        return this.context;
+    }
+    enterWith(context) {
+        this.context = context;
+    }
+}`,
+        )
         .replaceAll("./mcp-server/node.mjs", "./mcp-server/browser.mjs")
         .replace(
           'export { NodeMCPServerStdio as MCPServerStdio, NodeMCPServerStreamableHttp as MCPServerStreamableHttp, NodeMCPServerSSE as MCPServerSSE, } from "./mcp-server/browser.mjs";',
@@ -18,6 +55,31 @@ const patches = [
     file: "node_modules/@openai/agents-core/dist/shims/shims-workerd.js",
     transform: (source) =>
       source
+        .replace('const node_async_hooks_1 = require("node:async_hooks");\n', "")
+        .replace(
+          /class AsyncLocalStorage extends node_async_hooks_1\.AsyncLocalStorage \{[\s\S]*?\n\}/,
+          `class AsyncLocalStorage {
+    constructor() {
+        this.context = undefined;
+    }
+    run(context, fn) {
+        const previous = this.context;
+        this.context = context;
+        try {
+            return fn();
+        }
+        finally {
+            this.context = previous;
+        }
+    }
+    getStore() {
+        return this.context;
+    }
+    enterWith(context) {
+        this.context = context;
+    }
+}`,
+        )
         .replaceAll('./mcp-server/node.js', './mcp-server/browser.js')
         .replace("var node_1 = require(\"./mcp-server/browser.js\");", "var browser_1 = require(\"./mcp-server/browser.js\");")
         .replaceAll("node_1.NodeMCPServerStdio", "browser_1.MCPServerStdio")
