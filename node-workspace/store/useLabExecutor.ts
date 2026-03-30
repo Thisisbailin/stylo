@@ -117,6 +117,20 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
   throw new Error("Reference upload failed: no accessible URL returned.");
 };
 
+const blobUrlToDataUrl = async (source: string) => {
+  const response = await fetch(source);
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("无法读取本地引用资源。"));
+    };
+    reader.onerror = () => reject(reader.error || new Error("读取本地引用资源失败。"));
+    reader.readAsDataURL(blob);
+  });
+};
+
 const normalizeWanImages = async (sources: string[]) => {
   const results: string[] = [];
   for (const src of sources) {
@@ -185,8 +199,12 @@ const normalizeSeedanceVideos = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-video/" }));
+    if (src.startsWith("data:video/")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("blob:")) {
+      results.push(await blobUrlToDataUrl(src));
       continue;
     }
     results.push(src);
@@ -202,8 +220,12 @@ const normalizeSeedanceImages = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-image/" }));
+    if (src.startsWith("data:image/")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("blob:")) {
+      results.push(await blobUrlToDataUrl(src));
       continue;
     }
     try {
@@ -235,8 +257,12 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:audio/") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }));
+    if (src.startsWith("data:audio/")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("blob:")) {
+      results.push(await blobUrlToDataUrl(src));
       continue;
     }
     try {
