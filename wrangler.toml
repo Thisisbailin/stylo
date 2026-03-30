@@ -3,9 +3,6 @@ pages_build_output_dir = "./dist"
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
 
-[alias]
-"@openai/agents-core/_shims" = "./compat/openai-agents-core-shims-workerd.mjs"
-
 [[d1_databases]]
 binding = "DB"
 database_name = "qalam"
