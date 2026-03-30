@@ -180,6 +180,30 @@ const emitError = (controller: ReadableStreamDefaultController<Uint8Array>, erro
   );
 };
 
+const emitTrace = (
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  runId: string,
+  stage: "runtime" | "session" | "model" | "tool" | "result",
+  status: "info" | "running" | "success" | "error",
+  title: string,
+  detail?: string,
+  payload?: string
+) => {
+  emitEvent(controller, {
+    type: "trace",
+    runId,
+    entry: {
+      id: `${stage}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: Date.now(),
+      stage,
+      status,
+      title,
+      detail,
+      payload,
+    },
+  });
+};
+
 export const onRequestOptions = async () =>
   new Response(null, {
     status: 204,
@@ -212,6 +236,11 @@ export const onRequestPost = async (context: any) => {
       const debugEnabled = isDebugEnabled(context.env || {});
       const traceId = generateTraceId();
       const tracingEnabled = Boolean(tracingApiKey);
+      const bridgeState = createEdgeBridgeState(body.projectData);
+      const toolCalls: AgentExecutedToolCall[] = [];
+      let accumulatedText = "";
+      let accumulatedReasoning = "";
+      let streamedResponseText = "";
       try {
         debugLog(debugEnabled, runId, "request received", {
           provider,
@@ -219,8 +248,20 @@ export const onRequestPost = async (context: any) => {
           sessionId: body.run.sessionId,
           userText: body.run.userText,
         });
-        const bridgeState = createEdgeBridgeState(body.projectData);
-        const toolCalls: AgentExecutedToolCall[] = [];
+        emitTrace(
+          controller,
+          runId,
+          "runtime",
+          "info",
+          "Request accepted",
+          `provider=${provider} · session=${body.run.sessionId}`,
+          JSON.stringify({
+            model: body.runtime.model,
+            baseUrl: body.runtime.baseUrl || null,
+            userTextLength: body.run.userText.length,
+            attachmentCount: body.run.attachments?.length || 0,
+          }, null, 2)
+        );
         const emitRuntimeEvent = (event: AgentRuntimeEvent) => {
           if (event.type === "tool_called") {
             toolCalls.push(event.call);
@@ -250,6 +291,19 @@ export const onRequestPost = async (context: any) => {
           baseURL: resolvedAuth.baseURL,
           hasApiKey: Boolean(resolvedAuth.apiKey),
         });
+        emitTrace(
+          controller,
+          runId,
+          "runtime",
+          "success",
+          "Provider resolved",
+          `provider=${provider} · model=${body.runtime.model}`,
+          JSON.stringify({
+            baseURL: resolvedAuth.baseURL,
+            hasApiKey: Boolean(resolvedAuth.apiKey),
+            tracingEnabled,
+          }, null, 2)
+        );
         const client = new OpenAI({
           apiKey: resolvedAuth.apiKey,
           baseURL: resolvedAuth.baseURL,
@@ -264,18 +318,7 @@ export const onRequestPost = async (context: any) => {
         const session = new EdgeMemorySession(body.run.sessionId);
         const sessionId = await session.getSessionId();
         const sessionItems = await session.getItems(24);
-        emitEvent(controller, {
-          type: "trace",
-          runId,
-          entry: {
-            id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            at: Date.now(),
-            stage: "session",
-            status: "info",
-            title: "Session attached",
-            detail: `id=${sessionId} · items=${sessionItems.length}`,
-          },
-        });
+        emitTrace(controller, runId, "session", "info", "Session attached", `id=${sessionId} · items=${sessionItems.length}`);
 
         const enabledTools = createQalamTools({
           bridge: bridgeState.bridge,
@@ -299,6 +342,15 @@ export const onRequestPost = async (context: any) => {
           uiContext: body.run.uiContext,
         };
         const runInputItems = buildRunInputItems(body.run);
+        emitTrace(
+          controller,
+          runId,
+          "tool",
+          "info",
+          "Tools prepared",
+          `${enabledTools.length} tools enabled`,
+          JSON.stringify(enabledTools.map((tool) => tool.name), null, 2)
+        );
 
         const agent = new Agent<QalamRunContext>({
           name: "Qalam Edge Agent",
@@ -316,10 +368,19 @@ export const onRequestPost = async (context: any) => {
           resetToolChoice: true,
           tools: enabledTools,
         });
-
-        let accumulatedText = "";
-        let accumulatedReasoning = "";
-        let streamedResponseText = "";
+        emitTrace(
+          controller,
+          runId,
+          "model",
+          "running",
+          "Agent run started",
+          `model=${body.runtime.model} · sessionMemory=${sessionMessages.length}`,
+          JSON.stringify({
+            runtimeMode: runContext.runtimeMode,
+            projectEpisodes: runContext.agentEnvironment.project.episodeCount,
+            enabledTools: enabledTools.map((tool) => tool.name),
+          }, null, 2)
+        );
         const result = await run(agent, runInputItems, {
           stream: true,
           maxTurns: EDGE_AGENT_MAX_TURNS,
@@ -384,6 +445,14 @@ export const onRequestPost = async (context: any) => {
                 hasCandidate: Boolean(candidate),
                 candidateLength: candidate?.length || 0,
               });
+              emitTrace(
+                controller,
+                runId,
+                "model",
+                "success",
+                "Model stream completed",
+                candidate ? `response_done text=${candidate.length} chars` : "response_done without final text candidate"
+              );
             }
           }
         } finally {
@@ -403,6 +472,15 @@ export const onRequestPost = async (context: any) => {
           toolCalls: toolCalls.length,
           usage: result.rawResponses?.at(-1)?.usage,
         });
+        emitTrace(
+          controller,
+          runId,
+          "result",
+          "success",
+          "Run finalized",
+          finalText ? `finalText=${finalText.length} chars · tools=${toolCalls.length}` : `empty finalText · tools=${toolCalls.length}`,
+          JSON.stringify(result.rawResponses?.at(-1)?.usage || {}, null, 2)
+        );
         const runResult: QalamRunResult = {
           finalText,
           sessionId: body.run.sessionId,
@@ -455,6 +533,15 @@ export const onRequestPost = async (context: any) => {
           toolCalls,
         });
         if (isMaxTurns && synthesizedToolText && hasSuccessfulAction) {
+          emitTrace(
+            controller,
+            runId,
+            "result",
+            "success",
+            "Recovered from max turns",
+            `Using synthesized tool text · tools=${toolCalls.length}`,
+            synthesizedToolText
+          );
           const runResult: QalamRunResult = {
             finalText: synthesizedToolText,
             sessionId: body.run.sessionId,
@@ -487,6 +574,18 @@ export const onRequestPost = async (context: any) => {
             fallbackText,
             toolCalls: toolCalls.length,
           });
+          emitTrace(
+            controller,
+            runId,
+            "result",
+            "success",
+            "Recovered fallback text",
+            `Recovered ${fallbackText.length} chars after runtime error`,
+            JSON.stringify({
+              error: error?.message || String(error),
+              toolCalls: toolCalls.length,
+            }, null, 2)
+          );
           const runResult: QalamRunResult = {
             finalText: fallbackText,
             sessionId: body.run.sessionId,
@@ -517,6 +616,24 @@ export const onRequestPost = async (context: any) => {
         const message = isGuardrailError
           ? `Guardrail 已拦截当前请求：${error?.message || "请求不符合运行边界。"}`
           : error?.message || "Cloudflare Agent runtime 执行失败";
+        emitTrace(
+          controller,
+          runId,
+          "result",
+          "error",
+          "Run failed",
+          message,
+          JSON.stringify({
+            errorName: error?.name || null,
+            stack: error?.stack || null,
+            isMaxTurns,
+            isGuardrailError,
+            toolCalls,
+            accumulatedTextLength: accumulatedText.length,
+            streamedResponseTextLength: streamedResponseText.length,
+            accumulatedReasoningLength: accumulatedReasoning.length,
+          }, null, 2)
+        );
         emitEvent(controller, {
           type: "run_failed",
           runId,

@@ -523,8 +523,8 @@ export const QalamAgent: React.FC<Props> = ({
   const runtime = useMemo(
     () => ({
       run: (input: any, options?: any) => {
-        // Temporary investigation mode: force browser runtime so DevTools shows the full local Agent trace.
-        const preferredTarget = "browser";
+        // Temporary investigation mode: force edge runtime while mirroring server-side progress back to the browser console.
+        const preferredTarget = "edge";
         return preferredTarget === "edge" ? edgeRuntime.run(input, options) : browserRuntime.run(input, options);
       },
     }),

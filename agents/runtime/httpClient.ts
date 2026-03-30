@@ -73,6 +73,11 @@ export const createHttpQalamAgentRuntime = ({
       body: JSON.stringify(requestBody),
       signal: options?.signal,
     });
+    browserAgentDebug("httpClient response", {
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get("content-type"),
+    });
 
     if (!response.ok || !response.body) {
       const message = await response.text().catch(() => "");
