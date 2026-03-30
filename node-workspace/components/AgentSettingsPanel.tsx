@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AudioLines,
   AlertCircle,
@@ -18,9 +18,6 @@ import { usePersistedState } from "../../hooks/usePersistedState";
 import { TextProvider } from "../../types";
 import {
   INITIAL_VIDU_CONFIG,
-  CODEX_DEFAULT_MODEL,
-  CODEX_MODEL_OPTIONS,
-  CODEX_RESPONSES_BASE_URL,
   OPENROUTER_RESPONSES_BASE_URL,
   QWEN_DEFAULT_MODEL,
   QWEN_RESPONSES_BASE_URL,
@@ -32,14 +29,7 @@ import {
   SORA_DEFAULT_BASE_URL,
   SORA_DEFAULT_MODEL,
   DEFAULT_QALAM_TOOL_SETTINGS,
-  isKnownCodexModel,
 } from "../../constants";
-import { useAuth } from "../../lib/auth";
-import {
-  disconnectCodexAuth,
-  getCodexConnectionStatus,
-  saveCodexAuthJson,
-} from "../../services/codexConnectService";
 import {
   AGENT_SESSION_STORAGE_UPDATED_EVENT,
   clearPersistedAgentSession,
@@ -252,15 +242,8 @@ const getLastArtifact = (records: AgentToolActivityRecord[]) =>
     .filter((record) => record.lastCompletedAt && record.lastArtifact)
     .sort((a, b) => (b.lastCompletedAt || 0) - (a.lastCompletedAt || 0))[0];
 
-const resolveAgentModelForProvider = (provider: TextProvider | "codex", configured?: string) => {
-  if (provider === "codex") {
-    return isKnownCodexModel(configured) ? configured! : CODEX_DEFAULT_MODEL;
-  }
-  if (provider === "qwen") {
-    return configured || QWEN_DEFAULT_MODEL;
-  }
-  return configured || "";
-};
+const resolveAgentModelForProvider = (provider: TextProvider, configured?: string) =>
+  provider === "qwen" ? (configured || QWEN_DEFAULT_MODEL) : (configured || "");
 
 const summarizeRuntimeToolOutput = (value: unknown) => {
   if (value == null) return "";
@@ -283,7 +266,6 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
 
 export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const { config, setConfig } = useConfig("script2video_config_v1");
-  const { getToken, isSignedIn } = useAuth();
   const { applyViduReferenceDemo } = useWorkflowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<"openrouter" | "qwen">("openrouter");
@@ -302,11 +284,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [showQwenRaw, setShowQwenRaw] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runtimeMetaVersion, setRuntimeMetaVersion] = useState(0);
-  const [codexConnection, setCodexConnection] = useState(config.textConfig.codexConnection || { status: "disconnected" as const });
-  const [isCodexBusy, setIsCodexBusy] = useState(false);
-  const [codexMessage, setCodexMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
-  const [codexJsonInput, setCodexJsonInput] = useState("");
-  const codexFileInputRef = useRef<HTMLInputElement | null>(null);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: "script2video_qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
@@ -348,13 +325,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
       },
     };
   }, [config.textConfig.qalamTools]);
-  const getAuthToken = useCallback(async () => {
-    try {
-      return await getToken({ template: "default" });
-    } catch {
-      return null;
-    }
-  }, [getToken]);
   const activeAgentProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
   const activeAgentBaseUrl = config.textConfig.agentBaseUrl || config.textConfig.baseUrl || QWEN_RESPONSES_BASE_URL;
   const activeAgentModel = resolveAgentModelForProvider(
@@ -520,54 +490,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   }, [config.textConfig.agentBaseUrl, config.textConfig.agentModel, config.textConfig.agentProvider, setConfig]);
 
-  useEffect(() => {
-    if (!isOpen || activeType !== "chat" || activeAgentProvider !== "codex" || !isSignedIn) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const connection = await getCodexConnectionStatus(getAuthToken);
-        if (cancelled) return;
-        setCodexConnection(connection);
-        setConfig((prev) => ({
-          ...prev,
-          textConfig: {
-            ...prev.textConfig,
-            codexConnection: connection,
-          },
-        }));
-      } catch (error: any) {
-        if (cancelled) return;
-        setCodexMessage({ type: "error", text: error?.message || "Failed to load Codex connection." });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeAgentProvider, activeType, getAuthToken, isOpen, isSignedIn, setConfig]);
-
-  useEffect(() => {
-    if (activeAgentProvider !== "codex") return;
-    const configuredModel = config.textConfig.agentModel || config.textConfig.model;
-    if (isKnownCodexModel(configuredModel)) return;
-    setConfig((prev) => ({
-      ...prev,
-      textConfig: {
-        ...prev.textConfig,
-        agentModel: CODEX_DEFAULT_MODEL,
-      },
-    }));
-  }, [activeAgentProvider, config.textConfig.agentModel, config.textConfig.model, setConfig]);
-
-  const setProvider = (p: TextProvider | "codex") => {
+  const setProvider = (p: TextProvider) => {
     const nextConfig = { ...config.textConfig };
     if (p === "openrouter") {
       nextConfig.agentBaseUrl = nextConfig.agentBaseUrl || OPENROUTER_BASE_URL;
       nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
-    } else if (p === "qwen") {
+    } else {
       nextConfig.agentBaseUrl = QWEN_RESPONSES_BASE_URL;
-      nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
-    } else if (p === "codex") {
-      nextConfig.agentBaseUrl = CODEX_RESPONSES_BASE_URL;
       nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
     }
 
@@ -700,73 +629,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
       setIsLoadingQwenChatModels(false);
     }
   };
-
-  const applyCodexConnection = useCallback((connection: typeof codexConnection) => {
-    setCodexConnection(connection);
-    setConfig((prev) => ({
-      ...prev,
-      textConfig: {
-        ...prev.textConfig,
-        codexConnection: connection,
-      },
-    }));
-  }, [setConfig]);
-
-  const handleSaveCodexJson = useCallback(async (raw: string, successText: string) => {
-    if (!isSignedIn) {
-      setCodexMessage({ type: "error", text: "请先登录 Clerk 账户，再连接 Codex。" });
-      return;
-    }
-    setIsCodexBusy(true);
-    setCodexMessage(null);
-    try {
-      const connection = await saveCodexAuthJson(raw, getAuthToken);
-      applyCodexConnection(connection);
-      setCodexMessage({ type: "success", text: successText });
-    } catch (error: any) {
-      setCodexMessage({ type: "error", text: error?.message || "Codex 连接失败。" });
-    } finally {
-      setIsCodexBusy(false);
-    }
-  }, [applyCodexConnection, getAuthToken, isSignedIn]);
-
-  const handleCodexFilePick = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const raw = await file.text();
-      await handleSaveCodexJson(raw, `已从 ${file.name} 导入 Codex 凭据。`);
-    } catch (error: any) {
-      setCodexMessage({ type: "error", text: error?.message || "读取 auth.json 失败。" });
-    }
-  }, [handleSaveCodexJson]);
-
-  const handleSavePastedCodexJson = useCallback(async () => {
-    if (!codexJsonInput.trim()) {
-      setCodexMessage({ type: "error", text: "请先粘贴 auth.json 内容。" });
-      return;
-    }
-    await handleSaveCodexJson(codexJsonInput, "已保存浏览器粘贴的 Codex 凭据。");
-  }, [codexJsonInput, handleSaveCodexJson]);
-
-  const handleDisconnectCodex = useCallback(async () => {
-    if (!isSignedIn) {
-      setCodexMessage({ type: "error", text: "请先登录 Clerk 账户。" });
-      return;
-    }
-    setIsCodexBusy(true);
-    setCodexMessage(null);
-    try {
-      const connection = await disconnectCodexAuth(getAuthToken);
-      applyCodexConnection(connection);
-      setCodexMessage({ type: "success", text: "已断开 Codex 连接。" });
-    } catch (error: any) {
-      setCodexMessage({ type: "error", text: error?.message || "断开 Codex 失败。" });
-    } finally {
-      setIsCodexBusy(false);
-    }
-  }, [applyCodexConnection, getAuthToken, isSignedIn]);
 
   const renderQwenModelCard = (model: QwenModel, isActive: boolean, onSelect: () => void) => {
     const category = getQwenCategory(model);
@@ -1014,13 +876,12 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                     <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Chat Providers</div>
                       <div className="text-[11px] text-[var(--app-text-muted)]">
-                        Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen`、`OpenRouter`，以及面向你本人开发环境的 `Connect Codex`。
+                        Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen` 与 `OpenRouter` 两条常规 API 路线。
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {[
                           { key: "qwen" as TextProvider, label: "Qwen", Icon: QwenIcon },
                           { key: "openrouter" as TextProvider, label: "OpenRouter", Icon: Globe },
-                          { key: "codex" as const, label: "Connect Codex", Icon: Sparkles },
                         ].map(({ key, label, Icon }) => {
                           const active = activeAgentProvider === key;
                           return (
@@ -1275,142 +1136,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-
-          {activeType === "chat" && activeAgentProvider === "codex" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-[var(--app-text-primary)]">Connect Codex</div>
-                  <div className="text-[11px] text-[var(--app-text-muted)]">
-                    面向你本人开发环境的 beta 连接层。Cloudflare Pages 部署下请在浏览器中上传或粘贴 `auth.json`。
-                  </div>
-                </div>
-                <div className={`rounded-full px-3 py-1 text-[11px] ${
-                  codexConnection.status === "connected"
-                    ? "bg-emerald-500/10 text-emerald-300"
-                    : codexConnection.status === "expired"
-                      ? "bg-amber-500/10 text-amber-300"
-                      : "bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]"
-                }`}>
-                  {codexConnection.status}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-2 text-[12px] text-[var(--app-text-secondary)]">
-                <div>Endpoint: <span className="text-[var(--app-text-primary)]">{CODEX_RESPONSES_BASE_URL}</span></div>
-                <div>Model: <span className="text-[var(--app-text-primary)]">{activeAgentModel || CODEX_DEFAULT_MODEL}</span></div>
-                {codexConnection.accountId ? <div>Account: <span className="text-[var(--app-text-primary)]">{codexConnection.accountId}</span></div> : null}
-                {codexConnection.email ? <div>Email: <span className="text-[var(--app-text-primary)]">{codexConnection.email}</span></div> : null}
-                {codexConnection.expiresAt ? <div>Expires: <span className="text-[var(--app-text-primary)]">{new Date(codexConnection.expiresAt).toLocaleString()}</span></div> : null}
-                {codexConnection.source ? <div>Source: <span className="text-[var(--app-text-primary)]">{codexConnection.source}</span></div> : null}
-              </div>
-
-              {codexMessage && (
-                <div className={`text-[11px] flex items-center gap-1 ${codexMessage.type === "error" ? "text-red-400" : "text-emerald-300"}`}>
-                  {codexMessage.type === "error" ? <AlertCircle size={10} /> : <CheckCircle size={10} />}
-                  {codexMessage.text}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => codexFileInputRef.current?.click()}
-                  disabled={isCodexBusy}
-                  className="rounded-full border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] disabled:opacity-50"
-                >
-                  {isCodexBusy ? "处理中..." : "选择 auth.json"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDisconnectCodex}
-                  disabled={isCodexBusy || codexConnection.status === "disconnected"}
-                  className="rounded-full border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] disabled:opacity-50"
-                >
-                  断开连接
-                </button>
-              </div>
-
-              <input
-                ref={codexFileInputRef}
-                type="file"
-                accept="application/json,.json"
-                onChange={handleCodexFilePick}
-                className="hidden"
-              />
-
-              <div className="space-y-2">
-                <div className="text-[11px] text-[var(--app-text-muted)]">
-                  备用入口：直接粘贴 `~/.codex/auth.json` 的内容，凭据会保存到当前 Clerk 用户的私有 secrets。
-                </div>
-                <textarea
-                  value={codexJsonInput}
-                  onChange={(e) => setCodexJsonInput(e.target.value)}
-                  placeholder='{"tokens":{"access_token":"...","refresh_token":"..."}}'
-                  className="min-h-[140px] w-full resize-y bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-2xl px-3 py-3 text-[12px] text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSavePastedCodexJson}
-                    disabled={isCodexBusy || !codexJsonInput.trim()}
-                    className="rounded-full border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] disabled:opacity-50"
-                  >
-                    保存粘贴内容
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCodexJsonInput("")}
-                    disabled={isCodexBusy || !codexJsonInput}
-                    className="rounded-full border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] disabled:opacity-50"
-                  >
-                    清空
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">Codex Models</div>
-                <select
-                  value={activeAgentModel || CODEX_DEFAULT_MODEL}
-                  onChange={(e) => setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: e.target.value } })}
-                  className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-400 focus:outline-none"
-                >
-                  {CODEX_MODEL_OPTIONS.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.id}
-                    </option>
-                  ))}
-                </select>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {CODEX_MODEL_OPTIONS.map((model) => {
-                    const isActive = activeAgentModel === model.id;
-                    return (
-                      <button
-                        key={model.id}
-                        type="button"
-                        onClick={() => setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: model.id } })}
-                        className={`text-left rounded-2xl border bg-[var(--app-panel-soft)] p-3 space-y-2 transition ${
-                          isActive
-                            ? "border-emerald-300/60 shadow-[0_0_0_1px_rgba(16,185,129,0.35)]"
-                            : "border-[var(--app-border)] hover:border-[var(--app-border-strong)]"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-[var(--app-text-primary)]">{model.label}</div>
-                          <span className={`rounded-full border px-2 py-1 text-[10px] ${model.tone}`}>
-                            {model.id === CODEX_DEFAULT_MODEL ? "Default" : model.id === "codex-mini-latest" ? "Deprecated" : "Available"}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-[var(--app-text-secondary)]">{model.id}</div>
-                        <div className="text-[11px] leading-relaxed text-[var(--app-text-secondary)]">{model.summary}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
 
           {activeType === "multi" && activeMultiProvider === "openrouter" && (
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">

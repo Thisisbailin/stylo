@@ -350,18 +350,7 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
 }
 
 export type TextProvider = 'openrouter' | 'qwen';
-export type AgentTextProvider = TextProvider | 'codex';
-
-export interface CodexConnectionState {
-  status: 'disconnected' | 'connected' | 'expired';
-  source?: 'local_auth_json' | 'manual_json';
-  connectedAt?: number;
-  expiresAt?: number;
-  accountId?: string;
-  email?: string;
-  hasRefreshToken?: boolean;
-  lastError?: string;
-}
+export type AgentTextProvider = TextProvider;
 
 export interface TextServiceConfig {
   provider: TextProvider;
@@ -372,7 +361,6 @@ export interface TextServiceConfig {
   model: string;
   agentBaseUrl?: string;
   agentModel?: string;
-  codexConnection?: CodexConnectionState;
   workModel?: string;
   workBaseUrl?: string;
   qwenModels?: Array<Record<string, any>>;

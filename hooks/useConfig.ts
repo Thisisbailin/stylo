@@ -20,7 +20,7 @@ export const useConfig = (key: string) => {
       const syncApiKeys = parsed.syncApiKeys ?? INITIAL_SYNC_KEYS;
       const safeText = rememberApiKeys ? parsed.textConfig : { ...parsed.textConfig, apiKey: '' };
       const allowedProviders = ["openrouter", "qwen"];
-      const allowedAgentProviders = ["openrouter", "qwen", "codex"];
+      const allowedAgentProviders = ["openrouter", "qwen"];
       const safeProvider =
         safeText?.provider && allowedProviders.includes(safeText.provider)
           ? safeText.provider
@@ -37,7 +37,7 @@ export const useConfig = (key: string) => {
       return {
         syncApiKeys,
         rememberApiKeys,
-        textConfig: { ...INITIAL_TEXT_CONFIG, ...safeText, provider: safeProvider, agentProvider: safeAgentProvider },
+        textConfig: { ...INITIAL_TEXT_CONFIG, ...(safeText || {}), provider: safeProvider, agentProvider: safeAgentProvider },
         videoConfig: { ...INITIAL_VIDEO_CONFIG, ...safeVideo },
         multimodalConfig: safeMulti?.provider
           ? { ...INITIAL_MULTIMODAL_CONFIG, ...safeMulti }

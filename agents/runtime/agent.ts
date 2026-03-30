@@ -17,7 +17,7 @@ import { buildAgentEnvironment } from "./environment";
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems, createAgentSessionInputCallback } from "./memory";
 import { readPersistedAgentSessionMessages } from "./session";
-import { CODEX_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
 import type {
   AgentExecutedToolCall,
   AgentTraceEntry,
@@ -51,7 +51,7 @@ type RuntimeDeps = {
   tracer?: Script2VideoAgentTracer;
 };
 
-const resolveApiKey = (provider: "qwen" | "openrouter" | "codex" | undefined, apiKey?: string) => {
+const resolveApiKey = (provider: "qwen" | "openrouter" | undefined, apiKey?: string) => {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   const envKey =
@@ -60,23 +60,18 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | "codex" | undefined, ap
         env?.VITE_OPENROUTER_API_KEY ||
         processEnv?.OPENROUTER_API_KEY ||
         processEnv?.VITE_OPENROUTER_API_KEY
-      : provider === "codex"
-        ? env?.OPENAI_API_KEY ||
-          env?.VITE_OPENAI_API_KEY ||
-          processEnv?.OPENAI_API_KEY ||
-          processEnv?.VITE_OPENAI_API_KEY
-        : env?.QWEN_API_KEY ||
-          env?.VITE_QWEN_API_KEY ||
-          env?.DASHSCOPE_API_KEY ||
-          env?.VITE_DASHSCOPE_API_KEY ||
-          processEnv?.QWEN_API_KEY ||
-          processEnv?.VITE_QWEN_API_KEY ||
-          processEnv?.DASHSCOPE_API_KEY ||
-          processEnv?.VITE_DASHSCOPE_API_KEY ||
-          env?.OPENAI_API_KEY ||
-          env?.VITE_OPENAI_API_KEY ||
-          processEnv?.OPENAI_API_KEY ||
-          processEnv?.VITE_OPENAI_API_KEY;
+      : env?.QWEN_API_KEY ||
+        env?.VITE_QWEN_API_KEY ||
+        env?.DASHSCOPE_API_KEY ||
+        env?.VITE_DASHSCOPE_API_KEY ||
+        processEnv?.QWEN_API_KEY ||
+        processEnv?.VITE_QWEN_API_KEY ||
+        processEnv?.DASHSCOPE_API_KEY ||
+        processEnv?.VITE_DASHSCOPE_API_KEY ||
+        env?.OPENAI_API_KEY ||
+        env?.VITE_OPENAI_API_KEY ||
+        processEnv?.OPENAI_API_KEY ||
+        processEnv?.VITE_OPENAI_API_KEY;
   const finalKey = (apiKey || envKey || "").trim();
   if (!finalKey) {
     throw new Error("缺少 OpenAI 兼容 API Key，无法运行新的 Agent runtime。");
@@ -84,11 +79,10 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | "codex" | undefined, ap
   return finalKey;
 };
 
-const resolveBaseUrl = (provider: "qwen" | "openrouter" | "codex" | undefined, baseUrl?: string) => {
+const resolveBaseUrl = (provider: "qwen" | "openrouter" | undefined, baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
   if (provider === "openrouter") return OPENROUTER_RESPONSES_BASE_URL;
-  if (provider === "codex") return CODEX_RESPONSES_BASE_URL;
   return QWEN_RESPONSES_BASE_URL;
 };
 
@@ -303,7 +297,7 @@ export const createScript2VideoAgentRuntime = ({
     tracer?.onRunStarted(input);
 
     const config = await configProvider.getConfig();
-    const provider = config.provider === "openrouter" ? "openrouter" : config.provider === "codex" ? "codex" : "qwen";
+    const provider = config.provider === "openrouter" ? "openrouter" : "qwen";
     const apiKey = resolveApiKey(provider, config.apiKey);
     const baseURL = resolveBaseUrl(provider, config.baseUrl);
     debugLog(runId, "provider resolved", {

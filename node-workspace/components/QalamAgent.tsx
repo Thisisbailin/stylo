@@ -15,10 +15,9 @@ import {
 } from "@phosphor-icons/react";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
-import { useAuth } from "../../lib/auth";
 import { ProjectData } from "../../types";
 import { createStableId } from "../../utils/id";
-import { CODEX_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
+import { QWEN_DEFAULT_MODEL } from "../../constants";
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ChatMessage, Message } from "./qalam/types";
 import { useWorkflowStore } from "../store/workflowStore";
@@ -30,7 +29,6 @@ import { LocalSkillLoader } from "../../agents/runtime/skills";
 import { LocalStorageSessionStore } from "../../agents/runtime/session";
 import { useScript2VideoAgent } from "../../agents/react/useScript2VideoAgent";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
-import { getCodexRuntimeToken } from "../../services/codexConnectService";
 
 type Props = {
   projectData: ProjectData;
@@ -128,33 +126,14 @@ const parseMentions = (text: string) => {
   return names;
 };
 
-const resolveAgentProviderConfig = async (
-  textConfig: any,
-  getAuthToken: () => Promise<string | null>
-) => {
+const resolveAgentProviderConfig = async (textConfig: any) => {
   const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
-  const model =
-    textConfig?.agentModel ||
-    textConfig?.model ||
-    (provider === "codex" ? CODEX_DEFAULT_MODEL : QWEN_DEFAULT_MODEL);
+  const model = textConfig?.agentModel || textConfig?.model || QWEN_DEFAULT_MODEL;
   const baseUrl = textConfig?.agentBaseUrl || textConfig?.baseUrl;
-  if (provider !== "codex") {
-    return {
-      provider,
-      apiKey: textConfig?.apiKey,
-      baseUrl,
-      model,
-      qalamTools: textConfig?.qalamTools,
-      tracingDisabled: true,
-    };
-  }
-
-  const token = await getCodexRuntimeToken(getAuthToken);
   return {
-    provider: "codex" as const,
-    apiKey: token.accessToken,
-    baseUrl: token.baseUrl,
-    defaultHeaders: token.accountId ? { "ChatGPT-Account-Id": token.accountId } : undefined,
+    provider,
+    apiKey: textConfig?.apiKey,
+    baseUrl,
     model,
     qalamTools: textConfig?.qalamTools,
     tracingDisabled: true,
@@ -219,14 +198,6 @@ export const QalamAgent: React.FC<Props> = ({
   renderCollapsedTrigger = true,
 }) => {
   const { config } = useConfig("script2video_config_v1");
-  const { getToken } = useAuth();
-  const getAuthToken = useCallback(async () => {
-    try {
-      return await getToken({ template: "default" });
-    } catch {
-      return null;
-    }
-  }, [getToken]);
   const addNode = useWorkflowStore((state) => state.addNode);
   const updateNodeStyle = useWorkflowStore((state) => state.updateNodeStyle);
   const onConnect = useWorkflowStore((state) => state.onConnect);
@@ -504,12 +475,12 @@ export const QalamAgent: React.FC<Props> = ({
         sessionStore: sessionStoreRef.current,
         configProvider: {
           getConfig: async () => ({
-            ...(await resolveAgentProviderConfig(config.textConfig, getAuthToken)),
+            ...(await resolveAgentProviderConfig(config.textConfig)),
             runtimeTarget: "browser",
           }),
         },
       }),
-    [bridge, config.textConfig, getAuthToken]
+    [bridge, config.textConfig]
   );
   const edgeRuntime = useMemo(
     () =>
@@ -517,18 +488,12 @@ export const QalamAgent: React.FC<Props> = ({
         endpoint: "/api/agent",
         getRuntimeConfig: () => ({
           provider: config.textConfig?.agentProvider || config.textConfig?.provider,
-          model:
-            config.textConfig?.agentModel ||
-            config.textConfig?.model ||
-            ((config.textConfig?.agentProvider || config.textConfig?.provider) === "codex"
-              ? CODEX_DEFAULT_MODEL
-              : QWEN_DEFAULT_MODEL),
+          model: config.textConfig?.agentModel || config.textConfig?.model || QWEN_DEFAULT_MODEL,
           baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
         }),
         getProjectDataSnapshot: () => projectData,
-        getAuthToken,
       }),
-    [config.textConfig?.agentBaseUrl, config.textConfig?.agentModel, config.textConfig?.agentProvider, config.textConfig?.baseUrl, config.textConfig?.model, config.textConfig?.provider, getAuthToken, projectData]
+    [config.textConfig?.agentBaseUrl, config.textConfig?.agentModel, config.textConfig?.agentProvider, config.textConfig?.baseUrl, config.textConfig?.model, config.textConfig?.provider, projectData]
   );
   const runtime = useMemo(
     () => ({

@@ -12,7 +12,7 @@ import {
   setTracingExportApiKey,
 } from "@openai/agents";
 import OpenAI from "openai";
-import { CODEX_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
 import { createScript2VideoTools } from "../../agents/tools";
 import { EdgeMemorySession, readEdgeSessionMessages } from "../../agents/runtime/edgeSession";
 import { buildAgentEnvironment } from "../../agents/runtime/environment";
@@ -27,8 +27,6 @@ import {
 import type { AgentRuntimeEvent, Script2VideoRunContext, Script2VideoRunResult } from "../../agents/runtime/types";
 import type { AgentExecutedToolCall } from "../../agents/runtime/types";
 import type { ProjectData } from "../../types";
-import { getUserId } from "./_auth";
-import { readUserSecrets } from "./_userSecrets";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -57,33 +55,6 @@ const resolveBaseUrl = (provider: "qwen" | "openrouter", baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
   return provider === "openrouter" ? OPENROUTER_RESPONSES_BASE_URL : QWEN_RESPONSES_BASE_URL;
-};
-
-const resolveCodexConnection = async (request: Request, env: Record<string, unknown>) => {
-  const userId = await getUserId(request, env as any);
-  const { secrets } = await readUserSecrets(env as any, userId);
-  const codexAuth = secrets.codexAuth;
-  if (!codexAuth) {
-    throw new Error("Codex is not connected for the current account.");
-  }
-  if (codexAuth.apiKey) {
-    return {
-      apiKey: codexAuth.apiKey,
-      baseURL: "https://api.openai.com/v1",
-      defaultHeaders: undefined as Record<string, string> | undefined,
-    };
-  }
-  if (!codexAuth.accessToken) {
-    throw new Error("Codex connection is missing access_token.");
-  }
-  if (codexAuth.expiresAt && codexAuth.expiresAt <= Date.now() + 60_000) {
-    throw new Error("Codex access token expired. Please reconnect.");
-  }
-  return {
-    apiKey: codexAuth.accessToken,
-    baseURL: CODEX_RESPONSES_BASE_URL,
-    defaultHeaders: codexAuth.accountId ? { "ChatGPT-Account-Id": codexAuth.accountId } : undefined,
-  };
 };
 
 const resolveTracingApiKey = (env: Record<string, unknown>) => {
@@ -209,7 +180,7 @@ export const onRequestPost = async (context: any) => {
   }
 
   const runId = `edge-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const provider = body.runtime.provider === "openrouter" ? "openrouter" : body.runtime.provider === "codex" ? "codex" : "qwen";
+  const provider = body.runtime.provider === "openrouter" ? "openrouter" : "qwen";
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
@@ -237,14 +208,11 @@ export const onRequestPost = async (context: any) => {
           tracingEnabled,
         });
 
-        const resolvedAuth =
-          provider === "codex"
-            ? await resolveCodexConnection(context.request, context.env || {})
-            : {
-                apiKey: resolveApiKey(context.env || {}, provider),
-                baseURL: resolveBaseUrl(provider, body.runtime.baseUrl),
-                defaultHeaders: undefined as Record<string, string> | undefined,
-              };
+        const resolvedAuth = {
+          apiKey: resolveApiKey(context.env || {}, provider),
+          baseURL: resolveBaseUrl(provider, body.runtime.baseUrl),
+          defaultHeaders: undefined as Record<string, string> | undefined,
+        };
         const client = new OpenAI({
           apiKey: resolvedAuth.apiKey,
           baseURL: resolvedAuth.baseURL,

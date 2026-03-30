@@ -190,22 +190,66 @@ const normalizeSeedanceVideos = async (sources: string[]) => {
   return results;
 };
 
+const normalizeSeedanceImages = async (sources: string[]) => {
+  const results: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("asset://")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-image/" }));
+      continue;
+    }
+    try {
+      const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: src, bucket: "assets" }),
+      });
+      if (downloadRes.ok) {
+        const downloadData = await downloadRes.json();
+        if (downloadData?.signedUrl) {
+          results.push(downloadData.signedUrl as string);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to resolve Seedance image URL", e);
+    }
+    results.push(src);
+  }
+  return results;
+};
+
 const normalizeSeedanceAudios = async (sources: string[]) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
-    if (
-      src.startsWith("http://") ||
-      src.startsWith("https://") ||
-      src.startsWith("asset://") ||
-      src.startsWith("data:audio/")
-    ) {
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("asset://")) {
       results.push(src);
       continue;
     }
-    if (src.startsWith("blob:")) {
+    if (src.startsWith("data:audio/") || src.startsWith("blob:")) {
       results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }));
       continue;
+    }
+    try {
+      const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: src, bucket: "assets" }),
+      });
+      if (downloadRes.ok) {
+        const downloadData = await downloadRes.json();
+        if (downloadData?.signedUrl) {
+          results.push(downloadData.signedUrl as string);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to resolve Seedance audio URL", e);
     }
     results.push(src);
   }
@@ -792,7 +836,7 @@ export const useLabExecutor = () => {
     try {
       const normalizedVideos = await normalizeSeedanceVideos(referenceVideos.slice(0, 3));
       const normalizedAudios = await normalizeSeedanceAudios(audios.slice(0, 3));
-      const normalizedImages = images.filter(Boolean).slice(0, 9);
+      const normalizedImages = await normalizeSeedanceImages(images.filter(Boolean).slice(0, 9));
 
       const content: Array<Record<string, any>> = [];
       if (prompt) {
@@ -835,7 +879,7 @@ export const useLabExecutor = () => {
           ratio: data.ratio || "adaptive",
           duration:
             typeof data.duration === "number" && Number.isFinite(data.duration)
-              ? data.duration
+              ? Math.max(4, Math.min(15, Math.round(data.duration)))
               : 5,
           watermark: data.watermark === true,
         },

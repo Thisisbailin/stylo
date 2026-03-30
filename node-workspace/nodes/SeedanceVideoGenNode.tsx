@@ -26,10 +26,7 @@ type Props = {
   selected?: boolean;
 };
 
-const clampDuration = (value: number) => {
-  if (value === -1) return -1;
-  return Math.max(4, Math.min(15, Math.round(value)));
-};
+const clampDuration = (value: number) => Math.max(4, Math.min(15, Math.round(value)));
 
 export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useWorkflowStore();
@@ -305,7 +302,7 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
               <Video size={11} className="text-[var(--node-text-secondary)]" />
               <input
                 type="number"
-                min={-1}
+                min={4}
                 max={15}
                 className="w-full bg-transparent text-[9px] font-semibold text-[var(--node-text-primary)] outline-none nodrag"
                 value={currentDuration}

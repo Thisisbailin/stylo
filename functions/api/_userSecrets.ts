@@ -1,10 +1,7 @@
-import type { StoredCodexAuth } from "../../utils/codexAuth";
-
 export type UserSecretsPayload = {
   textApiKey?: string;
   multiApiKey?: string;
   videoApiKey?: string;
-  codexAuth?: StoredCodexAuth | null;
 };
 
 type EnvWithDb = {
@@ -57,4 +54,3 @@ export const writeUserSecrets = async (
     .run();
   return updatedAt;
 };
-

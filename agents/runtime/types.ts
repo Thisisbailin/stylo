@@ -182,7 +182,7 @@ export type Script2VideoRunOptions = {
 };
 
 export type Script2VideoAgentConfig = {
-  provider?: "qwen" | "openrouter" | "codex";
+  provider?: "qwen" | "openrouter";
   runtimeTarget?: "browser" | "edge";
   apiKey?: string;
   baseUrl?: string;
