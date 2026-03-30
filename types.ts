@@ -136,9 +136,6 @@ export interface ProjectRolePortrait {
 export interface ProjectRoleIdentity {
   id: string;
   name: string;
-  familyId?: string;
-  familyName?: string;
-  givenName?: string;
   displayName: string;
   mention: string;
   slug?: string;

@@ -162,8 +162,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
 const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
   const rawMention = toSafeString(role?.mention).replace(/^@/, "");
   const mentionRoot = rawMention.includes("_") ? rawMention.split("_")[0] : rawMention;
-  const name =
-    toSafeString(role?.name || role?.familyName || role?.displayName || mentionRoot || "身份");
+  const name = toSafeString(role?.name || role?.displayName || mentionRoot || "身份");
   const mention = mentionRoot || buildMention(name);
   const kind = role?.kind === "scene" ? "scene" : "person";
   const tone = role?.tone === "sky" ? "sky" : "emerald";
@@ -217,97 +216,6 @@ const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
     portraits,
   };
 };
-
-const migrateLegacyCharacters = (characters: any[]): ProjectRoleIdentity[] =>
-  characters.map((character, index) => {
-    const name = toSafeString(character?.name, `角色${index + 1}`);
-    const mention = buildMention(name);
-    const forms = Array.isArray(character?.forms) && character.forms.length ? character.forms : [null];
-    const portraits = forms
-      .map((form: any, formIndex: number) =>
-        normalizePortrait(
-          {
-            id: form?.id,
-            name:
-              !!form?.isDefault || formIndex === 0 || form?.key === "default"
-                ? "normal"
-                : toSafeString(form?.key || form?.formName || `look${formIndex + 1}`),
-            imageUrl: form?.imageUrl || form?.avatarUrl,
-            createdAt: Date.now(),
-            summary: form?.description || form?.visualTags,
-            isPrimary: !!form?.isDefault || formIndex === 0 || form?.key === "default",
-          },
-          mention,
-          formIndex === 0 ? "normal" : `look${formIndex + 1}`
-        )
-      )
-      .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
-
-    return normalizeRoleIdentity({
-      id: undefined,
-      name,
-      displayName: name,
-      mention,
-      kind: "person",
-      tone: "emerald",
-      isMain: typeof character?.isMain === "boolean" ? character.isMain : false,
-      isCore: typeof character?.isCore === "boolean" ? character.isCore : undefined,
-      title: name,
-      summary: toSafeString(character?.role || "人物身份"),
-      description: toSafeString(character?.bio),
-      episodeUsage: toOptionalString(character?.episodeUsage),
-      tags: Array.isArray(character?.tags) ? character.tags : undefined,
-      status: character?.status,
-      aliases: [name, `@${mention}`, ...(Array.isArray(character?.aliases) ? character.aliases : [])],
-      voiceId: toOptionalString(character?.voiceId),
-      voicePrompt: toOptionalString(character?.voicePrompt),
-      previewAudioUrl: toOptionalString(character?.previewAudioUrl),
-      assetPriority: character?.assetPriority,
-      portraits,
-      avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl,
-    });
-  });
-
-const migrateLegacyLocations = (locations: any[]): ProjectRoleIdentity[] =>
-  locations.map((location, index) => {
-    const name = toSafeString(location?.name, `场景${index + 1}`);
-    const mention = buildMention(name);
-    const zones = Array.isArray(location?.zones) && location.zones.length ? location.zones : [null];
-    const portraits = zones
-      .map((zone: any, zoneIndex: number) =>
-        normalizePortrait(
-          {
-            id: zone?.id,
-            name: toSafeString(zone?.name || (zoneIndex === 0 ? "normal" : `look${zoneIndex + 1}`)),
-            imageUrl: zone?.imageUrl || zone?.avatarUrl,
-            createdAt: Date.now(),
-            summary: zone?.layoutNotes || zone?.lightingWeather || zone?.keyProps,
-            isPrimary: zoneIndex === 0,
-          },
-          mention,
-          zoneIndex === 0 ? "normal" : `look${zoneIndex + 1}`
-        )
-      )
-      .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
-
-    return normalizeRoleIdentity({
-      id: undefined,
-      name,
-      displayName: name,
-      mention,
-      kind: "scene",
-      tone: "sky",
-      title: name,
-      summary: toSafeString(location?.type === "core" ? "核心场景身份" : "场景身份"),
-      description: toSafeString(location?.description || location?.visuals),
-      visualTags: toOptionalString(location?.visuals),
-      episodeUsage: toOptionalString(location?.episodeUsage),
-      aliases: [name, `@${mention}`],
-      assetPriority: location?.assetPriority,
-      portraits,
-      avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl,
-    });
-  });
 
 const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentity[] => {
   const grouped = new Map<string, ProjectRoleIdentity[]>();
@@ -371,22 +279,10 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
 
 const normalizeContext = (context: any): ProjectContext => {
   const explicitRoles = Array.isArray(context?.roles) ? collapseExplicitRoles(context.roles.map(normalizeRoleIdentity)) : [];
-  if (explicitRoles.length > 0) {
-    return {
-      projectSummary: toSafeString(context?.projectSummary),
-      episodeSummaries: Array.isArray(context?.episodeSummaries) ? context.episodeSummaries : [],
-      roles: explicitRoles,
-    };
-  }
-
-  const migratedRoles = [
-    ...migrateLegacyCharacters(Array.isArray(context?.characters) ? context.characters : []),
-    ...migrateLegacyLocations(Array.isArray(context?.locations) ? context.locations : []),
-  ];
   return {
     projectSummary: toSafeString(context?.projectSummary),
     episodeSummaries: Array.isArray(context?.episodeSummaries) ? context.episodeSummaries : [],
-    roles: migratedRoles,
+    roles: explicitRoles,
   };
 };
 

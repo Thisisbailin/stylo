@@ -796,8 +796,6 @@ export const parseUnderstandingJSON = (jsonText: string): UnderstandingImport =>
       projectSummary: toSafeString(contextSource.projectSummary),
       episodeSummaries: derivedSummaries,
       roles: Array.isArray(contextSource.roles) ? contextSource.roles : [],
-      characters: normalizeCharacters(contextSource.characters ?? raw.characters),
-      locations: normalizeLocations(contextSource.locations ?? raw.locations),
     },
   }).context;
 

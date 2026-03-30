@@ -50,7 +50,13 @@ import defaultShotGuide from './guides/ShotGuide.md?raw';
 import defaultSoraGuide from './guides/PromptGuide.md?raw';
 import defaultDramaGuide from './guides/DramaGuide.md?raw';
 import defaultStoryboardGuide from './guides/Storyboard Guide.md?raw';
-import { projectRolesToCharacters, projectRolesToLocations } from './utils/projectRoles';
+import {
+  buildPersonRolesFromAnalysis,
+  buildSceneRolesFromAnalysis,
+  projectRolesToCharacters,
+  projectRolesToLocations,
+  replaceRolesByKind,
+} from './utils/projectRoles';
 
 // --- Helpers: Character stats derived from parsed episodes ---
 const buildCharacterStats = (episodes: Episode[]) => {
@@ -1013,7 +1019,11 @@ const App: React.FC = () => {
           episodes,
           context: {
             ...prev.context,
-            characters: [...updatedExisting, ...newChars],
+            roles: replaceRolesByKind(
+              prev.context.roles || [],
+              'person',
+              buildPersonRolesFromAnalysis([...updatedExisting, ...newChars])
+            ),
           }
         };
       });
@@ -1058,9 +1068,9 @@ const App: React.FC = () => {
             ...prev,
             context: payload.context,
             episodes: updatedEpisodes,
-            contextUsage: payload.contextUsage ?? prev.contextUsage,
-            phase1Usage: payload.phase1Usage ? { ...prev.phase1Usage, ...payload.phase1Usage } : prev.phase1Usage
-          };
+        contextUsage: payload.contextUsage ?? prev.contextUsage,
+        phase1Usage: payload.phase1Usage ? { ...prev.phase1Usage, ...payload.phase1Usage } : prev.phase1Usage
+      };
         });
         alert('Successfully imported understanding data.');
         setActiveTab('understanding');
@@ -1374,7 +1384,10 @@ const App: React.FC = () => {
 
       setProjectData(prev => ({
         ...prev,
-        context: { ...prev.context, characters: finalCharacters },
+        context: {
+          ...prev.context,
+          roles: replaceRolesByKind(prev.context.roles || [], 'person', buildPersonRolesFromAnalysis(finalCharacters)),
+        },
         contextUsage: briefResult?.usage ? ResponsesTextService.addUsage(prev.contextUsage!, briefResult.usage) : prev.contextUsage,
         phase1Usage: {
           ...prev.phase1Usage,
@@ -1455,7 +1468,10 @@ const App: React.FC = () => {
         );
         return {
           ...prev,
-          context: { ...prev.context, characters: updatedChars },
+          context: {
+            ...prev.context,
+            roles: replaceRolesByKind(prev.context.roles || [], 'person', buildPersonRolesFromAnalysis(updatedChars)),
+          },
           contextUsage: ResponsesTextService.addUsage(prev.contextUsage!, result.usage),
           phase1Usage: { ...prev.phase1Usage, charDeepDive: ResponsesTextService.addUsage(prev.phase1Usage.charDeepDive, result.usage) }
         };
@@ -1586,7 +1602,10 @@ const App: React.FC = () => {
 
       setProjectData(prev => ({
         ...prev,
-        context: { ...prev.context, locations: finalLocations },
+        context: {
+          ...prev.context,
+          roles: replaceRolesByKind(prev.context.roles || [], 'scene', buildSceneRolesFromAnalysis(finalLocations)),
+        },
         contextUsage: result?.usage ? ResponsesTextService.addUsage(prev.contextUsage!, result.usage) : prev.contextUsage,
         phase1Usage: {
           ...prev.phase1Usage,
@@ -1665,7 +1684,10 @@ const App: React.FC = () => {
         );
         return {
           ...prev,
-          context: { ...prev.context, locations: updatedLocs },
+          context: {
+            ...prev.context,
+            roles: replaceRolesByKind(prev.context.roles || [], 'scene', buildSceneRolesFromAnalysis(updatedLocs)),
+          },
           contextUsage: ResponsesTextService.addUsage(prev.contextUsage!, result.usage),
           phase1Usage: { ...prev.phase1Usage, locDeepDive: ResponsesTextService.addUsage(prev.phase1Usage.locDeepDive, result.usage) }
         };

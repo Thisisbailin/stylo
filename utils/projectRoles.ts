@@ -152,3 +152,160 @@ export const resolveRoleAsset = (assets: DesignAssetItem[], role: ProjectRoleIde
   const refId = buildIdentityAssetRefId(role, portrait);
   return assets.find((asset) => asset.category === "identity" && asset.refId === refId)?.url;
 };
+
+type AnalysisCharacterDraft = {
+  id?: string;
+  name: string;
+  role?: string;
+  isMain?: boolean;
+  isCore?: boolean;
+  bio?: string;
+  forms?: any[];
+  aliases?: Array<{ id?: string; value: string; normalized?: string }>;
+  status?: ProjectRoleIdentity["status"];
+  assetPriority?: ProjectRoleIdentity["assetPriority"];
+  archetype?: string;
+  episodeUsage?: string;
+  tags?: string[];
+  voiceId?: string;
+  voicePrompt?: string;
+  previewAudioUrl?: string;
+  voiceReferenceAudioUrl?: string;
+};
+
+type AnalysisLocationDraft = {
+  id?: string;
+  name: string;
+  type?: "core" | "secondary";
+  description?: string;
+  visuals?: string;
+  zones?: any[];
+  assetPriority?: ProjectRoleIdentity["assetPriority"];
+  episodeUsage?: string;
+};
+
+const buildPortraitsFromAnalysisForms = (mention: string, forms: any[] | undefined) => {
+  const source = Array.isArray(forms) && forms.length > 0 ? forms : [{ formName: "normal", isDefault: true }];
+  return source
+    .map((form, index) => {
+      const rawName =
+        form?.isDefault || index === 0 || form?.key === "default"
+          ? "normal"
+          : String(form?.key || form?.formName || `look${index + 1}`);
+      const name = sanitizeIdentityToken(rawName, index === 0 ? "normal" : `look${index + 1}`);
+      return {
+        id: String(form?.id || `portrait-${mention}-${index + 1}`),
+        name,
+        mention: buildPortraitMention(mention, name),
+        imageUrl: typeof form?.imageUrl === "string" ? form.imageUrl : "",
+        createdAt: Date.now() + index,
+        summary:
+          typeof form?.description === "string" && form.description.trim()
+            ? form.description.trim()
+            : typeof form?.visualTags === "string"
+              ? form.visualTags.trim()
+              : undefined,
+        isPrimary: !!form?.isDefault || index === 0 || name === "normal",
+      } satisfies ProjectRolePortrait;
+    })
+    .slice(0, MAX_ROLE_PORTRAITS);
+};
+
+const buildPortraitsFromAnalysisZones = (mention: string, zones: any[] | undefined) => {
+  const source = Array.isArray(zones) && zones.length > 0 ? zones : [{ name: "normal" }];
+  return source
+    .map((zone, index) => {
+      const name = sanitizeIdentityToken(String(zone?.name || (index === 0 ? "normal" : `look${index + 1}`)), index === 0 ? "normal" : `look${index + 1}`);
+      return {
+        id: String(zone?.id || `portrait-${mention}-${index + 1}`),
+        name,
+        mention: buildPortraitMention(mention, name),
+        imageUrl: typeof zone?.imageUrl === "string" ? zone.imageUrl : "",
+        createdAt: Date.now() + index,
+        summary:
+          typeof zone?.layoutNotes === "string" && zone.layoutNotes.trim()
+            ? zone.layoutNotes.trim()
+            : typeof zone?.lightingWeather === "string"
+              ? zone.lightingWeather.trim()
+              : undefined,
+        isPrimary: index === 0 || name === "normal",
+      } satisfies ProjectRolePortrait;
+    })
+    .slice(0, MAX_ROLE_PORTRAITS);
+};
+
+export const buildPersonRolesFromAnalysis = (items: AnalysisCharacterDraft[]): ProjectRoleIdentity[] =>
+  items
+    .filter((item) => item?.name?.trim())
+    .map((item) => {
+      const name = item.name.trim();
+      const mention = buildRoleMention(name);
+      const portraits = buildPortraitsFromAnalysisForms(mention, item.forms);
+      return {
+        id: String(item.id || `role-${mention}`),
+        name,
+        displayName: name,
+        mention,
+        slug: slugifyIdentityKey(name, mention),
+        kind: "person",
+        tone: "emerald",
+        isMain: !!item.isMain,
+        isCore: item.isCore,
+        title: item.archetype || name,
+        summary: item.role || "人物身份",
+        description: item.bio || "",
+        episodeUsage: item.episodeUsage,
+        tags: item.tags,
+        status: item.status || "draft",
+        aliases: item.aliases,
+        binding: {
+          mention,
+          aliases: [name, `@${mention}`],
+        },
+        voiceId: item.voiceId,
+        voicePrompt: item.voicePrompt,
+        previewAudioUrl: item.previewAudioUrl,
+        voiceReferenceAudioUrl: item.voiceReferenceAudioUrl,
+        assetPriority: item.assetPriority,
+        avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl,
+        portraits,
+      };
+    });
+
+export const buildSceneRolesFromAnalysis = (items: AnalysisLocationDraft[]): ProjectRoleIdentity[] =>
+  items
+    .filter((item) => item?.name?.trim())
+    .map((item) => {
+      const name = item.name.trim();
+      const mention = buildRoleMention(name);
+      const portraits = buildPortraitsFromAnalysisZones(mention, item.zones);
+      return {
+        id: String(item.id || `role-${mention}`),
+        name,
+        displayName: name,
+        mention,
+        slug: slugifyIdentityKey(name, mention),
+        kind: "scene",
+        tone: "sky",
+        isCore: item.type === "core",
+        title: name,
+        summary: item.type === "core" ? "核心场景身份" : "场景身份",
+        description: item.description || "",
+        visualTags: item.visuals,
+        episodeUsage: item.episodeUsage,
+        status: "draft",
+        binding: {
+          mention,
+          aliases: [name, `@${mention}`],
+        },
+        assetPriority: item.assetPriority,
+        avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl,
+        portraits,
+      };
+    });
+
+export const replaceRolesByKind = (
+  roles: ProjectRoleIdentity[],
+  kind: ProjectRoleIdentity["kind"],
+  nextRoles: ProjectRoleIdentity[]
+) => [...(roles || []).filter((role) => role.kind !== kind), ...nextRoles];

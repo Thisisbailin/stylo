@@ -47,8 +47,6 @@ type ProjectMeta = {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
     roles: Array<Record<string, unknown>>;
-    characters?: Array<Record<string, unknown>>;
-    locations?: Array<Record<string, unknown>>;
   };
   contextUsage: typeof emptyTokenUsage;
   phase1Usage: typeof emptyPhase1Usage;
@@ -70,8 +68,6 @@ const DEFAULT_META: ProjectMeta = {
     projectSummary: "",
     episodeSummaries: [],
     roles: [],
-    characters: [],
-    locations: []
   },
   contextUsage: emptyTokenUsage,
   phase1Usage: emptyPhase1Usage,
@@ -275,18 +271,6 @@ const loadProjectData = async (env: Env, userId: string) => {
     .bind(userId)
     .all();
 
-  const charactersResult = await env.DB.prepare(
-    "SELECT char_id, data FROM user_project_characters WHERE user_id = ?1 ORDER BY char_id ASC"
-  )
-    .bind(userId)
-    .all();
-
-  const locationsResult = await env.DB.prepare(
-    "SELECT loc_id, data FROM user_project_locations WHERE user_id = ?1 ORDER BY loc_id ASC"
-  )
-    .bind(userId)
-    .all();
-
   const episodesMap = new Map<number, any>();
   const getEpisode = (episodeId: number) => {
     if (!episodesMap.has(episodeId)) {
@@ -349,19 +333,7 @@ const loadProjectData = async (env: Env, userId: string) => {
     });
   });
 
-  const characters = (charactersResult?.results || []).map((row: any) => {
-    const data = safeJsonParse<Record<string, unknown>>(row.data, {});
-    return { ...data, id: row.char_id };
-  });
-
-  const locations = (locationsResult?.results || []).map((row: any) => {
-    const data = safeJsonParse<Record<string, unknown>>(row.data, {});
-    return { ...data, id: row.loc_id };
-  });
-
   const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
-  const metaCharacters = Array.isArray(meta.context?.characters) ? meta.context.characters : [];
-  const metaLocations = Array.isArray(meta.context?.locations) ? meta.context.locations : [];
 
   const episodes = Array.from(episodesMap.values()).sort((a, b) => a.id - b.id);
 
@@ -373,8 +345,6 @@ const loadProjectData = async (env: Env, userId: string) => {
       projectSummary: meta.context?.projectSummary || "",
       episodeSummaries: meta.context?.episodeSummaries || [],
       roles: metaRoles,
-      characters: metaRoles.length ? [] : (characters.length > 0 ? characters : metaCharacters),
-      locations: metaRoles.length ? [] : (locations.length > 0 ? locations : metaLocations)
     },
     shotGuide: meta.shotGuide || "",
     soraGuide: meta.soraGuide || "",
