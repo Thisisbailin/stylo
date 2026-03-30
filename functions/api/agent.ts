@@ -2,7 +2,7 @@ import {
   Agent,
   InputGuardrailTripwireTriggered,
   OutputGuardrailTripwireTriggered,
-  Runner,
+  run,
   ToolInputGuardrailTripwireTriggered,
   ToolOutputGuardrailTripwireTriggered,
   generateTraceId,
@@ -289,23 +289,10 @@ export const onRequestPost = async (context: any) => {
           tools: enabledTools,
         });
 
-        const runner = new Runner({
-          tracingDisabled: !tracingEnabled,
-          traceIncludeSensitiveData: resolveTraceIncludeSensitiveData(context.env || {}),
-          workflowName: "Qalam Agent",
-          traceId,
-          groupId: body.run.sessionId,
-          traceMetadata: {
-            runtimeTarget: "edge",
-            provider,
-            model: body.runtime.model,
-          },
-          ...(tracingEnabled ? { tracing: { apiKey: tracingApiKey } } : {}),
-        });
-
         let accumulatedText = "";
         let accumulatedReasoning = "";
-        const result = await runner.run(agent, runInputItems, {
+        let streamedResponseText = "";
+        const result = await run(agent, runInputItems, {
           stream: true,
           maxTurns: EDGE_AGENT_MAX_TURNS,
           signal: context.request.signal,
@@ -355,16 +342,24 @@ export const onRequestPost = async (context: any) => {
                 text: accumulatedReasoning,
               });
             }
+            if (rawType === "response_done") {
+              const responsePayload = providerEvent?.response || (value as any)?.data?.response;
+              const candidate = extractTextFromResponseOutput(responsePayload?.output);
+              if (candidate) {
+                streamedResponseText = candidate;
+              }
+            }
           }
         } finally {
           streamReader.releaseLock();
         }
 
-        await (result as any).completed;
+        await (result as any)?.completed;
         const synthesizedToolText = summarizeSuccessfulToolCalls(toolCalls);
         const finalText =
           String(result.finalOutput || "").trim() ||
           accumulatedText ||
+          streamedResponseText ||
           extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output) ||
           synthesizedToolText;
         const runResult: QalamRunResult = {
@@ -410,6 +405,7 @@ export const onRequestPost = async (context: any) => {
         const hasSuccessfulAction = toolCalls.some(
           (toolCall) => toolCall.status === "success" && SUCCESSFUL_ACTION_TOOL_NAMES.has(toolCall.name)
         );
+        const fallbackText = accumulatedText.trim() || streamedResponseText.trim() || synthesizedToolText;
         if (isMaxTurns && synthesizedToolText && hasSuccessfulAction) {
           const runResult: QalamRunResult = {
             finalText: synthesizedToolText,
@@ -429,6 +425,34 @@ export const onRequestPost = async (context: any) => {
             type: "message_completed",
             runId,
             text: synthesizedToolText,
+          });
+          emitEvent(controller, {
+            type: "run_completed",
+            runId,
+            result: runResult,
+          });
+          emitResult(controller, runResult);
+          return;
+        }
+        if (fallbackText) {
+          const runResult: QalamRunResult = {
+            finalText: fallbackText,
+            sessionId: body.run.sessionId,
+            outputItems: [
+              ...toolCalls.map((toolCall) => ({ kind: "tool_result", toolCall }) as const),
+              { kind: "text", text: fallbackText },
+            ],
+            toolCalls,
+            updatedProjectData: bridgeState.hasUpdatedProjectData() ? bridgeState.getProjectData() : undefined,
+            tracing: {
+              enabled: tracingEnabled,
+              traceId,
+            },
+          };
+          emitEvent(controller, {
+            type: "message_completed",
+            runId,
+            text: fallbackText,
           });
           emitEvent(controller, {
             type: "run_completed",
