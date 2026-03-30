@@ -210,6 +210,9 @@ const extractTextFromResponseOutput = (output: unknown): string => {
   return parts.join("\n").trim();
 };
 
+const isLateStreamEnqueueError = (error: unknown) =>
+  String((error as any)?.message || error || "").includes("Unable to enqueue");
+
 const summarizeSuccessfulToolCalls = (toolCalls: AgentExecutedToolCall[]) => {
   const successfulCalls = toolCalls.filter((toolCall) => toolCall.status === "success" && toolCall.summary?.trim());
   if (!successfulCalls.length) return "";
@@ -263,21 +266,39 @@ const createSseResponse = (stream: ReadableStream<Uint8Array>) =>
   });
 
 const emitEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: AgentRuntimeEvent) => {
-  controller.enqueue(
-    new TextEncoder().encode(serializeAgentStreamPacket({ kind: "event", event }))
-  );
+  try {
+    controller.enqueue(
+      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "event", event }))
+    );
+  } catch (error: any) {
+    if (!String(error?.message || error).includes("Unable to enqueue")) {
+      throw error;
+    }
+  }
 };
 
 const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: QalamRunResult) => {
-  controller.enqueue(
-    new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))
-  );
+  try {
+    controller.enqueue(
+      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))
+    );
+  } catch (error: any) {
+    if (!String(error?.message || error).includes("Unable to enqueue")) {
+      throw error;
+    }
+  }
 };
 
 const emitError = (controller: ReadableStreamDefaultController<Uint8Array>, error: string) => {
-  controller.enqueue(
-    new TextEncoder().encode(serializeAgentStreamPacket({ kind: "error", error }))
-  );
+  try {
+    controller.enqueue(
+      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "error", error }))
+    );
+  } catch (errorLike: any) {
+    if (!String(errorLike?.message || errorLike).includes("Unable to enqueue")) {
+      throw errorLike;
+    }
+  }
 };
 
 const emitTrace = (
@@ -568,7 +589,39 @@ export const onRequestPost = async (context: any) => {
           streamReader.releaseLock();
         }
 
-        await (result as any)?.completed;
+        try {
+          await (result as any)?.completed;
+        } catch (error: any) {
+          const completedTextCandidate =
+            String(result.finalOutput || "").trim() ||
+            accumulatedText ||
+            streamedResponseText ||
+            extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output);
+          if (!isLateStreamEnqueueError(error) || !completedTextCandidate) {
+            throw error;
+          }
+          debugLog(debugEnabled, runId, "ignored late stream enqueue error after completed response", {
+            error: error?.message || String(error),
+            completedTextLength: completedTextCandidate.length,
+            rawResponses: result.rawResponses?.length || 0,
+          });
+          emitTrace(
+            controller,
+            runId,
+            "result",
+            "info",
+            "Ignored late stream enqueue error",
+            error?.message || String(error),
+            JSON.stringify(
+              {
+                completedTextLength: completedTextCandidate.length,
+                rawResponses: result.rawResponses?.length || 0,
+              },
+              null,
+              2
+            )
+          );
+        }
         const synthesizedToolText = summarizeSuccessfulToolCalls(toolCalls);
         const finalText =
           String(result.finalOutput || "").trim() ||
@@ -752,7 +805,13 @@ export const onRequestPost = async (context: any) => {
         });
         emitError(controller, message);
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch (error: any) {
+          if (!String(error?.message || error).includes("Controller is already closed")) {
+            throw error;
+          }
+        }
       }
     },
   });

@@ -34,6 +34,56 @@ const patches = [
         .replaceAll("node_1.NodeMCPServerStreamableHttp", "browser_1.MCPServerStreamableHttp")
         .replaceAll("node_1.NodeMCPServerSSE", "browser_1.MCPServerSSE"),
   },
+  {
+    file: "node_modules/@openai/agents-core/dist/result.mjs",
+    transform: (source) =>
+      source.replace(
+        `    _addItem(item) {
+        if (!this.cancelled) {
+            this.#readableController?.enqueue(item);
+        }
+    }`,
+        `    _addItem(item) {
+        if (this.cancelled) {
+            return;
+        }
+        try {
+            this.#readableController?.enqueue(item);
+        }
+        catch (error) {
+            if (String(error?.message || error).includes('Unable to enqueue')) {
+                return;
+            }
+            throw error;
+        }
+    }`
+      ),
+  },
+  {
+    file: "node_modules/@openai/agents-core/dist/result.js",
+    transform: (source) =>
+      source.replace(
+        `    _addItem(item) {
+        if (!this.cancelled) {
+            this.#readableController?.enqueue(item);
+        }
+    }`,
+        `    _addItem(item) {
+        if (this.cancelled) {
+            return;
+        }
+        try {
+            this.#readableController?.enqueue(item);
+        }
+        catch (error) {
+            if (String((error === null || error === void 0 ? void 0 : error.message) || error).includes('Unable to enqueue')) {
+                return;
+            }
+            throw error;
+        }
+    }`
+      ),
+  },
 ];
 
 const applyPatch = async ({ file, transform }) => {
