@@ -523,13 +523,12 @@ export const QalamAgent: React.FC<Props> = ({
   const runtime = useMemo(
     () => ({
       run: (input: any, options?: any) => {
-        const preferredTarget =
-          config.textConfig?.agentRuntimeTarget ||
-          ((import.meta as any)?.env?.VITE_AGENT_RUNTIME_TARGET === "browser" ? "browser" : "edge");
+        // Temporary investigation mode: force browser runtime so DevTools shows the full local Agent trace.
+        const preferredTarget = "browser";
         return preferredTarget === "edge" ? edgeRuntime.run(input, options) : browserRuntime.run(input, options);
       },
     }),
-    [browserRuntime, config.textConfig?.agentRuntimeTarget, edgeRuntime]
+    [browserRuntime, edgeRuntime]
   );
   const mentionTargets = useMemo(() => {
     const targets: Array<{ kind: "character" | "location"; name: string; label: string; search: string; id?: string }> = [];

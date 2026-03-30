@@ -1,4 +1,5 @@
 const BROWSER_DEBUG_STORAGE_KEY = "qalam:agent-debug";
+const FORCE_BROWSER_AGENT_DEBUG = true;
 
 const isTruthy = (value?: string | null) => {
   if (!value) return false;
@@ -7,6 +8,7 @@ const isTruthy = (value?: string | null) => {
 };
 
 export const isBrowserAgentDebugEnabled = () => {
+  if (FORCE_BROWSER_AGENT_DEBUG) return true;
   if (typeof window === "undefined") return false;
   try {
     if (isTruthy(window.localStorage.getItem(BROWSER_DEBUG_STORAGE_KEY))) return true;
