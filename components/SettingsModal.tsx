@@ -541,6 +541,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                     })}
                                     className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg px-4 py-2 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                 />
+                                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                    如果使用 Cloudflare Pages Functions 后台环境变量（如 `ARK_API_KEY`）代理调用，可以留空。留空时密钥不会进入浏览器。
+                                </p>
                             </div>
 
                             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">

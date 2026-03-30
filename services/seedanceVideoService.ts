@@ -5,7 +5,7 @@ import type {
   VideoServiceConfig,
 } from "../types";
 import { SEEDANCE_DEFAULT_BASE_URL } from "../constants";
-import { wrapWithProxy } from "../utils/api";
+import { buildApiUrl, wrapWithProxy } from "../utils/api";
 
 const resolveApiKey = (config?: VideoServiceConfig) => {
   const envKey =
@@ -26,6 +26,16 @@ const resolveApiKey = (config?: VideoServiceConfig) => {
 
 const resolveBaseUrl = (config?: VideoServiceConfig) =>
   (config?.baseUrl || SEEDANCE_DEFAULT_BASE_URL).replace(/\/+$/, "");
+
+const buildServerProxyUrl = (path: string, config?: VideoServiceConfig) => {
+  const endpoint = buildApiUrl(path);
+  const url = new URL(endpoint, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  const baseUrl = resolveBaseUrl(config);
+  if (baseUrl && baseUrl !== SEEDANCE_DEFAULT_BASE_URL) {
+    url.searchParams.set("baseUrl", baseUrl);
+  }
+  return url.toString();
+};
 
 const mapStatus = (value?: string): SeedanceTaskStatusResult["status"] => {
   const normalized = (value || "").toLowerCase();
@@ -90,16 +100,16 @@ export const createSeedanceTask = async (
   config?: VideoServiceConfig
 ): Promise<SeedanceTaskSubmissionResult> => {
   const apiKey = resolveApiKey(config);
-  if (!apiKey) {
-    throw new Error("Missing ARK API key. 请配置 ARK_API_KEY / VITE_ARK_API_KEY 或 Video API Key。");
-  }
-
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(wrapWithProxy(`${baseUrl}/contents/generations/tasks`), {
+  const response = await fetch(
+    apiKey
+      ? wrapWithProxy(`${baseUrl}/contents/generations/tasks`)
+      : buildServerProxyUrl("/api/seedance/contents/generations/tasks", config),
+    {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     body: JSON.stringify({
       model: params.model,
@@ -111,7 +121,8 @@ export const createSeedanceTask = async (
       watermark: params.watermark ?? false,
       ...(params.useWebSearch ? { tools: [{ type: "web_search" }] } : {}),
     }),
-  });
+    }
+  );
 
   const data = await parseJson(response);
   const id = data?.id || data?.task_id || data?.output?.task_id;
@@ -129,18 +140,19 @@ export const getSeedanceTask = async (
   config?: VideoServiceConfig
 ): Promise<SeedanceTaskStatusResult> => {
   const apiKey = resolveApiKey(config);
-  if (!apiKey) {
-    throw new Error("Missing ARK API key. 请配置 ARK_API_KEY / VITE_ARK_API_KEY 或 Video API Key。");
-  }
-
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(wrapWithProxy(`${baseUrl}/contents/generations/tasks/${taskId}`), {
+  const response = await fetch(
+    apiKey
+      ? wrapWithProxy(`${baseUrl}/contents/generations/tasks/${taskId}`)
+      : buildServerProxyUrl(`/api/seedance/contents/generations/tasks/${taskId}`, config),
+    {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
-  });
+    }
+  );
 
   const data = await parseJson(response);
   const statusRaw = data?.status || data?.output?.status || data?.task_status;

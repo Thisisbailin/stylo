@@ -17,7 +17,7 @@ import { buildAgentEnvironment } from "./environment";
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems, createAgentSessionInputCallback } from "./memory";
 import { readPersistedAgentSessionMessages } from "./session";
-import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import { ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
 import type {
   AgentExecutedToolCall,
   AgentTraceEntry,
@@ -51,7 +51,7 @@ type RuntimeDeps = {
   tracer?: QalamAgentTracer;
 };
 
-const resolveApiKey = (provider: "qwen" | "openrouter" | undefined, apiKey?: string) => {
+const resolveApiKey = (provider: "qwen" | "openrouter" | "ark" | undefined, apiKey?: string) => {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   const envKey =
@@ -60,6 +60,11 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | undefined, apiKey?: str
         env?.VITE_OPENROUTER_API_KEY ||
         processEnv?.OPENROUTER_API_KEY ||
         processEnv?.VITE_OPENROUTER_API_KEY
+      : provider === "ark"
+        ? env?.ARK_API_KEY ||
+          env?.VITE_ARK_API_KEY ||
+          processEnv?.ARK_API_KEY ||
+          processEnv?.VITE_ARK_API_KEY
       : env?.QWEN_API_KEY ||
         env?.VITE_QWEN_API_KEY ||
         env?.DASHSCOPE_API_KEY ||
@@ -79,10 +84,11 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | undefined, apiKey?: str
   return finalKey;
 };
 
-const resolveBaseUrl = (provider: "qwen" | "openrouter" | undefined, baseUrl?: string) => {
+const resolveBaseUrl = (provider: "qwen" | "openrouter" | "ark" | undefined, baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
   if (provider === "openrouter") return OPENROUTER_RESPONSES_BASE_URL;
+  if (provider === "ark") return ARK_RESPONSES_BASE_URL;
   return QWEN_RESPONSES_BASE_URL;
 };
 
@@ -297,7 +303,12 @@ export const createQalamAgentRuntime = ({
     tracer?.onRunStarted(input);
 
     const config = await configProvider.getConfig();
-    const provider = config.provider === "openrouter" ? "openrouter" : "qwen";
+    const provider =
+      config.provider === "openrouter"
+        ? "openrouter"
+        : config.provider === "ark"
+          ? "ark"
+          : "qwen";
     const apiKey = resolveApiKey(provider, config.apiKey);
     const baseURL = resolveBaseUrl(provider, config.baseUrl);
     debugLog(runId, "provider resolved", {

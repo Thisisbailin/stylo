@@ -12,7 +12,7 @@ import {
   setTracingExportApiKey,
 } from "@openai/agents";
 import OpenAI from "openai";
-import { OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import { ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_RESPONSES_BASE_URL } from "../../constants";
 import { createQalamTools } from "../../agents/tools";
 import { EdgeMemorySession, readEdgeSessionMessages } from "../../agents/runtime/edgeSession";
 import { buildAgentEnvironment } from "../../agents/runtime/environment";
@@ -40,10 +40,12 @@ const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
   "operate_project_resource",
 ]);
 
-const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter") => {
+const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark") => {
   const value =
     provider === "openrouter"
       ? env.OPENROUTER_API_KEY
+      : provider === "ark"
+        ? env.ARK_API_KEY
       : env.QWEN_API_KEY || env.DASHSCOPE_API_KEY || env.OPENAI_API_KEY;
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`Pages Functions 未配置 ${provider} 的可用 API Key。`);
@@ -51,10 +53,12 @@ const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrou
   return value.trim();
 };
 
-const resolveBaseUrl = (provider: "qwen" | "openrouter", baseUrl?: string) => {
+const resolveBaseUrl = (provider: "qwen" | "openrouter" | "ark", baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
-  return provider === "openrouter" ? OPENROUTER_RESPONSES_BASE_URL : QWEN_RESPONSES_BASE_URL;
+  if (provider === "openrouter") return OPENROUTER_RESPONSES_BASE_URL;
+  if (provider === "ark") return ARK_RESPONSES_BASE_URL;
+  return QWEN_RESPONSES_BASE_URL;
 };
 
 const resolveTracingApiKey = (env: Record<string, unknown>) => {
@@ -180,7 +184,12 @@ export const onRequestPost = async (context: any) => {
   }
 
   const runId = `edge-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const provider = body.runtime.provider === "openrouter" ? "openrouter" : "qwen";
+  const provider =
+    body.runtime.provider === "openrouter"
+      ? "openrouter"
+      : body.runtime.provider === "ark"
+        ? "ark"
+        : "qwen";
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {

@@ -182,7 +182,7 @@ export type QalamRunOptions = {
 };
 
 export type QalamAgentConfig = {
-  provider?: "qwen" | "openrouter";
+  provider?: "qwen" | "openrouter" | "ark";
   runtimeTarget?: "browser" | "edge";
   apiKey?: string;
   baseUrl?: string;

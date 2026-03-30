@@ -16,8 +16,10 @@ import {
 } from "lucide-react";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
-import { TextProvider } from "../../types";
+import { AgentTextProvider } from "../../types";
 import {
+  ARK_DEFAULT_MODEL,
+  ARK_RESPONSES_BASE_URL,
   DEFAULT_QALAM_TOOL_SETTINGS,
   INITIAL_VIDU_CONFIG,
   NANOBANANA_PRO_ENDPOINT,
@@ -46,6 +48,7 @@ import {
   type AgentToolActivityRecord,
 } from "../../agents/runtime/activity";
 import { useWorkflowStore } from "../store/workflowStore";
+import { fetchArkModels, type ArkModel } from "../../services/arkResponsesService";
 import { fetchTextModels } from "../../services/responsesTextService";
 import { fetchQwenModels, type QwenModel } from "../../services/qwenResponsesService";
 import { createStableId } from "../../utils/id";
@@ -248,8 +251,11 @@ const getLastArtifact = (records: AgentToolActivityRecord[]) =>
     .filter((record) => record.lastCompletedAt && record.lastArtifact)
     .sort((a, b) => (b.lastCompletedAt || 0) - (a.lastCompletedAt || 0))[0];
 
-const resolveAgentModelForProvider = (provider: TextProvider, configured?: string) =>
-  provider === "qwen" ? (configured || QWEN_DEFAULT_MODEL) : (configured || "");
+const resolveAgentModelForProvider = (provider: AgentTextProvider, configured?: string) => {
+  if (provider === "qwen") return configured || QWEN_DEFAULT_MODEL;
+  if (provider === "ark") return configured || ARK_DEFAULT_MODEL;
+  return configured || "";
+};
 
 const resolveMultiProviderKey = (provider?: string): MultiProviderKey => {
   if (provider === "wan") return "qwen";
@@ -294,6 +300,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [qwenChatModels, setQwenChatModels] = useState<QwenModel[]>([]);
   const [qwenModelsRaw, setQwenModelsRaw] = useState<string>("");
   const [showQwenRaw, setShowQwenRaw] = useState(false);
+  const [isLoadingArkChatModels, setIsLoadingArkChatModels] = useState(false);
+  const [arkChatFetchMessage, setArkChatFetchMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [arkChatModels, setArkChatModels] = useState<ArkModel[]>([]);
+  const [arkModelsRaw, setArkModelsRaw] = useState<string>("");
+  const [showArkRaw, setShowArkRaw] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runtimeMetaVersion, setRuntimeMetaVersion] = useState(0);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
@@ -337,8 +348,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
       },
     };
   }, [config.textConfig.qalamTools]);
-  const activeAgentProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
-  const activeAgentBaseUrl = config.textConfig.agentBaseUrl || config.textConfig.baseUrl || QWEN_RESPONSES_BASE_URL;
+  const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
+  const activeAgentBaseUrl =
+    config.textConfig.agentBaseUrl ||
+    config.textConfig.baseUrl ||
+    (activeAgentProvider === "ark" ? ARK_RESPONSES_BASE_URL : QWEN_RESPONSES_BASE_URL);
   const activeAgentModel = resolveAgentModelForProvider(
     activeAgentProvider,
     config.textConfig.agentModel || config.textConfig.model
@@ -506,10 +520,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     setActiveMultiProvider(resolveMultiProviderKey(config.multimodalConfig.provider));
   }, [config.multimodalConfig.provider]);
 
-  const setProvider = (p: TextProvider) => {
+  const setProvider = (p: AgentTextProvider) => {
     const nextConfig = { ...config.textConfig };
     if (p === "openrouter") {
       nextConfig.agentBaseUrl = nextConfig.agentBaseUrl || OPENROUTER_BASE_URL;
+      nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
+    } else if (p === "ark") {
+      nextConfig.agentBaseUrl = ARK_RESPONSES_BASE_URL;
       nextConfig.agentModel = resolveAgentModelForProvider(p, nextConfig.agentModel);
     } else {
       nextConfig.agentBaseUrl = QWEN_RESPONSES_BASE_URL;
@@ -672,7 +689,34 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
-  const renderQwenModelCard = (model: QwenModel, isActive: boolean, onSelect: () => void) => {
+  const handleFetchArkModels = async () => {
+    setIsLoadingArkChatModels(true);
+    setArkChatFetchMessage(null);
+    try {
+      const { models, raw } = await fetchArkModels(activeAgentBaseUrl || ARK_RESPONSES_BASE_URL);
+      setArkChatModels(models);
+      setArkModelsRaw(JSON.stringify(raw, null, 2));
+      setArkChatFetchMessage({
+        type: "success",
+        text: models.length ? `获取成功，${models.length} 个模型` : "获取成功，但返回为空",
+      });
+      setConfig((prev) => {
+        if (!models.length) return prev;
+        const nextText = { ...prev.textConfig };
+        if (!nextText.agentModel || !models.find((m) => m.id === nextText.agentModel)) {
+          nextText.agentModel = models[0].id;
+        }
+        return { ...prev, textConfig: nextText };
+      });
+    } catch (e: any) {
+      setArkChatFetchMessage({ type: "error", text: e.message || "拉取失败" });
+      setArkModelsRaw("");
+    } finally {
+      setIsLoadingArkChatModels(false);
+    }
+  };
+
+  const renderCompatibleModelCard = (model: QwenModel | ArkModel, isActive: boolean, onSelect: () => void) => {
     const category = getQwenCategory(model);
     const tags = getQwenTags(model);
     const description = model.description || (model as any).summary || (model as any).display_name || "";
@@ -918,12 +962,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                     <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Chat Providers</div>
                       <div className="text-[11px] text-[var(--app-text-muted)]">
-                        Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen` 与 `OpenRouter` 两条常规 API 路线。
+                        Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen`、`Seed / Ark` 与 `OpenRouter` 三条常规 API 路线。
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { key: "qwen" as TextProvider, label: "Qwen", Icon: QwenIcon },
-                          { key: "openrouter" as TextProvider, label: "OpenRouter", Icon: Globe },
+                          { key: "qwen" as AgentTextProvider, label: "Qwen", Icon: QwenIcon },
+                          { key: "ark" as AgentTextProvider, label: "Seed / Ark", Icon: Sparkles },
+                          { key: "openrouter" as AgentTextProvider, label: "OpenRouter", Icon: Globe },
                         ].map(({ key, label, Icon }) => {
                           const active = activeAgentProvider === key;
                           return (
@@ -1062,6 +1107,103 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
+          {activeType === "chat" && activeAgentProvider === "ark" && (
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-[var(--app-text-secondary)]">Volcengine Ark</div>
+              </div>
+              <div className="text-[11px] text-[var(--app-text-muted)]">
+                主选路线之一。edge runtime 仅读取 Cloudflare Pages Functions 环境变量 `ARK_API_KEY`，不会把密钥下发到浏览器。
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs text-[var(--app-text-secondary)] mb-1">API Endpoint</div>
+                  <div className="text-sm text-[var(--app-text-secondary)]">{activeAgentBaseUrl || ARK_RESPONSES_BASE_URL}</div>
+                </div>
+                <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">
+                      chat · {arkChatModels.length}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleFetchArkModels}
+                        disabled={isLoadingArkChatModels}
+                        className="text-[11px] flex items-center gap-1 text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                      >
+                        {isLoadingArkChatModels ? <Loader2 size={12} className="animate-spin" /> : "拉取模型"}
+                      </button>
+                      {arkModelsRaw && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(arkModelsRaw);
+                            } catch {
+                              // Ignore clipboard failures.
+                            }
+                          }}
+                          className="text-[11px] flex items-center gap-1 text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                        >
+                          复制原始返回
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {arkChatFetchMessage && (
+                    <div className={`text-[11px] flex items-center gap-1 ${arkChatFetchMessage.type === "error" ? "text-red-400" : "text-emerald-300"}`}>
+                      {arkChatFetchMessage.type === "error" ? <AlertCircle size={10} /> : <CheckCircle size={10} />}
+                      {arkChatFetchMessage.text}
+                    </div>
+                  )}
+                  <select
+                    value={activeAgentModel || ARK_DEFAULT_MODEL}
+                    onChange={(e) => setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: e.target.value } })}
+                    className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
+                  >
+                    {(arkChatModels.length ? arkChatModels : [{ id: ARK_DEFAULT_MODEL }]).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}
+                      </option>
+                    ))}
+                  </select>
+                  {arkChatModels.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {arkChatModels.map((model) =>
+                        renderCompatibleModelCard(model, activeAgentModel === model.id, () =>
+                          setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: model.id } })
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-[var(--app-text-muted)]">暂无模型信息，请先拉取。</div>
+                  )}
+                  {arkModelsRaw && (
+                    <div className="pt-3 border-t border-[var(--app-border)]">
+                      <button
+                        type="button"
+                        onClick={() => setShowArkRaw((prev) => !prev)}
+                        className="text-[11px] text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                      >
+                        {showArkRaw ? "隐藏原始返回" : "查看原始返回"}
+                      </button>
+                      {showArkRaw && (
+                        <pre className="mt-2 max-h-56 overflow-auto rounded-xl border border-[var(--app-border)] bg-black/30 p-3 text-[10px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
+                          {arkModelsRaw}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="text-[11px] text-[var(--app-text-muted)]">
+                  使用方舟 OpenAI 兼容 / Responses 路线。默认基址为 `{ARK_RESPONSES_BASE_URL}`。
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeType === "chat" && activeAgentProvider === "qwen" && (
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
               <div className="flex items-center justify-between">
@@ -1146,7 +1288,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                               {!isCollapsed && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                   {group.items.map((model) =>
-                                    renderQwenModelCard(model, activeAgentModel === model.id, () =>
+                                    renderCompatibleModelCard(model, activeAgentModel === model.id, () =>
                                       setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: model.id } })
                                     )
                                   )}

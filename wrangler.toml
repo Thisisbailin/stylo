@@ -2,3 +2,8 @@ name = "qalam"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "qalam"
+database_id = "c49ed23a-f7b0-4f67-a744-fbc5b9b4ffa2"

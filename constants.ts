@@ -38,8 +38,10 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
 };
 
 export const QWEN_RESPONSES_BASE_URL = 'https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1';
+export const ARK_RESPONSES_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 export const OPENROUTER_RESPONSES_BASE_URL = 'https://openrouter.ai/api/v1';
 export const QWEN_DEFAULT_MODEL = 'qwen-plus';
+export const ARK_DEFAULT_MODEL = 'doubao-seed-1-6-250615';
 export const QWEN_WAN_IMAGE_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
 export const QWEN_WAN_VIDEO_ENDPOINT = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis';
 export const QWEN_WAN_IMAGE_MODEL = 'wan2.6-image';

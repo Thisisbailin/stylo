@@ -2,7 +2,7 @@ import type { ProjectData } from "../../types";
 import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
 
 export type AgentHttpRuntimeConfig = {
-  provider?: "qwen" | "openrouter";
+  provider?: "qwen" | "openrouter" | "ark";
   model: string;
   baseUrl?: string;
 };

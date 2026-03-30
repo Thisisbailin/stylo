@@ -360,7 +360,7 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
 }
 
 export type TextProvider = 'openrouter' | 'qwen';
-export type AgentTextProvider = TextProvider;
+export type AgentTextProvider = TextProvider | 'ark';
 
 export interface TextServiceConfig {
   provider: TextProvider;
