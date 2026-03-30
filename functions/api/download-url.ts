@@ -44,11 +44,14 @@ export const onRequestPost = async ({ request, env }) => {
       return new Response('bucket not allowed', { status: 400 });
     }
     const supabaseUrl = env.SUPABASE_URL;
-    const serviceRole = env.SUPABASE_SERVICE_ROLE;
+    const serviceRole =
+      env.SUPABASE_SERVICE_ROLE ||
+      env.SUPABASE_SERVICE_ROLE_KEY ||
+      env.SUPABASE_SECRET_KEY;
     if (!supabaseUrl || !serviceRole) {
       const missing = [
         !supabaseUrl ? 'SUPABASE_URL' : null,
-        !serviceRole ? 'SUPABASE_SERVICE_ROLE' : null,
+        !serviceRole ? 'SUPABASE_SERVICE_ROLE | SUPABASE_SERVICE_ROLE_KEY | SUPABASE_SECRET_KEY' : null,
       ].filter(Boolean).join(', ');
       return new Response(`Supabase env missing: ${missing}`, { status: 500 });
     }
