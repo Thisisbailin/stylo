@@ -65,8 +65,9 @@ type ProjectMeta = {
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
-    characters: Array<Record<string, unknown>>;
-    locations: Array<Record<string, unknown>>;
+    roles: Array<Record<string, unknown>>;
+    characters?: Array<Record<string, unknown>>;
+    locations?: Array<Record<string, unknown>>;
   };
   contextUsage: Record<string, unknown>;
   phase1Usage: Record<string, unknown>;
@@ -94,6 +95,7 @@ const DEFAULT_META: ProjectMeta = {
   context: {
     projectSummary: "",
     episodeSummaries: [],
+    roles: [],
     characters: [],
     locations: []
   },
@@ -125,8 +127,7 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   context: {
     projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
     episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
-    characters: Array.isArray(projectData?.context?.characters) ? projectData.context.characters : [],
-    locations: Array.isArray(projectData?.context?.locations) ? projectData.context.locations : []
+    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
   },
   contextUsage: projectData?.contextUsage || emptyTokenUsage,
   phase1Usage: projectData?.phase1Usage || {},
@@ -172,8 +173,7 @@ const collectProjectParts = (projectData: any) => {
     episodes: episodeRows,
     scenes,
     shots,
-    characters: Array.isArray(projectData?.context?.characters) ? projectData.context.characters : [],
-    locations: Array.isArray(projectData?.context?.locations) ? projectData.context.locations : []
+    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
   };
 };
 
@@ -350,6 +350,7 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     return { ...data, id: row.loc_id };
   });
 
+  const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
   const metaCharacters = Array.isArray(meta.context?.characters) ? meta.context.characters : [];
   const metaLocations = Array.isArray(meta.context?.locations) ? meta.context.locations : [];
 
@@ -360,8 +361,9 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     context: {
       projectSummary: meta.context?.projectSummary || "",
       episodeSummaries: meta.context?.episodeSummaries || [],
-      characters: characters.length > 0 ? characters : metaCharacters,
-      locations: locations.length > 0 ? locations : metaLocations
+      roles: metaRoles,
+      characters: metaRoles.length ? [] : (characters.length > 0 ? characters : metaCharacters),
+      locations: metaRoles.length ? [] : (locations.length > 0 ? locations : metaLocations)
     },
     shotGuide: meta.shotGuide || "",
     soraGuide: meta.soraGuide || "",
@@ -461,22 +463,6 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         "INSERT INTO user_project_shots (user_id, episode_id, shot_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)"
       )
         .bind(userId, shot.episodeId, shot.shot.id, JSON.stringify(shot.shot), updatedAt)
-        .run();
-    }
-
-    for (const character of parts.characters) {
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_characters (user_id, char_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-      )
-        .bind(userId, character.id, JSON.stringify(character), updatedAt)
-        .run();
-    }
-
-    for (const location of parts.locations) {
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_locations (user_id, loc_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-      )
-        .bind(userId, location.id, JSON.stringify(location), updatedAt)
         .run();
     }
 

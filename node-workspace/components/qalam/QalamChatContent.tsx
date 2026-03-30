@@ -618,8 +618,8 @@ const renderToolOutput = (tool: ToolPayload) => {
           {payload.role ? <div>Role: {payload.role}</div> : null}
           {typeof payload.is_main === "boolean" ? <div>Main: {payload.is_main ? "Yes" : "No"}</div> : null}
           {payload.bio ? <div className="whitespace-pre-wrap">{payload.bio}</div> : null}
-          {typeof payload.forms_count === "number" ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Forms: {payload.forms_count}</div>
+          {typeof payload.portraits_count === "number" ? (
+            <div className="text-[11px] text-[var(--app-text-muted)]">Portraits: {payload.portraits_count}</div>
           ) : null}
         </div>
       )
@@ -634,8 +634,8 @@ const renderToolOutput = (tool: ToolPayload) => {
           {payload.type ? <div>Type: {payload.type}</div> : null}
           {payload.description ? <div className="whitespace-pre-wrap">{payload.description}</div> : null}
           {payload.visuals ? <div className="whitespace-pre-wrap">Visuals: {payload.visuals}</div> : null}
-          {typeof payload.zones_count === "number" ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Zones: {payload.zones_count}</div>
+          {typeof payload.portraits_count === "number" ? (
+            <div className="text-[11px] text-[var(--app-text-muted)]">Portraits: {payload.portraits_count}</div>
           ) : null}
         </div>
       )
@@ -732,7 +732,7 @@ const renderToolOutput = (tool: ToolPayload) => {
           {c.tags?.length ? <div>Tags: {c.tags.join(", ")}</div> : null}
           {c.bio ? <div className="whitespace-pre-wrap">{c.bio}</div> : null}
           {Array.isArray(c.forms) && c.forms.length > 0 ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Forms: {c.forms.length}</div>
+            <div className="text-[11px] text-[var(--app-text-muted)]">Portrait Slots: {c.forms.length}</div>
           ) : null}
         </div>
       )
@@ -748,7 +748,7 @@ const renderToolOutput = (tool: ToolPayload) => {
           {loc.type ? <div>Type: {loc.type}</div> : null}
           {loc.description ? <div className="whitespace-pre-wrap">{loc.description}</div> : null}
           {Array.isArray(loc.zones) && loc.zones.length > 0 ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Zones: {loc.zones.length}</div>
+            <div className="text-[11px] text-[var(--app-text-muted)]">Portrait Slots: {loc.zones.length}</div>
           ) : null}
         </div>
       )

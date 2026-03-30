@@ -10,6 +10,13 @@ import {
 import { ensureStableId, ensureTypedStableId } from "./id";
 import { INITIAL_PROJECT_DATA } from "../constants";
 import { sanitizeShot } from "./shotSchema";
+import {
+  buildPortraitMention,
+  buildRoleMention,
+  MAX_ROLE_PORTRAITS,
+  sanitizeIdentityToken,
+  slugifyIdentityKey,
+} from "./projectRoles";
 
 const stripConflictMarkers = (value: string) => {
   const cleaned = value
@@ -37,30 +44,7 @@ const toSafeString = (value: unknown, fallback = "") => {
 
 const toOptionalString = (value: unknown) => (typeof value === "string" ? value : undefined);
 
-const slugifyIdentityKey = (value: string, fallback: string) => {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_/]+/g, "-")
-    .replace(/[^\w\u4e00-\u9fa5-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return normalized || fallback;
-};
-
-const sanitizeIdentityToken = (value: string, fallback = "normal") => {
-  const normalized = value
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/[^\w\u4e00-\u9fa5-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return normalized || fallback;
-};
-
-const buildMention = (name: string) => sanitizeIdentityToken(name, "identity");
-const buildPortraitMention = (roleMention: string, portraitName: string) =>
-  `${roleMention}_${sanitizeIdentityToken(portraitName, "normal")}`;
+const buildMention = (name: string) => buildRoleMention(name);
 
 export const normalizeVideoParams = (params?: Shot["videoParams"]) => {
   if (!params) return undefined;
@@ -153,7 +137,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
     .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
 
   if (portraits.length > 0) {
-    return portraits.slice(0, 20).map((portrait, index) => ({
+    return portraits.slice(0, MAX_ROLE_PORTRAITS).map((portrait, index) => ({
       ...portrait,
       isPrimary: portrait.isPrimary || index === 0 || portrait.name === "normal",
     }));
@@ -176,8 +160,11 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
 };
 
 const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
-  const name = toSafeString(role?.name || role?.familyName || role?.displayName || "身份");
-  const mention = toSafeString(role?.mention).replace(/^@/, "") || buildMention(name);
+  const rawMention = toSafeString(role?.mention).replace(/^@/, "");
+  const mentionRoot = rawMention.includes("_") ? rawMention.split("_")[0] : rawMention;
+  const name =
+    toSafeString(role?.name || role?.familyName || role?.displayName || mentionRoot || "身份");
+  const mention = mentionRoot || buildMention(name);
   const kind = role?.kind === "scene" ? "scene" : "person";
   const tone = role?.tone === "sky" ? "sky" : "emerald";
   const portraits = normalizePortraits(role, mention);
@@ -189,9 +176,6 @@ const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
   return {
     id: ensureTypedStableId(role?.id, "role"),
     name,
-    familyId: toSafeString(role?.familyId || slugifyIdentityKey(name, "family")),
-    familyName: name,
-    givenName: "normal",
     displayName: toSafeString(role?.displayName || name),
     mention,
     slug: toOptionalString(role?.slug) || slugifyIdentityKey(mention, name),
@@ -328,12 +312,7 @@ const migrateLegacyLocations = (locations: any[]): ProjectRoleIdentity[] =>
 const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentity[] => {
   const grouped = new Map<string, ProjectRoleIdentity[]>();
   roles.forEach((role) => {
-    const key =
-      role.familyId ||
-      role.name ||
-      role.familyName ||
-      role.mention.split("_")[0] ||
-      role.id;
+    const key = role.mention.split("_")[0] || role.name || role.id;
     const bucket = grouped.get(key) || [];
     bucket.push(role);
     grouped.set(key, bucket);
@@ -341,7 +320,7 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
 
   return Array.from(grouped.values()).map((items) => {
     const primary = items[0];
-    const name = primary.name || primary.familyName || primary.displayName || primary.mention;
+    const name = primary.name || primary.displayName || primary.mention;
     const mention = buildMention(name);
     const portraits = items
       .flatMap((role, index) => {
@@ -350,14 +329,14 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
             normalizePortrait(portrait, mention, portrait.name || (index === 0 ? "normal" : `look${index + 1}`))
           );
         }
-        const legacyName =
-          role.givenName && role.givenName !== "normal"
-            ? role.givenName
-            : role.title && role.title !== name
-              ? role.title
-              : index === 0
-                ? "normal"
-                : `look${index + 1}`;
+        const rawMention = role.mention || "";
+        const mentionParts = rawMention.split("_");
+        const mentionSlot = mentionParts.length > 1 ? mentionParts.slice(1).join("_") : "";
+        const legacyName = sanitizeIdentityToken(
+          mentionSlot ||
+            (role.title && role.title !== name ? role.title : index === 0 ? "normal" : `look${index + 1}`),
+          index === 0 ? "normal" : `look${index + 1}`
+        );
         return [
           normalizePortrait(
             {
@@ -374,7 +353,7 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
         ];
       })
       .filter((portrait): portrait is ProjectRolePortrait => !!portrait)
-      .slice(0, 20);
+      .slice(0, MAX_ROLE_PORTRAITS);
 
     const aliasValues = items.flatMap((role) => (role.aliases || []).map((alias) => alias.value));
     return normalizeRoleIdentity({
@@ -421,19 +400,19 @@ const remapDesignAssets = (assets: DesignAssetItem[], context: ProjectContext): 
     mentionMap.set(role.mention, { refId: role.id, label });
     mentionMap.set(`@${role.mention}`, { refId: role.id, label });
     mentionMap.set(role.displayName, { refId: role.id, label });
+    (role.portraits || []).forEach((portrait) => {
+      const portraitRefId = `portrait:${portrait.id}`;
+      const portraitLabel = `${role.name} · ${portrait.name}`;
+      mentionMap.set(portrait.id, { refId: portraitRefId, label: portraitLabel });
+      mentionMap.set(portrait.mention, { refId: portraitRefId, label: portraitLabel });
+      mentionMap.set(`@${portrait.mention}`, { refId: portraitRefId, label: portraitLabel });
+      mentionMap.set(`${role.id}|${portrait.id}`, { refId: portraitRefId, label: portraitLabel });
+    });
   });
 
   return assets
     .map((asset) => {
       const mapped = mentionMap.get(asset.refId) || mentionMap.get(asset.label || "");
-      if (asset.category === "identity") {
-        return {
-          ...asset,
-          category: "identity" as const,
-          refId: mapped?.refId || asset.refId,
-          label: mapped?.label || asset.label,
-        };
-      }
       return {
         ...asset,
         category: "identity" as const,

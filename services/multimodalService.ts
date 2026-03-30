@@ -1,5 +1,6 @@
 import { MultimodalConfig, TokenUsage } from "../types";
 import { wrapWithProxy } from "../utils/api";
+import { NANOBANANA_PRO_MODEL } from "../constants";
 
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
@@ -188,7 +189,7 @@ export const sendMessage = async (
 export const fetchMultimodalModels = async (baseUrl: string, apiKey: string): Promise<string[]> => {
     // Avoid CORS error for Wuyinkeji or empty URLs for placeholders
     if (baseUrl.includes('api.wuyinkeji.com')) {
-        return ['nanoBanana-pro'];
+        return [NANOBANANA_PRO_MODEL];
     }
     if (!baseUrl || baseUrl.includes('placeholder')) {
         return ['default-model'];

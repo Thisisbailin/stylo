@@ -46,6 +46,8 @@ export const QWEN_WAN_IMAGE_MODEL = 'wan2.6-image';
 export const QWEN_WAN_VIDEO_MODEL = 'wan2.6-i2v';
 export const QWEN_WAN_REFERENCE_VIDEO_MODEL = 'wan2.6-r2v';
 export const QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL = 'wan2.6-r2v-flash';
+export const NANOBANANA_PRO_ENDPOINT = 'https://api.wuyinkeji.com/api/async/image_nanoBanana_pro';
+export const NANOBANANA_PRO_MODEL = 'nano banana pro';
 
 export const DEFAULT_QALAM_TOOL_SETTINGS: QalamToolSettings = {
   projectData: {

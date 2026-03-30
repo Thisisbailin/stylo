@@ -25,6 +25,7 @@ import {
   IdentityCardNode,
   GroupNode,
   ImageGenNode,
+  NanoBananaImageGenNode,
   WanImageGenNode,
   SoraVideoGenNode,
   WanVideoGenNode,
@@ -59,6 +60,7 @@ const nodeTypes: NodeTypes = {
   identityCard: IdentityCardNode,
   group: GroupNode,
   imageGen: ImageGenNode,
+  nanoBananaImageGen: NanoBananaImageGenNode,
   wanImageGen: WanImageGenNode,
   soraVideoGen: SoraVideoGenNode,
   wanVideoGen: WanVideoGenNode,
@@ -706,7 +708,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
 
   const runAll = async () => {
     for (const n of nodes) {
-      if (n.type === "imageGen" || n.type === "wanImageGen") await runImageGen(n.id);
+      if (n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen") await runImageGen(n.id);
       if (
         n.type === "soraVideoGen" ||
         n.type === "wanVideoGen" ||
@@ -1032,6 +1034,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
             onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
             onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
+            onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
             onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
             onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
             onAddWanVideoGen={() => handleAddNode("wanVideoGen", { x: 520, y: 120 })}

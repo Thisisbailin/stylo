@@ -32,7 +32,10 @@ export const useConfig = (key: string) => {
             ? safeText.provider
             : INITIAL_TEXT_CONFIG.agentProvider;
       const safeVideo = rememberApiKeys ? parsed.videoConfig : { ...parsed.videoConfig, apiKey: '' };
-      const safeMulti = rememberApiKeys ? parsed.multimodalConfig : { ...parsed.multimodalConfig, apiKey: '' };
+      const rawMulti = rememberApiKeys ? parsed.multimodalConfig : { ...parsed.multimodalConfig, apiKey: '' };
+      const safeMulti = rawMulti?.provider === "wuyinkeji"
+        ? { ...rawMulti, provider: "nanobanana" }
+        : rawMulti;
       const safeVidu = rememberApiKeys ? (parsed.viduConfig || INITIAL_VIDU_CONFIG) : { ...(parsed.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
       return {
         syncApiKeys,

@@ -3,6 +3,7 @@ import { ensureStableId, ensureTypedStableId } from "../utils/id";
 import { OPENROUTER_RESPONSES_BASE_URL, QWEN_DEFAULT_MODEL, QWEN_RESPONSES_BASE_URL } from "../constants";
 import { createQwenResponse } from "./qwenResponsesService";
 import { SHOT_FIELD_LABELS, SHOT_REQUIRED_STRING_KEYS, buildShotOverview, getShotMinimumCountFromGuide, sanitizeShotList } from "../utils/shotSchema";
+import { projectRolesToCharacters, projectRolesToLocations } from "../utils/projectRoles";
 
 // --- HELPERS ---
 
@@ -406,7 +407,8 @@ const normalizeGeneratedCharacterForms = (forms: any[] | undefined, characterId:
 
 // Helper to format character list for prompts
 const formatCharContext = (context: ProjectContext): string => {
-  return context.characters.map(c =>
+  const characters = (context as any).characters || projectRolesToCharacters((context as any).roles || []);
+  return characters.map((c: any) =>
     `- ${c.name} (${c.role}): ${c.bio}. Forms: ${c.forms.map(f => f.formName).join(', ')}`
   ).join('\n');
 };
@@ -1336,9 +1338,10 @@ export const generateEpisodeShots = async (
   };
 
   const charContextStr = formatCharContext(context);
-  const locContextStr = context.locations
-    ? context.locations.filter(l => l.type === 'core').map(l => `- ${l.name}: ${l.visuals}`).join('\n')
-    : '';
+  const locContextStr = projectRolesToLocations((context as any).roles || [])
+    .filter((l) => l.type === 'core')
+    .map((l) => `- ${l.name}: ${l.visuals}`)
+    .join('\n');
 
   const previousContextStr = previousEpisodes.length > 0
     ? previousEpisodes.map(ep => `Episode ${ep.id} (${ep.title}): ${ep.summary}`).join('\n')
@@ -1442,9 +1445,10 @@ export const generateSoraPrompts = async (
   };
 
   const charContextStr = formatCharContext(context);
-  const locContextStr = context.locations
-    ? context.locations.filter(l => l.type === 'core').map(l => `- ${l.name}: ${l.visuals}`).join('\n')
-    : '';
+  const locContextStr = projectRolesToLocations((context as any).roles || [])
+    .filter((l) => l.type === 'core')
+    .map((l) => `- ${l.name}: ${l.visuals}`)
+    .join('\n');
 
   const batchContext = shots.map(s => ({
     id: s.id,
@@ -1532,9 +1536,10 @@ export const generateStoryboardPrompts = async (
   };
 
   const charContextStr = formatCharContext(context);
-  const locContextStr = context.locations
-    ? context.locations.filter((l) => l.type === "core").map((l) => `- ${l.name}: ${l.visuals}`).join("\n")
-    : "";
+  const locContextStr = projectRolesToLocations((context as any).roles || [])
+    .filter((l) => l.type === "core")
+    .map((l) => `- ${l.name}: ${l.visuals}`)
+    .join("\n");
 
   const batchContext = shots.map((s) => ({
     id: s.id,

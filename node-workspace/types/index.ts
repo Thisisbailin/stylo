@@ -12,6 +12,7 @@ export type NodeType =
   | "storyboardBoard"
   | "identityCard"
   | "imageGen"
+  | "nanoBananaImageGen"
   | "wanImageGen"
   | "soraVideoGen"
   | "wanVideoGen"

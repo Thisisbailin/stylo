@@ -7,6 +7,7 @@ import {
   Code2,
   Eye,
   Globe,
+  KeyRound,
   Layers,
   Loader2,
   Sparkles,
@@ -17,10 +18,14 @@ import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { TextProvider } from "../../types";
 import {
+  DEFAULT_QALAM_TOOL_SETTINGS,
   INITIAL_VIDU_CONFIG,
+  NANOBANANA_PRO_ENDPOINT,
+  NANOBANANA_PRO_MODEL,
   OPENROUTER_RESPONSES_BASE_URL,
   QWEN_DEFAULT_MODEL,
   QWEN_RESPONSES_BASE_URL,
+  QWEN_WAN_IMAGE_ENDPOINT,
   QWEN_WAN_IMAGE_MODEL,
   QWEN_WAN_VIDEO_MODEL,
   SEEDANCE_DEFAULT_BASE_URL,
@@ -28,7 +33,6 @@ import {
   SEEDANCE_FAST_MODEL,
   SORA_DEFAULT_BASE_URL,
   SORA_DEFAULT_MODEL,
-  DEFAULT_QALAM_TOOL_SETTINGS,
 } from "../../constants";
 import {
   AGENT_SESSION_STORAGE_UPDATED_EVENT,
@@ -80,6 +84,8 @@ type ToolItem = {
   status: "ready";
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 };
+
+type MultiProviderKey = "openrouter" | "qwen" | "nanobanana";
 
 const TOOL_ITEMS: ToolItem[] = [
   {
@@ -245,6 +251,12 @@ const getLastArtifact = (records: AgentToolActivityRecord[]) =>
 const resolveAgentModelForProvider = (provider: TextProvider, configured?: string) =>
   provider === "qwen" ? (configured || QWEN_DEFAULT_MODEL) : (configured || "");
 
+const resolveMultiProviderKey = (provider?: string): MultiProviderKey => {
+  if (provider === "wan") return "qwen";
+  if (provider === "nanobanana" || provider === "wuyinkeji") return "nanobanana";
+  return "openrouter";
+};
+
 const summarizeRuntimeToolOutput = (value: unknown) => {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -268,7 +280,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
   const { applyViduReferenceDemo } = useWorkflowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
-  const [activeMultiProvider, setActiveMultiProvider] = useState<"openrouter" | "qwen">("openrouter");
+  const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
   const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "history">("provider");
   const [activeTool, setActiveTool] = useState<ToolKey>("asset-library");
@@ -490,6 +502,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   }, [config.textConfig.agentBaseUrl, config.textConfig.agentModel, config.textConfig.agentProvider, setConfig]);
 
+  useEffect(() => {
+    setActiveMultiProvider(resolveMultiProviderKey(config.multimodalConfig.provider));
+  }, [config.multimodalConfig.provider]);
+
   const setProvider = (p: TextProvider) => {
     const nextConfig = { ...config.textConfig };
     if (p === "openrouter") {
@@ -506,6 +522,32 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
         ...nextConfig,
         agentProvider: p,
       },
+    });
+  };
+
+  const setMultiProvider = (provider: MultiProviderKey) => {
+    setActiveMultiProvider(provider);
+    setConfig((prev) => {
+      const nextMulti = { ...prev.multimodalConfig };
+      if (provider === "qwen") {
+        nextMulti.provider = "wan";
+        nextMulti.baseUrl = QWEN_WAN_IMAGE_ENDPOINT;
+        nextMulti.model = QWEN_WAN_IMAGE_MODEL;
+      } else if (provider === "nanobanana") {
+        nextMulti.provider = "nanobanana";
+        nextMulti.baseUrl = resolveMultiProviderKey(prev.multimodalConfig.provider) === "nanobanana"
+          ? (prev.multimodalConfig.baseUrl || NANOBANANA_PRO_ENDPOINT)
+          : NANOBANANA_PRO_ENDPOINT;
+        nextMulti.model = NANOBANANA_PRO_MODEL;
+      } else {
+        nextMulti.provider = "standard";
+        nextMulti.baseUrl = OPENROUTER_BASE_URL;
+        nextMulti.model = "openrouter-managed";
+      }
+      return {
+        ...prev,
+        multimodalConfig: nextMulti,
+      };
     });
   };
 
@@ -912,13 +954,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                         {[
                           { key: "openrouter" as const, label: "OpenRouter", Icon: Globe },
                           { key: "qwen" as const, label: "Qwen", Icon: QwenIcon },
+                          { key: "nanobanana" as const, label: "Nano Banana", Icon: Sparkles },
                         ].map(({ key, label, Icon }) => {
                           const active = activeMultiProvider === key;
                           return (
                             <button
                               key={key}
                               type="button"
-                              onClick={() => setActiveMultiProvider(key)}
+                              onClick={() => setMultiProvider(key)}
                               className={`flex items-center gap-2 px-3 py-2 rounded-full text-[11px] border transition ${
                                 active
                                   ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
@@ -1165,6 +1208,72 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                   固定模型：<span className="text-[var(--app-text-primary)] font-semibold">{QWEN_WAN_IMAGE_MODEL}</span>
                 </div>
                 <div className="text-[11px] text-[var(--app-text-muted)]">用于 WAN Image 节点，端口已固定。</div>
+              </div>
+            </div>
+          )}
+
+          {activeType === "multi" && activeMultiProvider === "nanobanana" && (
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+              <div className="text-xs text-[var(--app-text-secondary)]">Nano Banana</div>
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
+                <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">
+                  <Sparkles size={12} />
+                  async-image-generation · 1
+                </div>
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[12px] text-[var(--app-text-secondary)]">
+                  固定模型：<span className="text-[var(--app-text-primary)] font-semibold">{NANOBANANA_PRO_MODEL}</span>
+                </div>
+                <div className="text-[11px] text-[var(--app-text-muted)]">
+                  按文档走 `application/json` + `Authorization` Header，请求入口固定为异步图片接口。
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-[var(--app-text-secondary)] flex items-center gap-2">
+                  <Globe size={12} />
+                  API Endpoint
+                </label>
+                <input
+                  type="text"
+                  value={config.multimodalConfig.baseUrl || NANOBANANA_PRO_ENDPOINT}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      multimodalConfig: {
+                        ...prev.multimodalConfig,
+                        provider: "nanobanana",
+                        model: NANOBANANA_PRO_MODEL,
+                        baseUrl: e.target.value,
+                      },
+                    }))
+                  }
+                  className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-amber-300 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-[var(--app-text-secondary)] flex items-center gap-2">
+                  <KeyRound size={12} />
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={config.multimodalConfig.apiKey || ""}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      multimodalConfig: {
+                        ...prev.multimodalConfig,
+                        provider: "nanobanana",
+                        model: NANOBANANA_PRO_MODEL,
+                        apiKey: e.target.value,
+                      },
+                    }))
+                  }
+                  className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-amber-300 focus:outline-none"
+                  placeholder="Authorization key"
+                />
+              </div>
+              <div className="text-[11px] text-[var(--app-text-muted)]">
+                支持文生图，也支持通过 `urls` 传单张参考图到专属的 Nano Banana 节点。
               </div>
             </div>
           )}
@@ -1417,7 +1526,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                           <div>
                             <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">理解写回开关</div>
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以把对角色、形态、场景、分区的理解持久化到资产库。
+                              控制 Agent 是否可以把对角色、场景与定妆照槽位的理解持久化到资产库。
                             </div>
                           </div>
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
@@ -1446,7 +1555,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">角色形态合并</label>
+                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">角色定妆照槽位合并</label>
                             <select
                               value={qalamToolSettings.characterLocation.formsMode}
                               onChange={(e) => updateAssetToolSettings({ formsMode: e.target.value as any })}
@@ -1457,7 +1566,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">场景分区合并</label>
+                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">场景定妆照槽位合并</label>
                             <select
                               value={qalamToolSettings.characterLocation.zonesMode}
                               onChange={(e) => updateAssetToolSettings({ zonesMode: e.target.value as any })}

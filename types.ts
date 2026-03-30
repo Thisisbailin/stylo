@@ -403,7 +403,7 @@ export interface MultimodalConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
-  provider?: 'standard' | 'wuyinkeji' | 'seedream' | 'wan'; // New: support dedicated image gen providers
+  provider?: 'standard' | 'nanobanana' | 'wuyinkeji' | 'seedream' | 'wan';
 }
 
 export interface AppConfig {

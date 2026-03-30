@@ -100,28 +100,17 @@ const parseArgs = (input: unknown) => {
   };
 };
 
-const groupByFamily = (roles: ProjectRoleIdentity[]) =>
-  Array.from(
-    roles.reduce<Map<string, ProjectRoleIdentity[]>>((map, role) => {
-      const bucket = map.get(role.familyId) || [];
-      bucket.push(role);
-      map.set(role.familyId, bucket);
-      return map;
-    }, new Map()).values()
-  );
-
 const pushCharacterMatches = (matches: any[], roles: ProjectRoleIdentity[], query: string, maxMatches: number, radius: number) => {
-  for (const family of groupByFamily(roles.filter((role) => role.kind === "person"))) {
+  for (const role of roles.filter((role) => role.kind === "person")) {
     if (matches.length >= maxMatches) break;
-    const primary = family.find((role) => role.givenName === "normal") || family[0];
-    const haystack = [primary.familyName, primary.summary, primary.description, primary.episodeUsage, ...(primary.tags || [])]
+    const haystack = [role.name, role.summary, role.description, role.episodeUsage, ...(role.tags || [])]
       .filter(Boolean)
       .join(" ");
     if (haystack && includesQuery(haystack, query)) {
       matches.push({
         scope: "character",
-        itemId: primary.id,
-        characterName: primary.familyName,
+        itemId: role.id,
+        characterName: role.name,
         snippet: buildSnippet(haystack, query, radius),
       });
     }
@@ -129,17 +118,16 @@ const pushCharacterMatches = (matches: any[], roles: ProjectRoleIdentity[], quer
 };
 
 const pushSceneMatches = (matches: any[], roles: ProjectRoleIdentity[], query: string, maxMatches: number, radius: number) => {
-  for (const family of groupByFamily(roles.filter((role) => role.kind === "scene"))) {
+  for (const role of roles.filter((role) => role.kind === "scene")) {
     if (matches.length >= maxMatches) break;
-    const primary = family.find((role) => role.givenName === "normal") || family[0];
-    const haystack = [primary.familyName, primary.description, primary.visualTags, primary.episodeUsage]
+    const haystack = [role.name, role.description, role.visualTags, role.episodeUsage]
       .filter(Boolean)
       .join(" ");
     if (haystack && includesQuery(haystack, query)) {
       matches.push({
         scope: "scene_profile",
-        itemId: primary.id,
-        locationName: primary.familyName,
+        itemId: role.id,
+        locationName: role.name,
         snippet: buildSnippet(haystack, query, radius),
       });
     }

@@ -8,6 +8,8 @@ import * as SeedreamService from "../../services/seedreamService";
 import * as WanService from "../../services/wanService";
 import {
   INITIAL_VIDU_CONFIG,
+  NANOBANANA_PRO_ENDPOINT,
+  NANOBANANA_PRO_MODEL,
   QWEN_WAN_IMAGE_ENDPOINT,
   QWEN_WAN_IMAGE_MODEL,
   QWEN_WAN_VIDEO_ENDPOINT,
@@ -464,6 +466,7 @@ export const useLabExecutor = () => {
     const { images, text: connectedText, atMentions, entityBindings, imageRefs } = store.getConnectedInputs(nodeId);
     const data = node.data as any; // Cast for easier access to new fields
     const text = (connectedText || "").trim();
+    const isNanoBananaNode = node.type === "nanoBananaImageGen";
     const isWanImageNode = node.type === "wanImageGen";
 
     if (!text && images.length === 0) {
@@ -479,25 +482,33 @@ export const useLabExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
     try {
       const aspectRatio = data.aspectRatio || "1:1";
-      const modelOverride = isWanImageNode ? QWEN_WAN_IMAGE_MODEL : data.model;
+      const modelOverride = isNanoBananaNode
+        ? NANOBANANA_PRO_MODEL
+        : isWanImageNode
+          ? QWEN_WAN_IMAGE_MODEL
+          : data.model;
 
       // Use node-specific model or fallback to config
       const configToUse = {
         ...config.multimodalConfig,
         model: modelOverride || config.multimodalConfig.model
       };
+      if (isNanoBananaNode) {
+        configToUse.provider = "nanobanana";
+        configToUse.baseUrl = NANOBANANA_PRO_ENDPOINT;
+      }
       if (isWanImageNode) {
         configToUse.provider = "wan";
         configToUse.baseUrl = QWEN_WAN_IMAGE_ENDPOINT;
         configToUse.apiKey = "";
       }
 
-      if (configToUse.provider === 'wuyinkeji') {
-        // --- Asynchronous Flow (NanoBanana-pro) ---
+      if (configToUse.provider === 'wuyinkeji' || configToUse.provider === 'nanobanana') {
         const refImage = images.find((src) => src.startsWith("http")) || undefined;
         const { id } = await WuyinkejiService.submitImageTask(text || "Generate an image", configToUse, {
           aspectRatio,
-          inputImageUrl: refImage
+          inputImageUrl: refImage,
+          size: data.size
         });
 
         store.updateNodeData(nodeId, { status: "loading", taskId: id, error: null });

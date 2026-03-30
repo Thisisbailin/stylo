@@ -2,6 +2,7 @@ import type { Episode, ProjectRoleIdentity, Shot } from "../../types";
 import { sanitizeShotList, SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
 import { ensureStableId, ensureTypedStableId } from "../../utils/id";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { buildRoleMention } from "../../utils/projectRoles";
 
 export const EDIT_PROJECT_RESOURCE_TYPES = [
   "project_summary",
@@ -212,18 +213,10 @@ const slugifyToken = (value: string, fallback: string) =>
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || fallback;
 
-const groupRolesByFamily = (roles: ProjectRoleIdentity[]) =>
-  roles.reduce<Map<string, ProjectRoleIdentity[]>>((map, role) => {
-    const bucket = map.get(role.familyId) || [];
-    bucket.push(role);
-    map.set(role.familyId, bucket);
-    return map;
-  }, new Map());
-
 const matchesRole = (role: ProjectRoleIdentity, name: string) => {
   const needle = normalizeMatchValue(name);
   return [
-    role.familyName,
+    role.name,
     role.displayName,
     role.mention,
     role.title,
@@ -233,36 +226,30 @@ const matchesRole = (role: ProjectRoleIdentity, name: string) => {
     .some((value) => value === needle);
 };
 
-const selectPrimaryRole = (roles: ProjectRoleIdentity[]) =>
-  roles.find((role) => role.givenName === "normal") || roles[0];
-
 const createRoleIdentity = (
   kind: "person" | "scene",
   name: string,
   patch: Partial<ProjectRoleIdentity>
 ): ProjectRoleIdentity => {
-  const familyName = name.trim();
-  const familySlug = slugifyToken(familyName, kind === "person" ? "character" : "scene");
-  const mention = `${familySlug}_normal`;
+  const trimmedName = name.trim();
+  const mention = buildRoleMention(trimmedName);
   return {
     id: ensureTypedStableId(undefined, "role"),
-    familyId: `family-${familySlug}`,
-    familyName,
-    givenName: "normal",
-    displayName: `@${mention}`,
+    name: trimmedName,
+    displayName: trimmedName,
     mention,
-    slug: familySlug,
+    slug: slugifyToken(trimmedName, kind === "person" ? "character" : "scene"),
     kind,
     tone: kind === "scene" ? "sky" : "emerald",
-    title: familyName,
+    title: trimmedName,
     summary: patch.summary || (kind === "scene" ? "场景身份" : "人物身份"),
     description: patch.description || "",
     status: "draft",
     aliases: [
       {
         id: ensureStableId(undefined, "alias"),
-        value: familyName,
-        normalized: familyName.toLowerCase(),
+        value: trimmedName,
+        normalized: trimmedName.toLowerCase(),
       },
       {
         id: ensureStableId(undefined, "alias"),
@@ -272,8 +259,9 @@ const createRoleIdentity = (
     ],
     binding: {
       mention,
-      aliases: [familyName, `@${mention}`],
+      aliases: [trimmedName, `@${mention}`],
     },
+    portraits: [],
     ...patch,
   };
 };
@@ -336,29 +324,26 @@ const parseArgs = (input: unknown): ParsedArgs => {
 };
 
 const upsertPersonRole = (roles: ProjectRoleIdentity[], args: Extract<ParsedArgs, { resourceType: "character_profile" }>) => {
-  const families = groupRolesByFamily(roles.filter((role) => role.kind === "person"));
-  const family = Array.from(families.values()).find((items) => items.some((role) => matchesRole(role, args.name)));
-  const primary = family ? selectPrimaryRole(family) : undefined;
-  const familyId = primary?.familyId || `family-${slugifyToken(args.name, "character")}`;
+  const primary = roles.find((role) => role.kind === "person" && matchesRole(role, args.name));
   const created = !primary;
 
   const nextRoles = created
     ? [
         ...roles,
         createRoleIdentity("person", args.name, {
-          familyId,
-          familyName: args.name,
           summary: args.role || "人物身份",
           description: args.bio || "",
           isMain: args.isMain ?? false,
         }),
       ]
     : roles.map((role) => {
-        if (role.familyId !== familyId) return role;
+        if (role.id !== primary!.id) return role;
         const nextRole: ProjectRoleIdentity = {
           ...role,
-          familyName: args.name || role.familyName,
-          title: role.givenName === "normal" ? args.name : role.title,
+          name: args.name || role.name,
+          displayName: args.name || role.displayName,
+          mention: buildRoleMention(args.name || role.name),
+          title: args.name || role.title,
           summary: args.role ?? role.summary,
           isMain: args.isMain ?? role.isMain,
         };
@@ -370,28 +355,23 @@ const upsertPersonRole = (roles: ProjectRoleIdentity[], args: Extract<ParsedArgs
 
   const item = created
     ? nextRoles[nextRoles.length - 1]
-    : selectPrimaryRole(nextRoles.filter((role) => role.familyId === familyId));
+    : nextRoles.find((role) => role.id === primary!.id)!;
 
   return {
-    updated: nextRoles.sort((a, b) => a.familyName.localeCompare(b.familyName, "zh-Hans-CN")),
+    updated: nextRoles.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")),
     created,
     item,
   };
 };
 
 const upsertSceneRole = (roles: ProjectRoleIdentity[], args: Extract<ParsedArgs, { resourceType: "scene_profile" }>) => {
-  const families = groupRolesByFamily(roles.filter((role) => role.kind === "scene"));
-  const family = Array.from(families.values()).find((items) => items.some((role) => matchesRole(role, args.name)));
-  const primary = family ? selectPrimaryRole(family) : undefined;
-  const familyId = primary?.familyId || `family-${slugifyToken(args.name, "scene")}`;
+  const primary = roles.find((role) => role.kind === "scene" && matchesRole(role, args.name));
   const created = !primary;
 
   const nextRoles = created
     ? [
         ...roles,
         createRoleIdentity("scene", args.name, {
-          familyId,
-          familyName: args.name,
           summary: args.sceneType === "core" ? "核心场景身份" : "场景身份",
           description: args.description || "",
           visualTags: args.visuals,
@@ -399,11 +379,13 @@ const upsertSceneRole = (roles: ProjectRoleIdentity[], args: Extract<ParsedArgs,
         }),
       ]
     : roles.map((role) => {
-        if (role.familyId !== familyId) return role;
+        if (role.id !== primary!.id) return role;
         const nextRole: ProjectRoleIdentity = {
           ...role,
-          familyName: args.name || role.familyName,
-          title: role.givenName === "normal" ? args.name : role.title,
+          name: args.name || role.name,
+          displayName: args.name || role.displayName,
+          mention: buildRoleMention(args.name || role.name),
+          title: args.name || role.title,
           isCore: args.sceneType ? args.sceneType === "core" : role.isCore,
         };
         if (role.id === primary!.id) {
@@ -416,10 +398,10 @@ const upsertSceneRole = (roles: ProjectRoleIdentity[], args: Extract<ParsedArgs,
 
   const item = created
     ? nextRoles[nextRoles.length - 1]
-    : selectPrimaryRole(nextRoles.filter((role) => role.familyId === familyId));
+    : nextRoles.find((role) => role.id === primary!.id)!;
 
   return {
-    updated: nextRoles.sort((a, b) => a.familyName.localeCompare(b.familyName, "zh-Hans-CN")),
+    updated: nextRoles.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN")),
     created,
     item,
   };
@@ -498,7 +480,7 @@ export const editUnderstandingResourceToolDef = {
         field: "context.roles",
         created: result.created,
         item_id: result.item.id,
-        name: result.item.familyName,
+        name: result.item.name,
         role: result.item.summary,
       };
     }
@@ -570,7 +552,7 @@ export const editUnderstandingResourceToolDef = {
       field: "context.roles",
       created: result.created,
       item_id: result.item.id,
-      name: result.item.familyName,
+      name: result.item.name,
       type: result.item.isCore ? "core" : "secondary",
     };
   },

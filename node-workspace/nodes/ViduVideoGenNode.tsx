@@ -279,7 +279,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                   onChange={(e) => updateNodeData(id, { useCharacters: e.target.checked })}
                   className="accent-[var(--node-accent)]"
                 />
-                使用角色形态主体
+                使用身份定妆照主体
               </label>
             </div>
             <div className="node-control node-control--tight w-full text-[9px] font-medium px-2 text-[var(--node-text-primary)] outline-none appearance-none cursor-pointer transition-colors">
@@ -294,7 +294,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                   解析到的主体（@引用）
                 </div>
                 {derivedSubjects.length === 0 ? (
-                  <div className="text-[10px] text-amber-200">未检测到 @ 形态引用，建议在提示词中插入 @形态名。</div>
+                  <div className="text-[10px] text-amber-200">未检测到 @ 身份引用，建议在提示词中插入 @角色名 或 @角色名_槽位名。</div>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {derivedSubjects.map((s, idx) => (

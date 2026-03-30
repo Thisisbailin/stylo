@@ -15,6 +15,7 @@ import {
 } from "../types";
 import { ensureStableId } from "./id";
 import { SHOT_CSV_COLUMNS, sanitizeShot } from "./shotSchema";
+import { normalizeProjectData } from "./projectData";
 
 // Helper: Parse scenes from episode content
 const normalizeDigits = (text: string) =>
@@ -790,18 +791,20 @@ export const parseUnderstandingJSON = (jsonText: string): UnderstandingImport =>
             .filter((ep) => ep.summary)
             .map((ep) => ({ episodeId: ep.id, summary: ep.summary || "" }));
 
-  const context: ProjectContext = {
-    projectSummary: toSafeString(contextSource.projectSummary),
-    episodeSummaries: derivedSummaries,
-    characters: normalizeCharacters(contextSource.characters ?? raw.characters),
-    locations: normalizeLocations(contextSource.locations ?? raw.locations)
-  };
+  const context: ProjectContext = normalizeProjectData({
+    context: {
+      projectSummary: toSafeString(contextSource.projectSummary),
+      episodeSummaries: derivedSummaries,
+      roles: Array.isArray(contextSource.roles) ? contextSource.roles : [],
+      characters: normalizeCharacters(contextSource.characters ?? raw.characters),
+      locations: normalizeLocations(contextSource.locations ?? raw.locations),
+    },
+  }).context;
 
   const hasContent =
     context.projectSummary ||
     context.episodeSummaries.length > 0 ||
-    context.characters.length > 0 ||
-    context.locations.length > 0;
+    context.roles.length > 0;
 
   if (!hasContent) {
     throw new Error("No understanding data found in JSON.");

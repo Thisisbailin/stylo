@@ -29,14 +29,13 @@ export const UnderstandingPanel: React.FC<Props> = ({
   const summary = projectData.context.projectSummary?.trim() || "";
   const episodeSummaries = projectData.context.episodeSummaries || [];
   const episodeCount = projectData.episodes.length;
-  const characterCount = projectData.context.characters?.length || 0;
+  const characterCount = useMemo(
+    () => (projectData.context.roles || []).filter((role) => role.kind === "person").length,
+    [projectData.context.roles]
+  );
   const sceneCount = useMemo(
-    () =>
-      projectData.episodes.reduce(
-        (sum, episode) => sum + (episode.scenes?.length || 0),
-        0
-      ),
-    [projectData.episodes]
+    () => (projectData.context.roles || []).filter((role) => role.kind === "scene").length,
+    [projectData.context.roles]
   );
   const guideItems = useMemo(
     () =>

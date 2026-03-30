@@ -50,6 +50,7 @@ import defaultShotGuide from './guides/ShotGuide.md?raw';
 import defaultSoraGuide from './guides/PromptGuide.md?raw';
 import defaultDramaGuide from './guides/DramaGuide.md?raw';
 import defaultStoryboardGuide from './guides/Storyboard Guide.md?raw';
+import { projectRolesToCharacters, projectRolesToLocations } from './utils/projectRoles';
 
 // --- Helpers: Character stats derived from parsed episodes ---
 const buildCharacterStats = (episodes: Episode[]) => {
@@ -367,14 +368,30 @@ const App: React.FC = () => {
   const projectDataRef = useRef<ProjectData>(INITIAL_PROJECT_DATA);
 
   // Initialize state with Persisted hooks
-  const [projectData, setProjectData] = usePersistedState<ProjectData>({
+  const [projectData, setProjectDataRaw] = usePersistedState<ProjectData>({
     key: PROJECT_STORAGE_KEY,
     initialValue: INITIAL_PROJECT_DATA,
     deserialize: (value) => normalizeProjectData(JSON.parse(value)),
     serialize: (value) => JSON.stringify(value),
   });
+  const setProjectData = useCallback(
+    (value: React.SetStateAction<ProjectData>) => {
+      setProjectDataRaw((prev) =>
+        normalizeProjectData(typeof value === 'function' ? (value as (prevState: ProjectData) => ProjectData)(prev) : value)
+      );
+    },
+    [setProjectDataRaw]
+  );
 
   const { config, setConfig } = useConfig(CONFIG_STORAGE_KEY);
+  const projectCharacters = useMemo(
+    () => projectRolesToCharacters(projectData.context.roles || []) as Character[],
+    [projectData.context.roles]
+  );
+  const projectLocations = useMemo(
+    () => projectRolesToLocations(projectData.context.roles || []),
+    [projectData.context.roles]
+  );
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
   const setAppConfigStore = useWorkflowStore(state => state.setAppConfig);
@@ -955,7 +972,7 @@ const App: React.FC = () => {
       const episodes = parseScriptToEpisodes(content);
       const stats = buildCharacterStats(episodes);
       setProjectData(prev => {
-        const existingChars = prev.context.characters || [];
+        const existingChars = projectRolesToCharacters(prev.context.roles || []);
         const existingNames = new Set(existingChars.map(c => c.name));
 
         // Update existing characters with fresh stats
@@ -1219,7 +1236,7 @@ const App: React.FC = () => {
     setProcessing(true, "Step 3/6: Building Character Roster from Parsed Script...");
     try {
       const stats = buildCharacterStats(projectData.episodes);
-      const existing = projectData.context.characters || [];
+      const existing = projectCharacters;
       const existingByName = new Map(existing.map((c) => [c.name, c]));
 
       const statNames = new Set(stats.keys());
@@ -1378,7 +1395,7 @@ const App: React.FC = () => {
   const confirmCharListAndNext = () => {
     setAnalysisError(null);
     // Setup Queue for deep dive
-    const mainChars = projectData.context.characters.filter(c => c.isMain).map(c => c.name);
+    const mainChars = projectCharacters.filter(c => c.isMain).map(c => c.name);
     setQueue(mainChars, mainChars.length);
     setAnalysisStep(AnalysisSubStep.CHAR_DEEP_DIVE);
   };
@@ -1396,7 +1413,7 @@ const App: React.FC = () => {
     setProcessing(true, `Step 4/6: Deep Analysis for '${charName}' (${analysisTotal - analysisQueue.length + 1}/${analysisTotal})...`);
 
     try {
-      const targetCharacter = projectData.context.characters.find((c) => c.name === charName);
+      const targetCharacter = projectCharacters.find((c) => c.name === charName);
       if (!targetCharacter) {
         shiftQueue();
         setProcessing(false);
@@ -1419,7 +1436,7 @@ const App: React.FC = () => {
       );
 
       setProjectData(prev => {
-        const updatedChars = prev.context.characters.map(c =>
+        const updatedChars = projectRolesToCharacters(prev.context.roles || []).map(c =>
           c.name === charName
             ? {
               ...c,
@@ -1474,7 +1491,7 @@ const App: React.FC = () => {
     setAnalysisError(null);
     setProcessing(true, "Step 5/6: Building Locations from Parsed Scenes...");
     try {
-      const seeds = buildLocationSeedsFromScenes(projectData.episodes, projectData.context.locations || []);
+      const seeds = buildLocationSeedsFromScenes(projectData.episodes, projectLocations || []);
       if (seeds.length === 0) {
         setProcessing(false);
         setAnalysisError({
@@ -1589,11 +1606,11 @@ const App: React.FC = () => {
 
   const confirmLocListAndNext = () => {
     setAnalysisError(null);
-    const coreLocs = projectData.context.locations.filter(l => l.type === 'core').map(l => l.name);
-    const priorityLocs = projectData.context.locations
+    const coreLocs = projectLocations.filter(l => l.type === 'core').map(l => l.name);
+    const priorityLocs = projectLocations
       .filter((l) => l.assetPriority === "high" || l.assetPriority === "medium")
       .map((l) => l.name);
-    const fallbackLocs = projectData.context.locations.map((l) => l.name);
+    const fallbackLocs = projectLocations.map((l) => l.name);
     const queue = coreLocs.length ? coreLocs : (priorityLocs.length ? priorityLocs : fallbackLocs);
     setQueue(queue, queue.length);
     setAnalysisStep(AnalysisSubStep.LOC_DEEP_DIVE);
@@ -1612,7 +1629,7 @@ const App: React.FC = () => {
     setProcessing(true, `Step 6/6: Visualizing '${locName}' (${analysisTotal - analysisQueue.length + 1}/${analysisTotal})...`);
 
     try {
-      const targetLocation = projectData.context.locations.find((l) => l.name === locName);
+      const targetLocation = projectLocations.find((l) => l.name === locName);
       if (!targetLocation) {
         shiftQueue();
         setProcessing(false);
@@ -1631,7 +1648,7 @@ const App: React.FC = () => {
       );
 
       setProjectData(prev => {
-        const updatedLocs = prev.context.locations.map(l =>
+        const updatedLocs = projectRolesToLocations(prev.context.roles || []).map(l =>
           l.name === locName
             ? {
               ...l,

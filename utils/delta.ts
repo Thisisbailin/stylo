@@ -1,4 +1,4 @@
-import { Character, Episode, Location, ProjectData, Scene, Shot } from "../types";
+import { Episode, ProjectData, ProjectRoleIdentity, Scene, Shot } from "../types";
 import { normalizeVideoParams } from "./projectData";
 
 export type EpisodeDelta = Omit<Episode, "shots" | "scenes">;
@@ -17,8 +17,7 @@ export type ProjectMetaDelta = {
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
-    characters: Character[];
-    locations: Location[];
+    roles: ProjectRoleIdentity[];
   };
   contextUsage: ProjectData["contextUsage"];
   phase1Usage: ProjectData["phase1Usage"];
@@ -32,14 +31,12 @@ export type ProjectDelta = {
   episodes?: EpisodeDelta[];
   scenes?: SceneDelta[];
   shots?: ShotDelta[];
-  characters?: Character[];
-  locations?: Location[];
+  roles?: ProjectRoleIdentity[];
   deleted?: {
     episodes?: number[];
     scenes?: { episodeId: number; sceneId: string }[];
     shots?: { episodeId: number; shotId: string }[];
-    characters?: string[];
-    locations?: string[];
+    roles?: string[];
   };
 };
 
@@ -63,14 +60,13 @@ const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   context: {
     projectSummary: data.context.projectSummary,
     episodeSummaries: data.context.episodeSummaries,
-    characters: data.context.characters,
-    locations: data.context.locations
+    roles: data.context.roles,
   },
   contextUsage: data.contextUsage,
   phase1Usage: data.phase1Usage,
   phase4Usage: data.phase4Usage,
   phase5Usage: data.phase5Usage,
-  stats: data.stats
+  stats: data.stats,
 });
 
 const toEpisodeDelta = (episode: Episode): EpisodeDelta => ({
@@ -82,20 +78,24 @@ const toEpisodeDelta = (episode: Episode): EpisodeDelta => ({
   errorMsg: episode.errorMsg,
   shotGenUsage: episode.shotGenUsage,
   soraGenUsage: episode.soraGenUsage,
-  storyboardGenUsage: episode.storyboardGenUsage
+  storyboardGenUsage: episode.storyboardGenUsage,
 });
 
 const toSceneDelta = (episodeId: number, scene: Scene): SceneDelta => ({
   episodeId,
   id: scene.id,
   title: scene.title,
-  content: scene.content
+  content: scene.content,
+  partition: scene.partition,
+  timeOfDay: scene.timeOfDay,
+  location: scene.location,
+  metadata: scene.metadata,
 });
 
 const toShotDelta = (episodeId: number, shot: Shot): ShotDelta => ({
   ...shot,
   episodeId,
-  videoParams: normalizeVideoParams(shot.videoParams)
+  videoParams: normalizeVideoParams(shot.videoParams),
 });
 
 const mapByKey = <T>(items: T[], keyFn: (item: T) => string) => {
@@ -111,9 +111,8 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
       episodes: current.episodes.map(toEpisodeDelta),
       scenes: current.episodes.flatMap((ep) => ep.scenes.map((scene) => toSceneDelta(ep.id, scene))),
       shots: current.episodes.flatMap((ep) => ep.shots.map((shot) => toShotDelta(ep.id, shot))),
-      characters: current.context.characters,
-      locations: current.context.locations,
-      deleted: {}
+      roles: current.context.roles,
+      deleted: {},
     };
   }
 
@@ -138,7 +137,7 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
       episodeUpserts.push(episode);
     }
   });
-  baseEpisodesMap.forEach((episode, key) => {
+  baseEpisodesMap.forEach((_episode, key) => {
     if (!currentEpisodesMap.has(key)) {
       episodeDeletes.push(Number(key));
     }
@@ -177,9 +176,6 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
   currentShotsMap.forEach((shot, key) => {
     const baseShot = baseShotsMap.get(key);
     if (!baseShot || stableStringify(shot) !== stableStringify(baseShot)) {
-      console.warn(
-        `[Delta] Shot Change Detected: id=${shot.id}, hasSora=${!!shot.soraPrompt}, hasStoryboard=${!!shot.storyboardPrompt}`
-      );
       shotUpserts.push(shot);
     }
   });
@@ -191,41 +187,23 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
   if (shotUpserts.length > 0) delta.shots = shotUpserts;
   if (shotDeletes.length > 0) delta.deleted!.shots = shotDeletes;
 
-  const currentCharactersMap = mapByKey(current.context.characters, (char) => char.id);
-  const baseCharactersMap = mapByKey(base.context.characters, (char) => char.id);
-  const characterUpserts: Character[] = [];
-  const characterDeletes: string[] = [];
-  currentCharactersMap.forEach((char, key) => {
-    const baseChar = baseCharactersMap.get(key);
-    if (!baseChar || stableStringify(char) !== stableStringify(baseChar)) {
-      characterUpserts.push(char);
+  const currentRolesMap = mapByKey(current.context.roles, (role) => role.id);
+  const baseRolesMap = mapByKey(base.context.roles, (role) => role.id);
+  const roleUpserts: ProjectRoleIdentity[] = [];
+  const roleDeletes: string[] = [];
+  currentRolesMap.forEach((role, key) => {
+    const baseRole = baseRolesMap.get(key);
+    if (!baseRole || stableStringify(role) !== stableStringify(baseRole)) {
+      roleUpserts.push(role);
     }
   });
-  baseCharactersMap.forEach((char, key) => {
-    if (!currentCharactersMap.has(key)) {
-      characterDeletes.push(key);
+  baseRolesMap.forEach((_role, key) => {
+    if (!currentRolesMap.has(key)) {
+      roleDeletes.push(key);
     }
   });
-  if (characterUpserts.length > 0) delta.characters = characterUpserts;
-  if (characterDeletes.length > 0) delta.deleted!.characters = characterDeletes;
-
-  const currentLocationsMap = mapByKey(current.context.locations, (loc) => loc.id);
-  const baseLocationsMap = mapByKey(base.context.locations, (loc) => loc.id);
-  const locationUpserts: Location[] = [];
-  const locationDeletes: string[] = [];
-  currentLocationsMap.forEach((loc, key) => {
-    const baseLoc = baseLocationsMap.get(key);
-    if (!baseLoc || stableStringify(loc) !== stableStringify(baseLoc)) {
-      locationUpserts.push(loc);
-    }
-  });
-  baseLocationsMap.forEach((loc, key) => {
-    if (!currentLocationsMap.has(key)) {
-      locationDeletes.push(key);
-    }
-  });
-  if (locationUpserts.length > 0) delta.locations = locationUpserts;
-  if (locationDeletes.length > 0) delta.deleted!.locations = locationDeletes;
+  if (roleUpserts.length > 0) delta.roles = roleUpserts;
+  if (roleDeletes.length > 0) delta.deleted!.roles = roleDeletes;
 
   if (Object.keys(delta.deleted || {}).length === 0) {
     delete delta.deleted;
@@ -239,8 +217,7 @@ export const isDeltaEmpty = (delta: ProjectDelta) => {
   if (delta.episodes && delta.episodes.length > 0) return false;
   if (delta.scenes && delta.scenes.length > 0) return false;
   if (delta.shots && delta.shots.length > 0) return false;
-  if (delta.characters && delta.characters.length > 0) return false;
-  if (delta.locations && delta.locations.length > 0) return false;
+  if (delta.roles && delta.roles.length > 0) return false;
   if (delta.deleted && Object.values(delta.deleted).some((list) => list && list.length > 0)) return false;
   return true;
 };

@@ -27,6 +27,7 @@ import {
 import { useConfig } from '../hooks/useConfig';
 import * as QwenAudio from '../services/qwenAudioService';
 import { ProjectData } from '../types';
+import { projectRolesToCharacters } from '../utils/projectRoles';
 
 type LabStage = 'design' | 'dubbing';
 
@@ -87,9 +88,13 @@ export const ProjectorModule: React.FC<ProjectorProps> = ({ projectData, setProj
     const [dubbingVolume, setDubbingVolume] = useState(50);
     const [selectedCharId, setSelectedCharId] = useState<string>("");
 
+    const allCharacters = useMemo(() => {
+        return projectRolesToCharacters(projectData?.context.roles || []);
+    }, [projectData?.context.roles]);
+
     const charactersWithVoice = useMemo(() => {
-        return projectData?.context.characters.filter(c => c.voiceId) || [];
-    }, [projectData?.context.characters]);
+        return allCharacters.filter(c => c.voiceId) || [];
+    }, [allCharacters]);
 
     const activeCharacter = useMemo(() => {
         return charactersWithVoice.find(c => c.id === selectedCharId);
@@ -201,10 +206,10 @@ export const ProjectorModule: React.FC<ProjectorProps> = ({ projectData, setProj
             ...prev,
             context: {
                 ...prev.context,
-                characters: prev.context.characters.map(char =>
-                    char.id === characterId
-                        ? { ...char, voiceId: audioResult.voiceId! }
-                        : char
+                roles: (prev.context.roles || []).map(role =>
+                    role.id === characterId
+                        ? { ...role, voiceId: audioResult.voiceId! }
+                        : role
                 )
             }
         }));
@@ -647,7 +652,7 @@ export const ProjectorModule: React.FC<ProjectorProps> = ({ projectData, setProj
                                         </button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                                        {projectData?.context.characters.map(char => (
+                                        {allCharacters.map(char => (
                                             <button
                                                 key={char.id}
                                                 onClick={() => handleSaveVoice(char.id)}

@@ -39,16 +39,6 @@ const toPositiveInteger = (value: unknown) => {
 
 type ResourceType = (typeof LIST_PROJECT_RESOURCE_TYPES)[number];
 
-const groupByFamily = <T extends { familyId: string }>(items: T[]) =>
-  Array.from(
-    items.reduce<Map<string, T[]>>((map, item) => {
-      const bucket = map.get(item.familyId) || [];
-      bucket.push(item);
-      map.set(item.familyId, bucket);
-      return map;
-    }, new Map()).values()
-  );
-
 const parseArgs = (input: unknown) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("list_project_resources 需要对象参数。");
@@ -79,8 +69,8 @@ export const listProjectResourcesToolDef = {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
     const roles = data.context?.roles || [];
-    const characterFamilies = groupByFamily(roles.filter((role) => role.kind === "person"));
-    const sceneFamilies = groupByFamily(roles.filter((role) => role.kind === "scene"));
+    const characters = roles.filter((role) => role.kind === "person");
+    const scenes = roles.filter((role) => role.kind === "scene");
 
     if (args.resourceType === "episodes") {
       const items = (data.episodes || []).slice(0, args.maxItems).map((episode) => ({
@@ -103,8 +93,8 @@ export const listProjectResourcesToolDef = {
         resource_type: "understanding_project",
         exists: Boolean(summary),
         chars: summary.length,
-        character_count: characterFamilies.length,
-        scene_count: sceneFamilies.length,
+        character_count: characters.length,
+        scene_count: scenes.length,
         episode_summary_count: (data.context?.episodeSummaries || []).filter((item) => item.summary?.trim()).length,
       };
     }
@@ -130,20 +120,19 @@ export const listProjectResourcesToolDef = {
     }
 
     if (args.resourceType === "understanding_characters") {
-      const items = characterFamilies.slice(0, args.maxItems).map((family) => {
-        const primary = family.find((role) => role.givenName === "normal") || family[0];
+      const items = characters.slice(0, args.maxItems).map((role) => {
         return {
-          id: primary.id,
-          name: primary.familyName,
-          role: primary.summary || "",
-          is_main: Boolean(primary.isMain),
-          forms_count: family.length,
-          has_bio: Boolean((primary.description || "").trim()),
+          id: role.id,
+          name: role.name,
+          role: role.summary || "",
+          is_main: Boolean(role.isMain),
+          portraits_count: (role.portraits || []).length,
+          has_bio: Boolean((role.description || "").trim()),
         };
       });
       return {
         resource_type: "understanding_characters",
-        total: characterFamilies.length,
+        total: characters.length,
         items,
       };
     }
@@ -170,20 +159,19 @@ export const listProjectResourcesToolDef = {
       };
     }
 
-    const items = sceneFamilies.slice(0, args.maxItems).map((family) => {
-      const primary = family.find((role) => role.givenName === "normal") || family[0];
+    const items = scenes.slice(0, args.maxItems).map((role) => {
       return {
-        id: primary.id,
-        name: primary.familyName,
-        type: primary.isCore ? "core" : "secondary",
-        zones_count: family.length,
-        has_description: Boolean((primary.description || "").trim()),
-        has_visuals: Boolean((primary.visualTags || "").trim()),
+        id: role.id,
+        name: role.name,
+        type: role.isCore ? "core" : "secondary",
+        portraits_count: (role.portraits || []).length,
+        has_description: Boolean((role.description || "").trim()),
+        has_visuals: Boolean((role.visualTags || "").trim()),
       };
     });
     return {
       resource_type: "understanding_scenes",
-      total: sceneFamilies.length,
+      total: scenes.length,
       items,
     };
   },

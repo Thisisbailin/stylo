@@ -1,4 +1,5 @@
 import type { ProjectRoleIdentity } from "../types";
+import { getPrimaryPortrait } from "./projectRoles";
 
 export const getRoleMentionLabel = (role?: ProjectRoleIdentity | null) => role?.mention || "";
 
@@ -24,4 +25,6 @@ export const getCharacterMentionAliases = (role?: ProjectRoleIdentity | null) =>
     ...((role?.aliases || []).map((item) => item.value)),
   ].filter((item): item is string => !!item);
 
-export const getDefaultCharacterForm = (role?: ProjectRoleIdentity | null) => role || undefined;
+export const getPrimaryRolePortrait = (role?: ProjectRoleIdentity | null) => getPrimaryPortrait(role);
+
+export const getDefaultCharacterForm = (role?: ProjectRoleIdentity | null) => getPrimaryPortrait(role);

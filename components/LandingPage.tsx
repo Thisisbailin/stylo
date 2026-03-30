@@ -76,8 +76,8 @@ const runtimeFacts = [
 
 const knowledgeRows = [
   "Project Summary / Episode Summary",
-  "Character Profile + Forms",
-  "Scene Profile + Zones",
+  "Character Profile + Portrait Slots",
+  "Scene Profile + Portrait Slots",
   "Node workflow as next action",
 ];
 
@@ -233,9 +233,9 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                   <PromptCycle
                     prompts={[
                       "读取第 3 集，找出人物关系最紧张的场景，并给出证据。",
-                      "把主角形态写回角色库，补充 visual tags 与 episode range。",
+                      "给主角新增一张“受伤形态”定妆照，并写回角色库。",
                       "根据当前分镜意图，生成一个 text -> imageGen 的 NodeLab 工作流。",
-                      "搜索项目知识层，找出最适合做预告片的场景和对应角色状态。",
+                      "搜索项目知识层，找出最适合做预告片的场景和对应角色定妆照。",
                     ]}
                   />
 

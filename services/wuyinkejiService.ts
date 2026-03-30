@@ -1,5 +1,6 @@
 import { MultimodalConfig, TokenUsage } from "../types";
 import { wrapWithProxy } from "../utils/api";
+import { NANOBANANA_PRO_ENDPOINT } from "../constants";
 
 export interface ImageTaskSubmissionResult {
     id: string;
@@ -14,7 +15,7 @@ export interface ImageTaskStatusResult {
 
 /**
  * SUBMIT IMAGE TASK
- * Sends the generation request to NanoBanana-pro.
+ * Sends the generation request to Nano Banana Pro.
  */
 export const submitImageTask = async (
     prompt: string,
@@ -22,40 +23,40 @@ export const submitImageTask = async (
     options?: {
         aspectRatio?: string;
         inputImageUrl?: string;
+        size?: string;
     }
 ): Promise<ImageTaskSubmissionResult> => {
     const { baseUrl, apiKey } = config;
 
     if (!apiKey) {
-        throw new Error("Missing Wuyinkeji API Key.");
+        throw new Error("Missing Nano Banana API Key.");
     }
 
-    // Wuyinkeji image gen endpoint
-    // Even if baseUrl is provided, we might want to default to the known endpoint if it's 'wuyinkeji' provider
-    const endpoint = baseUrl || "https://api.wuyinkeji.com/api/img/nanoBanana-pro";
+    const endpoint = (baseUrl || NANOBANANA_PRO_ENDPOINT).trim();
     const urlObj = new URL(endpoint);
 
-    // Attach key if not present in URL (some adapters use query param)
-    if (!urlObj.searchParams.get('key')) {
-        urlObj.searchParams.set('key', apiKey);
+    if (!urlObj.searchParams.get("key")) {
+        urlObj.searchParams.set("key", apiKey);
     }
 
-    const formBody = new URLSearchParams();
-    formBody.append('prompt', prompt);
-    formBody.append('aspectRatio', options?.aspectRatio || '1:1');
+    const payload: Record<string, unknown> = {
+        prompt,
+        size: options?.size || "1K",
+        aspectRatio: options?.aspectRatio || "1:1",
+    };
     if (options?.inputImageUrl) {
-        formBody.append('url', options.inputImageUrl);
+        payload.urls = [options.inputImageUrl];
     }
 
     try {
-        console.log("--- [Phase 4] Submit Image Task (Wuyinkeji) ---");
+        console.log("--- [Phase 4] Submit Image Task (Nano Banana) ---");
         const response = await fetch(wrapWithProxy(urlObj.toString()), {
             method: "POST",
             headers: {
-                "Content-Type": "application/x-www-form-urlencoded;charset:utf-8;",
+                "Content-Type": "application/json",
                 "Authorization": apiKey
             },
-            body: formBody
+            body: JSON.stringify(payload)
         });
 
         const text = await response.text();
@@ -64,7 +65,6 @@ export const submitImageTask = async (
         let data;
         try { data = JSON.parse(text); } catch (e) { throw new Error("Failed to parse API response."); }
 
-        // Provider Error Check
         if (data.code !== undefined && data.code !== 200) {
             throw new Error(`Provider Error (${data.code}): ${data.msg}`);
         }
@@ -89,67 +89,43 @@ export const checkImageTaskStatus = async (
     config: MultimodalConfig
 ): Promise<ImageTaskStatusResult> => {
     const { baseUrl, apiKey } = config;
+    if (!apiKey) {
+        return { id: taskId, status: "failed", errorMsg: "Missing Nano Banana API Key." };
+    }
 
-    // Construct Poll URL
-    // Wuyinkeji often has model-specific detail endpoints.
-    // Instead of stripping the model, we only strip '/submit' if present.
-    let rootBase = baseUrl || "https://api.wuyinkeji.com/api/img/nanoBanana-pro";
-    rootBase = rootBase.replace(/\/submit\/?$/, '').replace(/\/+$/, '');
+    const detailUrl = new URL((baseUrl || NANOBANANA_PRO_ENDPOINT).trim());
+    detailUrl.pathname = detailUrl.pathname.replace(/\/detail\/?$/, "").replace(/\/+$/, "") + "/detail";
 
-    // Fallback: If it's the generic img base, it might need /detail. 
-    // If it's a specific model base, it might already be the detail root.
-    const pollPath = rootBase.endsWith('/detail') ? rootBase : `${rootBase}/detail`;
-    const detailUrl = new URL(pollPath);
-
-    detailUrl.searchParams.set('id', taskId);
-    if (!detailUrl.searchParams.get('key')) {
-        detailUrl.searchParams.set('key', apiKey);
+    detailUrl.searchParams.set("id", taskId);
+    if (!detailUrl.searchParams.get("key")) {
+        detailUrl.searchParams.set("key", apiKey);
     }
 
     try {
-        console.log(`[Wuyinkeji] Polling: ${detailUrl.toString()}`);
-        let response = await fetch(wrapWithProxy(detailUrl.toString()), {
+        console.log(`[Nano Banana] Polling: ${detailUrl.toString()}`);
+        const response = await fetch(wrapWithProxy(detailUrl.toString()), {
             method: "GET",
             headers: {
                 "Authorization": apiKey,
-                "Content-Type": "application/x-www-form-urlencoded;charset:utf-8;"
+                "Content-Type": "application/json"
             }
         });
 
-        // 404 Fallback: try removing model specifics if special track fails
-        if (response.status === 404 && pollPath.includes('nanoBanana-pro')) {
-            const fallbackBase = rootBase.replace('/nanoBanana-pro', '');
-            const fallbackUrl = new URL(`${fallbackBase}/detail`);
-            fallbackUrl.searchParams.set('id', taskId);
-            fallbackUrl.searchParams.set('key', apiKey);
-            console.log(`[Wuyinkeji] 404 fallback: ${fallbackUrl.toString()}`);
-            response = await fetch(wrapWithProxy(fallbackUrl.toString()), {
-                method: "GET",
-                headers: {
-                    "Authorization": apiKey,
-                    "Content-Type": "application/x-www-form-urlencoded;charset:utf-8;"
-                }
-            });
-        }
-
         if (!response.ok) {
-            // If still failed, check status code for better error reporting
-            if (response.status === 404) return { id: taskId, status: 'processing' }; // Treat as not ready
+            if (response.status === 404) return { id: taskId, status: 'processing' };
             throw new Error(`Poll Error ${response.status}`);
         }
 
         const data = await response.json();
 
         if (data.code !== undefined) {
-            // Mapping Wuyinkeji internal status
-            // 0: Queued, 1: Success, 2: Failed, 3: Processing
             const d = data.data;
             if (!d) return { id: taskId, status: 'processing' };
 
             const s = d.status;
 
             if (s === 1) {
-                const finalUrl = d.remote_url || d.img_url || d.url;
+                const finalUrl = d.remote_url || d.img_url || d.url || d.images?.[0] || d.urls?.[0];
                 if (finalUrl) return { id: taskId, status: 'succeeded', url: finalUrl };
             }
 

@@ -597,6 +597,15 @@ const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
         error: null,
         aspectRatio: "1:1",
       } as ImageGenNodeData;
+    case "nanoBananaImageGen":
+      return {
+        inputImages: [],
+        outputImage: null,
+        status: "idle",
+        error: null,
+        aspectRatio: "1:1",
+        model: "nano banana pro",
+      } as ImageGenNodeData;
     case "wanImageGen":
       return {
         inputImages: [],
@@ -968,7 +977,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             const src = (sourceNode.data as AnnotationNodeData).outputImage;
             if (src) images.push(src);
             if (src) imageRefs.push({ src });
-          } else if (sourceNode.type === "imageGen" || sourceNode.type === "wanImageGen") {
+          } else if (sourceNode.type === "imageGen" || sourceNode.type === "nanoBananaImageGen" || sourceNode.type === "wanImageGen") {
             const src = (sourceNode.data as ImageGenNodeData).outputImage;
             if (src) images.push(src);
             if (src) {
@@ -1031,7 +1040,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       return { valid: false, errors };
     }
     nodes
-      .filter((n) => n.type === "imageGen" || n.type === "wanImageGen")
+      .filter((n) => n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen")
       .forEach((node) => {
         const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
         const textConnected = edges.some((e) => e.target === node.id && e.targetHandle === "text");

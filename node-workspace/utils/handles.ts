@@ -17,6 +17,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "identityCard":
       return { inputs: [], outputs: ["text"] };
     case "imageGen":
+    case "nanoBananaImageGen":
       return { inputs: ["image", "text"], outputs: ["image"] };
     case "wanImageGen":
       return { inputs: ["image", "text"], outputs: ["image"] };

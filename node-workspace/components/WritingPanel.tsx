@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { BookOpen, CheckCircle2, ChevronRight, Plus, Sparkles } from "lucide-react";
 import type { Character, Episode, ProjectData } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
+import { projectRolesToCharacters } from "../../utils/projectRoles";
 
 type Props = {
   projectData: ProjectData;
@@ -211,8 +212,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData }) =
   const highlightRef = useRef<HTMLDivElement>(null);
 
   const knownCharacters = useMemo(
-    () => (projectData.context.characters || []).filter((character) => !!character?.name?.trim()),
-    [projectData.context.characters]
+    () => projectRolesToCharacters(projectData.context.roles || []).filter((character) => !!character?.name?.trim()) as Character[],
+    [projectData.context.roles]
   );
   const characterMap = useMemo(() => {
     const map = new Map<string, Character>();

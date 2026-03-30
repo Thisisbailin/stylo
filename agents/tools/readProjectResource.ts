@@ -127,7 +127,7 @@ const matchesRole = (role: ProjectRoleIdentity, itemId?: string, name?: string) 
   if (itemId && role.id === itemId) return true;
   if (!needle) return false;
   return [
-    role.familyName,
+    role.name,
     role.displayName,
     role.mention,
     role.title,
@@ -136,17 +136,6 @@ const matchesRole = (role: ProjectRoleIdentity, itemId?: string, name?: string) 
     .map((value) => normalizeMatchValue(value))
     .some((value) => value === needle);
 };
-
-const groupRolesByFamily = (roles: ProjectRoleIdentity[]) =>
-  roles.reduce<Map<string, ProjectRoleIdentity[]>>((map, role) => {
-    const bucket = map.get(role.familyId) || [];
-    bucket.push(role);
-    map.set(role.familyId, bucket);
-    return map;
-  }, new Map());
-
-const selectPrimaryRole = (roles: ProjectRoleIdentity[]) =>
-  roles.find((role) => role.givenName === "normal") || roles[0];
 
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
@@ -290,20 +279,19 @@ export const readProjectResourceToolDef = {
     }
 
     if (args.resourceType === "character_profile") {
-      const family = Array.from(groupRolesByFamily((data.context?.roles || []).filter((role) => role.kind === "person")).values()).find(
-        (roles) => roles.some((role) => matchesRole(role, args.itemId, args.name))
+      const item = (data.context?.roles || []).find(
+        (role) => role.kind === "person" && matchesRole(role, args.itemId, args.name)
       );
-      const item = family ? selectPrimaryRole(family) : undefined;
       return item
         ? {
             resource_type: "character_profile",
             found: true,
             item_id: item.id,
-            name: item.familyName,
+            name: item.name,
             role: item.summary || "",
             is_main: Boolean(item.isMain),
             bio: clipText(item.description || "", args.maxChars),
-            forms_count: family?.length || 0,
+            portraits_count: (item.portraits || []).length,
             tags: item.tags || [],
           }
         : {
@@ -339,20 +327,19 @@ export const readProjectResourceToolDef = {
           };
     }
 
-    const family = Array.from(groupRolesByFamily((data.context?.roles || []).filter((role) => role.kind === "scene")).values()).find(
-      (roles) => roles.some((role) => matchesRole(role, args.itemId, args.name))
+    const item = (data.context?.roles || []).find(
+      (role) => role.kind === "scene" && matchesRole(role, args.itemId, args.name)
     );
-    const item = family ? selectPrimaryRole(family) : undefined;
     return item
       ? {
           resource_type: "scene_profile",
           found: true,
           item_id: item.id,
-          name: item.familyName,
+          name: item.name,
           type: item.isCore ? "core" : "secondary",
           description: clipText(item.description || "", args.maxChars),
           visuals: clipText(item.visualTags || "", args.maxChars),
-          zones_count: family?.length || 0,
+          portraits_count: (item.portraits || []).length,
         }
       : {
           resource_type: "scene_profile",

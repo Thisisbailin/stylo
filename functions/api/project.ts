@@ -46,8 +46,9 @@ type ProjectMeta = {
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
-    characters: Array<Record<string, unknown>>;
-    locations: Array<Record<string, unknown>>;
+    roles: Array<Record<string, unknown>>;
+    characters?: Array<Record<string, unknown>>;
+    locations?: Array<Record<string, unknown>>;
   };
   contextUsage: typeof emptyTokenUsage;
   phase1Usage: typeof emptyPhase1Usage;
@@ -68,6 +69,7 @@ const DEFAULT_META: ProjectMeta = {
   context: {
     projectSummary: "",
     episodeSummaries: [],
+    roles: [],
     characters: [],
     locations: []
   },
@@ -83,14 +85,12 @@ type ProjectDelta = {
   episodes?: Array<Record<string, unknown>>;
   scenes?: Array<Record<string, unknown>>;
   shots?: Array<Record<string, unknown>>;
-  characters?: Array<Record<string, unknown>>;
-  locations?: Array<Record<string, unknown>>;
+  roles?: Array<Record<string, unknown>>;
   deleted?: {
     episodes?: number[];
     scenes?: { episodeId: number; sceneId: string }[];
     shots?: { episodeId: number; shotId: string }[];
-    characters?: string[];
-    locations?: string[];
+    roles?: string[];
   };
 };
 
@@ -196,8 +196,7 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   context: {
     projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
     episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
-    characters: Array.isArray(projectData?.context?.characters) ? projectData.context.characters : [],
-    locations: Array.isArray(projectData?.context?.locations) ? projectData.context.locations : []
+    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
   },
   contextUsage: projectData?.contextUsage || emptyTokenUsage,
   phase1Usage: projectData?.phase1Usage || emptyPhase1Usage,
@@ -243,8 +242,7 @@ const collectProjectParts = (projectData: any) => {
     episodes: episodeRows,
     scenes,
     shots,
-    characters: Array.isArray(projectData?.context?.characters) ? projectData.context.characters : [],
-    locations: Array.isArray(projectData?.context?.locations) ? projectData.context.locations : []
+    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
   };
 };
 
@@ -361,6 +359,7 @@ const loadProjectData = async (env: Env, userId: string) => {
     return { ...data, id: row.loc_id };
   });
 
+  const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
   const metaCharacters = Array.isArray(meta.context?.characters) ? meta.context.characters : [];
   const metaLocations = Array.isArray(meta.context?.locations) ? meta.context.locations : [];
 
@@ -373,8 +372,9 @@ const loadProjectData = async (env: Env, userId: string) => {
     context: {
       projectSummary: meta.context?.projectSummary || "",
       episodeSummaries: meta.context?.episodeSummaries || [],
-      characters: characters.length > 0 ? characters : metaCharacters,
-      locations: locations.length > 0 ? locations : metaLocations
+      roles: metaRoles,
+      characters: metaRoles.length ? [] : (characters.length > 0 ? characters : metaCharacters),
+      locations: metaRoles.length ? [] : (locations.length > 0 ? locations : metaLocations)
     },
     shotGuide: meta.shotGuide || "",
     soraGuide: meta.soraGuide || "",
@@ -717,8 +717,7 @@ export const onRequestPut = async (context: {
       const episodes = delta.episodes || [];
       const scenes = delta.scenes || [];
       const shots = delta.shots || [];
-      const characters = delta.characters || [];
-      const locations = delta.locations || [];
+      const roles = delta.roles || [];
 
       for (const episode of episodes) {
         const { scenes: _scenes, shots: _shots, ...episodeData } = episode;
@@ -753,21 +752,7 @@ export const onRequestPut = async (context: {
         hasChanges = true;
       }
 
-      for (const character of characters) {
-        await context.env.DB.prepare(
-          "INSERT INTO user_project_characters (user_id, char_id, data, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, char_id) DO UPDATE SET data=?3, updated_at=?4"
-        )
-          .bind(userId, character.id, JSON.stringify(character), updatedAt)
-          .run();
-        hasChanges = true;
-      }
-
-      for (const location of locations) {
-        await context.env.DB.prepare(
-          "INSERT INTO user_project_locations (user_id, loc_id, data, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, loc_id) DO UPDATE SET data=?3, updated_at=?4"
-        )
-          .bind(userId, location.id, JSON.stringify(location), updatedAt)
-          .run();
+      if (roles.length > 0) {
         hasChanges = true;
       }
 
@@ -812,24 +797,7 @@ export const onRequestPut = async (context: {
         }
         hasChanges = true;
       }
-      if (deleted.characters && deleted.characters.length > 0) {
-        for (const charId of deleted.characters) {
-          await context.env.DB.prepare(
-            "DELETE FROM user_project_characters WHERE user_id = ?1 AND char_id = ?2"
-          )
-            .bind(userId, charId)
-            .run();
-        }
-        hasChanges = true;
-      }
-      if (deleted.locations && deleted.locations.length > 0) {
-        for (const locId of deleted.locations) {
-          await context.env.DB.prepare(
-            "DELETE FROM user_project_locations WHERE user_id = ?1 AND loc_id = ?2"
-          )
-            .bind(userId, locId)
-            .run();
-        }
+      if (deleted.roles && deleted.roles.length > 0) {
         hasChanges = true;
       }
     } else {
@@ -868,21 +836,6 @@ export const onRequestPut = async (context: {
           .run();
       }
 
-      for (const character of parts.characters) {
-        await context.env.DB.prepare(
-          "INSERT INTO user_project_characters (user_id, char_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-        )
-          .bind(userId, character.id, JSON.stringify(character), updatedAt)
-          .run();
-      }
-
-      for (const location of parts.locations) {
-        await context.env.DB.prepare(
-          "INSERT INTO user_project_locations (user_id, loc_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-        )
-          .bind(userId, location.id, JSON.stringify(location), updatedAt)
-          .run();
-      }
     }
 
     if (hasChanges) {

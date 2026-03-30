@@ -1,4 +1,5 @@
 import type { DesignAssetItem, ProjectContext, ProjectRoleIdentity, ProjectRoleTone } from "../types";
+import { getPrimaryPortrait, resolveRoleAsset } from "./projectRoles";
 
 export type ProjectIdentityTone = ProjectRoleTone;
 
@@ -8,23 +9,18 @@ export type ProjectIdentity = ProjectRoleIdentity & {
   primaryPortraitUrl?: string;
 };
 
-const findAssetUrl = (assets: DesignAssetItem[], refId: string) =>
-  assets.find((asset) => asset.category === "identity" && asset.refId === refId)?.url;
-
 export const buildProjectIdentities = (context: ProjectContext, designAssets: DesignAssetItem[]) =>
   (context.roles || [])
     .map((role) => ({
       ...role,
       primaryPortraitUrl:
-        role.portraits?.find((portrait) => portrait.isPrimary)?.imageUrl ||
-        role.portraits?.[0]?.imageUrl ||
+        getPrimaryPortrait(role)?.imageUrl ||
         role.avatarUrl ||
-        findAssetUrl(designAssets || [], role.id),
+        resolveRoleAsset(designAssets || [], role),
       avatarUrl:
         role.avatarUrl ||
-        role.portraits?.find((portrait) => portrait.isPrimary)?.imageUrl ||
-        role.portraits?.[0]?.imageUrl ||
-        findAssetUrl(designAssets || [], role.id),
+        getPrimaryPortrait(role)?.imageUrl ||
+        resolveRoleAsset(designAssets || [], role),
       subtitle: role.episodeUsage,
       detailLines: [
         `身份证：@${role.mention}`,
@@ -51,7 +47,7 @@ export const resolveLegacyIdentity = (
     if (exact) return exact;
   }
   if (input?.entityId) {
-    return identities.find((item) => item.familyId === input.entityId || item.id === input.selectedVariantId) || identities[0];
+    return identities.find((item) => item.id === input.entityId || item.id === input.selectedVariantId) || identities[0];
   }
   return identities[0] || null;
 };

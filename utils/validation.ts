@@ -9,8 +9,6 @@ const isString = (value: unknown): value is string => typeof value === "string";
 
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-
 export const validateProjectData = (data: unknown): ValidationResult => {
   if (!isRecord(data)) return { ok: false, error: "projectData is not an object" };
   const rawScript = (data as Record<string, unknown>).rawScript;
@@ -25,27 +23,15 @@ export const validateProjectData = (data: unknown): ValidationResult => {
     if (projectSummary !== undefined && !isString(projectSummary)) {
       return { ok: false, error: "context.projectSummary is not a string" };
     }
-    const characters = (context as Record<string, unknown>).characters;
-    if (characters !== undefined) {
-      if (!Array.isArray(characters)) return { ok: false, error: "context.characters is not an array" };
-      for (let i = 0; i < characters.length; i += 1) {
-        const char = characters[i];
-        if (!isRecord(char)) return { ok: false, error: `context.characters[${i}] is not an object` };
-        if (!isString(char.name)) return { ok: false, error: `context.characters[${i}].name is not a string` };
-        if (!isString(char.role)) return { ok: false, error: `context.characters[${i}].role is not a string` };
-        if (!isBoolean(char.isMain)) return { ok: false, error: `context.characters[${i}].isMain is not a boolean` };
-        if (char.forms !== undefined && !Array.isArray(char.forms)) {
-          return { ok: false, error: `context.characters[${i}].forms is not an array` };
-        }
-      }
-    }
-    const locations = (context as Record<string, unknown>).locations;
-    if (locations !== undefined) {
-      if (!Array.isArray(locations)) return { ok: false, error: "context.locations is not an array" };
-      for (let i = 0; i < locations.length; i += 1) {
-        const loc = locations[i];
-        if (!isRecord(loc)) return { ok: false, error: `context.locations[${i}] is not an object` };
-        if (!isString(loc.name)) return { ok: false, error: `context.locations[${i}].name is not a string` };
+    const roles = (context as Record<string, unknown>).roles;
+    if (roles !== undefined) {
+      if (!Array.isArray(roles)) return { ok: false, error: "context.roles is not an array" };
+      for (let i = 0; i < roles.length; i += 1) {
+        const role = roles[i];
+        if (!isRecord(role)) return { ok: false, error: `context.roles[${i}] is not an object` };
+        if (!isString(role.name)) return { ok: false, error: `context.roles[${i}].name is not a string` };
+        if (!isString(role.mention)) return { ok: false, error: `context.roles[${i}].mention is not a string` };
+        if (!Array.isArray(role.portraits)) return { ok: false, error: `context.roles[${i}].portraits is not an array` };
       }
     }
   }

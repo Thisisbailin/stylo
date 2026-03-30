@@ -440,7 +440,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
             </div>
           ) : (
             <div className="rounded-[16px] border border-dashed border-[var(--node-border)] px-3 py-2 text-[9px] leading-5 text-[var(--node-text-secondary)]">
-              提示词里插入 <span className="text-[var(--node-text-primary)] font-semibold">@男主_normal</span> 这类身份证，
+              提示词里插入 <span className="text-[var(--node-text-primary)] font-semibold">@男主</span> 或 <span className="text-[var(--node-text-primary)] font-semibold">@男主_受伤形态</span> 这类身份证，
               会自动使用项目卡片中的设计图作为引用。
             </div>
           )}

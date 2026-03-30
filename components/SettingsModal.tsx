@@ -6,6 +6,7 @@ import * as MultimodalService from '../services/multimodalService';
 import { X, Video, Key, Globe, RefreshCw, CheckCircle, AlertCircle, Loader2, Zap, Image as ImageIcon, Info, Sparkles, BrainCircuit, Film, Trash2, ChevronDown } from 'lucide-react';
 import { getDeviceId } from '../utils/device';
 import { buildApiUrl } from '../utils/api';
+import { NANOBANANA_PRO_ENDPOINT, NANOBANANA_PRO_MODEL } from '../constants';
 
 interface Props {
     isOpen: boolean;
@@ -253,12 +254,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
         setIsLoadingMultiModels(true);
         setMultiModelFetchMessage(null);
         try {
-            if (config.multimodalConfig.provider === 'wuyinkeji') {
-                // Fixed models for Wuyinkeji to avoid CORS blocked /v1/models call
-                const models = ['nanoBanana-pro'];
+            if (config.multimodalConfig.provider === 'wuyinkeji' || config.multimodalConfig.provider === 'nanobanana') {
+                const models = [NANOBANANA_PRO_MODEL];
                 setAvailableMultiModels(models);
                 setAvailableImageModelsStore(models);
-                setMultiModelFetchMessage({ type: 'success', text: "Models optimized for Wuyinkeji." });
+                setMultiModelFetchMessage({ type: 'success', text: "Models optimized for Nano Banana." });
                 setIsLoadingMultiModels(false);
                 return;
             }
@@ -396,9 +396,10 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                             const newConfig = { ...config.multimodalConfig, provider: val };
 
                                             // Auto-fill defaults for specific providers
-                                            if (val === 'wuyinkeji') {
-                                                newConfig.baseUrl = 'https://api.wuyinkeji.com/api/img/nanoBanana-pro';
-                                                newConfig.model = 'nanoBanana-pro';
+                                            if (val === 'nanobanana' || val === 'wuyinkeji') {
+                                                newConfig.provider = 'nanobanana';
+                                                newConfig.baseUrl = NANOBANANA_PRO_ENDPOINT;
+                                                newConfig.model = NANOBANANA_PRO_MODEL;
                                             } else if (val === 'standard') {
                                                 newConfig.baseUrl = 'https://api.openai.com/v1';
                                                 newConfig.model = 'gpt-4o';
@@ -419,7 +420,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                         className="w-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)] focus:outline-none appearance-none cursor-pointer pr-10"
                                     >
                                         <option value="standard">Standard (Chat API / OpenAI)</option>
-                                        <option value="wuyinkeji">Wuyinkeji (NanoBanana-pro)</option>
+                                        <option value="nanobanana">Nano Banana (nano banana pro)</option>
                                         <option value="seedream">Seedream (Doubao)</option>
                                         <option value="wan">Wan (Coming Soon)</option>
                                     </select>

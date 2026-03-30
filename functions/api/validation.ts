@@ -8,8 +8,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isString = (value: unknown): value is string => typeof value === "string";
 
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-
 const PROJECT_PATCH_KEYS = new Set([
   "fileName",
   "rawScript",
@@ -100,11 +98,8 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
       if (context.episodeSummaries !== undefined) {
         if (!Array.isArray(context.episodeSummaries)) return { ok: false, error: "delta.meta.context.episodeSummaries is not an array" };
       }
-      if (context.characters !== undefined) {
-        if (!Array.isArray(context.characters)) return { ok: false, error: "delta.meta.context.characters is not an array" };
-      }
-      if (context.locations !== undefined) {
-        if (!Array.isArray(context.locations)) return { ok: false, error: "delta.meta.context.locations is not an array" };
+      if (context.roles !== undefined) {
+        if (!Array.isArray(context.roles)) return { ok: false, error: "delta.meta.context.roles is not an array" };
       }
     }
   }
@@ -147,29 +142,15 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
     }
   }
 
-  if (delta.characters !== undefined) {
-    if (!Array.isArray(delta.characters)) return { ok: false, error: "delta.characters is not an array" };
-    for (let i = 0; i < delta.characters.length; i += 1) {
-      const char = delta.characters[i];
-      if (!isRecord(char)) return { ok: false, error: `delta.characters[${i}] is not an object` };
-      if (!isString(char.id)) return { ok: false, error: `delta.characters[${i}].id is not a string` };
-      if (!isString(char.name)) return { ok: false, error: `delta.characters[${i}].name is not a string` };
-      if (!isString(char.role)) return { ok: false, error: `delta.characters[${i}].role is not a string` };
-      if (!isBoolean(char.isMain)) return { ok: false, error: `delta.characters[${i}].isMain is not a boolean` };
-      if (!isString(char.bio)) return { ok: false, error: `delta.characters[${i}].bio is not a string` };
-    }
-  }
-
-  if (delta.locations !== undefined) {
-    if (!Array.isArray(delta.locations)) return { ok: false, error: "delta.locations is not an array" };
-    for (let i = 0; i < delta.locations.length; i += 1) {
-      const loc = delta.locations[i];
-      if (!isRecord(loc)) return { ok: false, error: `delta.locations[${i}] is not an object` };
-      if (!isString(loc.id)) return { ok: false, error: `delta.locations[${i}].id is not a string` };
-      if (!isString(loc.name)) return { ok: false, error: `delta.locations[${i}].name is not a string` };
-      if (!isString(loc.type)) return { ok: false, error: `delta.locations[${i}].type is not a string` };
-      if (!isString(loc.description)) return { ok: false, error: `delta.locations[${i}].description is not a string` };
-      if (!isString(loc.visuals)) return { ok: false, error: `delta.locations[${i}].visuals is not a string` };
+  if (delta.roles !== undefined) {
+    if (!Array.isArray(delta.roles)) return { ok: false, error: "delta.roles is not an array" };
+    for (let i = 0; i < delta.roles.length; i += 1) {
+      const role = delta.roles[i];
+      if (!isRecord(role)) return { ok: false, error: `delta.roles[${i}] is not an object` };
+      if (!isString(role.id)) return { ok: false, error: `delta.roles[${i}].id is not a string` };
+      if (!isString(role.name)) return { ok: false, error: `delta.roles[${i}].name is not a string` };
+      if (!isString(role.mention)) return { ok: false, error: `delta.roles[${i}].mention is not a string` };
+      if (!Array.isArray(role.portraits)) return { ok: false, error: `delta.roles[${i}].portraits is not an array` };
     }
   }
 
