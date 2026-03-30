@@ -114,15 +114,11 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       .bind(userId)
       .first();
 
-    if (!row) {
-      return new Response("Not Found", { status: 404 });
-    }
-
-    const parsed = JSON.parse(row.data as string);
+    const parsed = row ? JSON.parse(row.data as string) : { secrets: {}, meta: {} };
     const { secrets } = unwrapStoredSecrets(parsed);
     return jsonResponse(
-      { secrets, updatedAt: row.updated_at },
-      { headers: { etag: String(row.updated_at) } }
+      { secrets, updatedAt: row?.updated_at || 0 },
+      { headers: { etag: String(row?.updated_at || 0) } }
     );
   } catch (err: any) {
     if (err instanceof Response) return err;

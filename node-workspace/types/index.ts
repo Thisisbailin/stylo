@@ -1,7 +1,7 @@
 import { Node, Edge } from "@xyflow/react";
 import { DesignAssetItem, Episode, ProjectContext, SeedanceModel, ViduReferenceMode } from "../../types";
 
-export type HandleType = "image" | "text" | "audio";
+export type HandleType = "image" | "text" | "audio" | "multi";
 
 export type NodeType =
   | "imageInput"

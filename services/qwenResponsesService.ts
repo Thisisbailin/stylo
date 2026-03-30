@@ -1,6 +1,6 @@
 import { AgentTool, AgentToolCall } from "./toolingTypes";
 import type { TokenUsage } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { buildApiUrl, wrapWithProxy } from "../utils/api";
 import { QWEN_RESPONSES_BASE_URL } from "../constants";
 
 export interface QwenResponsesConfig {
@@ -263,14 +263,39 @@ export const createQwenResponse = async (
 export const fetchQwenModels = async (
   config: QwenResponsesConfig = {}
 ): Promise<{ models: QwenModel[]; raw: any }> => {
-  const apiKey = resolveApiKey(config);
-  const endpoint = resolveModelsEndpoint(config.baseUrl);
-  const res = await fetch(wrapWithProxy(endpoint), {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+  const optionalEnvKey =
+    (typeof import.meta !== "undefined"
+      ? (import.meta.env.QWEN_API_KEY ||
+        import.meta.env.VITE_QWEN_API_KEY ||
+        import.meta.env.DASHSCOPE_API_KEY ||
+        import.meta.env.VITE_DASHSCOPE_API_KEY ||
+        import.meta.env.OPENAI_API_KEY ||
+        import.meta.env.VITE_OPENAI_API_KEY)
+      : undefined) ||
+    (typeof process !== "undefined"
+      ? (process.env?.QWEN_API_KEY ||
+        process.env?.VITE_QWEN_API_KEY ||
+        process.env?.DASHSCOPE_API_KEY ||
+        process.env?.VITE_DASHSCOPE_API_KEY ||
+        process.env?.OPENAI_API_KEY ||
+        process.env?.VITE_OPENAI_API_KEY)
+      : undefined);
+  const apiKey = (config.apiKey || optionalEnvKey || "").trim();
+  const res = apiKey
+    ? await fetch(wrapWithProxy(resolveModelsEndpoint(config.baseUrl)), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+    : await (() => {
+        const endpoint = buildApiUrl("/api/qwen-models");
+        const url = new URL(endpoint, window.location.origin);
+        if (config.baseUrl?.trim()) {
+          url.searchParams.set("baseUrl", config.baseUrl.trim());
+        }
+        return fetch(url.toString(), { method: "GET" });
+      })();
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Qwen models fetch failed (${res.status}): ${err}`);

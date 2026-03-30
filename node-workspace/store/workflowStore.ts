@@ -33,6 +33,7 @@ import {
 } from "../types";
 import type { Episode, ProjectRoleIdentity, Scene } from "../../types";
 import { buildProjectIdentities, resolveLegacyIdentity } from "../../utils/identityCards";
+import { resolveEdgeHandleType } from "../utils/handles";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -983,8 +984,12 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       .forEach((edge) => {
         const sourceNode = nodes.find((n) => n.id === edge.source);
         if (!sourceNode) return;
-        const handleId = edge.targetHandle;
-        if (handleId === "image" || !handleId) {
+        const effectiveHandle = resolveEdgeHandleType({
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          sourceNodeType: sourceNode.type,
+        });
+        if (effectiveHandle === "image") {
           if (sourceNode.type === "imageInput") {
             const src = (sourceNode.data as ImageInputNodeData).image;
             if (src) images.push(src);
@@ -1010,11 +1015,11 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
             }
           }
         }
-        if (handleId === "audio" && sourceNode.type === "audioInput") {
+        if (effectiveHandle === "audio" && sourceNode.type === "audioInput") {
           const src = (sourceNode.data as AudioInputNodeData).audio;
           if (src) audios.push(src);
         }
-        if (handleId === "text") {
+        if (effectiveHandle === "text") {
           if (sourceNode.type === "text") {
             const value = (sourceNode.data as TextNodeData).text;
             if (value && value.trim()) texts.push(value.trim());
@@ -1079,8 +1084,18 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodes
       .filter((n) => n.type === "seedanceVideoGen")
       .forEach((node) => {
-        const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
-        const audioConnected = edges.some((e) => e.target === node.id && e.targetHandle === "audio");
+        const edgeInputTypes = edges
+          .filter((e) => e.target === node.id)
+          .map((e) => {
+            const sourceNode = nodes.find((n) => n.id === e.source);
+            return resolveEdgeHandleType({
+              sourceHandle: e.sourceHandle,
+              targetHandle: e.targetHandle,
+              sourceNodeType: sourceNode?.type,
+            });
+          });
+        const imageConnected = edgeInputTypes.includes("image");
+        const audioConnected = edgeInputTypes.includes("audio");
         const nodeData = node.data as any;
         const refs =
           (Array.isArray(nodeData.referenceVideos) ? nodeData.referenceVideos.length : 0) +

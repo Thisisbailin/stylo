@@ -107,6 +107,10 @@ const lookupWorkflowNodeSnapshot = (
 const resolvePreferredConnectionHandles = (sourceType: string, targetType: string) => {
   const sourceOutputs = getNodeHandles(sourceType).outputs;
   const targetInputs = getNodeHandles(targetType).inputs;
+  const multimodalSourceHandle = sourceOutputs.find((handle) => handle === "image" || handle === "text" || handle === "audio");
+  if (multimodalSourceHandle && targetInputs.includes("multi")) {
+    return { sourceHandle: multimodalSourceHandle as "image" | "text" | "audio", targetHandle: "multi" as const };
+  }
   if (sourceOutputs.includes("text") && targetInputs.includes("text")) {
     return { sourceHandle: "text" as const, targetHandle: "text" as const };
   }
@@ -592,9 +596,9 @@ export const QalamAgent: React.FC<Props> = ({
       .filter(Boolean) as Array<{ kind: "character" | "location"; name: string; label: string; id?: string }>;
   }, [input, mentionIndex]);
   const currentModelLabel = useMemo(() => {
-    const raw = config.textConfig?.model?.trim();
+    const raw = resolveAgentRuntimeModel(config.textConfig);
     return raw || "model";
-  }, [config.textConfig?.model]);
+  }, [config.textConfig]);
   const canSend = input.trim().length > 0 && !isSending;
   const resizeInput = useCallback((el?: HTMLTextAreaElement | null) => {
     if (!el) return;

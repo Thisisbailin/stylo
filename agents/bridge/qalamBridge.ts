@@ -71,7 +71,7 @@ export type WorkflowNodeLookupResult = {
   outputHandles: WorkflowBuilderHandle[];
 };
 
-export type WorkflowBuilderHandle = "image" | "text" | "audio";
+export type WorkflowBuilderHandle = "image" | "text" | "audio" | "multi";
 
 export type CreateNodeWorkflowNodeInput = {
   key: string;

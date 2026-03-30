@@ -73,9 +73,13 @@ export const createHttpQalamAgentRuntime = ({
     }
 
     let finalResult: QalamRunResult | null = null;
+    let streamedError: string | null = null;
     await decodeStreamChunks(response.body, (rawPacket) => {
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
+        if (packet.event.type === "run_failed") {
+          streamedError = packet.event.error;
+        }
         options?.onEvent?.(packet.event);
         return;
       }
@@ -89,6 +93,9 @@ export const createHttpQalamAgentRuntime = ({
     });
 
     if (!finalResult) {
+      if (streamedError) {
+        throw new Error(streamedError);
+      }
       throw new Error("远端 Agent 没有返回最终结果。");
     }
     return finalResult;

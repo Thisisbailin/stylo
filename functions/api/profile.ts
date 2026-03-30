@@ -87,11 +87,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       .bind(userId)
       .first();
 
-    if (!row) {
-      return new Response("Not Found", { status: 404 });
-    }
-
-    return jsonResponse({ avatarUrl: row.avatar_url || null });
+    return jsonResponse({ avatarUrl: row?.avatar_url || null });
   } catch (err: any) {
     if (err instanceof Response) return err;
     console.error("GET /api/profile error", err);

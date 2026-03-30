@@ -14,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodelab.css";
 import { useWorkflowStore } from "../store/workflowStore";
-import { getNodeHandles, isValidConnection } from "../utils/handles";
+import { getNodeHandles, isValidConnection, nodeSupportsHandle } from "../utils/handles";
 import { WorkflowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
 import {
@@ -618,24 +618,26 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       const newNodeHandles = getNodeHandles(type);
       const canAttach =
         connectionDrop.connectionType === "source"
-          ? newNodeHandles.inputs.includes(connectionDrop.handleType)
-          : newNodeHandles.outputs.includes(connectionDrop.handleType);
+          ? nodeSupportsHandle(newNodeHandles.inputs, connectionDrop.handleType)
+          : nodeSupportsHandle(newNodeHandles.outputs, connectionDrop.handleType);
       if (!canAttach) {
-        showToast(`该节点不支持 ${connectionDrop.handleType} 连接`, "warning");
+        showToast(`该节点不支持 ${connectionDrop.handleType} 类型素材连接`, "warning");
         setConnectionDrop(null);
         return;
       }
       if (connectionDrop.connectionType === "source") {
+        const resolvedTargetHandle = newNodeHandles.inputs.includes("multi") ? "multi" : connectionDrop.handleType;
         onConnect({
           source: connectionDrop.sourceNodeId!,
           sourceHandle: connectionDrop.sourceHandleId!,
           target: newId,
-          targetHandle: connectionDrop.handleType,
+          targetHandle: resolvedTargetHandle,
         });
       } else {
+        const resolvedSourceHandle = newNodeHandles.outputs.includes("multi") ? "multi" : connectionDrop.handleType;
         onConnect({
           source: newId,
-          sourceHandle: connectionDrop.handleType,
+          sourceHandle: resolvedSourceHandle,
           target: connectionDrop.sourceNodeId!,
           targetHandle: connectionDrop.sourceHandleId!,
         });

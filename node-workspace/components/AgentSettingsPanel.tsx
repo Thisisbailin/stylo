@@ -727,14 +727,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
         type: "success",
         text: models.length ? `获取成功，${models.length} 个模型` : "获取成功，但返回为空",
       });
-      setConfig((prev) => {
-        if (!models.length) return prev;
-        const nextText = { ...prev.textConfig };
-        if (!nextText.agentModel || !models.find((m) => m.id === nextText.agentModel)) {
-          nextText.agentModel = models[0].id;
-        }
-        return { ...prev, textConfig: nextText };
-      });
     } catch (e: any) {
       setArkChatFetchMessage({ type: "error", text: e.message || "拉取失败" });
       setArkModelsRaw("");
@@ -1195,7 +1187,16 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                     onChange={(e) => setConfig({ ...config, textConfig: { ...config.textConfig, agentModel: e.target.value } })}
                     className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
                   >
-                    {(arkChatModels.length ? arkChatModels : [{ id: ARK_DEFAULT_MODEL }]).map((m) => (
+                    {(
+                      arkChatModels.length
+                        ? [
+                            ...(activeAgentModel && !arkChatModels.find((m) => m.id === activeAgentModel)
+                              ? [{ id: activeAgentModel } as ArkModel]
+                              : []),
+                            ...arkChatModels,
+                          ]
+                        : [{ id: ARK_DEFAULT_MODEL } as ArkModel]
+                    ).map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.id}
                       </option>

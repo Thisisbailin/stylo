@@ -1,3 +1,54 @@
+const IMAGE_SOURCE_NODE_TYPES = new Set([
+  "imageInput",
+  "annotation",
+  "imageGen",
+  "nanoBananaImageGen",
+  "wanImageGen",
+]);
+
+const TEXT_SOURCE_NODE_TYPES = new Set([
+  "text",
+  "scriptBoard",
+  "storyboardBoard",
+  "identityCard",
+  "shot",
+]);
+
+const AUDIO_SOURCE_NODE_TYPES = new Set(["audioInput"]);
+
+export const isTypedHandle = (handle?: string | null): handle is "image" | "text" | "audio" =>
+  handle === "image" || handle === "text" || handle === "audio";
+
+export const inferHandleTypeFromNodeType = (nodeType?: string | null): "image" | "text" | "audio" | null => {
+  if (!nodeType) return null;
+  if (IMAGE_SOURCE_NODE_TYPES.has(nodeType)) return "image";
+  if (TEXT_SOURCE_NODE_TYPES.has(nodeType)) return "text";
+  if (AUDIO_SOURCE_NODE_TYPES.has(nodeType)) return "audio";
+  return null;
+};
+
+export const resolveEdgeHandleType = ({
+  sourceHandle,
+  targetHandle,
+  sourceNodeType,
+}: {
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  sourceNodeType?: string | null;
+}): "image" | "text" | "audio" | null => {
+  if (isTypedHandle(targetHandle)) return targetHandle;
+  if (targetHandle === "multi") {
+    return isTypedHandle(sourceHandle) ? sourceHandle : inferHandleTypeFromNodeType(sourceNodeType);
+  }
+  if (isTypedHandle(sourceHandle)) return sourceHandle;
+  return inferHandleTypeFromNodeType(sourceNodeType);
+};
+
+export const nodeSupportsHandle = (handles: string[], handle: string) => {
+  if (handles.includes(handle)) return true;
+  return isTypedHandle(handle) && handles.includes("multi");
+};
+
 export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: string[] } => {
   switch (nodeType) {
     case "imageInput":
@@ -27,7 +78,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "wanReferenceVideoGen":
       return { inputs: ["image", "text"], outputs: [] };
     case "seedanceVideoGen":
-      return { inputs: ["image", "text", "audio"], outputs: [] };
+      return { inputs: ["multi", "image", "text", "audio"], outputs: [] };
     default:
       return { inputs: [], outputs: [] };
   }
@@ -35,8 +86,8 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
 
 export const isValidConnection = (connection: { sourceHandle?: string | null; targetHandle?: string | null }) => {
   const { sourceHandle, targetHandle } = connection;
-  if (sourceHandle === "image" && targetHandle !== "image") return false;
-  if (sourceHandle === "text" && targetHandle !== "text") return false;
-  if (sourceHandle === "audio" && targetHandle !== "audio") return false;
+  if (sourceHandle === "image" && targetHandle !== "image" && targetHandle !== "multi") return false;
+  if (sourceHandle === "text" && targetHandle !== "text" && targetHandle !== "multi") return false;
+  if (sourceHandle === "audio" && targetHandle !== "audio" && targetHandle !== "multi") return false;
   return true;
 };

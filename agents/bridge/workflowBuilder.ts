@@ -41,7 +41,7 @@ const NODE_HANDLES: Record<CreateNodeWorkflowNodeInput["type"], { inputs: string
   wanVideoGen: { inputs: ["image", "text"], outputs: [] },
   wanReferenceVideoGen: { inputs: ["image", "text"], outputs: [] },
   viduVideoGen: { inputs: ["image", "text"], outputs: [] },
-  seedanceVideoGen: { inputs: ["image", "text", "audio"], outputs: [] },
+  seedanceVideoGen: { inputs: ["multi", "image", "text", "audio"], outputs: [] },
 };
 
 const buildNodeData = (node: CreateNodeWorkflowNodeInput): Partial<WorkflowNodeData> => {
@@ -90,6 +90,9 @@ const resolveHandle = ({
       throw new Error(`工作流连线使用了无效 handle: ${requested}`);
     }
     return requested;
+  }
+  if (counterpart && counterpart !== "multi" && available.includes("multi")) {
+    return "multi";
   }
   if (counterpart && available.includes(counterpart)) {
     return counterpart;

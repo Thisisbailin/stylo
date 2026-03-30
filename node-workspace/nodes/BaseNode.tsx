@@ -2,15 +2,26 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { HandleType } from "../types";
 
+type NodeHandleSpec =
+  | HandleType
+  | {
+      id: HandleType;
+      top?: string;
+      hidden?: boolean;
+      className?: string;
+      label?: string;
+    };
+
 type Props = {
   title: string;
   onTitleChange?: (newTitle: string) => void;
   children?: React.ReactNode;
-  inputs?: HandleType[];
-  outputs?: HandleType[];
+  inputs?: NodeHandleSpec[];
+  outputs?: NodeHandleSpec[];
   selected?: boolean;
   variant?: "default" | "text" | "media";
   resizerKeepAspect?: boolean;
+  nodeType?: string;
 };
 
 export const BaseNode: React.FC<Props> = ({
@@ -22,6 +33,7 @@ export const BaseNode: React.FC<Props> = ({
   selected,
   variant = "default",
   resizerKeepAspect,
+  nodeType,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [showResizer, setShowResizer] = useState(false);
@@ -88,12 +100,27 @@ export const BaseNode: React.FC<Props> = ({
     return `${start + (end - start) * ratio}%`;
   }, []);
 
+  const resolveHandleSpec = useCallback(
+    (handle: NodeHandleSpec, index: number, count: number) =>
+      typeof handle === "string"
+        ? { id: handle, top: getHandleTop(index, count), hidden: false, className: "", label: "" }
+        : {
+            id: handle.id,
+            top: handle.top || getHandleTop(index, count),
+            hidden: !!handle.hidden,
+            className: handle.className || "",
+            label: handle.label || "",
+          },
+    [getHandleTop]
+  );
+
   return (
     <div
       ref={cardRef}
       className="node-card-base transition-shadow duration-300 overflow-visible text-xs flex flex-col"
       data-selected={!!selected}
       data-variant={variant}
+      data-node-type={nodeType || ""}
       data-resizer-visible={showResizer || isResizing}
       data-resizing={isResizing}
       onMouseMove={updateResizerVisibility}
@@ -140,29 +167,35 @@ export const BaseNode: React.FC<Props> = ({
         <div className="node-card-body">{children}</div>
       </div>
 
-      {inputs.map((h, idx) => (
+      {inputs.map((input, idx) => {
+        const spec = resolveHandleSpec(input, idx, inputs.length);
+        return (
         <Handle
-          key={`in-${h}-${idx}`}
+          key={`in-${spec.id}-${idx}`}
           type="target"
           position={Position.Left}
-          id={h}
-          style={{ top: getHandleTop(idx, inputs.length) }}
-          className="node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
-          data-handletype={h}
+          id={spec.id}
+          style={{ top: spec.top }}
+          className={`node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+          data-handletype={spec.id}
+          data-handlelabel={spec.label}
         />
-      ))}
+      )})}
 
-      {outputs.map((h, idx) => (
+      {outputs.map((output, idx) => {
+        const spec = resolveHandleSpec(output, idx, outputs.length);
+        return (
         <Handle
-          key={`out-${h}-${idx}`}
+          key={`out-${spec.id}-${idx}`}
           type="source"
           position={Position.Right}
-          id={h}
-          style={{ top: getHandleTop(idx, outputs.length) }}
-          className="node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
-          data-handletype={h}
+          id={spec.id}
+          style={{ top: spec.top }}
+          className={`node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+          data-handletype={spec.id}
+          data-handlelabel={spec.label}
         />
-      ))}
+      )})}
     </div>
   );
 };
