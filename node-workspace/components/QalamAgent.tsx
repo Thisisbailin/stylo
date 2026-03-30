@@ -126,10 +126,30 @@ const parseMentions = (text: string) => {
   return names;
 };
 
+const resolveAgentRuntimeModel = (textConfig: any) => {
+  const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
+  const explicitAgentModel = (textConfig?.agentModel || "").trim();
+  if (provider === "ark") {
+    if (!explicitAgentModel || explicitAgentModel === QWEN_DEFAULT_MODEL || explicitAgentModel.startsWith("qwen")) {
+      return ARK_DEFAULT_MODEL;
+    }
+    return explicitAgentModel;
+  }
+  if (provider === "qwen") {
+    if (!explicitAgentModel || explicitAgentModel.startsWith("doubao-")) {
+      const sharedModel = !textConfig?.agentProvider || textConfig?.agentProvider === textConfig?.provider
+        ? (textConfig?.model || "").trim()
+        : "";
+      return sharedModel && !sharedModel.startsWith("doubao-") ? sharedModel : QWEN_DEFAULT_MODEL;
+    }
+    return explicitAgentModel;
+  }
+  return explicitAgentModel || (textConfig?.model || "").trim() || "";
+};
+
 const resolveAgentProviderConfig = async (textConfig: any) => {
   const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
-  const fallbackModel = provider === "ark" ? ARK_DEFAULT_MODEL : QWEN_DEFAULT_MODEL;
-  const model = textConfig?.agentModel || textConfig?.model || fallbackModel;
+  const model = resolveAgentRuntimeModel(textConfig);
   const baseUrl = textConfig?.agentBaseUrl || textConfig?.baseUrl;
   return {
     provider,
@@ -489,12 +509,7 @@ export const QalamAgent: React.FC<Props> = ({
         endpoint: "/api/agent",
         getRuntimeConfig: () => ({
           provider: config.textConfig?.agentProvider || config.textConfig?.provider,
-          model:
-            config.textConfig?.agentModel ||
-            config.textConfig?.model ||
-            ((config.textConfig?.agentProvider || config.textConfig?.provider) === "ark"
-              ? ARK_DEFAULT_MODEL
-              : QWEN_DEFAULT_MODEL),
+          model: resolveAgentRuntimeModel(config.textConfig),
           baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
         }),
         getProjectDataSnapshot: () => projectData,

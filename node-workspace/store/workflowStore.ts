@@ -92,6 +92,26 @@ const getAbsolutePosition = (node: WorkflowNode, nodeMap: Map<string, WorkflowNo
   return { x, y };
 };
 
+const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
+  audioInput: 280,
+  seedanceVideoGen: 640,
+};
+
+const sanitizeNodeStyle = (type: NodeType, style?: WorkflowNode["style"]) => {
+  if (!style) return style;
+  const nextStyle = { ...style };
+  const legacyHeight = LEGACY_AUTO_HEIGHTS[type];
+  if (
+    legacyHeight !== undefined &&
+    (nextStyle.height === legacyHeight ||
+      nextStyle.height === `${legacyHeight}` ||
+      nextStyle.height === `${legacyHeight}px`)
+  ) {
+    delete nextStyle.height;
+  }
+  return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
+};
+
 const normalizeNode = (node: WorkflowNode): WorkflowNode => {
   const base = createDefaultNodeData(node.type as NodeType);
   const data = base ? { ...base, ...(node.data || {}) } : (node.data || {});
@@ -101,6 +121,7 @@ const normalizeNode = (node: WorkflowNode): WorkflowNode => {
     position,
     selected: false,
     data,
+    style: sanitizeNodeStyle(node.type as NodeType, node.style),
   };
 };
 
@@ -798,8 +819,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       scriptBoard: { width: 920 },
       storyboardBoard: { width: 1080 },
       identityCard: { width: 760 },
-      audioInput: { width: 340, height: 280 },
-      seedanceVideoGen: { width: 380, height: 640 },
+      audioInput: { width: 340 },
+      seedanceVideoGen: { width: 380 },
     };
 
     const dim = defaultDimensions[type];

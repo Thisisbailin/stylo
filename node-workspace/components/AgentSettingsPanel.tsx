@@ -252,9 +252,32 @@ const getLastArtifact = (records: AgentToolActivityRecord[]) =>
     .sort((a, b) => (b.lastCompletedAt || 0) - (a.lastCompletedAt || 0))[0];
 
 const resolveAgentModelForProvider = (provider: AgentTextProvider, configured?: string) => {
-  if (provider === "qwen") return configured || QWEN_DEFAULT_MODEL;
-  if (provider === "ark") return configured || ARK_DEFAULT_MODEL;
-  return configured || "";
+  const model = (configured || "").trim();
+  if (provider === "qwen") {
+    if (!model || model.startsWith("doubao-")) return QWEN_DEFAULT_MODEL;
+    return model;
+  }
+  if (provider === "ark") {
+    if (!model || model === QWEN_DEFAULT_MODEL || model.startsWith("qwen")) return ARK_DEFAULT_MODEL;
+    return model;
+  }
+  return model;
+};
+
+const resolveConfiguredAgentModel = (textConfig: {
+  agentProvider?: AgentTextProvider;
+  provider?: string;
+  agentModel?: string;
+  model?: string;
+}) => {
+  const provider = textConfig.agentProvider || (textConfig.provider as AgentTextProvider) || "qwen";
+  const explicitAgentModel = (textConfig.agentModel || "").trim();
+  if (explicitAgentModel) {
+    return resolveAgentModelForProvider(provider, explicitAgentModel);
+  }
+  const canFallbackToSharedModel = !textConfig.agentProvider || textConfig.agentProvider === textConfig.provider;
+  const sharedModel = canFallbackToSharedModel ? (textConfig.model || "").trim() : "";
+  return resolveAgentModelForProvider(provider, sharedModel);
 };
 
 const resolveMultiProviderKey = (provider?: string): MultiProviderKey => {
@@ -355,7 +378,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     (activeAgentProvider === "ark" ? ARK_RESPONSES_BASE_URL : QWEN_RESPONSES_BASE_URL);
   const activeAgentModel = resolveAgentModelForProvider(
     activeAgentProvider,
-    config.textConfig.agentModel || config.textConfig.model
+    resolveConfiguredAgentModel(config.textConfig)
   );
   const activeConversation = useMemo(
     () => conversationState.items.find((item) => item.id === conversationState.activeId) || null,

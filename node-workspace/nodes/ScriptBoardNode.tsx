@@ -121,9 +121,6 @@ export const ScriptBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, 
               <BookOpen size={18} />
             </div>
             <div className="flex min-w-0 items-center gap-3">
-              <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--node-text-primary)]">
-                {data.title || "剧本面板"}
-              </div>
               {episode ? (
                 <select
                   value={episode.id}

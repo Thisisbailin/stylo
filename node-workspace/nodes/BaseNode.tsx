@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { HandleType } from "../types";
 
@@ -14,6 +14,8 @@ type Props = {
 };
 
 export const BaseNode: React.FC<Props> = ({
+  title,
+  onTitleChange,
   children,
   inputs = [],
   outputs = [],
@@ -24,9 +26,21 @@ export const BaseNode: React.FC<Props> = ({
   const cardRef = useRef<HTMLDivElement>(null);
   const [showResizer, setShowResizer] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
 
   const minHeight = variant === "text" ? 256 : 160;
   const keepAspectRatio = resizerKeepAspect ?? variant === "media";
+  const eyebrow = useMemo(() => {
+    if (variant === "media") return "媒体节点";
+    if (variant === "text") return "文本节点";
+    if (inputs.length === 0 && outputs.length > 0) return "输入节点";
+    if (outputs.length === 0 && inputs.length > 0) return "结果节点";
+    return "工作节点";
+  }, [inputs.length, outputs.length, variant]);
+
+  useEffect(() => {
+    setDraftTitle(title);
+  }, [title]);
 
   const updateResizerVisibility = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -60,6 +74,20 @@ export const BaseNode: React.FC<Props> = ({
     setShowResizer(false);
   }, []);
 
+  const commitTitle = useCallback(() => {
+    const nextTitle = draftTitle.trim() || title;
+    if (nextTitle !== draftTitle) setDraftTitle(nextTitle);
+    if (onTitleChange && nextTitle !== title) onTitleChange(nextTitle);
+  }, [draftTitle, onTitleChange, title]);
+
+  const getHandleTop = useCallback((index: number, count: number) => {
+    if (count <= 1) return "50%";
+    const start = 24;
+    const end = 76;
+    const ratio = count === 1 ? 0.5 : index / (count - 1);
+    return `${start + (end - start) * ratio}%`;
+  }, []);
+
   return (
     <div
       ref={cardRef}
@@ -82,34 +110,59 @@ export const BaseNode: React.FC<Props> = ({
         onResizeStart={handleResizeStart}
         onResizeEnd={handleResizeEnd}
       />
-      <div className="node-card-body relative flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4">{children}</div>
 
-      {/* Handles */}
-      <div className="absolute inset-y-0 -left-1 flex flex-col justify-center gap-4 py-12">
-        {inputs.map((h, idx) => (
-          <Handle
-            key={`in-${h}-${idx}`}
-            type="target"
-            position={Position.Left}
-            id={h}
-            className="!w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
-            data-handletype={h}
-          />
-        ))}
+      <div className="node-card-shell">
+        <div className="node-card-header-shell">
+          <div className="node-card-header-copy">
+            <div className="node-card-eyebrow">{eyebrow}</div>
+            {onTitleChange ? (
+              <input
+                className="node-card-title-input nodrag"
+                value={draftTitle}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                onBlur={commitTitle}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitTitle();
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+            ) : (
+              <div className="node-card-title">{title}</div>
+            )}
+          </div>
+        </div>
+        <div className="node-card-body">{children}</div>
       </div>
 
-      <div className="absolute inset-y-0 -right-1 flex flex-col justify-center gap-4 py-12">
-        {outputs.map((h, idx) => (
-          <Handle
-            key={`out-${h}-${idx}`}
-            type="source"
-            position={Position.Right}
-            id={h}
-            className="!w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
-            data-handletype={h}
-          />
-        ))}
-      </div>
+      {inputs.map((h, idx) => (
+        <Handle
+          key={`in-${h}-${idx}`}
+          type="target"
+          position={Position.Left}
+          id={h}
+          style={{ top: getHandleTop(idx, inputs.length) }}
+          className="node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
+          data-handletype={h}
+        />
+      ))}
+
+      {outputs.map((h, idx) => (
+        <Handle
+          key={`out-${h}-${idx}`}
+          type="source"
+          position={Position.Right}
+          id={h}
+          style={{ top: getHandleTop(idx, outputs.length) }}
+          className="node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)]"
+          data-handletype={h}
+        />
+      ))}
     </div>
   );
 };

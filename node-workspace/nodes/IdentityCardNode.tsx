@@ -227,10 +227,7 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
             </div>
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <div className="min-w-0">
-                <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--node-text-primary)]">
-                  {data.title || "身份卡片节点"}
-                </div>
-                <div className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-[var(--node-text-secondary)]">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--node-text-secondary)]">
                   Identity Passport
                 </div>
               </div>

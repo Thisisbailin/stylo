@@ -287,12 +287,25 @@ body.qalam-resizing * {
   background: var(--text-secondary) !important;
   transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   opacity: 0;
-  transform: scale(0.4);
   box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
 }
 
-.react-flow__node:hover .react-flow__handle {
-  transform: scale(1);
+.react-flow__handle-left {
+  transform: translate(-50%, -50%) scale(0.4);
+}
+
+.react-flow__handle-right {
+  transform: translate(50%, -50%) scale(0.4);
+}
+
+.react-flow__node:hover .react-flow__handle-left {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.18);
+}
+
+.react-flow__node:hover .react-flow__handle-right {
+  transform: translate(50%, -50%) scale(1);
   opacity: 1;
   box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.18);
 }
@@ -382,56 +395,119 @@ body.qalam-resizing * {
   isolation: isolate;
   transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-width: 280px;
   min-height: 160px;
+  display: flex;
+  align-items: flex-start;
 }
 
-.node-card-base::before {
+.node-card-shell {
+  position: relative;
+  width: 100%;
+  min-height: inherit;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  transition: transform 0.3s ease;
+}
+
+.node-card-shell::before {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 24px;
+  border-radius: inherit;
   border: 1px solid var(--node-border);
-  background: var(--node-bg-gradient, var(--node-bg));
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.055), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 32%),
+    var(--node-bg-gradient, var(--node-bg));
   box-shadow: var(--node-shadow);
   backdrop-filter: none;
   z-index: 0;
 }
 
-.node-lab-canvas[data-zoomed="true"] .node-card-base::before {
+.node-lab-canvas[data-zoomed="true"] .node-card-shell::before {
   backdrop-filter: none;
   box-shadow: none;
 }
 
-.node-card-base > * {
+.node-card-shell > * {
   position: relative;
   z-index: 1;
 }
 
-.node-card-base[data-selected="true"] {
+.node-card-base[data-selected="true"] .node-card-shell {
   transform: translateY(-2px) scale(1.01);
 }
 
-.node-card-base[data-selected="true"]::before {
+.node-card-base[data-selected="true"] .node-card-shell::before {
   background: var(--node-bg-selected);
   border-color: var(--node-border-strong);
   box-shadow: var(--node-shadow-strong);
 }
 
-.node-card-base[data-variant="text"] .node-card-body {
-  padding: 0;
-  gap: 0;
+.node-card-header-shell {
+  padding: 18px 18px 10px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.node-card-base[data-variant="media"] .node-card-body {
+.node-card-header-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.node-card-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--node-text-secondary) 88%, white);
+}
+
+.node-card-title,
+.node-card-title-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--node-text-primary);
+}
+
+.node-card-title-input {
+  background: transparent;
+  border: none;
+  outline: none;
   padding: 0;
-  gap: 0;
+}
+
+.node-card-title-input::placeholder {
+  color: var(--node-text-secondary);
+}
+
+.node-card-title-input:focus {
+  color: var(--node-text-primary);
+}
+
+.node-card-body {
+  padding: 0 18px 18px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .node-card-base[data-variant="text"] .text-node-shell {
-  padding: 8% 14% 20%;
+  padding: 2px 0 0;
   box-sizing: border-box;
+  min-height: 160px;
 }
 
 .node-card-base[data-variant="text"] .text-node-editor {
@@ -440,17 +516,16 @@ body.qalam-resizing * {
   border-radius: 0;
   padding: 0;
   box-sizing: border-box;
+  min-height: 160px;
 }
 
 .node-card-base[data-variant="text"] {
-  min-height: 0;
-  aspect-ratio: 5 / 4;
+  min-height: 220px;
 }
 
 .node-card-base[data-variant="text"][data-has-content="true"] {
   height: auto;
   min-height: 0;
-  aspect-ratio: auto;
 }
 
 .text-node-shell {
@@ -680,13 +755,13 @@ body.qalam-resizing * {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  min-height: 220px;
 }
 
 .image-input-frame {
   position: relative;
   width: 100%;
-  height: 100%;
+  min-height: 220px;
   border-radius: 24px;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--node-bg);
@@ -837,7 +912,7 @@ body.qalam-resizing * {
 
 .image-input-empty {
   width: 100%;
-  height: 100%;
+  min-height: 220px;
   border-radius: 24px;
   border: 1px dashed var(--node-border-strong);
   background:
@@ -934,11 +1009,6 @@ body.qalam-resizing * {
   box-sizing: border-box;
   overflow: hidden;
   transition: all 0.2s ease;
-}
-
-.node-card-header {
-  border-bottom: 1px solid var(--node-border);
-  background: var(--node-header-bg);
 }
 
 .app-panel {
@@ -1215,12 +1285,12 @@ body.qalam-resizing * {
   background: var(--app-border-strong);
 }
 
-.node-card-body {
-  background: transparent;
-}
-
 .node-card-body > * {
   width: 100%;
+}
+
+.node-card-port {
+  z-index: 3 !important;
 }
 
 .node-title-input {
