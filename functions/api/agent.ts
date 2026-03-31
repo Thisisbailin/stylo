@@ -6,7 +6,7 @@ import {
   type AgentHttpRunRequest,
 } from "../../agents/runtime/httpProtocol";
 import { resolveAgentProvider, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
-import { StaticSkillLoader } from "../../agents/runtime/skills";
+import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
@@ -619,9 +619,15 @@ export const onRequestPost = async (context: any) => {
         const effectiveModel = resolveProviderModel(provider, body.runtime.model);
         const resolvedBaseUrl = resolveBaseUrl(provider, body.runtime.baseUrl);
         const resolvedApiKey = resolveApiKey(context.env || {}, provider);
-        const enabledSkills = (
-          await Promise.all((body.run.enabledSkillIds || []).map((skillId) => skillLoader.getSkill(skillId)))
-        ).filter(Boolean);
+        const {
+          skills: enabledSkills,
+          explicitSkillIds,
+          implicitSkillIds,
+        } = await resolveActivatedSkills({
+          userText: body.run.userText,
+          explicitSkillIds: body.run.enabledSkillIds || [],
+          loader: skillLoader,
+        });
         const disabledTools = buildDisabledTools({ qalamTools: body.runtime.qalamTools }, enabledSkills as Array<{ disabledTools?: string[] }>);
         debugLog(debugEnabled, traceId, "provider resolved", {
           provider,
@@ -629,6 +635,8 @@ export const onRequestPost = async (context: any) => {
           baseURL: resolvedBaseUrl,
           hasApiKey: Boolean(resolvedApiKey),
           enabledSkills: enabledSkills.map((skill) => skill.id),
+          explicitSkillIds,
+          implicitSkillIds,
         });
         const session = new QalamResponsesCompactionSession({
           underlyingSession: new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner),
@@ -668,6 +676,8 @@ export const onRequestPost = async (context: any) => {
             runtimeMode: "edge_full",
             skillIds: enabledSkills.map((skill) => skill.id).join(","),
             skillVersions: enabledSkills.map((skill) => `${skill.id}:${skill.version || "0"}`).join(","),
+            explicitSkillIds: explicitSkillIds.join(","),
+            implicitSkillIds: implicitSkillIds.join(","),
           },
           tracingDisabled: false,
           traceIncludeSensitiveData: false,

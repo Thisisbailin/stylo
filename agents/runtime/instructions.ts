@@ -59,10 +59,14 @@ export const composeAgentInstructions = ({
   const overlays = enabledSkills.flatMap((skill) =>
     (skill.overlays || []).map((overlay) => `# Skill: ${skill.title}\n${overlay.trim()}`)
   );
+  const preferredToolBlock = enabledSkills
+    .filter((skill) => Array.isArray(skill.preferredTools) && skill.preferredTools.length > 0)
+    .map((skill) => `[Skill Tool Preference: ${skill.title}]\nPrefer these tools when they fit the task:\n${skill.preferredTools!.map((tool) => `- ${tool}`).join("\n")}`)
+    .join("\n\n");
   return (runContext: RunContext<QalamRunContext>) => {
     const environmentBlock = formatEnvironmentInstruction(runContext.context?.agentEnvironment);
     const memoryBlock = formatMemoryInstruction(runContext.context?.agentMemory);
     const uiBlock = uiContextInstruction(runContext.context?.uiContext as AgentUiContext | undefined);
-    return [BASE_INSTRUCTION, environmentBlock, memoryBlock, ...overlays, uiBlock].filter(Boolean).join("\n\n");
+    return [BASE_INSTRUCTION, environmentBlock, memoryBlock, preferredToolBlock, ...overlays, uiBlock].filter(Boolean).join("\n\n");
   };
 };

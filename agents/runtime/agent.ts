@@ -2,7 +2,7 @@ import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { readPersistedAgentSessionMessages } from "./session";
 import { runQalamAgentCore } from "./core";
 import { resolveAgentProvider, resolveBaseUrl } from "./providerConfig";
-import { StaticSkillLoader } from "./skills";
+import { resolveActivatedSkills, StaticSkillLoader } from "./skills";
 import { buildDisabledTools } from "./toolPolicy";
 import type {
   QalamAgentConfigProvider,
@@ -95,12 +95,24 @@ export const createQalamAgentRuntime = ({
         baseUrl: resolveBaseUrl(provider, rawConfig.baseUrl),
       };
       const loader = skillLoader || new StaticSkillLoader();
-      const enabledSkills = (
-        await Promise.all((input.enabledSkillIds || []).map((skillId) => loader.getSkill(skillId)))
-      ).filter(Boolean);
+      const {
+        skills: enabledSkills,
+        explicitSkillIds,
+        implicitSkillIds,
+      } = await resolveActivatedSkills({
+        userText: input.userText,
+        explicitSkillIds: input.enabledSkillIds || [],
+        loader,
+      });
       const disabledTools = buildDisabledTools(rawConfig, enabledSkills as Array<{ disabledTools?: string[] }>);
       const session = await sessionStore.getSession(input.sessionId);
       const sessionMessages = readPersistedAgentSessionMessages(input.sessionId);
+
+      debugLog("skills resolved", {
+        explicitSkillIds,
+        implicitSkillIds,
+        enabledSkills: enabledSkills.map((skill) => skill.id),
+      });
 
       tracer?.onRunStarted(input);
       const runResult = await runQalamAgentCore({

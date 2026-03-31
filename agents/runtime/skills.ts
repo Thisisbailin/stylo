@@ -24,6 +24,33 @@ export const matchBuiltinSkills = (input: {
   });
 };
 
+export const resolveActivatedSkills = async (input: {
+  userText: string;
+  explicitSkillIds?: string[];
+  loader?: QalamSkillLoader;
+}) => {
+  const loader = input.loader || new StaticSkillLoader();
+  const explicitSkillIds = Array.from(new Set((input.explicitSkillIds || []).filter(Boolean)));
+  const implicitMatches = matchBuiltinSkills({
+    userText: input.userText,
+    explicitSkillIds,
+  });
+  const activatedSkillIds = Array.from(
+    new Set([
+      ...explicitSkillIds,
+      ...implicitMatches.map((skill) => skill.id),
+    ])
+  );
+  const resolved = (
+    await Promise.all(activatedSkillIds.map((skillId) => loader.getSkill(skillId)))
+  ).filter(Boolean) as QalamResolvedSkill[];
+  return {
+    skills: resolved,
+    explicitSkillIds,
+    implicitSkillIds: implicitMatches.map((skill) => skill.id),
+  };
+};
+
 export class StaticSkillLoader implements QalamSkillLoader {
   listSkills(): QalamSkillManifest[] {
     return listBuiltinSkills();
