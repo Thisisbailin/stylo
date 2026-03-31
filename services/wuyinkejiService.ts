@@ -13,6 +13,14 @@ export interface ImageTaskStatusResult {
     errorMsg?: string;
 }
 
+const readProxyDebugHeaders = (response: Response) => ({
+    target: response.headers.get("x-qalam-proxy-target") || "",
+    nanoBanana: response.headers.get("x-qalam-proxy-nanobanana") || "",
+    keySource: response.headers.get("x-qalam-proxy-key-source") || "",
+    authHeader: response.headers.get("x-qalam-proxy-auth-header") || "",
+    keyQuery: response.headers.get("x-qalam-proxy-key-query") || "",
+});
+
 /**
  * SUBMIT IMAGE TASK
  * Sends the generation request to Nano Banana Pro.
@@ -59,7 +67,12 @@ export const submitImageTask = async (
             body: JSON.stringify(payload)
         });
 
+        console.log("[Nano Banana] Submit proxy debug:", {
+            status: response.status,
+            ...readProxyDebugHeaders(response),
+        });
         const text = await response.text();
+        console.log("[Nano Banana] Submit raw response:", text);
         if (!response.ok) throw new Error(`API Error ${response.status}: ${text}`);
 
         let data;
@@ -110,12 +123,29 @@ export const checkImageTaskStatus = async (
             headers
         });
 
+        console.log("[Nano Banana] Poll proxy debug:", {
+            status: response.status,
+            ...readProxyDebugHeaders(response),
+        });
+
         if (!response.ok) {
             if (response.status === 404) return { id: taskId, status: 'processing' };
             throw new Error(`Poll Error ${response.status}`);
         }
 
-        const data = await response.json();
+        const text = await response.text();
+        console.log("[Nano Banana] Poll raw response:", text);
+
+        let data: any;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            return {
+                id: taskId,
+                status: "failed",
+                errorMsg: "Failed to parse poll response.",
+            };
+        }
 
         if (data.code !== undefined) {
             if (Number(data.code) !== 200) {
