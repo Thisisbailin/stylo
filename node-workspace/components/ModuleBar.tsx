@@ -5,8 +5,7 @@ export type ModuleKey =
   | "writing"
   | "characters"
   | "scenes"
-  | "understanding"
-  | "materials"
+  | "workspace"
   | "projector";
 
 type ModuleItem = {
@@ -25,8 +24,7 @@ export const ModuleBar: React.FC<Props> = ({ modules, onOpen }) => {
     writing: "#c084fc",
     characters: "#34d399",
     scenes: "#22d3ee",
-    understanding: "#facc15",
-    materials: "#60a5fa",
+    workspace: "#60a5fa",
     projector: "#fb7185",
   };
 

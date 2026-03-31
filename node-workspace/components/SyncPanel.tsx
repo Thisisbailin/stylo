@@ -13,9 +13,13 @@ type Props = {
   syncState?: SyncState;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onResetProject?: () => void;
+  initialSection?: SyncSectionKey;
+  activeSection?: SyncSectionKey;
+  onActiveSectionChange?: (section: SyncSectionKey) => void;
+  showSidebar?: boolean;
 };
 
-type SectionKey = "status" | "history";
+export type SyncSectionKey = "status" | "history";
 
 export const SyncPanel: React.FC<Props> = ({
   config,
@@ -26,9 +30,14 @@ export const SyncPanel: React.FC<Props> = ({
   syncState,
   syncRollout,
   onResetProject,
+  initialSection = "status",
+  activeSection,
+  onActiveSectionChange,
+  showSidebar = true,
 }) => {
-  const [active, setActive] = useState<SectionKey>("status");
+  const [internalActive, setInternalActive] = useState<SyncSectionKey>(initialSection);
   const deviceIdRef = useRef<string>(getDeviceId());
+  const active = activeSection ?? internalActive;
   const [snapshots, setSnapshots] = useState<{ version: number; createdAt: number }[]>([]);
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
   const [snapshotMessage, setSnapshotMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -51,6 +60,12 @@ export const SyncPanel: React.FC<Props> = ({
       fetchAuditLogs();
     }
   }, [active]);
+  const handleSectionSelect = (section: SyncSectionKey) => {
+    if (activeSection === undefined) {
+      setInternalActive(section);
+    }
+    onActiveSectionChange?.(section);
+  };
 
   const formatSnapshotTime = (ts: number) => new Date(ts).toLocaleString();
   const formatSyncTime = (ts?: number) => (ts ? new Date(ts).toLocaleString() : "—");
@@ -200,41 +215,43 @@ export const SyncPanel: React.FC<Props> = ({
 
   return (
     <div className="space-y-4 text-[var(--app-text-primary)]">
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-            <div className="text-[11px] uppercase tracking-widest app-text-muted">Sync</div>
-            {[
-              { key: "status" as const, label: "Status & Keys", Icon: Shield },
-              { key: "history" as const, label: "Cloud History", Icon: Cloud },
-            ].map(({ key, label, Icon }) => {
-              const activeItem = active === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setActive(key)}
-                  className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                    activeItem
-                      ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon size={14} />
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+      <div className={`grid grid-cols-1 gap-5 ${showSidebar ? "lg:grid-cols-[260px_1fr]" : ""}`}>
+        {showSidebar ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+              <div className="text-[11px] uppercase tracking-widest app-text-muted">Sync</div>
+              {[
+                { key: "status" as const, label: "Status & Keys", Icon: Shield },
+                { key: "history" as const, label: "Cloud History", Icon: Cloud },
+              ].map(({ key, label, Icon }) => {
+                const activeItem = active === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => handleSectionSelect(key)}
+                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                      activeItem
+                        ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                        : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon size={14} />
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-[11px] text-[var(--app-text-secondary)] space-y-2">
-            <div className="uppercase tracking-widest">Notes</div>
-            <div>Sync status reflects latest cloud handshake.</div>
-            <div>Snapshot restore will overwrite cloud data.</div>
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-[11px] text-[var(--app-text-secondary)] space-y-2">
+              <div className="uppercase tracking-widest">Notes</div>
+              <div>Sync status reflects latest cloud handshake.</div>
+              <div>Snapshot restore will overwrite cloud data.</div>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-5">
           {active === "status" ? (

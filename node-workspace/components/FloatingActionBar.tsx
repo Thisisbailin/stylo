@@ -292,8 +292,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   ];
   const projectModules = [
     { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },
-    { key: "understanding" as ModuleKey, label: "理解", desc: "理解快照", Icon: BookOpen, tone: "text-yellow-200", surface: "bg-yellow-500/10" },
-    { key: "materials" as ModuleKey, label: "素材", desc: "生成素材库", Icon: Sparkles, tone: "text-blue-200", surface: "bg-blue-500/10" },
+    { key: "workspace" as ModuleKey, label: "Workspace", desc: "理解 / 素材 / Sync / Info", Icon: SquareStack, tone: "text-blue-200", surface: "bg-blue-500/10" },
     { key: "projector" as ModuleKey, label: "放映机", desc: "视听实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
   ];
 

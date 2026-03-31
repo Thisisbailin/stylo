@@ -2,7 +2,14 @@ import React, { useMemo, useState } from "react";
 import { Film, Image, Sparkles, Trash2, X } from "lucide-react";
 import { useWorkflowStore, GlobalAssetHistoryItem } from "../store/workflowStore";
 
-type SectionKey = "images" | "videos";
+export type MaterialsSectionKey = "images" | "videos" | "prompts";
+
+type Props = {
+  initialSection?: MaterialsSectionKey;
+  activeSection?: MaterialsSectionKey;
+  onActiveSectionChange?: (section: MaterialsSectionKey) => void;
+  showSidebar?: boolean;
+};
 
 const SectionCard = ({
   active,
@@ -36,9 +43,15 @@ const SectionCard = ({
   </button>
 );
 
-export const MaterialsPanel: React.FC = () => {
+export const MaterialsPanel: React.FC<Props> = ({
+  initialSection = "images",
+  activeSection,
+  onActiveSectionChange,
+  showSidebar = true,
+}) => {
   const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useWorkflowStore();
-  const [active, setActive] = useState<SectionKey>("images");
+  const [internalActive, setInternalActive] = useState<MaterialsSectionKey>(initialSection);
+  const active = activeSection ?? internalActive;
 
   const imageAssets = useMemo(
     () => globalAssetHistory.filter((item) => item.type === "image"),
@@ -48,9 +61,22 @@ export const MaterialsPanel: React.FC = () => {
     () => globalAssetHistory.filter((item) => item.type === "video"),
     [globalAssetHistory]
   );
+  const promptAssets = useMemo(
+    () =>
+      globalAssetHistory.filter((item) => item.prompt.trim().length > 0),
+    [globalAssetHistory]
+  );
 
-  const activeItems = active === "images" ? imageAssets : videoAssets;
-  const activeLabel = active === "images" ? "Images" : "Videos";
+  const handleSectionSelect = (section: MaterialsSectionKey) => {
+    if (activeSection === undefined) {
+      setInternalActive(section);
+    }
+    onActiveSectionChange?.(section);
+  };
+  const activeItems =
+    active === "images" ? imageAssets : active === "videos" ? videoAssets : promptAssets;
+  const activeLabel =
+    active === "images" ? "Images" : active === "videos" ? "Videos" : "Prompt";
 
   const PreviewGrid = ({ items }: { items: GlobalAssetHistoryItem[] }) => {
     if (!items.length) {
@@ -91,27 +117,79 @@ export const MaterialsPanel: React.FC = () => {
     );
   };
 
+  const PromptList = ({ items }: { items: GlobalAssetHistoryItem[] }) => {
+    if (!items.length) {
+      return (
+        <div className="rounded-2xl border border-dashed border-[var(--app-border)] p-6 text-[12px] text-[var(--app-text-secondary)]">
+          No prompt snapshots yet.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">
+                  <span>{item.type}</span>
+                  {item.model ? <span>{item.model}</span> : null}
+                  {item.aspectRatio ? <span>{item.aspectRatio}</span> : null}
+                </div>
+                <div className="text-[13px] leading-6 text-[var(--app-text-primary)] whitespace-pre-wrap">
+                  {item.prompt}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeGlobalHistoryItem(item.id)}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                title="Remove"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4 text-[var(--app-text-primary)]">
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
-        <div className="space-y-3">
-          <SectionCard
-            active={active === "images"}
-            title="Images"
-            subtitle={`${imageAssets.length} generated`}
-            icon={Image}
-            tone="text-sky-300"
-            onClick={() => setActive("images")}
-          />
-          <SectionCard
-            active={active === "videos"}
-            title="Videos"
-            subtitle={`${videoAssets.length} generated`}
-            icon={Film}
-            tone="text-emerald-300"
-            onClick={() => setActive("videos")}
-          />
-        </div>
+      <div className={`grid grid-cols-1 gap-4 ${showSidebar ? "lg:grid-cols-[260px_1fr]" : ""}`}>
+        {showSidebar ? (
+          <div className="space-y-3">
+            <SectionCard
+              active={active === "images"}
+              title="Images"
+              subtitle={`${imageAssets.length} generated`}
+              icon={Image}
+              tone="text-sky-300"
+              onClick={() => handleSectionSelect("images")}
+            />
+            <SectionCard
+              active={active === "videos"}
+              title="Videos"
+              subtitle={`${videoAssets.length} generated`}
+              icon={Film}
+              tone="text-emerald-300"
+              onClick={() => handleSectionSelect("videos")}
+            />
+            <SectionCard
+              active={active === "prompts"}
+              title="Prompt"
+              subtitle={`${promptAssets.length} captured`}
+              icon={Sparkles}
+              tone="text-amber-300"
+              onClick={() => handleSectionSelect("prompts")}
+            />
+          </div>
+        ) : null}
 
         <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
           <div className="flex items-center justify-between">
@@ -119,7 +197,7 @@ export const MaterialsPanel: React.FC = () => {
               <Sparkles size={16} className="text-blue-200" />
               {activeLabel} Library
             </div>
-            {activeItems.length > 0 && (
+            {activeItems.length > 0 && active !== "prompts" && (
               <button
                 type="button"
                 onClick={() => clearGlobalHistory(active === "images" ? "image" : "video")}
@@ -130,7 +208,7 @@ export const MaterialsPanel: React.FC = () => {
               </button>
             )}
           </div>
-          <PreviewGrid items={activeItems} />
+          {active === "prompts" ? <PromptList items={activeItems} /> : <PreviewGrid items={activeItems} />}
         </div>
       </div>
     </div>

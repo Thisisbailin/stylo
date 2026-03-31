@@ -6,10 +6,18 @@ import { CharacterSceneLibraryPanel } from "./CharacterSceneLibraryPanel";
 type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
-  initialSection?: SectionKey;
+  initialSection?: UnderstandingSectionKey;
+  activeSection?: UnderstandingSectionKey;
+  onActiveSectionChange?: (section: UnderstandingSectionKey) => void;
+  showSidebar?: boolean;
 };
 
-type SectionKey = "overview" | "episodes" | "characters" | "scenes" | "guides";
+export type UnderstandingSectionKey =
+  | "overview"
+  | "episodes"
+  | "characters"
+  | "scenes"
+  | "guides";
 
 type SectionItem = {
   key: SectionKey;
@@ -23,9 +31,13 @@ export const UnderstandingPanel: React.FC<Props> = ({
   projectData,
   setProjectData,
   initialSection = "overview",
+  activeSection,
+  onActiveSectionChange,
+  showSidebar = true,
 }) => {
-  const [active, setActive] = useState<SectionKey>(initialSection);
+  const [internalActive, setInternalActive] = useState<UnderstandingSectionKey>(initialSection);
   const [selectedGuideKey, setSelectedGuideKey] = useState<string | null>(null);
+  const active = activeSection ?? internalActive;
   const summary = projectData.context.projectSummary?.trim() || "";
   const episodeSummaries = projectData.context.episodeSummaries || [];
   const episodeCount = projectData.episodes.length;
@@ -56,8 +68,9 @@ export const UnderstandingPanel: React.FC<Props> = ({
   );
 
   useEffect(() => {
-    setActive(initialSection);
-  }, [initialSection]);
+    if (activeSection !== undefined) return;
+    setInternalActive(initialSection);
+  }, [activeSection, initialSection]);
 
   useEffect(() => {
     if (!guideItems.length) {
@@ -114,32 +127,40 @@ export const UnderstandingPanel: React.FC<Props> = ({
     },
   ];
   const selectedGuide = guideItems.find((guide) => guide.key === selectedGuideKey) || guideItems[0];
+  const handleSectionSelect = (section: UnderstandingSectionKey) => {
+    if (activeSection === undefined) {
+      setInternalActive(section);
+    }
+    onActiveSectionChange?.(section);
+  };
 
   return (
     <div className="min-w-0 space-y-4 text-[var(--app-text-primary)]">
-      <div className="min-w-0 grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <div className="space-y-3">
-          {sections.map((section) => {
-            const Icon = section.icon;
-            return (
-              <div key={section.key} className={overviewCardClass(active === section.key)}>
-                <button
-                  type="button"
-                  onClick={() => setActive(section.key)}
-                  className="w-full text-left"
-                >
-                  <div className="flex items-center gap-2 text-[12px] font-semibold">
-                    <Icon size={14} className={section.tone} />
-                    {section.label}
-                  </div>
-                  <div className="text-[11px] text-[var(--app-text-secondary)] mt-1">
-                    {section.subtitle}
-                  </div>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+      <div className={`min-w-0 grid grid-cols-1 gap-4 ${showSidebar ? "lg:grid-cols-[260px_minmax(0,1fr)]" : ""}`}>
+        {showSidebar ? (
+          <div className="space-y-3">
+            {sections.map((section) => {
+              const Icon = section.icon;
+              return (
+                <div key={section.key} className={overviewCardClass(active === section.key)}>
+                  <button
+                    type="button"
+                    onClick={() => handleSectionSelect(section.key)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center gap-2 text-[12px] font-semibold">
+                      <Icon size={14} className={section.tone} />
+                      {section.label}
+                    </div>
+                    <div className="text-[11px] text-[var(--app-text-secondary)] mt-1">
+                      {section.subtitle}
+                    </div>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
         {active === "characters" || active === "scenes" ? (
           <div className="min-w-0">

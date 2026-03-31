@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
+import { useAuth } from "../../lib/auth";
 import { AgentTextProvider } from "../../types";
 import {
   ARK_DEFAULT_MODEL,
@@ -35,12 +36,6 @@ import {
   SORA_DEFAULT_BASE_URL,
   SORA_DEFAULT_MODEL,
 } from "../../constants";
-import {
-  AGENT_SESSION_STORAGE_UPDATED_EVENT,
-  clearPersistedAgentSession,
-  listPersistedAgentSessions,
-  readPersistedAgentSession,
-} from "../../agents/runtime/session";
 import {
   AGENT_ACTIVITY_STORAGE_UPDATED_EVENT,
   readAgentToolActivity,
@@ -69,6 +64,57 @@ type ConversationRecord = {
 type ConversationState = {
   activeId: string;
   items: ConversationRecord[];
+};
+
+type CloudSessionSummary = {
+  sessionKey: string;
+  sessionId: string;
+  updatedAt: number;
+  itemCount: number;
+  messageCount: number;
+  preview: string;
+};
+
+type CloudTraceSummary = {
+  traceId: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  workflowName: string;
+  groupId?: string | null;
+  updatedAt: number;
+  metadata?: Record<string, string>;
+  trace?: Record<string, unknown>;
+};
+
+type CloudSessionDetail = {
+  sessionKey: string;
+  sessionId: string;
+  updatedAt: number;
+  items: any[];
+  messages: Array<any>;
+};
+
+type CloudSpanRecord = {
+  spanId: string;
+  parentId?: string | null;
+  spanType: string;
+  spanName: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  error?: string | null;
+  span?: Record<string, unknown>;
+};
+
+type CloudTraceDetail = CloudTraceSummary & {
+  spans: CloudSpanRecord[];
+};
+
+type AgentObservabilityPayload = {
+  sessions: CloudSessionSummary[];
+  traces: CloudTraceSummary[];
+  selectedSession: CloudSessionDetail | null;
+  selectedTrace: CloudTraceDetail | null;
 };
 
 type ToolKey = "project-data" | "asset-library" | "workflow-builder";
@@ -238,6 +284,13 @@ const formatRelativeTime = (value?: number) => {
   return `${Math.max(1, Math.floor(diff / 86_400_000))} 天前`;
 };
 
+const formatIsoTimestamp = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+};
+
 const getLatestActivityTimestamp = (records: AgentToolActivityRecord[]) =>
   records.reduce((latest, record) => Math.max(latest, record.lastFailedAt || 0, record.lastCompletedAt || 0, record.lastCalledAt || 0), 0);
 
@@ -307,6 +360,7 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
 
 export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
+  const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
   const { applyViduReferenceDemo } = useWorkflowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
@@ -330,6 +384,9 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [showArkRaw, setShowArkRaw] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runtimeMetaVersion, setRuntimeMetaVersion] = useState(0);
+  const [observabilityData, setObservabilityData] = useState<AgentObservabilityPayload | null>(null);
+  const [observabilityLoading, setObservabilityLoading] = useState(false);
+  const [observabilityError, setObservabilityError] = useState<string | null>(null);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: "qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
@@ -386,15 +443,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     () => conversationState.items.find((item) => item.id === conversationState.activeId) || null,
     [conversationState.activeId, conversationState.items]
   );
+  const selectedCloudSession = observabilityData?.selectedSession || null;
+  const selectedCloudTrace = observabilityData?.selectedTrace || null;
+  const cloudSessions = observabilityData?.sessions || [];
+  const cloudTraces = observabilityData?.traces || [];
   const activeToolItem = useMemo(
     () => TOOL_ITEMS.find((item) => item.key === activeTool) || TOOL_ITEMS[0],
     [activeTool]
   );
-  const runtimeSession = useMemo(
-    () => (activeConversation?.id ? readPersistedAgentSession(activeConversation.id) : null),
-    [activeConversation?.id, runtimeMetaVersion]
-  );
-  const allRuntimeSessions = useMemo(() => listPersistedAgentSessions(), [runtimeMetaVersion]);
   const toolActivityMap = useMemo(() => readAgentToolActivity(), [runtimeMetaVersion]);
   const activeToolActivity = useMemo(() => {
     const records = activeToolItem.tools
@@ -418,11 +474,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     if (historyFilter === "all") return messages;
     return messages.filter((message) => message.role === historyFilter);
   }, [activeConversation?.messages, historyFilter]);
-  const filteredRuntimeMessages = useMemo(() => {
-    const messages = runtimeSession?.messages || [];
+  const filteredCloudSessionMessages = useMemo(() => {
+    const messages = selectedCloudSession?.messages || [];
     if (historyFilter === "all") return messages;
     return messages.filter((message) => message.role === historyFilter);
-  }, [runtimeSession?.messages, historyFilter]);
+  }, [historyFilter, selectedCloudSession?.messages]);
   const ActiveToolIcon = activeToolItem.Icon;
   const toolEnabledCount = useMemo(
     () =>
@@ -436,13 +492,53 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   useEffect(() => {
     const onUpdated = () => setRuntimeMetaVersion((value) => value + 1);
     if (typeof window === "undefined") return;
-    window.addEventListener(AGENT_SESSION_STORAGE_UPDATED_EVENT, onUpdated);
     window.addEventListener(AGENT_ACTIVITY_STORAGE_UPDATED_EVENT, onUpdated);
     return () => {
-      window.removeEventListener(AGENT_SESSION_STORAGE_UPDATED_EVENT, onUpdated);
       window.removeEventListener(AGENT_ACTIVITY_STORAGE_UPDATED_EVENT, onUpdated);
     };
   }, []);
+
+  const getAuthToken = useCallback(async () => {
+    try {
+      return await getToken({ template: "default" });
+    } catch {
+      return null;
+    }
+  }, [getToken]);
+
+  const loadObservability = useCallback(async () => {
+    if (!isAuthSignedIn || !activeConversation?.id) {
+      setObservabilityData(null);
+      setObservabilityError(null);
+      return;
+    }
+    setObservabilityLoading(true);
+    setObservabilityError(null);
+    try {
+      const token = await getAuthToken();
+      if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
+      const response = await fetch(`/api/agent-observability?sessionId=${encodeURIComponent(activeConversation.id)}`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String((payload as any)?.error || `HTTP ${response.status}`));
+      }
+      setObservabilityData(payload as AgentObservabilityPayload);
+    } catch (error: any) {
+      setObservabilityError(error?.message || "无法加载 Agent 观测数据。");
+      setObservabilityData(null);
+    } finally {
+      setObservabilityLoading(false);
+    }
+  }, [activeConversation?.id, getAuthToken, isAuthSignedIn]);
+
+  useEffect(() => {
+    if (!isOpen || selectedPanel !== "history") return;
+    void loadObservability();
+  }, [isOpen, loadObservability, runtimeMetaVersion, selectedPanel]);
   const updateProjectToolSettings = (patch: Partial<typeof qalamToolSettings.projectData>) => {
     setConfig((prev) => {
       const existing = prev.textConfig.qalamTools?.projectData || {};
@@ -636,7 +732,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   };
 
   const handleClearConversation = (id: string) => {
-    clearPersistedAgentSession(id);
     setConversationState((prev) => {
       const remaining = prev.items.filter((item) => item.id !== id);
       const nextActive =
@@ -1916,13 +2011,32 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                       <div>
                         <div className="text-[11px] uppercase tracking-widest app-text-muted">History</div>
                         <div className="mt-2 text-[12px] leading-relaxed text-[var(--app-text-secondary)]">
-                          当前面板同时展示用户可见的聊天时间线，以及 Agent runtime 持久化的 session memory。
+                          当前面板展示用户可见的聊天时间线、Cloudflare D1 持久化的 edge session，以及 OpenAI Agents SDK tracing 生命周期。
                         </div>
                       </div>
-                      <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                        {allRuntimeSessions.length} sessions
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                          edge {cloudSessions.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void loadObservability()}
+                          disabled={observabilityLoading || !activeConversation?.id || !isAuthSignedIn}
+                          className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-muted)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {observabilityLoading ? "刷新中" : "刷新"}
+                        </button>
+                      </div>
                     </div>
+                    {!isAuthSignedIn ? (
+                      <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-[11px] text-amber-200">
+                        登录后可读取 Cloudflare D1 中的 edge session 与 SDK traces。
+                      </div>
+                    ) : observabilityError ? (
+                      <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-3 py-3 text-[11px] text-rose-200">
+                        {observabilityError}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap gap-2">
                       {[
                         { key: "all", label: "全部" },
@@ -1957,10 +2071,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             聊天更新 {formatTimestamp(activeConversation.updatedAt || activeConversation.createdAt)}
                           </div>
                           <div className="text-[10px] text-[var(--app-text-muted)]">
-                            Runtime 更新 {runtimeSession ? formatTimestamp(runtimeSession.updatedAt) : "尚未建立 session memory"}
+                            Edge Session 更新 {selectedCloudSession ? formatTimestamp(selectedCloudSession.updatedAt) : "尚未写入 D1"}
+                          </div>
+                          <div className="text-[10px] text-[var(--app-text-muted)]">
+                            最新 Trace {selectedCloudTrace ? formatTimestamp(selectedCloudTrace.updatedAt) : "尚未写入 trace"}
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Chat Timeline</div>
                             <div className="mt-2 text-[16px] font-semibold text-[var(--app-text-primary)]">
@@ -1969,18 +2086,20 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">用户可见消息</div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Runtime Memory</div>
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Edge Session</div>
                             <div className="mt-2 text-[16px] font-semibold text-[var(--app-text-primary)]">
-                              {filteredRuntimeMessages.length}
+                              {filteredCloudSessionMessages.length}
                             </div>
-                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">含 tool 事件与持久化摘要</div>
+                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">D1 中的多轮 session items</div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">最近同步</div>
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">SDK Trace</div>
                             <div className="mt-2 text-[16px] font-semibold text-[var(--app-text-primary)]">
-                              {formatRelativeTime(runtimeSession?.updatedAt)}
+                              {selectedCloudTrace?.spans.length || 0}
                             </div>
-                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">基于 local runtime storage</div>
+                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                              {selectedCloudTrace ? `${selectedCloudTrace.provider} · ${selectedCloudTrace.model}` : "暂无 trace"}
+                            </div>
                           </div>
                         </div>
                       </>
@@ -1990,7 +2109,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                   </div>
 
                   {activeConversation && (
-                    <div className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
                       <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
@@ -2026,68 +2145,169 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-widest app-text-muted">Runtime Memory</div>
-                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              Agent 真实保留的 session memory，包含 user、assistant 与 tool 事件。
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-widest app-text-muted">Edge Session Memory</div>
+                              <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                                D1 中的真实 session items。这里不再手工裁 history，而是读取 compaction 后的当前真相。
+                              </div>
                             </div>
+                            <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                              {filteredCloudSessionMessages.length} entries
+                            </span>
                           </div>
-                          <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                            {filteredRuntimeMessages.length} entries
-                          </span>
-                        </div>
-                        {filteredRuntimeMessages.length ? (
-                          <div className="space-y-2">
-                            {filteredRuntimeMessages.map((message, index) => (
-                              <div
-                                key={`${runtimeSession.id}-${index}`}
-                                className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-[10px] uppercase tracking-widest text-[var(--app-text-muted)]">
-                                        {message.role === "tool" ? message.toolName : message.role}
-                                      </span>
-                                      {message.role === "tool" && (
-                                        <span
-                                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                            message.toolStatus === "success"
-                                              ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                                              : "border border-rose-400/30 bg-rose-500/10 text-rose-300"
-                                          }`}
-                                        >
-                                          {message.toolStatus}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
-                                      {message.text || "（空消息）"}
-                                    </div>
-                                    {message.role === "tool" && message.toolOutput != null && (
-                                      <div className="rounded-xl border border-[var(--app-border)] bg-black/20 px-3 py-2 text-[10px] leading-relaxed text-[var(--app-text-muted)] whitespace-pre-wrap">
-                                        {summarizeRuntimeToolOutput(message.toolOutput)}
-                                      </div>
-                                    )}
+                          {selectedCloudSession ? (
+                            <div className="space-y-2">
+                              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-[var(--app-text-secondary)]">
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Session Id</div>
+                                    <div className="mt-1 break-all">{selectedCloudSession.sessionId}</div>
                                   </div>
-                                  <div className="text-right text-[10px] text-[var(--app-text-muted)]">
-                                    {formatTimestamp(message.createdAt)}
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Items</div>
+                                    <div className="mt-1">{selectedCloudSession.items.length}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Updated</div>
+                                    <div className="mt-1">{formatTimestamp(selectedCloudSession.updatedAt)}</div>
                                   </div>
                                 </div>
                               </div>
-                            ))}
+                              {filteredCloudSessionMessages.length ? (
+                                filteredCloudSessionMessages.map((message, index) => (
+                                  <div
+                                    key={`${selectedCloudSession.sessionId}-${index}`}
+                                    className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="space-y-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-[10px] uppercase tracking-widest text-[var(--app-text-muted)]">
+                                            {message.role || "unknown"}
+                                          </span>
+                                          {message.type ? (
+                                            <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                                              {message.type}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
+                                          {typeof message.text === "string" && message.text.trim()
+                                            ? message.text
+                                            : summarizeRuntimeToolOutput(message)}
+                                        </div>
+                                      </div>
+                                      <div className="text-right text-[10px] text-[var(--app-text-muted)]">
+                                        {formatTimestamp(message.createdAt)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                                  该对话尚未写入 edge session，或当前过滤条件下没有匹配项。
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                              尚未读取到该对话对应的云端 session。
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-widest app-text-muted">SDK Trace</div>
+                              <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                                基于 OpenAI Agents SDK tracing processor 落到 D1 的 run/span 视图。
+                              </div>
+                            </div>
+                            <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                              {cloudTraces.length} traces
+                            </span>
                           </div>
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
-                            该对话尚未形成 runtime session memory。
-                          </div>
-                        )}
+                          {selectedCloudTrace ? (
+                            <div className="space-y-3">
+                              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-[var(--app-text-secondary)]">
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Trace Id</div>
+                                    <div className="mt-1 break-all">{selectedCloudTrace.traceId}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Provider / Model</div>
+                                    <div className="mt-1">{selectedCloudTrace.provider} · {selectedCloudTrace.model}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Workflow</div>
+                                    <div className="mt-1">{selectedCloudTrace.workflowName || "Qalam Edge Agent"}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Updated</div>
+                                    <div className="mt-1">{formatTimestamp(selectedCloudTrace.updatedAt)}</div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {selectedCloudTrace.spans.length ? (
+                                  selectedCloudTrace.spans.map((span) => (
+                                    <div
+                                      key={span.spanId}
+                                      className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-1 min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[10px] uppercase tracking-widest text-[var(--app-text-muted)]">
+                                              {span.spanType}
+                                            </span>
+                                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">
+                                              {span.spanName || span.spanId}
+                                            </span>
+                                            {span.error ? (
+                                              <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-300">
+                                                error
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          <div className="text-[11px] text-[var(--app-text-secondary)] break-all">
+                                            {span.parentId ? `parent: ${span.parentId}` : "root span"}
+                                          </div>
+                                          {span.error ? (
+                                            <div className="text-[11px] text-rose-200 whitespace-pre-wrap">{span.error}</div>
+                                          ) : null}
+                                        </div>
+                                        <div className="text-right text-[10px] text-[var(--app-text-muted)]">
+                                          <div>{formatIsoTimestamp(span.startedAt)}</div>
+                                          <div className="mt-1">{formatIsoTimestamp(span.endedAt)}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                                    该对话尚未产生可展示的 span。
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                              尚未读取到与当前对话关联的 SDK trace。
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
-                  <div className="text-[11px] text-[var(--app-text-muted)]">仅对 Qalam 对话生效。</div>
+                  <div className="text-[11px] text-[var(--app-text-muted)]">
+                    仅对 Qalam 对话生效。当前主链以 Cloudflare edge session 与 SDK trace 为准。
+                  </div>
                 </div>
               )}
         </div>

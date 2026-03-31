@@ -10,7 +10,8 @@ import { StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
-import { createAgentSessionKey, D1EdgeSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
+import { createAgentSessionKey, D1EdgeSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
+import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
 import type { WorkflowFile, WorkflowNode, WorkflowNodeData, WorkflowViewport, NodeType } from "../../node-workspace/types";
 import type {
@@ -601,8 +602,11 @@ export const onRequestPost = async (context: any) => {
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
       const debugEnabled = isDebugEnabled(context.env || {});
-      const tracingEnabled = false;
-      const traceId = `local-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      ensureQalamTraceProcessor();
+      const tracingEnabled = true;
+      const traceId = `edge-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const workflowName = "Qalam Edge Agent";
+      const groupId = sessionKey;
       const bridgeState = createEdgeBridgeState(body.projectData, body.workflow);
       const skillLoader = new StaticSkillLoader();
       try {
@@ -626,7 +630,12 @@ export const onRequestPost = async (context: any) => {
           hasApiKey: Boolean(resolvedApiKey),
           enabledSkills: enabledSkills.map((skill) => skill.id),
         });
-        const session = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
+        const session = new QalamResponsesCompactionSession({
+          underlyingSession: new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner),
+          model: effectiveModel,
+          apiKey: resolvedApiKey,
+          baseUrl: resolvedBaseUrl,
+        });
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         const runResult = await runQalamAgentCore({
           input: body.run,
@@ -641,13 +650,25 @@ export const onRequestPost = async (context: any) => {
           sessionMessages,
           runtimeMode: "edge_full",
           runtimeLabel: "Qalam Edge Agent",
-          workflowName: "Qalam Edge Agent",
+          workflowName,
           enabledSkills: enabledSkills as any,
           disabledTools,
           maxTurns: EDGE_AGENT_MAX_TURNS,
           signal: context.request.signal,
           onEvent: (event) => emitEvent(controller, event),
           onDebug: (label, payload) => debugLog(debugEnabled, traceId, label, payload),
+          traceId,
+          groupId,
+          traceMetadata: {
+            sessionId: body.run.sessionId,
+            sessionKey,
+            provider,
+            model: effectiveModel,
+            userId: sessionOwner || "anonymous",
+            runtimeMode: "edge_full",
+          },
+          tracingDisabled: false,
+          traceIncludeSensitiveData: false,
           getExtraResult: () => ({
             updatedProjectData: bridgeState.hasUpdatedProjectData() ? bridgeState.getProjectData() : undefined,
             updatedWorkflow: bridgeState.hasUpdatedWorkflow() ? bridgeState.getWorkflow() : undefined,
@@ -668,6 +689,29 @@ export const onRequestPost = async (context: any) => {
         debugLog(debugEnabled, traceId, "run error", message);
         emitError(controller, message);
       } finally {
+        try {
+          await forceFlushAgentTracing();
+          await persistBufferedTrace(context.env || {}, {
+            traceId,
+            sessionId: body.run.sessionId,
+            sessionKey,
+            userId: sessionOwner,
+            provider,
+            model: resolveProviderModel(provider, body.runtime.model),
+            workflowName,
+            groupId,
+            metadata: {
+              sessionId: body.run.sessionId,
+              sessionKey,
+              provider,
+              model: resolveProviderModel(provider, body.runtime.model),
+              userId: sessionOwner || "anonymous",
+              runtimeMode: "edge_full",
+            },
+          });
+        } catch (traceError: any) {
+          debugLog(debugEnabled, traceId, "trace persistence error", traceError?.message || String(traceError));
+        }
         try {
           controller.close();
         } catch (error: any) {

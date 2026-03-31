@@ -15,7 +15,7 @@ import { createQalamTools } from "../tools";
 import { buildAgentEnvironment } from "./environment";
 import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guardrails";
 import { composeAgentInstructions } from "./instructions";
-import { buildAgentMemorySnapshot, buildRunInputItems, createAgentSessionInputCallback } from "./memory";
+import { buildAgentMemorySnapshot, buildRunInputItems } from "./memory";
 import { formatModelAccessError, isModelAccessError, type QalamAgentProvider } from "./providerConfig";
 import type {
   AgentExecutedToolCall,
@@ -220,6 +220,11 @@ type RunQalamAgentCoreOptions = {
   getExtraResult?: () => Partial<QalamRunResult>;
   runStartedMeta?: Pick<Extract<AgentRuntimeEvent, { type: "run_started" }>, "traceId" | "tracingEnabled">;
   recoverFallbackOnAnyError?: boolean;
+  traceId?: string;
+  groupId?: string;
+  traceMetadata?: Record<string, string>;
+  tracingDisabled?: boolean;
+  traceIncludeSensitiveData?: boolean;
 };
 
 export const runQalamAgentCore = async ({
@@ -240,6 +245,11 @@ export const runQalamAgentCore = async ({
   getExtraResult,
   runStartedMeta,
   recoverFallbackOnAnyError = false,
+  traceId,
+  groupId,
+  traceMetadata,
+  tracingDisabled,
+  traceIncludeSensitiveData,
 }: RunQalamAgentCoreOptions): Promise<QalamRunResult> => {
   const runId = `${runtimeMode === "edge_full" ? "edge-run" : "run"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const emitTrace = (
@@ -369,15 +379,17 @@ export const runQalamAgentCore = async ({
 
   try {
     const runner = new Runner({
-      tracingDisabled: true,
-      traceIncludeSensitiveData: false,
+      tracingDisabled: tracingDisabled ?? true,
+      traceIncludeSensitiveData: traceIncludeSensitiveData ?? false,
       workflowName,
+      traceId,
+      groupId,
+      traceMetadata,
     });
     const result = await runner.run(agent, runInputItems, {
       signal,
       maxTurns,
       session,
-      sessionInputCallback: createAgentSessionInputCallback(agentMemory),
       context: runContext,
       stream: true,
     });

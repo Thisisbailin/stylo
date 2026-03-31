@@ -4,7 +4,6 @@ import type { AgentSessionMessage, QalamAgentMemory, QalamRunInput } from "./typ
 const MAX_RECENT_TURNS = 8;
 const MAX_RECENT_TOOLS = 6;
 const MAX_MEMORY_TEXT = 220;
-const HISTORY_REPLAY_WINDOW = 12;
 
 const clipText = (value: string, limit = MAX_MEMORY_TEXT) => {
   const trimmed = value.trim();
@@ -85,31 +84,3 @@ export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undef
       })),
   };
 };
-
-const compactHistoryItem = (item: AgentInputItem): AgentInputItem => {
-  if (!item || typeof item !== "object") return item;
-  const cloned = structuredClone(item);
-  if ((cloned as any).role === "user" || (cloned as any).role === "assistant") {
-    const content = (cloned as any).content;
-    if (Array.isArray(content)) {
-      (cloned as any).content = content.map((part) => {
-        if (!part || typeof part !== "object") return part;
-        const next = { ...(part as any) };
-        if (typeof next.text === "string") next.text = clipText(next.text, 1200);
-        if (typeof next.transcript === "string") next.transcript = clipText(next.transcript, 1200);
-        return next;
-      });
-    }
-  }
-  if ((cloned as any).type === "function_call_result" && typeof (cloned as any).output === "string") {
-    (cloned as any).output = clipText((cloned as any).output, 1000);
-  }
-  return cloned;
-};
-
-export const createAgentSessionInputCallback =
-  (_seedMemory?: QalamAgentMemory, historyWindow = HISTORY_REPLAY_WINDOW) =>
-  async (historyItems: AgentInputItem[], newItems: AgentInputItem[]) => {
-    const trimmedHistory = historyItems.slice(-historyWindow).map(compactHistoryItem);
-    return [...trimmedHistory, ...newItems];
-  };

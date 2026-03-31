@@ -1,8 +1,9 @@
-import type { AgentInputItem, Session } from "@openai/agents";
+import OpenAI from "openai";
+import { RequestUsage, type AgentInputItem, type OpenAIResponsesCompactionArgs, type OpenAIResponsesCompactionAwareSession, type OpenAIResponsesCompactionResult, type Session } from "@openai/agents";
 import { getUserId } from "./_auth";
 import type { AgentSessionMessage } from "../../agents/runtime/types";
 
-type EnvWithDb = {
+export type EnvWithDb = {
   DB: any;
   CLERK_SECRET_KEY?: string;
   CLERK_JWT_KEY?: string;
@@ -63,51 +64,6 @@ const summarizeToolOutput = (output: unknown) => {
     return clipText(String(output), 300);
   }
 };
-
-const compactToolOutput = (output: unknown) => {
-  if (typeof output !== "string") return output;
-  try {
-    const parsed = JSON.parse(output);
-    if (parsed && typeof parsed === "object") {
-      return JSON.stringify({
-        status: parsed.status,
-        tool: parsed.tool,
-        summary: typeof parsed.summary === "string" ? clipText(parsed.summary, 300) : undefined,
-      });
-    }
-  } catch {
-    return clipText(output, 1200);
-  }
-  return clipText(output, 1200);
-};
-
-const compactContentParts = (content: unknown) => {
-  if (!Array.isArray(content)) return content;
-  return content.map((part) => {
-    if (!part || typeof part !== "object") return part;
-    const cloned = { ...(part as any) };
-    if (typeof cloned.text === "string") cloned.text = clipText(cloned.text, 2400);
-    if (typeof cloned.transcript === "string") cloned.transcript = clipText(cloned.transcript, 2400);
-    return cloned;
-  });
-};
-
-const compactAgentItem = (item: AgentInputItem): AgentInputItem => {
-  if (!item || typeof item !== "object") return item;
-  const cloned = cloneItem(item);
-  if ((cloned as any).role === "user" || (cloned as any).role === "assistant") {
-    (cloned as any).content = compactContentParts((cloned as any).content);
-    return cloned;
-  }
-  if ((cloned as any).type === "function_call_result") {
-    (cloned as any).output = compactToolOutput((cloned as any).output);
-    return cloned;
-  }
-  return cloned;
-};
-
-const compactAgentItems = (items: AgentInputItem[], maxItems = 48) =>
-  items.map(compactAgentItem).slice(-maxItems);
 
 const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBase: number): AgentSessionMessage[] =>
   items.flatMap((item, index) => {
@@ -258,7 +214,7 @@ export class D1EdgeSession implements Session {
     const timestampBase = Date.now();
     const projectedMessages = projectAgentItemsToSessionMessages(items.map(cloneItem), timestampBase);
     await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
-      items: compactAgentItems(merged),
+      items: merged,
       messages: [...existing.messages, ...projectedMessages].slice(-240),
       updatedAt: timestampBase,
     });
@@ -288,3 +244,196 @@ export const readD1SessionMessages = async (env: EnvWithDb, sessionKey: string) 
   const record = await readAgentSessionRecord(env, sessionKey);
   return record.messages;
 };
+
+const DEFAULT_COMPACTION_THRESHOLD = 12;
+const DEFAULT_COMPACTION_TAIL_ITEMS = 8;
+
+const selectCompactionCandidateItems = (items: AgentInputItem[]) =>
+  items.filter((item) => {
+    if (!item || typeof item !== "object") return false;
+    if ((item as any).type === "compaction") return false;
+    return !((item as any).role === "user");
+  });
+
+const extractItemText = (item: AgentInputItem) => {
+  if (!item || typeof item !== "object") return "";
+  if ((item as any).type === "function_call_result") {
+    const name = String((item as any).name || "tool");
+    return `[tool:${name}] ${summarizeToolOutput((item as any).output)}`.trim();
+  }
+  const content = (item as any).content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      if (typeof (part as any).text === "string") return (part as any).text;
+      if (typeof (part as any).transcript === "string") return (part as any).transcript;
+      if (typeof (part as any).refusal === "string") return (part as any).refusal;
+      if ((part as any).type === "input_image") return "[image]";
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+};
+
+const serializeItemsForCompaction = (items: AgentInputItem[]) =>
+  items
+    .map((item, index) => {
+      if (!item || typeof item !== "object") return "";
+      const role = typeof (item as any).role === "string" ? (item as any).role : String((item as any).type || "item");
+      const text = clipText(extractItemText(item), 4000);
+      return text ? `${index + 1}. [${role}] ${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+const extractResponseText = (response: any): string => {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text.trim();
+  }
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const parts: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    if ((item as any).type === "output_text" && typeof (item as any).text === "string") {
+      parts.push((item as any).text);
+    }
+    if ((item as any).type === "message" && Array.isArray((item as any).content)) {
+      for (const content of (item as any).content) {
+        if (content?.type === "output_text" && typeof content.text === "string") {
+          parts.push(content.text);
+        }
+      }
+    }
+  }
+  return parts.join("\n").trim();
+};
+
+const buildCompactionSummaryItem = (summaryText: string): AgentInputItem =>
+  ({
+    type: "message",
+    role: "assistant",
+    content: [
+      {
+        type: "output_text",
+        text:
+          "Session Summary\n" +
+          "This is an auto-generated condensed memory of earlier turns. Use it as historical context; prefer newer turns when conflicts appear.\n\n" +
+          summaryText.trim(),
+      },
+    ],
+  }) as AgentInputItem;
+
+type QalamResponsesCompactionSessionOptions = {
+  underlyingSession: Session;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  defaultHeaders?: Record<string, string>;
+  threshold?: number;
+  tailItems?: number;
+};
+
+export class QalamResponsesCompactionSession implements OpenAIResponsesCompactionAwareSession {
+  private readonly client: OpenAI;
+  private readonly threshold: number;
+  private readonly tailItems: number;
+
+  constructor(private readonly options: QalamResponsesCompactionSessionOptions) {
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseUrl,
+      defaultHeaders: options.defaultHeaders,
+    });
+    this.threshold = Math.max(4, options.threshold ?? DEFAULT_COMPACTION_THRESHOLD);
+    this.tailItems = Math.max(4, options.tailItems ?? DEFAULT_COMPACTION_TAIL_ITEMS);
+  }
+
+  getSessionId(): Promise<string> {
+    return this.options.underlyingSession.getSessionId();
+  }
+
+  getItems(limit?: number): Promise<AgentInputItem[]> {
+    return this.options.underlyingSession.getItems(limit);
+  }
+
+  addItems(items: AgentInputItem[]): Promise<void> {
+    return this.options.underlyingSession.addItems(items);
+  }
+
+  popItem(): Promise<AgentInputItem | undefined> {
+    return this.options.underlyingSession.popItem();
+  }
+
+  clearSession(): Promise<void> {
+    return this.options.underlyingSession.clearSession();
+  }
+
+  async runCompaction(args?: OpenAIResponsesCompactionArgs): Promise<OpenAIResponsesCompactionResult | null> {
+    try {
+      const sessionItems = await this.options.underlyingSession.getItems();
+      if (sessionItems.length <= this.tailItems + 1) return null;
+
+      const preservedTail = sessionItems.slice(-this.tailItems).map(cloneItem);
+      const compactionSource = sessionItems.slice(0, Math.max(sessionItems.length - this.tailItems, 0));
+      const compactionCandidateItems = selectCompactionCandidateItems(compactionSource);
+      const shouldCompact = args?.force === true || compactionCandidateItems.length >= this.threshold;
+      if (!shouldCompact || !compactionSource.length) return null;
+
+      const transcript = serializeItemsForCompaction(compactionSource);
+      if (!transcript.trim()) return null;
+
+      const response = await this.client.responses.create({
+        model: this.options.model,
+        input: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "You are compacting earlier conversation history for an agent session. Produce a concise, durable summary of prior context. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and the latest successful/failed tool outcomes. Do not invent facts. Prefer bullet-like short lines over prose.",
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "Summarize the following earlier conversation history for future agent turns.\n\n" +
+                  transcript,
+              },
+            ],
+          },
+        ],
+      });
+
+      const summaryText = extractResponseText(response);
+      if (!summaryText.trim()) return null;
+
+      await this.options.underlyingSession.clearSession();
+      await this.options.underlyingSession.addItems([
+        buildCompactionSummaryItem(summaryText),
+        ...preservedTail,
+      ]);
+
+      const usage = (response as any)?.usage || {};
+      return {
+        usage: new RequestUsage({
+          inputTokens: Number(usage.inputTokens ?? usage.input_tokens ?? 0),
+          outputTokens: Number(usage.outputTokens ?? usage.output_tokens ?? 0),
+          totalTokens: Number(usage.totalTokens ?? usage.total_tokens ?? 0),
+          inputTokensDetails: (usage.inputTokensDetails ?? usage.input_tokens_details ?? {}) as Record<string, number>,
+          outputTokensDetails: (usage.outputTokensDetails ?? usage.output_tokens_details ?? {}) as Record<string, number>,
+          endpoint: "responses.create",
+        }),
+      };
+    } catch {
+      return null;
+    }
+  }
+}

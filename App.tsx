@@ -33,11 +33,8 @@ import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
 import { NodeLab } from './node-workspace/components/NodeLab';
-import { MaterialsPanel } from './node-workspace/components/MaterialsPanel';
-import { UnderstandingPanel } from './node-workspace/components/UnderstandingPanel';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
-import { SyncPanel } from './node-workspace/components/SyncPanel';
-import { InfoPanel } from './node-workspace/components/InfoPanel';
+import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { ProjectorModule } from './components/ProjectorModule';
 import { Dashboard } from './components/Dashboard';
 import { LandingPage } from './components/LandingPage';
@@ -492,7 +489,6 @@ const App: React.FC = () => {
   }, [analysisStep]);
 
   const [appView, setAppView] = useState<"main" | "landing">(() => readAppViewFromLocation());
-  const [accountPanel, setAccountPanel] = useState<"sync" | "info" | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [workflowAnchor, setWorkflowAnchor] = useState<DOMRect | null>(null);
@@ -511,7 +507,7 @@ const App: React.FC = () => {
   const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<ModuleKey | null>(null);
-  const [understandingSection, setUnderstandingSection] = useState<"overview" | "episodes" | "characters" | "scenes" | "guides">("overview");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("understanding:overview");
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
@@ -538,11 +534,10 @@ const App: React.FC = () => {
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
 
-  const openAccountPanel = useCallback((panel: "sync" | "info") => {
-    setAccountPanel(panel);
+  const openWorkspacePanel = useCallback((section: WorkspaceSection = "understanding:overview") => {
+    setWorkspaceSection(section);
+    setOpenLabModal("workspace");
   }, []);
-
-  const closeAccountPanel = useCallback(() => setAccountPanel(null), []);
   useEffect(() => {
     const syncAppView = () => setAppView(readAppViewFromLocation());
     window.addEventListener("hashchange", syncAppView);
@@ -565,7 +560,6 @@ const App: React.FC = () => {
   }, []);
 
   const openLandingPage = useCallback(() => {
-    setAccountPanel(null);
     setOpenLabModal(null);
     setShowStatsModal(false);
     setShowWorkflow(false);
@@ -575,20 +569,19 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      setUnderstandingSection('characters');
-      setOpenLabModal('understanding');
+      openWorkspacePanel("understanding:characters");
       return;
     }
     if (key === 'scenes') {
-      setUnderstandingSection('scenes');
-      setOpenLabModal('understanding');
+      openWorkspacePanel("understanding:scenes");
       return;
     }
-    if (key === 'understanding') {
-      setUnderstandingSection('overview');
+    if (key === 'workspace') {
+      openWorkspacePanel("understanding:overview");
+      return;
     }
     setOpenLabModal(key);
-  }, []);
+  }, [openWorkspacePanel]);
 
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
@@ -2160,8 +2153,8 @@ const App: React.FC = () => {
               onExportUnderstandingJson={handleExportUnderstandingJson}
               onToggleTheme={toggleTheme}
               isDarkMode={isDarkMode}
-              onOpenSyncPanel={() => openAccountPanel("sync")}
-              onOpenInfoPanel={() => openAccountPanel("info")}
+              onOpenSyncPanel={() => openWorkspacePanel("sync:status")}
+              onOpenInfoPanel={() => openWorkspacePanel("info:about")}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
               onOpenStats={handleOpenStats}
@@ -2214,20 +2207,25 @@ const App: React.FC = () => {
         setProjectData={setProjectData}
       />
     );
-  } else if (openLabModal === "understanding") {
-    labModalTitle = "理解";
-    labModalWidth = 520;
+  } else if (openLabModal === "workspace") {
+    labModalTitle = "Workspace";
+    labModalWidth = 560;
     labModalContent = (
-      <UnderstandingPanel
+      <WorkspacePanel
         projectData={projectData}
         setProjectData={setProjectData}
-        initialSection={understandingSection}
+        config={config}
+        onConfigChange={setConfig}
+        isSignedIn={!!authSignedIn}
+        getAuthToken={getAuthToken}
+        onForceSync={forceCloudPull}
+        syncState={syncState}
+        syncRollout={syncRollout}
+        onResetProject={handleResetProject}
+        onOpenLanding={openLandingPage}
+        initialSection={workspaceSection}
       />
     );
-  } else if (openLabModal === "materials") {
-    labModalTitle = "素材";
-    labModalWidth = 520;
-    labModalContent = <MaterialsPanel />;
   } else if (openLabModal === "projector") {
     labModalTitle = "放映机 (视听实验室)";
     labModalWidth = 560;
@@ -2250,7 +2248,7 @@ const App: React.FC = () => {
               isOnline={isOnline}
               isSignedIn={!!authSignedIn}
               syncRollout={syncRollout}
-              onOpenDetails={() => openAccountPanel("sync")}
+              onOpenDetails={() => openWorkspacePanel("sync:status")}
               onForceSync={forceCloudPull}
               onClose={() => setIsSyncBannerDismissed(true)}
             />
@@ -2284,25 +2282,6 @@ const App: React.FC = () => {
         {showStatsModal && (
           <FloatingPanelShell title="Dashboard" isOpen onClose={closeStats} width={960}>
             <Dashboard data={projectData} isDarkMode={isDarkMode} />
-          </FloatingPanelShell>
-        )}
-        {accountPanel === "sync" && (
-          <FloatingPanelShell title="Sync" isOpen onClose={closeAccountPanel} width={980}>
-            <SyncPanel
-              config={config}
-              onConfigChange={setConfig}
-              isSignedIn={!!authSignedIn}
-              getAuthToken={getAuthToken}
-              onForceSync={forceCloudPull}
-              syncState={syncState}
-              syncRollout={syncRollout}
-              onResetProject={handleResetProject}
-            />
-          </FloatingPanelShell>
-        )}
-        {accountPanel === "info" && (
-          <FloatingPanelShell title="Info" isOpen onClose={closeAccountPanel} width={960}>
-            <InfoPanel onOpenLanding={openLandingPage} />
           </FloatingPanelShell>
         )}
       </AppShell>

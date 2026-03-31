@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Globe } from "lucide-react";
+import { Brain, CaretDown, Wrench } from "@phosphor-icons/react";
 import type { ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
 import { isStatusMessage, isToolMessage } from "./types";
 
@@ -24,15 +25,24 @@ const toolStatusClass: Record<ToolStatus, string> = {
 };
 
 const foldedSurfaceClass =
-  "mt-2 ml-4 rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.02),transparent),var(--app-panel-muted)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]";
+  "mt-2 ml-7 rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent),var(--app-panel-muted)] px-4 py-3.5 shadow-[0_12px_30px_-24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.03)]";
 const lineSummaryClass =
-  "max-w-[92%] px-2 py-1.5 text-[12px] text-[var(--app-text-muted)]";
+  "max-w-[92%] px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
 const formatWorkedDuration = (durationMs: number) => {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${totalSeconds}s`;
+};
+
+const formatThoughtDuration = (durationMs: number) => {
+  const totalSeconds = Math.max(0.1, durationMs / 1000);
+  if (totalSeconds < 10) return `${totalSeconds.toFixed(1)} 秒`;
+  if (totalSeconds < 60) return `${Math.round(totalSeconds)} 秒`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`;
 };
 
 const sanitizeUrl = (value: string) => {
@@ -786,9 +796,38 @@ const buildToolActionLabel = (tool: ToolPayload) => {
 
 const renderFoldoutSurface = (title: string, children: React.ReactNode, footer?: React.ReactNode) => (
   <div className={foldedSurfaceClass}>
-    <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">{title}</div>
-    <div className="mt-2 space-y-2 text-[12px] leading-relaxed text-[var(--app-text-primary)]">{children}</div>
-    {footer ? <div className="mt-3 border-t border-[var(--app-border)] pt-2 text-[11px] text-[var(--app-text-muted)]">{footer}</div> : null}
+    <div className="text-[11px] font-medium text-[var(--app-text-secondary)]">{title}</div>
+    <div className="mt-2.5 space-y-2.5 text-[12px] leading-relaxed text-[var(--app-text-primary)]">{children}</div>
+    {footer ? <div className="mt-3 border-t border-[var(--app-border)] pt-2.5 text-[11px] text-[var(--app-text-muted)]">{footer}</div> : null}
+  </div>
+);
+
+const renderDisclosureHeader = ({
+  icon,
+  label,
+  toneClass,
+  meta,
+  expandable,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  toneClass: string;
+  meta?: React.ReactNode;
+  expandable?: boolean;
+}) => (
+  <div className="flex items-center gap-2.5">
+    <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
+      {icon}
+    </span>
+    <span className="min-w-0 flex-1 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
+    {meta ? <span className="text-[11px] font-medium">{meta}</span> : null}
+    {expandable ? (
+      <CaretDown
+        size={14}
+        className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-180"
+        weight="bold"
+      />
+    ) : null}
   </div>
 );
 
@@ -812,17 +851,28 @@ const renderToolThread = (thread: ToolThread) => {
   if (!hasDetails && !thread.result) {
     return (
       <div className={lineSummaryClass}>
-        <span className="font-medium text-[var(--app-text-primary)]">{actionLabel}</span>
-        <span className={`ml-2 text-[11px] ${toolStatusClass[status]}`}>{statusText}</span>
+        <div className="flex items-center gap-2.5 rounded-[16px] px-2 py-1.5">
+          {renderDisclosureHeader({
+            icon: <Wrench size={12} weight="duotone" />,
+            label: actionLabel,
+            toneClass: "bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]",
+            meta: <span className={toolStatusClass[status]}>{statusText}</span>,
+          })}
+        </div>
       </div>
     );
   }
 
   return (
-    <details className={`${lineSummaryClass} max-w-[92%]`}>
-      <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">
-        <span className="font-medium text-[var(--app-text-primary)]">{actionLabel}</span>
-        <span className={`ml-2 text-[11px] ${toolStatusClass[status]}`}>{statusText}</span>
+    <details className={`${lineSummaryClass} group max-w-[92%]`}>
+      <summary className="list-none cursor-pointer rounded-[16px] px-2 py-1.5 transition hover:bg-[var(--app-panel-muted)] [&::-webkit-details-marker]:hidden">
+        {renderDisclosureHeader({
+          icon: <Wrench size={12} weight="duotone" />,
+          label: actionLabel,
+          toneClass: "bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]",
+          meta: <span className={toolStatusClass[status]}>{statusText}</span>,
+          expandable: true,
+        })}
       </summary>
       {renderFoldoutSurface(
         thread.result ? "结果反馈" : "执行上下文",
@@ -847,7 +897,10 @@ const renderToolThread = (thread: ToolThread) => {
 };
 
 const buildThinkingLabel = (status: StatusMessage["statusCard"]) => {
-  return status.headline;
+  if (!status.isThinking) return status.headline;
+  const duration = Math.max(0, status.updatedAt - status.startedAt);
+  if (status.status === "running") return "思考中";
+  return `思考了 ${formatThoughtDuration(duration)}`;
 };
 
 const renderStatusLine = (message: StatusMessage) => {
@@ -858,22 +911,36 @@ const renderStatusLine = (message: StatusMessage) => {
       : status.status === "success"
         ? "text-emerald-400"
         : "text-sky-400";
+  const iconToneClass =
+    status.status === "error"
+      ? "bg-rose-500/10 text-rose-300"
+      : status.status === "success"
+        ? "bg-emerald-500/10 text-emerald-300"
+        : "bg-sky-500/10 text-sky-300";
 
   if (!status.steps.length && !status.detail) {
     return (
       <div className={lineSummaryClass}>
-        <span className={`font-medium ${toneClass}`}>{status.headline}</span>
+        <div className="flex items-center gap-2.5 rounded-[16px] px-2 py-1.5">
+          {renderDisclosureHeader({
+            icon: <Brain size={12} weight="duotone" />,
+            label: buildThinkingLabel(status),
+            toneClass: iconToneClass,
+          })}
+        </div>
       </div>
     );
   }
 
   return (
-    <details className={`${lineSummaryClass} max-w-[92%]`}>
-      <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">
-        <span className={`font-medium ${toneClass}`}>{buildThinkingLabel(status)}</span>
-        <span className="ml-2 text-[11px] text-[var(--app-text-muted)]">
-          {new Date(status.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
+    <details className={`${lineSummaryClass} group max-w-[92%]`}>
+      <summary className="list-none cursor-pointer rounded-[16px] px-2 py-1.5 transition hover:bg-[var(--app-panel-muted)] [&::-webkit-details-marker]:hidden">
+        {renderDisclosureHeader({
+          icon: <Brain size={12} weight="duotone" />,
+          label: buildThinkingLabel(status),
+          toneClass: iconToneClass,
+          expandable: true,
+        })}
       </summary>
       {renderFoldoutSurface(
         status.isThinking ? "思考摘要" : "进度详情",
