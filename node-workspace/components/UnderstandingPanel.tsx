@@ -116,8 +116,8 @@ export const UnderstandingPanel: React.FC<Props> = ({
   const selectedGuide = guideItems.find((guide) => guide.key === selectedGuideKey) || guideItems[0];
 
   return (
-    <div className="space-y-4 text-[var(--app-text-primary)]">
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+    <div className="min-w-0 space-y-4 text-[var(--app-text-primary)]">
+      <div className="min-w-0 grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="space-y-3">
           {sections.map((section) => {
             const Icon = section.icon;
@@ -142,14 +142,16 @@ export const UnderstandingPanel: React.FC<Props> = ({
         </div>
 
         {active === "characters" || active === "scenes" ? (
-          <CharacterSceneLibraryPanel
-            key={active}
-            projectData={projectData}
-            setProjectData={setProjectData}
-            initialSelectionType={active === "characters" ? "character" : "scene"}
-          />
+          <div className="min-w-0">
+            <CharacterSceneLibraryPanel
+              key={active}
+              projectData={projectData}
+              setProjectData={setProjectData}
+              initialSelectionType={active === "characters" ? "character" : "scene"}
+            />
+          </div>
         ) : (
-          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+          <div className="min-w-0 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
             {active === "overview" ? (
               <>
                 <div className="text-lg font-semibold">Project Summary</div>

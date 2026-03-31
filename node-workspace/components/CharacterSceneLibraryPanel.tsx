@@ -61,10 +61,14 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
   setProjectData,
   initialSelectionType = "character",
 }) => {
+  const COLLAPSED_ROLE_LIST_HEIGHT = 88;
   const [selection, setSelection] = useState<Selection | null>(null);
   const [isDesigningVoice, setIsDesigningVoice] = useState(false);
+  const [isRoleListExpanded, setIsRoleListExpanded] = useState(false);
+  const [hasRoleListOverflow, setHasRoleListOverflow] = useState(false);
   const [voicePromptDraft, setVoicePromptDraft] = useState("");
   const previewAudioRef = useRef<HTMLAudioElement>(null);
+  const roleListRef = useRef<HTMLDivElement>(null);
 
   const characters = useMemo(
     () => sortRoles((projectData.context.roles || []).filter((role) => role.kind === "person")),
@@ -108,6 +112,10 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
       setVoicePromptDraft(selectedRole.voicePrompt || "");
     }
   }, [selectedRole]);
+
+  useEffect(() => {
+    setIsRoleListExpanded(false);
+  }, [initialSelectionType]);
 
   const mutateRole = (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => {
     setProjectData((prev) => ({
@@ -238,7 +246,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
   const roleList = isCharacterMode ? characters : scenes;
   const roleCount = roleList.length;
   const chipClass = (active: boolean, mode: "character" | "scene") =>
-    `inline-flex min-w-fit items-center gap-2 rounded-full border px-3 py-2 text-left transition whitespace-nowrap ${
+    `inline-flex min-w-0 max-w-full items-center gap-2 rounded-full border px-3 py-2 text-left transition ${
       active
         ? mode === "character"
           ? "border-emerald-400/60 bg-emerald-500/12 text-[var(--app-text-primary)]"
@@ -246,12 +254,38 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
         : "border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
     }`;
 
+  useEffect(() => {
+    const measureRoleList = () => {
+      const node = roleListRef.current;
+      if (!node) {
+        setHasRoleListOverflow(false);
+        return;
+      }
+      setHasRoleListOverflow(node.scrollHeight > COLLAPSED_ROLE_LIST_HEIGHT + 4);
+    };
+
+    measureRoleList();
+
+    const node = roleListRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => measureRoleList());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [COLLAPSED_ROLE_LIST_HEIGHT, roleList]);
+
+  useEffect(() => {
+    if (!hasRoleListOverflow && isRoleListExpanded) {
+      setIsRoleListExpanded(false);
+    }
+  }, [hasRoleListOverflow, isRoleListExpanded]);
+
   const portraits = sortPortraits(selectedRole?.portraits || []);
   const primaryPortrait = getPrimaryPortrait(selectedRole);
 
   return (
-    <div className="space-y-4 text-[var(--app-text-primary)]">
-      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+    <div className="min-w-0 space-y-4 text-[var(--app-text-primary)]">
+      <div className="min-w-0 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-[12px] font-semibold">
@@ -268,30 +302,50 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-1">
-          <div className="flex gap-2 min-w-fit">
-            {roleList.map((role) => {
-              const isActive = selection?.key === role.id;
-              return (
-                <button
-                  key={role.id}
-                  type="button"
-                  onClick={() => setSelection({ type: isCharacterMode ? "character" : "scene", key: role.id })}
-                  className={chipClass(isActive, isCharacterMode ? "character" : "scene")}
-                >
-                  <span className="font-medium">{role.name || "Untitled Identity"}</span>
-                  <span className="text-[10px] opacity-70">{(role.portraits || []).length} 张</span>
-                </button>
-              );
-            })}
+        <div className="min-w-0 space-y-2">
+          <div
+            className={`relative overflow-hidden transition-[max-height] duration-200 ease-out ${
+              isRoleListExpanded ? "max-h-[480px]" : "max-h-[88px]"
+            }`}
+          >
+            <div ref={roleListRef} className="flex min-w-0 flex-wrap gap-2">
+              {roleList.map((role) => {
+                const isActive = selection?.key === role.id;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => setSelection({ type: isCharacterMode ? "character" : "scene", key: role.id })}
+                    className={chipClass(isActive, isCharacterMode ? "character" : "scene")}
+                  >
+                    <span className="min-w-0 truncate font-medium">{role.name || "Untitled Identity"}</span>
+                    <span className="shrink-0 text-[10px] opacity-70">{(role.portraits || []).length} 张</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!isRoleListExpanded && hasRoleListOverflow ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--app-panel-muted)] to-transparent" />
+            ) : null}
           </div>
+          {hasRoleListOverflow || isRoleListExpanded ? (
+            <button
+              type="button"
+              onClick={() => setIsRoleListExpanded((current) => !current)}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-1.5 text-[11px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+            >
+              {isRoleListExpanded
+                ? `收起${isCharacterMode ? "角色" : "场景"}列表`
+                : `展开全部 ${roleCount} 个${isCharacterMode ? "角色" : "场景"}`}
+            </button>
+          ) : null}
         </div>
 
-        <div className="rounded-[28px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4 md:p-5 space-y-4">
+        <div className="min-w-0 rounded-[28px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4 md:p-5 space-y-4">
           {selectedRole ? (
             <>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-4">
+              <div className="flex min-w-0 items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-4">
                   <div className="relative h-20 w-20 overflow-hidden rounded-2xl border border-[var(--app-border)] bg-black/20">
                     {primaryPortrait?.imageUrl || selectedRole.avatarUrl ? (
                       <img
@@ -317,9 +371,9 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
                       />
                     </label>
                   </div>
-                  <div>
-                    <div className="text-lg font-semibold">{selectedRole.name || "Untitled Identity"}</div>
-                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[var(--app-text-secondary)]">
+                  <div className="min-w-0">
+                    <div className="truncate text-lg font-semibold">{selectedRole.name || "Untitled Identity"}</div>
+                    <div className="mt-1 truncate text-[11px] uppercase tracking-[0.16em] text-[var(--app-text-secondary)]">
                       @{selectedRole.mention}
                     </div>
                     <div className="mt-2 text-[12px] text-[var(--app-text-secondary)]">
@@ -327,7 +381,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
                     </div>
                   </div>
                 </div>
-                <div className="text-right text-[11px] text-[var(--app-text-secondary)]">
+                <div className="shrink-0 text-right text-[11px] text-[var(--app-text-secondary)]">
                   <div>{selectedRole.kind === "person" ? "角色" : "场景"} ID {selectedRole.id}</div>
                   <div>定妆照 {portraits.length}</div>
                   {selectedRole.episodeUsage ? <div>区间 {selectedRole.episodeUsage}</div> : null}
