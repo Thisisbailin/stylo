@@ -205,6 +205,9 @@ export type QalamSkillManifest = {
   sourcePath?: string;
   activationMode?: "explicit" | "implicit";
   tags?: string[];
+  preferredTools?: string[];
+  disabledTools?: string[];
+  implicitInvocationHints?: string[];
 };
 
 export type QalamResolvedSkill = QalamSkillManifest & {

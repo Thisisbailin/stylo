@@ -54,6 +54,9 @@ const buildFile = (entries) => {
   const registryEntries = entries
     .map((entry) => {
       const tags = Array.isArray(entry.tags) ? entry.tags : [];
+      const preferredTools = Array.isArray(entry.preferredTools) ? entry.preferredTools : [];
+      const disabledTools = Array.isArray(entry.disabledTools) ? entry.disabledTools : [];
+      const implicitInvocationHints = Array.isArray(entry.implicitInvocationHints) ? entry.implicitInvocationHints : [];
       return `  ${JSON.stringify(entry.id)}: {
     manifest: {
       id: ${escapeText(entry.id)},
@@ -62,10 +65,13 @@ const buildFile = (entries) => {
       sourcePath: ${escapeText(entry.sourcePath)},
       activationMode: ${escapeText(entry.activationMode || "explicit")} as const,
       tags: ${JSON.stringify(tags)},
+      preferredTools: ${JSON.stringify(preferredTools)},
+      disabledTools: ${JSON.stringify(disabledTools)},
+      implicitInvocationHints: ${JSON.stringify(implicitInvocationHints)},
     },
     resolve: async () => {
       const mod = await import(${JSON.stringify(entry.entryModule)});
-      return mod[${JSON.stringify(entry.resolverExport)}]();
+      return mod[${JSON.stringify(entry.resolverExport)}](SKILL_REGISTRY[${JSON.stringify(entry.id)}].manifest);
     },
   }`;
     })

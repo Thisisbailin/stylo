@@ -9,4 +9,11 @@ tags:
   - frontend
   - ui
   - design
-
+preferredTools:
+disabledTools:
+implicitInvocationHints:
+  - frontend
+  - 界面
+  - 布局
+  - 视觉设计
+  - UI polish

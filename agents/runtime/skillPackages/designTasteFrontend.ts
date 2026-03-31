@@ -1,4 +1,4 @@
-import type { QalamResolvedSkill } from "../types";
+import type { QalamResolvedSkill, QalamSkillManifest } from "../types";
 
 const DESIGN_TASTE_FRONTEND_OVERLAY = `
 Act as a senior frontend design engineer.
@@ -13,17 +13,14 @@ If using components or libraries, verify they already exist in the project befor
 Respect the existing product visual language when modifying an established UI.
 `;
 
-export const resolveDesignTasteFrontendSkill = async (): Promise<QalamResolvedSkill> => ({
-  id: "design-taste-frontend",
-  title: "High-Agency Frontend Skill",
-  description: "Senior UI/UX engineer overlay for layout, visual direction, and interface refinement work.",
-  sourcePath: ".agents/skills/design-taste-frontend/SKILL.md",
-  activationMode: "explicit",
-  tags: ["frontend", "ui", "design"],
+export const resolveDesignTasteFrontendSkill = async (
+  manifest: QalamSkillManifest
+): Promise<QalamResolvedSkill> => ({
+  ...manifest,
   overlays: [DESIGN_TASTE_FRONTEND_OVERLAY.trim()],
   version: "1",
   metadata: {
     package: "qalam.design-taste-frontend",
-    sourcePath: ".agents/skills/design-taste-frontend/SKILL.md",
+    sourcePath: manifest.sourcePath || ".agents/skills/design-taste-frontend/SKILL.md",
   },
 });

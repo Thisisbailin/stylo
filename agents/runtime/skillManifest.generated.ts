@@ -16,10 +16,13 @@ const SKILL_REGISTRY: Record<string, SkillRegistryEntry> = {
       sourcePath: ".agents/skills/design-taste-frontend/SKILL.md",
       activationMode: "explicit" as const,
       tags: ["frontend","ui","design"],
+      preferredTools: [],
+      disabledTools: [],
+      implicitInvocationHints: ["frontend","界面","布局","视觉设计","UI polish"],
     },
     resolve: async () => {
       const mod = await import("./skillPackages/designTasteFrontend");
-      return mod["resolveDesignTasteFrontendSkill"]();
+      return mod["resolveDesignTasteFrontendSkill"](SKILL_REGISTRY["design-taste-frontend"].manifest);
     },
   }
 };
