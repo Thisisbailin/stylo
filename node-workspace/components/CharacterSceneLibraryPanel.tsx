@@ -16,6 +16,7 @@ import type { ProjectData, ProjectRoleIdentity, ProjectRolePortrait } from "../.
 import { createCustomVoice } from "../../services/qwenAudioService";
 import { getCharacterMentionAliases } from "../../utils/characterIdentity";
 import {
+  applyRolePortraits,
   buildPortraitMention,
   buildRoleMention,
   getPrimaryPortrait,
@@ -123,7 +124,10 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
     const imageUrl = await readFileAsDataUrl(file);
     const slotName = sanitizeIdentityToken(portraitName, "look");
     mutateRole(role.id, (current) => {
-      const portraits = sortPortraits([...(current.portraits || [])]);
+      const portraits = sortPortraits([...(current.portraits || [])]).map((portrait) => ({
+        ...portrait,
+        isPrimary: makePrimary ? false : portrait.isPrimary,
+      }));
       const portraitIndex = portraits.findIndex((portrait) => portrait.name === slotName);
       const createdAt = Date.now();
       if (portraitIndex >= 0) {
@@ -146,17 +150,13 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
           isPrimary: makePrimary || portraits.length === 0,
         });
       }
-      const nextPortraits = sortPortraits(portraits).map((portrait, index) => ({
-        ...portrait,
-        mention: buildPortraitMention(current.mention, portrait.name),
-        isPrimary: portrait.isPrimary || index === 0 || portrait.name === "normal",
-      }));
-      return {
-        ...current,
-        mention: current.mention || buildRoleMention(current.name),
-        portraits: nextPortraits,
-        avatarUrl: nextPortraits.find((portrait) => portrait.isPrimary)?.imageUrl || current.avatarUrl,
-      };
+      return applyRolePortraits(
+        {
+          ...current,
+          mention: current.mention || buildRoleMention(current.name),
+        },
+        portraits
+      );
     });
   };
 
@@ -171,39 +171,24 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
         window.alert(`每个${current.kind === "person" ? "角色" : "场景"}最多只能绑定 ${MAX_ROLE_PORTRAITS} 张定妆照。`);
         return current;
       }
-      return {
-        ...current,
-        portraits: [
-          ...portraits,
-          {
-            id: `portrait-${Date.now()}`,
-            name: slotName,
-            mention: buildPortraitMention(current.mention, slotName),
-            imageUrl: "",
-            createdAt: Date.now(),
-            isPrimary: portraits.length === 0,
-          },
-        ],
-      };
+      return applyRolePortraits(current, [
+        ...portraits,
+        {
+          id: `portrait-${Date.now()}`,
+          name: slotName,
+          mention: buildPortraitMention(current.mention, slotName),
+          imageUrl: "",
+          createdAt: Date.now(),
+          isPrimary: portraits.length === 0,
+        },
+      ]);
     });
   };
 
   const removePortrait = (role: ProjectRoleIdentity, portraitId: string) => {
     mutateRole(role.id, (current) => {
       const nextPortraits = (current.portraits || []).filter((portrait) => portrait.id !== portraitId);
-      if (!nextPortraits.length) {
-        return { ...current, portraits: [], avatarUrl: undefined };
-      }
-      const normalized = sortPortraits(nextPortraits).map((portrait, index) => ({
-        ...portrait,
-        mention: buildPortraitMention(current.mention, portrait.name),
-        isPrimary: portrait.isPrimary || index === 0,
-      }));
-      return {
-        ...current,
-        portraits: normalized,
-        avatarUrl: normalized.find((portrait) => portrait.isPrimary)?.imageUrl || current.avatarUrl,
-      };
+      return applyRolePortraits(current, nextPortraits);
     });
   };
 
@@ -213,11 +198,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
         ...portrait,
         isPrimary: portrait.id === portraitId,
       }));
-      return {
-        ...current,
-        portraits,
-        avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl || current.avatarUrl,
-      };
+      return applyRolePortraits(current, portraits);
     });
   };
 

@@ -916,7 +916,10 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error(`Upload URL error ${res.status}`);
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(`Upload URL error ${res.status}: ${message || 'unknown error'}`);
+      }
       const data = await res.json();
       const signedUrl: string = data.signedUrl;
       if (!signedUrl) throw new Error('No signedUrl returned');

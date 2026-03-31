@@ -27,16 +27,13 @@ export const submitImageTask = async (
     }
 ): Promise<ImageTaskSubmissionResult> => {
     const { baseUrl, apiKey } = config;
-
-    if (!apiKey) {
-        throw new Error("Missing Nano Banana API Key.");
-    }
+    const resolvedApiKey = (apiKey || "").trim();
 
     const endpoint = (baseUrl || NANOBANANA_PRO_ENDPOINT).trim();
     const urlObj = new URL(endpoint);
 
-    if (!urlObj.searchParams.get("key")) {
-        urlObj.searchParams.set("key", apiKey);
+    if (resolvedApiKey && !urlObj.searchParams.get("key")) {
+        urlObj.searchParams.set("key", resolvedApiKey);
     }
 
     const payload: Record<string, unknown> = {
@@ -50,12 +47,15 @@ export const submitImageTask = async (
 
     try {
         console.log("--- [Phase 4] Submit Image Task (Nano Banana) ---");
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        if (resolvedApiKey) {
+            headers.Authorization = resolvedApiKey;
+        }
         const response = await fetch(wrapWithProxy(urlObj.toString()), {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": apiKey
-            },
+            headers,
             body: JSON.stringify(payload)
         });
 
@@ -89,26 +89,27 @@ export const checkImageTaskStatus = async (
     config: MultimodalConfig
 ): Promise<ImageTaskStatusResult> => {
     const { baseUrl, apiKey } = config;
-    if (!apiKey) {
-        return { id: taskId, status: "failed", errorMsg: "Missing Nano Banana API Key." };
-    }
+    const resolvedApiKey = (apiKey || "").trim();
 
     const detailUrl = new URL((baseUrl || NANOBANANA_PRO_ENDPOINT).trim());
     detailUrl.pathname = detailUrl.pathname.replace(/\/detail\/?$/, "").replace(/\/+$/, "") + "/detail";
 
     detailUrl.searchParams.set("id", taskId);
-    if (!detailUrl.searchParams.get("key")) {
-        detailUrl.searchParams.set("key", apiKey);
+    if (resolvedApiKey && !detailUrl.searchParams.get("key")) {
+        detailUrl.searchParams.set("key", resolvedApiKey);
     }
 
     try {
         console.log(`[Nano Banana] Polling: ${detailUrl.toString()}`);
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        if (resolvedApiKey) {
+            headers.Authorization = resolvedApiKey;
+        }
         const response = await fetch(wrapWithProxy(detailUrl.toString()), {
             method: "GET",
-            headers: {
-                "Authorization": apiKey,
-                "Content-Type": "application/json"
-            }
+            headers
         });
 
         if (!response.ok) {

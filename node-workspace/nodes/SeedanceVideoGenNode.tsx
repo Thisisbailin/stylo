@@ -118,18 +118,7 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
     <BaseNode
       title={data.title || "Seedance"}
       onTitleChange={(title) => updateNodeData(id, { title })}
-      nodeType="seedanceVideoGen"
-      inputs={[
-        {
-          id: "multi",
-          top: "50%",
-          className: "node-card-port--multi",
-          label: "Image · Text · Audio",
-        },
-        { id: "image", top: "50%", hidden: true },
-        { id: "text", top: "50%", hidden: true },
-        { id: "audio", top: "50%", hidden: true },
-      ]}
+      inputs={["image", "text", "audio"]}
       selected={selected}
     >
       <div className="space-y-4 flex-1 flex flex-col">
@@ -213,27 +202,6 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
         )}
 
         <div className="node-panel space-y-3 p-3 nodrag">
-          <div className="seedance-input-hub">
-            <div className="seedance-input-hub__copy">
-              <div className="seedance-input-hub__eyebrow">Unified Input</div>
-              <div className="seedance-input-hub__title">单一入口，自动识别图片、文本、音频</div>
-            </div>
-            <div className="seedance-input-hub__chips">
-              <span className="seedance-input-hub__chip">
-                <ImageIcon size={10} />
-                Image
-              </span>
-              <span className="seedance-input-hub__chip">
-                <AudioLines size={10} />
-                Audio
-              </span>
-              <span className="seedance-input-hub__chip">
-                <Film size={10} />
-                Prompt
-              </span>
-            </div>
-          </div>
-
           <div className="space-y-1">
             <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
               模式

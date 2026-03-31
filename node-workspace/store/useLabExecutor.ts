@@ -9,6 +9,7 @@ import * as WanService from "../../services/wanService";
 import {
   INITIAL_VIDU_CONFIG,
   NANOBANANA_PRO_ENDPOINT,
+  NANOBANANA_IDENTITY_PROMPT,
   NANOBANANA_PRO_MODEL,
   QWEN_WAN_IMAGE_ENDPOINT,
   QWEN_WAN_IMAGE_MODEL,
@@ -23,6 +24,7 @@ import { useCallback } from "react";
 import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types";
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
+import { applyRolePortraits } from "../../utils/projectRoles";
 
 type MentionData = {
   name: string;
@@ -477,6 +479,34 @@ const resolveBoundIdentities = (
   return resolved;
 };
 
+const upsertPrimaryPortrait = (role: ProjectRoleIdentity, imageUrl: string): ProjectRoleIdentity => {
+  const portraits = [...(role.portraits || [])];
+  const primaryIndex = portraits.findIndex((portrait) => portrait.isPrimary);
+  const normalIndex = portraits.findIndex((portrait) => (portrait.name || "").toLowerCase() === "normal");
+  const targetIndex = primaryIndex >= 0 ? primaryIndex : normalIndex;
+
+  if (targetIndex >= 0) {
+    portraits[targetIndex] = {
+      ...portraits[targetIndex],
+      imageUrl,
+      isPrimary: true,
+      summary: portraits[targetIndex].summary || "Nano Banana 自动生成定妆照",
+    };
+  } else {
+    portraits.unshift({
+      id: `portrait-${Date.now()}`,
+      name: "normal",
+      mention: `${role.mention}_normal`,
+      imageUrl,
+      createdAt: Date.now(),
+      isPrimary: true,
+      summary: "Nano Banana 自动生成定妆照",
+    });
+  }
+
+  return applyRolePortraits(role, portraits);
+};
+
 export const useLabExecutor = () => {
   const store = useWorkflowStore();
   const config = store.appConfig;
@@ -489,13 +519,19 @@ export const useLabExecutor = () => {
   const runImageGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node) return;
-    const { images, text: connectedText, atMentions, entityBindings, imageRefs } = store.getConnectedInputs(nodeId);
+    const { images, text: connectedText, atMentions, entityBindings, imageRefs, connectedIdentity } = store.getConnectedInputs(nodeId);
     const data = node.data as any; // Cast for easier access to new fields
     const text = (connectedText || "").trim();
     const isNanoBananaNode = node.type === "nanoBananaImageGen";
     const isWanImageNode = node.type === "wanImageGen";
+    const activeIdentityId = connectedIdentity?.identityId || data.identityId;
+    const activeIdentityMention = connectedIdentity?.mention || data.identityTag;
+    const fixedIdentityPrompt = isNanoBananaNode && connectedIdentity
+      ? NANOBANANA_IDENTITY_PROMPT
+      : "";
+    const finalPrompt = [fixedIdentityPrompt, text].filter(Boolean).join("\n\n").trim();
 
-    if (!text && images.length === 0) {
+    if (!finalPrompt && images.length === 0) {
       store.updateNodeData(nodeId, { status: "error", error: "Missing text input (connect a text node)." });
       return;
     }
@@ -522,6 +558,7 @@ export const useLabExecutor = () => {
       if (isNanoBananaNode) {
         configToUse.provider = "nanobanana";
         configToUse.baseUrl = NANOBANANA_PRO_ENDPOINT;
+        configToUse.apiKey = "";
       }
       if (isWanImageNode) {
         configToUse.provider = "wan";
@@ -530,8 +567,8 @@ export const useLabExecutor = () => {
       }
 
       if (configToUse.provider === 'wuyinkeji' || configToUse.provider === 'nanobanana') {
-        const refImage = images.find((src) => src.startsWith("http")) || undefined;
-        const { id } = await WuyinkejiService.submitImageTask(text || "Generate an image", configToUse, {
+        const refImage = images.find((src) => src.startsWith("http")) || connectedIdentity?.primaryPortraitUrl || undefined;
+        const { id } = await WuyinkejiService.submitImageTask(finalPrompt || "Generate an image", configToUse, {
           aspectRatio,
           inputImageUrl: refImage,
           size: data.size
@@ -547,14 +584,22 @@ export const useLabExecutor = () => {
               status: "complete",
               outputImage: result.url,
               error: null,
-              model: configToUse.model // store used model for reference
+              model: configToUse.model,
+              identityId: activeIdentityId,
+              identityTag: activeIdentityMention,
+              designCategory: activeIdentityId ? "identity" : data.designCategory,
+              designRefId: activeIdentityId || data.designRefId,
             });
+
+            if (isNanoBananaNode && activeIdentityId && result.url) {
+              store.mutateProjectRole(activeIdentityId, (role) => upsertPrimaryPortrait(role, result.url!));
+            }
 
             // Add to global history for reuse
             store.addToGlobalHistory({
               type: "image",
               src: result.url!,
-              prompt: text || "Image Input",
+              prompt: finalPrompt || "Image Input",
               model: configToUse.model,
               aspectRatio
             });

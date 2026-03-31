@@ -247,10 +247,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
     // Multimodal Models Fetcher
     const handleFetchMultiModels = async () => {
         const { baseUrl, apiKey } = config.multimodalConfig;
-        if (!baseUrl || !apiKey) {
-            setMultiModelFetchMessage({ type: 'error', text: "Please enter URL and API Key first." });
-            return;
-        }
         setIsLoadingMultiModels(true);
         setMultiModelFetchMessage(null);
         try {
@@ -259,6 +255,11 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                 setAvailableMultiModels(models);
                 setAvailableImageModelsStore(models);
                 setMultiModelFetchMessage({ type: 'success', text: "Models optimized for Nano Banana." });
+                setIsLoadingMultiModels(false);
+                return;
+            }
+            if (!baseUrl || !apiKey) {
+                setMultiModelFetchMessage({ type: 'error', text: "Please enter URL and API Key first." });
                 setIsLoadingMultiModels(false);
                 return;
             }
@@ -400,6 +401,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                                 newConfig.provider = 'nanobanana';
                                                 newConfig.baseUrl = NANOBANANA_PRO_ENDPOINT;
                                                 newConfig.model = NANOBANANA_PRO_MODEL;
+                                                newConfig.apiKey = '';
                                             } else if (val === 'standard') {
                                                 newConfig.baseUrl = 'https://api.openai.com/v1';
                                                 newConfig.model = 'gpt-4o';
@@ -444,21 +446,27 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                     className="w-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)] focus:outline-none"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1 flex items-center gap-2">
-                                    <Key size={14} /> API Key
-                                </label>
-                                <input
-                                    type="password"
-                                    placeholder="sk-..."
-                                    value={config.multimodalConfig?.apiKey || ''}
-                                    onChange={(e) => onConfigChange({
-                                        ...config,
-                                        multimodalConfig: { ...config.multimodalConfig, apiKey: e.target.value }
-                                    })}
-                                    className="w-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)] focus:outline-none"
-                                />
-                            </div>
+                            {config.multimodalConfig.provider === 'nanobanana' ? (
+                                <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-panel)]/70 px-4 py-3 text-sm text-[var(--text-secondary)]">
+                                    Nano Banana 的 API Key 由 Cloudflare Pages Functions 从环境变量自动注入，前端不再填写。
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1 flex items-center gap-2">
+                                        <Key size={14} /> API Key
+                                    </label>
+                                    <input
+                                        type="password"
+                                        placeholder="sk-..."
+                                        value={config.multimodalConfig?.apiKey || ''}
+                                        onChange={(e) => onConfigChange({
+                                            ...config,
+                                            multimodalConfig: { ...config.multimodalConfig, apiKey: e.target.value }
+                                        })}
+                                        className="w-full bg-[var(--bg-panel)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-blue)] focus:outline-none"
+                                    />
+                                </div>
+                            )}
                             <div className="pt-2 border-t border-[var(--border-subtle)]/60">
                                 <div className="flex justify-between items-center mb-1">
                                     <label className="block text-sm font-medium text-[var(--text-secondary)]">Model</label>

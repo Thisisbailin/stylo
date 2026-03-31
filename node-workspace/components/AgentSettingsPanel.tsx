@@ -7,7 +7,6 @@ import {
   Code2,
   Eye,
   Globe,
-  KeyRound,
   Layers,
   Loader2,
   Sparkles,
@@ -583,6 +582,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
           ? (prev.multimodalConfig.baseUrl || NANOBANANA_PRO_ENDPOINT)
           : NANOBANANA_PRO_ENDPOINT;
         nextMulti.model = NANOBANANA_PRO_MODEL;
+        nextMulti.apiKey = "";
       } else {
         nextMulti.provider = "standard";
         nextMulti.baseUrl = OPENROUTER_BASE_URL;
@@ -1424,31 +1424,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                   className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-amber-300 focus:outline-none"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs text-[var(--app-text-secondary)] flex items-center gap-2">
-                  <KeyRound size={12} />
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  value={config.multimodalConfig.apiKey || ""}
-                  onChange={(e) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      multimodalConfig: {
-                        ...prev.multimodalConfig,
-                        provider: "nanobanana",
-                        model: NANOBANANA_PRO_MODEL,
-                        apiKey: e.target.value,
-                      },
-                    }))
-                  }
-                  className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-sm text-[var(--app-text-primary)] focus:ring-2 focus:ring-amber-300 focus:outline-none"
-                  placeholder="Authorization key"
-                />
-              </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                支持文生图，也支持通过 `urls` 传单张参考图到专属的 Nano Banana 节点。
+                API Key 由 Cloudflare Pages Functions 从环境变量自动注入，用户侧不再填写。支持文生图，也支持通过 `urls` 传单张参考图到专属的 Nano Banana 节点。
               </div>
             </div>
           )}

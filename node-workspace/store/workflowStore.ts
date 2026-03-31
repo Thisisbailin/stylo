@@ -544,6 +544,14 @@ interface WorkflowStore {
     atMentions?: TextNodeData['atMentions'];
     entityBindings?: TextNodeData["entityBindings"];
     imageRefs?: { src: string; identityTag?: string | null; identityId?: string | null }[];
+    connectedIdentity?: {
+      identityId: string;
+      mention: string;
+      name: string;
+      description?: string;
+      designPrompt?: string;
+      primaryPortraitUrl?: string;
+    };
   };
   validateWorkflow: () => { valid: boolean; errors: string[] };
   addToGlobalHistory: (item: Omit<GlobalAssetHistoryItem, "id" | "timestamp">) => void;
@@ -979,6 +987,16 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     const mentions: TextNodeData['atMentions'] = [];
     const entityBindings: TextNodeData["entityBindings"] = [];
     const imageRefs: { src: string; identityTag?: string | null; identityId?: string | null }[] = [];
+    let connectedIdentity:
+      | {
+          identityId: string;
+          mention: string;
+          name: string;
+          description?: string;
+          designPrompt?: string;
+          primaryPortraitUrl?: string;
+        }
+      | undefined;
     edges
       .filter((edge) => edge.target === nodeId)
       .forEach((edge) => {
@@ -1044,6 +1062,20 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
           } else if (sourceNode.type === "identityCard") {
             const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, labContext);
             if (value) texts.push(value);
+            const identities = buildProjectIdentities(labContext.context, labContext.designAssets || []);
+            const identity = resolveLegacyIdentity(identities, {
+              identityId: (sourceNode.data as IdentityCardNodeData).identityId,
+            });
+            if (identity && !connectedIdentity) {
+              connectedIdentity = {
+                identityId: identity.id,
+                mention: identity.mention,
+                name: identity.name,
+                description: identity.description,
+                designPrompt: identity.designPrompt,
+                primaryPortraitUrl: identity.primaryPortraitUrl || identity.avatarUrl,
+              };
+            }
           }
         }
       });
@@ -1055,12 +1087,27 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       atMentions: mentions.length ? mentions : undefined,
       entityBindings: entityBindings.length ? entityBindings : undefined,
       imageRefs: imageRefs.length ? imageRefs : undefined,
+      connectedIdentity,
     };
   },
 
   validateWorkflow: () => {
     const { nodes, edges } = get();
     const errors: string[] = [];
+    const hasIncomingHandleType = (nodeId: string, expectedHandle: "image" | "text" | "audio") =>
+      edges
+        .filter((edge) => edge.target === nodeId)
+        .some((edge) => {
+          const sourceNode = nodes.find((node) => node.id === edge.source);
+          return (
+            resolveEdgeHandleType({
+              sourceHandle: edge.sourceHandle,
+              targetHandle: edge.targetHandle,
+              sourceNodeType: sourceNode?.type,
+            }) === expectedHandle
+          );
+        });
+
     if (nodes.length === 0) {
       errors.push("Workflow is empty");
       return { valid: false, errors };
@@ -1068,16 +1115,14 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodes
       .filter((n) => n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen")
       .forEach((node) => {
-        const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
-        const textConnected = edges.some((e) => e.target === node.id && e.targetHandle === "text");
-        if (!imageConnected) errors.push(`ImageGen node "${node.id}" missing image input`);
+        const textConnected = hasIncomingHandleType(node.id, "text");
         if (!textConnected) errors.push(`ImageGen node "${node.id}" missing text input`);
       });
     nodes
       .filter((n) => n.type === "soraVideoGen" || n.type === "wanVideoGen")
       .forEach((node) => {
-        const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
-        const textConnected = edges.some((e) => e.target === node.id && e.targetHandle === "text");
+        const imageConnected = hasIncomingHandleType(node.id, "image");
+        const textConnected = hasIncomingHandleType(node.id, "text");
         if (!imageConnected) errors.push(`VideoGen node "${node.id}" missing image input`);
         if (!textConnected) errors.push(`VideoGen node "${node.id}" missing text input`);
       });
@@ -1111,10 +1156,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodes
       .filter((n) => n.type === "wanReferenceVideoGen")
       .forEach((node) => {
-        const textConnected = edges.some((e) => e.target === node.id && e.targetHandle === "text");
+        const textConnected = hasIncomingHandleType(node.id, "text");
         const nodeData = node.data as VideoGenNodeData;
         const refs = ((nodeData.referenceVideos || []).length + (nodeData.referenceImages || []).length);
-        const imageConnected = edges.some((e) => e.target === node.id && e.targetHandle === "image");
+        const imageConnected = hasIncomingHandleType(node.id, "image");
         if (!textConnected) errors.push(`Wan reference video node "${node.id}" missing text input`);
         if (refs === 0 && !imageConnected) errors.push(`Wan reference video node "${node.id}" missing reference assets`);
       });

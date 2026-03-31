@@ -4,7 +4,7 @@ import { BaseNode } from "./BaseNode";
 import { ImageGenNodeData } from "../types";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useLabExecutor } from "../store/useLabExecutor";
-import { NANOBANANA_PRO_MODEL } from "../../constants";
+import { NANOBANANA_IDENTITY_PROMPT, NANOBANANA_PRO_MODEL } from "../../constants";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
 
 type Props = {
@@ -13,11 +13,13 @@ type Props = {
 };
 
 export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, labContext } = useWorkflowStore();
+  const { updateNodeData, labContext, getConnectedInputs } = useWorkflowStore();
   const { runImageGen } = useLabExecutor();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const isLoading = data.status === "loading";
+  const { connectedIdentity } = getConnectedInputs(id);
 
   const identityOptions = useMemo(() => {
     const roles = labContext?.context?.roles || [];
@@ -27,6 +29,12 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
       label: getRoleDisplayLabel(role),
     }));
   }, [labContext?.context?.roles]);
+
+  const activeIdentityId = connectedIdentity?.identityId || data.identityId;
+  const activeIdentity = useMemo(
+    () => (labContext?.context?.roles || []).find((role) => role.id === activeIdentityId),
+    [activeIdentityId, labContext?.context?.roles]
+  );
 
   useEffect(() => {
     if (!isLoading) {
@@ -41,6 +49,24 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
     }, 400);
     return () => clearInterval(timer);
   }, [isLoading]);
+
+  useEffect(() => {
+    if (!connectedIdentity) return;
+    if (
+      data.identityId === connectedIdentity.identityId &&
+      data.identityTag === connectedIdentity.mention &&
+      data.designCategory === "identity" &&
+      data.designRefId === connectedIdentity.identityId
+    ) {
+      return;
+    }
+    updateNodeData(id, {
+      identityId: connectedIdentity.identityId,
+      identityTag: connectedIdentity.mention,
+      designCategory: "identity",
+      designRefId: connectedIdentity.identityId,
+    });
+  }, [connectedIdentity, data.designCategory, data.designRefId, data.identityId, data.identityTag, id, updateNodeData]);
 
   const handleGenerate = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -147,28 +173,61 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
           </div>
         )}
 
-        {identityOptions.length > 0 && (
-          <div className="node-panel space-y-2 p-3">
-            <label className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">关联身份证</label>
-            <select
-              className="node-control node-control--tight w-full text-[9px] font-medium px-2 text-[var(--node-text-primary)] outline-none appearance-none cursor-pointer transition-colors"
-              value={data.identityId || ""}
-              onChange={(e) => {
-                const nextIdentityId = e.target.value || undefined;
-                const selectedIdentity = identityOptions.find((item) => item.id === nextIdentityId);
-                updateNodeData(id, {
-                  identityId: nextIdentityId,
-                  identityTag: selectedIdentity?.mention,
-                });
+        <div className="node-panel space-y-2 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">身份绑定</label>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPromptOpen(true);
               }}
+              className="rounded-full border border-[var(--node-border)] px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] hover:text-[var(--node-text-primary)]"
             >
-              <option value="">未指定</option>
-              {identityOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
+              查看固定提示词
+            </button>
           </div>
-        )}
+          {connectedIdentity ? (
+            <div className="space-y-2">
+              <div className="rounded-[16px] border border-emerald-400/20 bg-emerald-500/8 px-3 py-2">
+                <div className="text-[10px] font-semibold text-emerald-200">{activeIdentity?.name || connectedIdentity.name}</div>
+                <div className="text-[9px] text-emerald-100/75">@{connectedIdentity.mention}</div>
+              </div>
+              <div className="text-[8px] leading-relaxed text-[var(--node-text-secondary)]/75">
+                已通过身份卡片自动绑定。生成结果会直接写回该身份的主定妆照槽位。
+              </div>
+            </div>
+          ) : identityOptions.length > 0 ? (
+            <>
+              <select
+                className="node-control node-control--tight w-full text-[9px] font-medium px-2 text-[var(--node-text-primary)] outline-none appearance-none cursor-pointer transition-colors"
+                value={data.identityId || ""}
+                onChange={(e) => {
+                  const nextIdentityId = e.target.value || undefined;
+                  const selectedIdentity = identityOptions.find((item) => item.id === nextIdentityId);
+                  updateNodeData(id, {
+                    identityId: nextIdentityId,
+                    identityTag: selectedIdentity?.mention,
+                    designCategory: nextIdentityId ? "identity" : undefined,
+                    designRefId: nextIdentityId,
+                  });
+                }}
+              >
+                <option value="">未指定</option>
+                {identityOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              <div className="text-[8px] leading-relaxed text-[var(--node-text-secondary)]/75">
+                如果连接了身份卡片，这里会自动切换为卡片里的身份，并启用固定三视图提示词。
+              </div>
+            </>
+          ) : (
+            <div className="text-[8px] leading-relaxed text-[var(--node-text-secondary)]/75">
+              当前项目没有可绑定的身份。
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -228,6 +287,30 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
               <X size={18} />
             </button>
             <img src={data.outputImage} alt="generated preview" className="max-h-[90vh] max-w-[90vw] rounded-2xl border border-white/10 shadow-2xl" />
+          </div>
+        </div>
+      )}
+
+      {isPromptOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setIsPromptOpen(false)}>
+          <div
+            className="relative w-full max-w-xl rounded-[28px] border border-[var(--node-border)] bg-[rgba(12,16,14,0.96)] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute right-4 top-4 h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+              onClick={() => setIsPromptOpen(false)}
+              aria-label="Close prompt preview"
+            >
+              <X size={16} />
+            </button>
+            <div className="pr-10">
+              <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--node-text-secondary)]">Fixed Prompt</div>
+              <div className="mt-2 text-sm font-semibold text-[var(--node-text-primary)]">身份卡片直连时自动附加</div>
+            </div>
+            <pre className="mt-4 whitespace-pre-wrap rounded-[20px] border border-[var(--node-border)] bg-black/20 p-4 text-[12px] leading-6 text-[var(--node-text-secondary)]">
+              {NANOBANANA_IDENTITY_PROMPT}
+            </pre>
           </div>
         </div>
       )}

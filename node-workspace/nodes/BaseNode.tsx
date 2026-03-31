@@ -42,13 +42,6 @@ export const BaseNode: React.FC<Props> = ({
 
   const minHeight = variant === "text" ? 256 : 160;
   const keepAspectRatio = resizerKeepAspect ?? variant === "media";
-  const eyebrow = useMemo(() => {
-    if (variant === "media") return "媒体节点";
-    if (variant === "text") return "文本节点";
-    if (inputs.length === 0 && outputs.length > 0) return "输入节点";
-    if (outputs.length === 0 && inputs.length > 0) return "结果节点";
-    return "工作节点";
-  }, [inputs.length, outputs.length, variant]);
 
   useEffect(() => {
     setDraftTitle(title);
@@ -114,6 +107,38 @@ export const BaseNode: React.FC<Props> = ({
     [getHandleTop]
   );
 
+  const normalizeHandleSpecs = useCallback(
+    (handles: NodeHandleSpec[]) => {
+      const resolved = handles.map((handle, index) => resolveHandleSpec(handle, index, handles.length));
+      const visibleMultiHandle = resolved.some((handle) => handle.id === "multi" && !handle.hidden);
+      const visibleTypedHandles = resolved.filter((handle) => handle.id !== "multi" && !handle.hidden);
+      if (visibleMultiHandle || visibleTypedHandles.length <= 1) return resolved;
+      return [
+        {
+          id: "multi" as HandleType,
+          top: "50%",
+          hidden: false,
+          className: "node-card-port--multi",
+          label: "",
+        },
+        ...resolved.map((handle) =>
+          handle.id === "multi"
+            ? handle
+            : {
+                ...handle,
+                top: "50%",
+                hidden: true,
+                label: "",
+              }
+        ),
+      ];
+    },
+    [resolveHandleSpec]
+  );
+
+  const normalizedInputs = useMemo(() => normalizeHandleSpecs(inputs), [inputs, normalizeHandleSpecs]);
+  const normalizedOutputs = useMemo(() => normalizeHandleSpecs(outputs), [outputs, normalizeHandleSpecs]);
+
   return (
     <div
       ref={cardRef}
@@ -141,7 +166,6 @@ export const BaseNode: React.FC<Props> = ({
       <div className="node-card-shell">
         <div className="node-card-header-shell">
           <div className="node-card-header-copy">
-            <div className="node-card-eyebrow">{eyebrow}</div>
             {onTitleChange ? (
               <input
                 className="node-card-title-input nodrag"
@@ -167,35 +191,33 @@ export const BaseNode: React.FC<Props> = ({
         <div className="node-card-body">{children}</div>
       </div>
 
-      {inputs.map((input, idx) => {
-        const spec = resolveHandleSpec(input, idx, inputs.length);
+      {normalizedInputs.map((spec, idx) => {
         return (
-        <Handle
-          key={`in-${spec.id}-${idx}`}
-          type="target"
-          position={Position.Left}
-          id={spec.id}
-          style={{ top: spec.top }}
-          className={`node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
-          data-handletype={spec.id}
-          data-handlelabel={spec.label}
-        />
-      )})}
+          <Handle
+            key={`in-${spec.id}-${idx}`}
+            type="target"
+            position={Position.Left}
+            id={spec.id}
+            style={{ top: spec.top }}
+            className={`node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+            data-handletype={spec.id}
+          />
+        );
+      })}
 
-      {outputs.map((output, idx) => {
-        const spec = resolveHandleSpec(output, idx, outputs.length);
+      {normalizedOutputs.map((spec, idx) => {
         return (
-        <Handle
-          key={`out-${spec.id}-${idx}`}
-          type="source"
-          position={Position.Right}
-          id={spec.id}
-          style={{ top: spec.top }}
-          className={`node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
-          data-handletype={spec.id}
-          data-handlelabel={spec.label}
-        />
-      )})}
+          <Handle
+            key={`out-${spec.id}-${idx}`}
+            type="source"
+            position={Position.Right}
+            id={spec.id}
+            style={{ top: spec.top }}
+            className={`node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+            data-handletype={spec.id}
+          />
+        );
+      })}
     </div>
   );
 };

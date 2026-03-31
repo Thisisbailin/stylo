@@ -4,6 +4,7 @@ import { BaseNode } from "./BaseNode";
 import { IdentityCardNodeData } from "../types";
 import { useWorkflowStore } from "../store/workflowStore";
 import { buildProjectIdentities, resolveLegacyIdentity, type ProjectIdentity } from "../../utils/identityCards";
+import { applyRolePortraits, buildPortraitMention, sanitizeIdentityToken } from "../../utils/projectRoles";
 
 type Props = {
   id: string;
@@ -20,16 +21,6 @@ const readFileAsDataUrl = (file: File) =>
     reader.onerror = () => reject(new Error("文件读取失败"));
     reader.readAsDataURL(file);
   });
-
-const sanitizeToken = (value: string, fallback = "normal") => {
-  const normalized = value
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/[^\w\u4e00-\u9fa5-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return normalized || fallback;
-};
 
 const toneClasses: Record<ProjectIdentity["tone"], { surface: string; border: string; text: string }> = {
   emerald: {
@@ -88,10 +79,12 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
         const imageUrl = await readFileAsDataUrl(file);
         applyRoleUpdate((role) => {
           const portraits = [...(role.portraits || [])];
-          const primaryIndex = portraits.findIndex((portrait) => portrait.isPrimary || portrait.name === "normal");
-          if (primaryIndex >= 0) {
-            portraits[primaryIndex] = {
-              ...portraits[primaryIndex],
+          const primaryIndex = portraits.findIndex((portrait) => portrait.isPrimary);
+          const fallbackNormalIndex = portraits.findIndex((portrait) => portrait.name === "normal");
+          const targetIndex = primaryIndex >= 0 ? primaryIndex : fallbackNormalIndex;
+          if (targetIndex >= 0) {
+            portraits[targetIndex] = {
+              ...portraits[targetIndex],
               imageUrl,
               isPrimary: true,
             };
@@ -103,18 +96,14 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
               mention: `${role.mention}_normal`,
               imageUrl,
               createdAt: Date.now(),
-              isPrimary: true,
-            });
-          }
-          return {
-            ...role,
-            avatarUrl: imageUrl,
-            portraits: portraits.slice(0, 20),
-          };
-        });
-      } finally {
-        setIsUploadingPortrait(false);
-      }
+            isPrimary: true,
+          });
+        }
+        return applyRolePortraits(role, portraits);
+      });
+    } finally {
+      setIsUploadingPortrait(false);
+    }
     },
     [activeIdentity, applyRoleUpdate]
   );
@@ -139,36 +128,37 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
   const handlePortraitSlotUpload = useCallback(
     async (portraitName: string, file?: File | null) => {
       if (!activeIdentity || !file) return;
-      const slotName = sanitizeToken(portraitName, "look");
-      const imageUrl = await readFileAsDataUrl(file);
-      applyRoleUpdate((role) => {
-        const portraits = [...(role.portraits || [])];
-        const portraitIndex = portraits.findIndex((portrait) => portrait.name === slotName);
-        if (portraitIndex >= 0) {
-          portraits[portraitIndex] = {
-            ...portraits[portraitIndex],
-            imageUrl,
-          };
-        } else {
-          if (portraits.length >= 20) {
-            window.alert("每个角色最多只能绑定 20 张定妆照。");
-            return role;
+      const slotName = sanitizeIdentityToken(portraitName, "look");
+      setIsUploadingPortrait(true);
+      try {
+        const imageUrl = await readFileAsDataUrl(file);
+        applyRoleUpdate((role) => {
+          const portraits = [...(role.portraits || [])];
+          const portraitIndex = portraits.findIndex((portrait) => portrait.name === slotName);
+          if (portraitIndex >= 0) {
+            portraits[portraitIndex] = {
+              ...portraits[portraitIndex],
+              imageUrl,
+            };
+          } else {
+            if (portraits.length >= 20) {
+              window.alert("每个角色最多只能绑定 20 张定妆照。");
+              return role;
+            }
+            portraits.push({
+              id: `portrait-${Date.now()}`,
+              name: slotName,
+              mention: buildPortraitMention(role.mention, slotName),
+              imageUrl,
+              createdAt: Date.now(),
+              isPrimary: portraits.length === 0,
+            });
           }
-          portraits.push({
-            id: `portrait-${Date.now()}`,
-            name: slotName,
-            mention: `${role.mention}_${slotName}`,
-            imageUrl,
-            createdAt: Date.now(),
-            isPrimary: portraits.length === 0,
-          });
-        }
-        return {
-          ...role,
-          portraits: portraits.slice(0, 20),
-          avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl || role.avatarUrl,
-        };
-      });
+          return applyRolePortraits(role, portraits);
+        });
+      } finally {
+        setIsUploadingPortrait(false);
+      }
     },
     [activeIdentity, applyRoleUpdate]
   );
@@ -177,27 +167,24 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
     if (!activeIdentity) return;
     const nextName = window.prompt("输入这张定妆照的槽位名，例如：受伤形态、雨夜版、后院全景");
     if (!nextName) return;
-    const slotName = sanitizeToken(nextName, "look");
+    const slotName = sanitizeIdentityToken(nextName, "look");
     applyRoleUpdate((role) => {
       if ((role.portraits || []).some((portrait) => portrait.name === slotName)) return role;
       if ((role.portraits || []).length >= 20) {
         window.alert("每个角色最多只能绑定 20 张定妆照。");
         return role;
       }
-      return {
-        ...role,
-        portraits: [
+      return applyRolePortraits(role, [
           ...(role.portraits || []),
           {
             id: `portrait-${Date.now()}`,
             name: slotName,
-            mention: `${role.mention}_${slotName}`,
+            mention: buildPortraitMention(role.mention, slotName),
             imageUrl: "",
             createdAt: Date.now(),
-            isPrimary: false,
+            isPrimary: (role.portraits || []).length === 0,
           },
-        ],
-      };
+        ]);
     });
   }, [activeIdentity, applyRoleUpdate]);
 

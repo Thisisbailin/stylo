@@ -43,7 +43,20 @@ const sortPortraits = (portraits: ProjectRolePortrait[]) =>
     })
     .slice(0, MAX_ROLE_PORTRAITS);
 
+const resolvePrimaryPortraitIndex = (portraits: ProjectRolePortrait[]) => {
+  const explicitPrimaryIndex = portraits.findIndex((portrait) => portrait.isPrimary);
+  if (explicitPrimaryIndex >= 0) return explicitPrimaryIndex;
+
+  const normalPortraitIndex = portraits.findIndex(
+    (portrait) => sanitizeIdentityToken(portrait.name || "", "").toLowerCase() === "normal"
+  );
+  if (normalPortraitIndex >= 0) return normalPortraitIndex;
+
+  return portraits.length > 0 ? 0 : -1;
+};
+
 export const normalizeRolePortraits = (role: ProjectRoleIdentity, portraits: ProjectRolePortrait[]) => {
+  const mention = role.mention || buildRoleMention(role.name);
   const seen = new Set<string>();
   const ordered = sortPortraits(
     portraits.filter((portrait) => {
@@ -53,15 +66,32 @@ export const normalizeRolePortraits = (role: ProjectRoleIdentity, portraits: Pro
       return true;
     })
   );
+  const primaryPortraitIndex = resolvePrimaryPortraitIndex(ordered);
   return ordered.map((portrait, index) => {
     const name = sanitizeIdentityToken(portrait.name || (index === 0 ? "normal" : `look${index + 1}`), index === 0 ? "normal" : `look${index + 1}`);
     return {
       ...portrait,
       name,
-      mention: buildPortraitMention(role.mention, name),
-      isPrimary: portrait.isPrimary || index === 0 || name === "normal",
+      mention: buildPortraitMention(mention, name),
+      isPrimary: index === primaryPortraitIndex,
     };
   });
+};
+
+export const applyRolePortraits = (role: ProjectRoleIdentity, portraits: ProjectRolePortrait[]): ProjectRoleIdentity => {
+  const mention = role.mention || buildRoleMention(role.name);
+  const normalizedPortraits = normalizeRolePortraits({ ...role, mention }, portraits);
+  const avatarUrl =
+    normalizedPortraits.find((portrait) => portrait.isPrimary && portrait.imageUrl)?.imageUrl ||
+    normalizedPortraits.find((portrait) => portrait.imageUrl)?.imageUrl ||
+    undefined;
+
+  return {
+    ...role,
+    mention,
+    portraits: normalizedPortraits,
+    avatarUrl,
+  };
 };
 
 const buildLegacyForm = (role: ProjectRoleIdentity, portrait: ProjectRolePortrait, index: number) => ({

@@ -69,14 +69,16 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: [], outputs: ["text"] };
     case "imageGen":
     case "nanoBananaImageGen":
-      return { inputs: ["image", "text"], outputs: ["image"] };
+      return { inputs: ["multi", "image", "text"], outputs: ["image"] };
     case "wanImageGen":
-      return { inputs: ["image", "text"], outputs: ["image"] };
+      return { inputs: ["multi", "image", "text"], outputs: ["image"] };
     case "soraVideoGen":
-      return { inputs: ["image", "text"], outputs: [] };
+      return { inputs: ["multi", "image", "text"], outputs: [] };
     case "wanVideoGen":
     case "wanReferenceVideoGen":
-      return { inputs: ["image", "text"], outputs: [] };
+      return { inputs: ["multi", "image", "text"], outputs: [] };
+    case "viduVideoGen":
+      return { inputs: ["multi", "image", "text"], outputs: [] };
     case "seedanceVideoGen":
       return { inputs: ["multi", "image", "text", "audio"], outputs: [] };
     default:

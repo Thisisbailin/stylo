@@ -11,9 +11,11 @@ import { ensureStableId, ensureTypedStableId } from "./id";
 import { INITIAL_PROJECT_DATA } from "../constants";
 import { sanitizeShot } from "./shotSchema";
 import {
+  applyRolePortraits,
   buildPortraitMention,
   buildRoleMention,
   MAX_ROLE_PORTRAITS,
+  normalizeRolePortraits,
   sanitizeIdentityToken,
   slugifyIdentityKey,
 } from "./projectRoles";
@@ -120,7 +122,7 @@ const normalizePortrait = (
     imageUrl: imageUrl || "",
     createdAt: typeof portrait?.createdAt === "number" ? portrait.createdAt : Date.now(),
     summary: toOptionalString(portrait?.summary || portrait?.description),
-    isPrimary: !!portrait?.isPrimary || name === "normal",
+    isPrimary: !!portrait?.isPrimary,
   };
 };
 
@@ -138,10 +140,13 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
     .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
 
   if (portraits.length > 0) {
-    return portraits.slice(0, MAX_ROLE_PORTRAITS).map((portrait, index) => ({
-      ...portrait,
-      isPrimary: portrait.isPrimary || index === 0 || portrait.name === "normal",
-    }));
+    return normalizeRolePortraits(
+      {
+        mention,
+        name: toSafeString(role?.name || role?.displayName || mention || "身份"),
+      } as ProjectRoleIdentity,
+      portraits.slice(0, MAX_ROLE_PORTRAITS)
+    );
   }
 
   const fallbackPortrait = normalizePortrait(
@@ -265,16 +270,21 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
       .slice(0, MAX_ROLE_PORTRAITS);
 
     const aliasValues = items.flatMap((role) => (role.aliases || []).map((alias) => alias.value));
-    return normalizeRoleIdentity({
-      ...primary,
-      name,
-      displayName: name,
-      mention,
-      aliases: [name, `@${mention}`, ...aliasValues],
-      portraits,
-      avatarUrl: portraits.find((portrait) => portrait.isPrimary)?.imageUrl || primary.avatarUrl,
-      voiceReferenceAudioUrl: primary.voiceReferenceAudioUrl || primary.previewAudioUrl,
-    });
+    return normalizeRoleIdentity(
+      applyRolePortraits(
+        {
+          ...primary,
+          name,
+          displayName: name,
+          mention,
+          aliases: [name, `@${mention}`, ...aliasValues],
+          portraits,
+          avatarUrl: primary.avatarUrl,
+          voiceReferenceAudioUrl: primary.voiceReferenceAudioUrl || primary.previewAudioUrl,
+        } as ProjectRoleIdentity,
+        portraits
+      )
+    );
   });
 };
 

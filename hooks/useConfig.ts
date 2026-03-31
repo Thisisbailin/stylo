@@ -33,8 +33,9 @@ export const useConfig = (key: string) => {
             : INITIAL_TEXT_CONFIG.agentProvider;
       const safeVideo = rememberApiKeys ? parsed.videoConfig : { ...parsed.videoConfig, apiKey: '' };
       const rawMulti = rememberApiKeys ? parsed.multimodalConfig : { ...parsed.multimodalConfig, apiKey: '' };
-      const safeMulti = rawMulti?.provider === "wuyinkeji"
-        ? { ...rawMulti, provider: "nanobanana" }
+      const normalizedMultiProvider = rawMulti?.provider === "wuyinkeji" ? "nanobanana" : rawMulti?.provider;
+      const safeMulti = normalizedMultiProvider === "nanobanana"
+        ? { ...rawMulti, provider: "nanobanana", apiKey: "" }
         : rawMulti;
       const safeVidu = rememberApiKeys ? (parsed.viduConfig || INITIAL_VIDU_CONFIG) : { ...(parsed.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
       return {
