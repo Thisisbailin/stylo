@@ -198,18 +198,26 @@ export interface QalamAgentConfigProvider {
   getConfig(): Promise<QalamAgentConfig> | QalamAgentConfig;
 }
 
-export type QalamSkillDefinition = {
+export type QalamSkillManifest = {
   id: string;
   title: string;
   description: string;
-  systemOverlay: string;
+  sourcePath?: string;
+  activationMode?: "explicit" | "implicit";
+  tags?: string[];
+};
+
+export type QalamResolvedSkill = QalamSkillManifest & {
+  overlays: string[];
   preferredTools?: string[];
   disabledTools?: string[];
+  version?: string;
+  metadata?: Record<string, string>;
 };
 
 export interface QalamSkillLoader {
-  listSkills(): Promise<QalamSkillDefinition[]> | QalamSkillDefinition[];
-  getSkill(id: string): Promise<QalamSkillDefinition | null> | QalamSkillDefinition | null;
+  listSkills(): Promise<QalamSkillManifest[]> | QalamSkillManifest[];
+  getSkill(id: string): Promise<QalamResolvedSkill | null> | QalamResolvedSkill | null;
 }
 
 export type AgentSessionMessage =

@@ -4,7 +4,7 @@ import type {
   QalamAgentEnvironment,
   QalamAgentMemory,
   QalamRunContext,
-  QalamSkillDefinition,
+  QalamResolvedSkill,
 } from "./types";
 
 const BASE_INSTRUCTION = [
@@ -54,9 +54,11 @@ const formatMemoryInstruction = (memory?: QalamAgentMemory) =>
 export const composeAgentInstructions = ({
   enabledSkills,
 }: {
-  enabledSkills: QalamSkillDefinition[];
+  enabledSkills: QalamResolvedSkill[];
 }) => {
-  const overlays = enabledSkills.map((skill) => `# Skill: ${skill.title}\n${skill.systemOverlay.trim()}`);
+  const overlays = enabledSkills.flatMap((skill) =>
+    (skill.overlays || []).map((overlay) => `# Skill: ${skill.title}\n${overlay.trim()}`)
+  );
   return (runContext: RunContext<QalamRunContext>) => {
     const environmentBlock = formatEnvironmentInstruction(runContext.context?.agentEnvironment);
     const memoryBlock = formatMemoryInstruction(runContext.context?.agentMemory);

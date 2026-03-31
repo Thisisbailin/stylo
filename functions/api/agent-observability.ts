@@ -42,6 +42,8 @@ const toTraceSummary = (row: any) => ({
   workflowName: String(row?.workflow_name || ""),
   groupId: row?.group_id ? String(row.group_id) : null,
   updatedAt: Number(row?.updated_at || 0),
+  spanCount: Number(row?.span_count || 0),
+  errorCount: Number(row?.error_count || 0),
   metadata: safeParseJson<Record<string, string>>(row?.metadata, {}),
   trace: safeParseJson<Record<string, unknown>>(row?.trace_json, {}),
 });
@@ -72,7 +74,30 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     const sessions = ((sessionRows.results || []) as any[]).map(toSessionSummary);
 
     const traceRows = await context.env.DB.prepare(
-      "SELECT trace_id, session_id, provider, model, workflow_name, group_id, metadata, trace_json, updated_at FROM agent_traces WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 40"
+      `SELECT
+        t.trace_id,
+        t.session_id,
+        t.provider,
+        t.model,
+        t.workflow_name,
+        t.group_id,
+        t.metadata,
+        t.trace_json,
+        t.updated_at,
+        COALESCE(s.span_count, 0) AS span_count,
+        COALESCE(s.error_count, 0) AS error_count
+      FROM agent_traces t
+      LEFT JOIN (
+        SELECT
+          trace_id,
+          COUNT(*) AS span_count,
+          SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) AS error_count
+        FROM agent_spans
+        GROUP BY trace_id
+      ) s ON s.trace_id = t.trace_id
+      WHERE t.user_id = ?1
+      ORDER BY t.updated_at DESC
+      LIMIT 40`
     )
       .bind(userId)
       .all();
@@ -105,7 +130,29 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     let selectedTrace: any = null;
     if (resolvedTraceId) {
       const traceRow = await context.env.DB.prepare(
-        "SELECT trace_id, session_id, provider, model, workflow_name, group_id, metadata, trace_json, updated_at FROM agent_traces WHERE user_id = ?1 AND trace_id = ?2 LIMIT 1"
+        `SELECT
+          t.trace_id,
+          t.session_id,
+          t.provider,
+          t.model,
+          t.workflow_name,
+          t.group_id,
+          t.metadata,
+          t.trace_json,
+          t.updated_at,
+          COALESCE(s.span_count, 0) AS span_count,
+          COALESCE(s.error_count, 0) AS error_count
+        FROM agent_traces t
+        LEFT JOIN (
+          SELECT
+            trace_id,
+            COUNT(*) AS span_count,
+            SUM(CASE WHEN error IS NOT NULL AND error != '' THEN 1 ELSE 0 END) AS error_count
+          FROM agent_spans
+          GROUP BY trace_id
+        ) s ON s.trace_id = t.trace_id
+        WHERE t.user_id = ?1 AND t.trace_id = ?2
+        LIMIT 1`
       )
         .bind(userId, resolvedTraceId)
         .first();

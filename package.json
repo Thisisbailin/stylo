@@ -4,7 +4,9 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/generate-skill-manifest.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/generate-skill-manifest.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

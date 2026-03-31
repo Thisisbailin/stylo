@@ -83,6 +83,8 @@ type CloudTraceSummary = {
   workflowName: string;
   groupId?: string | null;
   updatedAt: number;
+  spanCount: number;
+  errorCount: number;
   metadata?: Record<string, string>;
   trace?: Record<string, unknown>;
 };
@@ -389,6 +391,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [observabilityError, setObservabilityError] = useState<string | null>(null);
   const [selectedTraceId, setSelectedTraceId] = useState<string>("");
   const [traceProviderFilter, setTraceProviderFilter] = useState<string>("all");
+  const [traceStatusFilter, setTraceStatusFilter] = useState<"all" | "failed">("all");
+  const [traceSpanFilter, setTraceSpanFilter] = useState<"all" | "error">("all");
   const [traceSearch, setTraceSearch] = useState("");
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: "qalam_conversations_v1",
@@ -458,12 +462,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     const keyword = traceSearch.trim().toLowerCase();
     return cloudTraces.filter((trace) => {
       if (traceProviderFilter !== "all" && trace.provider !== traceProviderFilter) return false;
+      if (traceStatusFilter === "failed" && trace.errorCount <= 0) return false;
       if (!keyword) return true;
       return [trace.traceId, trace.model, trace.workflowName, trace.sessionId]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword));
     });
-  }, [cloudTraces, traceProviderFilter, traceSearch]);
+  }, [cloudTraces, traceProviderFilter, traceSearch, traceStatusFilter]);
+  const visibleSelectedTraceSpans = useMemo(() => {
+    const spans = selectedCloudTrace?.spans || [];
+    if (traceSpanFilter === "error") return spans.filter((span) => span.error);
+    return spans;
+  }, [selectedCloudTrace?.spans, traceSpanFilter]);
   const activeToolItem = useMemo(
     () => TOOL_ITEMS.find((item) => item.key === activeTool) || TOOL_ITEMS[0],
     [activeTool]
@@ -563,6 +573,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   useEffect(() => {
     setSelectedTraceId("");
     setTraceProviderFilter("all");
+    setTraceStatusFilter("all");
+    setTraceSpanFilter("all");
     setTraceSearch("");
   }, [activeConversation?.id]);
   const updateProjectToolSettings = (patch: Partial<typeof qalamToolSettings.projectData>) => {
@@ -2259,6 +2271,31 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                           </div>
                           <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3 space-y-3">
                             <div className="flex flex-wrap gap-2">
+                              {[
+                                { key: "all", label: `全部 ${cloudTraces.length}` },
+                                {
+                                  key: "failed",
+                                  label: `失败 ${cloudTraces.filter((trace) => trace.errorCount > 0).length}`,
+                                },
+                              ].map((item) => {
+                                const active = traceStatusFilter === item.key;
+                                return (
+                                  <button
+                                    key={item.key}
+                                    type="button"
+                                    onClick={() => setTraceStatusFilter(item.key as "all" | "failed")}
+                                    className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                                      active
+                                        ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-muted)] text-[var(--app-text-primary)]"
+                                        : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-muted)]"
+                                    }`}
+                                  >
+                                    {item.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
                               {traceProviderOptions.map((provider) => {
                                 const active = traceProviderFilter === provider;
                                 return (
@@ -2307,12 +2344,20 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                                             <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
                                               {trace.provider}
                                             </span>
+                                            {trace.errorCount > 0 ? (
+                                              <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] text-rose-300">
+                                                {trace.errorCount} errors
+                                              </span>
+                                            ) : null}
                                             <span className="text-[12px] font-semibold text-[var(--app-text-primary)] break-all">
                                               {trace.model}
                                             </span>
                                           </div>
                                           <div className="mt-1 text-[11px] text-[var(--app-text-secondary)] break-all">
                                             {trace.workflowName || "Qalam Edge Agent"}
+                                          </div>
+                                          <div className="mt-1 text-[10px] text-[var(--app-text-muted)]">
+                                            {trace.spanCount} spans
                                           </div>
                                           <div className="mt-1 text-[10px] text-[var(--app-text-muted)] break-all">
                                             {trace.traceId}
@@ -2336,7 +2381,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                           {selectedCloudTrace ? (
                             <div className="space-y-3">
                               <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-[var(--app-text-secondary)]">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-[var(--app-text-secondary)]">
                                   <div>
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Trace Id</div>
                                     <div className="mt-1 break-all">{selectedCloudTrace.traceId}</div>
@@ -2353,11 +2398,46 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Updated</div>
                                     <div className="mt-1">{formatTimestamp(selectedCloudTrace.updatedAt)}</div>
                                   </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Span Count</div>
+                                    <div className="mt-1">{selectedCloudTrace.spanCount}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Error Count</div>
+                                    <div className={`mt-1 ${selectedCloudTrace.errorCount ? "text-rose-300" : ""}`}>
+                                      {selectedCloudTrace.errorCount}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  { key: "all", label: `全部 spans ${selectedCloudTrace.spans.length}` },
+                                  {
+                                    key: "error",
+                                    label: `错误 spans ${selectedCloudTrace.spans.filter((span) => span.error).length}`,
+                                  },
+                                ].map((item) => {
+                                  const active = traceSpanFilter === item.key;
+                                  return (
+                                    <button
+                                      key={item.key}
+                                      type="button"
+                                      onClick={() => setTraceSpanFilter(item.key as "all" | "error")}
+                                      className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                                        active
+                                          ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                                          : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
+                                      }`}
+                                    >
+                                      {item.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                               <div className="space-y-2">
-                                {selectedCloudTrace.spans.length ? (
-                                  selectedCloudTrace.spans.map((span) => (
+                                {visibleSelectedTraceSpans.length ? (
+                                  visibleSelectedTraceSpans.map((span) => (
                                     <div
                                       key={span.spanId}
                                       className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3"
@@ -2393,7 +2473,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                                   ))
                                 ) : (
                                   <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
-                                    该对话尚未产生可展示的 span。
+                                    当前过滤条件下没有可展示的 span。
                                   </div>
                                 )}
                               </div>

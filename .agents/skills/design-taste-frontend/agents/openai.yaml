@@ -1,0 +1,12 @@
+id: design-taste-frontend
+title: High-Agency Frontend Skill
+description: Senior UI/UX engineer overlay for layout, visual direction, and interface refinement work.
+activationMode: explicit
+sourcePath: .agents/skills/design-taste-frontend/SKILL.md
+entryModule: ./skillPackages/designTasteFrontend
+resolverExport: resolveDesignTasteFrontendSkill
+tags:
+  - frontend
+  - ui
+  - design
+

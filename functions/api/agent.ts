@@ -666,6 +666,8 @@ export const onRequestPost = async (context: any) => {
             model: effectiveModel,
             userId: sessionOwner || "anonymous",
             runtimeMode: "edge_full",
+            skillIds: enabledSkills.map((skill) => skill.id).join(","),
+            skillVersions: enabledSkills.map((skill) => `${skill.id}:${skill.version || "0"}`).join(","),
           },
           tracingDisabled: false,
           traceIncludeSensitiveData: false,

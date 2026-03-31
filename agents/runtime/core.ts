@@ -28,7 +28,7 @@ import type {
   QalamRunContext,
   QalamRunInput,
   QalamRunResult,
-  QalamSkillDefinition,
+  QalamResolvedSkill,
 } from "./types";
 
 const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
@@ -211,7 +211,7 @@ type RunQalamAgentCoreOptions = {
   runtimeMode: QalamRunContext["runtimeMode"];
   runtimeLabel: string;
   workflowName: string;
-  enabledSkills: QalamSkillDefinition[];
+  enabledSkills: QalamResolvedSkill[];
   disabledTools?: string[];
   maxTurns?: number;
   signal?: AbortSignal;

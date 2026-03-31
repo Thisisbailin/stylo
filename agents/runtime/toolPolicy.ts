@@ -1,5 +1,5 @@
 import { normalizeQalamToolSettings } from "../../node-workspace/components/qalam/tooling";
-import type { QalamAgentConfig, QalamSkillDefinition } from "./types";
+import type { QalamAgentConfig, QalamResolvedSkill } from "./types";
 
 const STABILIZATION_DISABLED_TOOLS = [
   "ping_tool",
@@ -7,7 +7,7 @@ const STABILIZATION_DISABLED_TOOLS = [
 
 export const buildDisabledTools = (
   config: Pick<QalamAgentConfig, "qalamTools">,
-  enabledSkills: Array<Pick<QalamSkillDefinition, "disabledTools">>
+  enabledSkills: Array<Pick<QalamResolvedSkill, "disabledTools">>
 ) => {
   const toolSettings = normalizeQalamToolSettings(config.qalamTools);
   const disabledTools = enabledSkills.flatMap((skill) => skill?.disabledTools || []);

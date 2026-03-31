@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { Globe } from "lucide-react";
-import { Brain, CaretDown, Wrench } from "@phosphor-icons/react";
+import { Brain, CaretRight, Wrench } from "@phosphor-icons/react";
 import type { ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
 import { isStatusMessage, isToolMessage } from "./types";
 
@@ -24,8 +24,6 @@ const toolStatusClass: Record<ToolStatus, string> = {
   error: "text-rose-400",
 };
 
-const foldedSurfaceClass =
-  "mt-2 ml-7 rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent),var(--app-panel-muted)] px-4 py-3.5 shadow-[0_12px_30px_-24px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.03)]";
 const lineSummaryClass =
   "max-w-[92%] px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
@@ -794,42 +792,91 @@ const buildToolActionLabel = (tool: ToolPayload) => {
   return `操作 ${subject}`;
 };
 
-const renderFoldoutSurface = (title: string, children: React.ReactNode, footer?: React.ReactNode) => (
-  <div className={foldedSurfaceClass}>
-    <div className="text-[11px] font-medium text-[var(--app-text-secondary)]">{title}</div>
-    <div className="mt-2.5 space-y-2.5 text-[12px] leading-relaxed text-[var(--app-text-primary)]">{children}</div>
-    {footer ? <div className="mt-3 border-t border-[var(--app-border)] pt-2.5 text-[11px] text-[var(--app-text-muted)]">{footer}</div> : null}
-  </div>
-);
-
 const renderDisclosureHeader = ({
   icon,
   label,
   toneClass,
   meta,
   expandable,
+  animate = false,
 }: {
   icon: React.ReactNode;
   label: string;
   toneClass: string;
   meta?: React.ReactNode;
   expandable?: boolean;
+  animate?: boolean;
 }) => (
-  <div className="flex items-center gap-2.5">
-    <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
+  <div className="flex min-w-0 items-center gap-2">
+    <span className={`inline-flex shrink-0 items-center justify-center ${toneClass} ${animate ? "animate-pulse" : ""}`}>
       {icon}
     </span>
     <span className="min-w-0 flex-1 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
-    {meta ? <span className="text-[11px] font-medium">{meta}</span> : null}
+    {meta ? <span className="shrink-0 text-[11px] font-medium">{meta}</span> : null}
     {expandable ? (
-      <CaretDown
+      <CaretRight
         size={14}
-        className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-180"
+        className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-90"
         weight="bold"
       />
     ) : null}
   </div>
 );
+
+const buildToolDetailsText = (thread: ToolThread) => {
+  const chunks: string[] = [];
+  if (thread.request?.tool.summary?.trim()) {
+    chunks.push(thread.request.tool.summary.trim());
+  }
+  if (
+    thread.result?.tool.summary?.trim() &&
+    thread.result.tool.summary.trim() !== thread.request?.tool.summary?.trim()
+  ) {
+    chunks.push(thread.result.tool.summary.trim());
+  }
+  if (thread.result?.tool.evidence?.length) {
+    chunks.push(thread.result.tool.evidence.join("\n"));
+  }
+  if (thread.result?.tool.output?.trim()) {
+    try {
+      const parsed = JSON.parse(thread.result.tool.output);
+      chunks.push(JSON.stringify(parsed, null, 2));
+    } catch {
+      chunks.push(thread.result.tool.output.trim());
+    }
+  }
+  return chunks.join("\n\n").trim();
+};
+
+const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
+  const content = (status.summary || status.detail || "").trim();
+  const stepDetails = status.steps
+    .map((step) => [step.label, step.detail].filter(Boolean).join(" · ").trim())
+    .filter(Boolean);
+  const lines = [content, ...stepDetails].filter(Boolean);
+  if (!lines.length) return null;
+  return (
+    <div className="ml-7 mt-2 border-l-2 border-[var(--app-border)] pl-4">
+      <div className="space-y-2 text-[12px] leading-7 text-[var(--app-text-secondary)]">
+        {lines.map((line, index) => (
+          <div key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap">
+            {line}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const renderToolExpansion = (thread: ToolThread) => {
+  const content = buildToolDetailsText(thread);
+  if (!content) return null;
+  return (
+    <pre className="ml-7 mt-2 overflow-x-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
+      <code>{content}</code>
+    </pre>
+  );
+};
 
 type ToolThread = {
   key: string;
@@ -851,11 +898,11 @@ const renderToolThread = (thread: ToolThread) => {
   if (!hasDetails && !thread.result) {
     return (
       <div className={lineSummaryClass}>
-        <div className="flex items-center gap-2.5 rounded-[16px] px-2 py-1.5">
+        <div className="flex items-center gap-2">
           {renderDisclosureHeader({
             icon: <Wrench size={12} weight="duotone" />,
             label: actionLabel,
-            toneClass: "bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]",
+            toneClass: "text-[var(--app-text-secondary)]",
             meta: <span className={toolStatusClass[status]}>{statusText}</span>,
           })}
         </div>
@@ -865,33 +912,16 @@ const renderToolThread = (thread: ToolThread) => {
 
   return (
     <details className={`${lineSummaryClass} group max-w-[92%]`}>
-      <summary className="list-none cursor-pointer rounded-[16px] px-2 py-1.5 transition hover:bg-[var(--app-panel-muted)] [&::-webkit-details-marker]:hidden">
+      <summary className="list-none cursor-pointer py-1 [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Wrench size={12} weight="duotone" />,
           label: actionLabel,
-          toneClass: "bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]",
+          toneClass: "text-[var(--app-text-secondary)]",
           meta: <span className={toolStatusClass[status]}>{statusText}</span>,
           expandable: true,
         })}
       </summary>
-      {renderFoldoutSurface(
-        thread.result ? "结果反馈" : "执行上下文",
-        <>
-          {thread.request?.tool.summary ? (
-            <div className="text-[12px] text-[var(--app-text-secondary)]">{thread.request.tool.summary}</div>
-          ) : null}
-          {thread.result?.tool.summary ? (
-            <div className="text-[12px] text-[var(--app-text-secondary)]">{thread.result.tool.summary}</div>
-          ) : null}
-          {thread.result?.tool.evidence && thread.result.tool.evidence.length > 0 ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">
-              {thread.result.tool.evidence.join(" · ")}
-            </div>
-          ) : null}
-          {thread.result ? renderToolOutput(thread.result.tool) : <div className="text-[12px] text-[var(--app-text-secondary)]">等待工具返回结果。</div>}
-        </>,
-        `${effectiveTool.name} · ${statusText}`
-      )}
+      {renderToolExpansion(thread)}
     </details>
   );
 };
@@ -913,19 +943,20 @@ const renderStatusLine = (message: StatusMessage) => {
         : "text-sky-400";
   const iconToneClass =
     status.status === "error"
-      ? "bg-rose-500/10 text-rose-300"
+      ? "text-rose-300"
       : status.status === "success"
-        ? "bg-emerald-500/10 text-emerald-300"
-        : "bg-sky-500/10 text-sky-300";
+        ? "text-emerald-300"
+        : "text-sky-300";
 
   if (!status.steps.length && !status.detail) {
     return (
       <div className={lineSummaryClass}>
-        <div className="flex items-center gap-2.5 rounded-[16px] px-2 py-1.5">
+        <div className="flex items-center gap-2">
           {renderDisclosureHeader({
             icon: <Brain size={12} weight="duotone" />,
             label: buildThinkingLabel(status),
             toneClass: iconToneClass,
+            animate: status.isThinking && status.status === "running",
           })}
         </div>
       </div>
@@ -934,51 +965,16 @@ const renderStatusLine = (message: StatusMessage) => {
 
   return (
     <details className={`${lineSummaryClass} group max-w-[92%]`}>
-      <summary className="list-none cursor-pointer rounded-[16px] px-2 py-1.5 transition hover:bg-[var(--app-panel-muted)] [&::-webkit-details-marker]:hidden">
+      <summary className="list-none cursor-pointer py-1 [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Brain size={12} weight="duotone" />,
           label: buildThinkingLabel(status),
           toneClass: iconToneClass,
           expandable: true,
+          animate: status.isThinking && status.status === "running",
         })}
       </summary>
-      {renderFoldoutSurface(
-        status.isThinking ? "思考摘要" : "进度详情",
-        <>
-          {status.summary ? <div className="whitespace-pre-wrap text-[var(--app-text-secondary)]">{status.summary}</div> : null}
-          {!status.summary && status.detail ? (
-            <div className="whitespace-pre-wrap text-[var(--app-text-secondary)]">{status.detail}</div>
-          ) : null}
-          {status.steps.length > 0 ? (
-            <div className="space-y-2">
-              {status.steps.map((step) => (
-                <div key={step.id} className="rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full ${
-                        step.status === "error"
-                          ? "bg-rose-400"
-                          : step.status === "success"
-                            ? "bg-emerald-400"
-                            : "bg-amber-300 animate-pulse"
-                      }`}
-                    />
-                    <div className="text-[12px] font-medium text-[var(--app-text-primary)]">{step.label}</div>
-                  </div>
-                  {step.detail ? (
-                    <div className="mt-1 text-[11px] text-[var(--app-text-muted)] whitespace-pre-wrap">{step.detail}</div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : !status.summary && !status.detail ? (
-            <div className="text-[12px] text-[var(--app-text-secondary)]">
-              {status.isThinking ? "当前尚未产生更多可展示的思考摘要。" : "当前尚未产生更多可展示的进度详情。"}
-            </div>
-          ) : null}
-        </>,
-        `${status.status === "running" ? "处理中" : status.status === "success" ? "已完成" : "失败"} · ${status.isThinking ? "思考中" : "待机"}`
-      )}
+      {renderThinkingExpansion(status)}
     </details>
   );
 };
