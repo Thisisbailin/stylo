@@ -27,6 +27,7 @@ export type NodeStatus = "idle" | "loading" | "complete" | "error";
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
+  qalamNodeRef?: string;
 }
 
 export interface ImageInputNodeData extends BaseNodeData {

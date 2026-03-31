@@ -26,14 +26,16 @@ import type { QalamAgentBridge, WorkflowBuilderHandle, WorkflowNodeLookupInput }
 import { createNodeWorkflowWithBridge } from "../../agents/bridge/workflowBuilder";
 import { createQalamAgentRuntime } from "../../agents/runtime/agent";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
-import { LocalSkillLoader } from "../../agents/runtime/skills";
+import { StaticSkillLoader } from "../../agents/runtime/skills";
 import { LocalStorageSessionStore } from "../../agents/runtime/session";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
+import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
 
 type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
+  getAuthToken?: () => Promise<string | null>;
   onOpenStats?: () => void;
   onToggleAgentSettings?: () => void;
   openRequest?: number;
@@ -80,25 +82,17 @@ const edgeIdFromConnection = (sourceNodeId: string, targetNodeId: string, source
 
 const getWorkflowSnapshot = () => useWorkflowStore.getState();
 
-const normalizeNodeRef = (value?: string | null) => {
-  if (typeof value !== "string") return "";
-  return value.trim();
-};
-
-const lookupWorkflowNodeSnapshot = (
-  input: WorkflowNodeLookupInput,
-  nodeRefs: Record<string, string>
-) => {
+const lookupWorkflowNodeSnapshot = (input: WorkflowNodeLookupInput) => {
   const snapshot = getWorkflowSnapshot();
   const resolvedRef = normalizeNodeRef(input.nodeRef);
-  const resolvedNodeId = resolvedRef ? nodeRefs[resolvedRef] : input.nodeId;
-  if (!resolvedNodeId) return null;
-  const node = snapshot.nodes.find((item) => item.id === resolvedNodeId);
+  const node = resolvedRef
+    ? snapshot.nodes.find((item) => getWorkflowNodeRef(item) === resolvedRef)
+    : snapshot.nodes.find((item) => item.id === input.nodeId);
   if (!node) return null;
   const handles = getNodeHandles(node.type);
   return {
     nodeId: node.id,
-    nodeRef: resolvedRef || Object.entries(nodeRefs).find(([, value]) => value === node.id)?.[0],
+    nodeRef: getWorkflowNodeRef(node),
     nodeType: node.type,
     inputHandles: handles.inputs as WorkflowBuilderHandle[],
     outputHandles: handles.outputs as WorkflowBuilderHandle[],
@@ -222,6 +216,7 @@ const createConversationRecord = (messages: Message[] = []): ConversationRecord 
 export const QalamAgent: React.FC<Props> = ({
   projectData,
   setProjectData,
+  getAuthToken,
   onOpenStats,
   onToggleAgentSettings,
   openRequest = 0,
@@ -323,9 +318,8 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const handledSubmitRequestRef = useRef<number>(0);
-  const skillLoaderRef = useRef(new LocalSkillLoader());
+  const skillLoaderRef = useRef(new StaticSkillLoader());
   const sessionStoreRef = useRef(new LocalStorageSessionStore());
-  const workflowNodeRefsRef = useRef<Record<string, string>>({});
   const bridge = useMemo<QalamAgentBridge>(
     () => ({
       getProjectData: () => projectData,
@@ -398,11 +392,8 @@ export const QalamAgent: React.FC<Props> = ({
         if (type === "text" && !String((extraData as any).text || "").trim()) {
           throw new Error("createWorkflowNode 创建文本节点时缺少 text。");
         }
-        const nodeId = addNode(type, position, parentId, extraData);
         const resolvedNodeRef = normalizeNodeRef(nodeRef);
-        if (resolvedNodeRef) {
-          workflowNodeRefsRef.current[resolvedNodeRef] = nodeId;
-        }
+        const nodeId = addNode(type, position, parentId, setWorkflowNodeRef(extraData, resolvedNodeRef));
         const nodeHandles = getNodeHandles(type);
         return {
           nodeId,
@@ -419,22 +410,13 @@ export const QalamAgent: React.FC<Props> = ({
         };
       },
       getWorkflowNode: ({ nodeId, nodeRef }) =>
-        lookupWorkflowNodeSnapshot(
-          {
-            nodeId,
-            nodeRef,
-          },
-          workflowNodeRefsRef.current
-        ),
+        lookupWorkflowNodeSnapshot({
+          nodeId,
+          nodeRef,
+        }),
       connectWorkflowNodes: ({ sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
-        const sourceNode = lookupWorkflowNodeSnapshot(
-          { nodeId: sourceNodeId, nodeRef: sourceRef },
-          workflowNodeRefsRef.current
-        );
-        const targetNode = lookupWorkflowNodeSnapshot(
-          { nodeId: targetNodeId, nodeRef: targetRef },
-          workflowNodeRefsRef.current
-        );
+        const sourceNode = lookupWorkflowNodeSnapshot({ nodeId: sourceNodeId, nodeRef: sourceRef });
+        const targetNode = lookupWorkflowNodeSnapshot({ nodeId: targetNodeId, nodeRef: targetRef });
         if (!sourceNode || !targetNode) {
           throw new Error("connectWorkflowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 workflow_node。");
         }
@@ -506,8 +488,13 @@ export const QalamAgent: React.FC<Props> = ({
     [addNode, nodes.length, onConnect, projectData, removeEdge, removeNode, setProjectData, toggleEdgePause, updateNodeStyle, viewport]
   );
   const browserRuntime = useMemo(
-    () =>
-      createQalamAgentRuntime({
+    () => {
+      const allowBrowserRuntime =
+        typeof window !== "undefined" &&
+        import.meta.env.DEV &&
+        window.localStorage.getItem("qalam_agent_runtime_target") === "browser";
+      if (!allowBrowserRuntime) return null;
+      return createQalamAgentRuntime({
         bridge,
         skillLoader: skillLoaderRef.current,
         sessionStore: sessionStoreRef.current,
@@ -517,7 +504,8 @@ export const QalamAgent: React.FC<Props> = ({
             runtimeTarget: "browser",
           }),
         },
-      }),
+      });
+    },
     [bridge, config.textConfig]
   );
   const edgeRuntime = useMemo(
@@ -528,8 +516,10 @@ export const QalamAgent: React.FC<Props> = ({
           provider: config.textConfig?.agentProvider || config.textConfig?.provider,
           model: resolveAgentRuntimeModel(config.textConfig),
           baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
+          qalamTools: config.textConfig?.qalamTools,
         }),
         getProjectDataSnapshot: () => projectData,
+        getAuthToken,
         getWorkflowSnapshot: () =>
           ({
             version: 1,
@@ -551,8 +541,10 @@ export const QalamAgent: React.FC<Props> = ({
       config.textConfig?.baseUrl,
       config.textConfig?.model,
       config.textConfig?.provider,
+      config.textConfig?.qalamTools,
       edgeStyle,
       edges,
+      getAuthToken,
       globalAssetHistory,
       labContext,
       nodes,
@@ -563,9 +555,10 @@ export const QalamAgent: React.FC<Props> = ({
   const runtime = useMemo(
     () => ({
       run: (input: any, options?: any) => {
-        // Temporary investigation mode: force edge runtime while mirroring server-side progress back to the browser console.
-        const preferredTarget = "edge";
-        return preferredTarget === "edge" ? edgeRuntime.run(input, options) : browserRuntime.run(input, options);
+        if (browserRuntime) {
+          return browserRuntime.run(input, options);
+        }
+        return edgeRuntime.run(input, options);
       },
     }),
     [browserRuntime, edgeRuntime]

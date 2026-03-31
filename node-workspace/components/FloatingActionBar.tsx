@@ -284,10 +284,8 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "Group", hint: "Frame a reusable block of nodes", meta: "Layout", onClick: onAddGroup, Icon: BoxSelect, tone: "text-stone-200", surface: "bg-stone-500/12" },
     { label: "Image", hint: "Upload a reference image or still", meta: "Input", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
     { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
-    { label: "Img Gen", hint: "Generate concept imagery", meta: "Generation", onClick: onAddImageGen, Icon: Sparkles, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "Nano Banana", hint: "Nano Banana Pro image", meta: "Generation", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
-    { label: "Sora Video", hint: "Build Sora motion clips", meta: "Motion", onClick: onAddVideoGen, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
     { label: "WAN Vid", hint: "Wan 2.6 video workflow", meta: "Motion", onClick: onAddWanVideoGen, Icon: Video, tone: "text-violet-300", surface: "bg-violet-500/12" },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
@@ -494,17 +492,17 @@ export const FloatingActionBar: React.FC<Props> = ({
                       }}
                       className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
                           <Icon size={18} />
-                        </div>
-                        <div className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                          {meta}
-                        </div>
                       </div>
                       <div className="mt-4">
                         <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
                         <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                      </div>
+                      <div className="mt-4">
+                        <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                          {meta}
+                        </span>
                       </div>
                     </button>
                   ))}
@@ -525,21 +523,18 @@ export const FloatingActionBar: React.FC<Props> = ({
                     }}
                     className="group/node relative overflow-hidden rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-3 text-left hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition-all"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className={`h-10 w-10 flex items-center justify-center rounded-2xl border border-[var(--app-border)] ${surface} ${tone}`}>
+                    <div className={`h-10 w-10 flex items-center justify-center rounded-2xl border border-[var(--app-border)] ${surface} ${tone}`}>
                         <Icon size={18} />
-                      </div>
-                      <div className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                        {meta}
-                      </div>
                     </div>
                     <div className="mt-3 min-w-0">
                       <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
                       <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">
-                      <span>Click to add</span>
-                      <ChevronRight size={14} className="translate-x-0 transition-transform group-hover/node:translate-x-0.5" />
+                    <div className="mt-4 flex items-center justify-between">
+                      <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                        {meta}
+                      </span>
+                      <ChevronRight size={14} className="text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
                     </div>
                   </button>
                 ))}

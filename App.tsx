@@ -2151,6 +2151,7 @@ const App: React.FC = () => {
             <NodeLab
               projectData={projectData}
               setProjectData={setProjectData}
+              getAuthToken={getAuthToken}
               onAssetLoad={handleAssetLoad}
               onOpenModule={handleOpenLabModule}
               syncIndicator={syncIndicator}
@@ -2206,7 +2207,7 @@ const App: React.FC = () => {
   let labModalContent: React.ReactNode = null;
   if (openLabModal === "writing") {
     labModalTitle = "Writing";
-    labModalWidth = 1440;
+    labModalWidth = 520;
     labModalContent = (
       <WritingPanel
         projectData={projectData}
@@ -2215,7 +2216,7 @@ const App: React.FC = () => {
     );
   } else if (openLabModal === "understanding") {
     labModalTitle = "理解";
-    labModalWidth = 980;
+    labModalWidth = 520;
     labModalContent = (
       <UnderstandingPanel
         projectData={projectData}
@@ -2225,11 +2226,11 @@ const App: React.FC = () => {
     );
   } else if (openLabModal === "materials") {
     labModalTitle = "素材";
-    labModalWidth = 980;
+    labModalWidth = 520;
     labModalContent = <MaterialsPanel />;
   } else if (openLabModal === "projector") {
     labModalTitle = "放映机 (视听实验室)";
-    labModalWidth = 1200;
+    labModalWidth = 560;
     labModalContent = <ProjectorModule projectData={projectData} setProjectData={setProjectData} />;
   }
 
@@ -2276,7 +2277,7 @@ const App: React.FC = () => {
         />
         {renderMainContent()}
         {labModalTitle && labModalContent && (
-          <FloatingPanelShell title={labModalTitle} isOpen onClose={closeLabModal} width={labModalWidth}>
+          <FloatingPanelShell title={labModalTitle} isOpen onClose={closeLabModal} width={labModalWidth} position="right">
             {labModalContent}
           </FloatingPanelShell>
         )}

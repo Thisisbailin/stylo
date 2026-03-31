@@ -1,11 +1,13 @@
 import type { ProjectData } from "../../types";
 import type { WorkflowFile } from "../../node-workspace/types";
+import type { QalamToolSettings } from "../../types";
 import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
 
 export type AgentHttpRuntimeConfig = {
   provider?: "qwen" | "openrouter" | "ark";
   model: string;
   baseUrl?: string;
+  qalamTools?: QalamToolSettings;
 };
 
 export type AgentHttpRunRequest = {

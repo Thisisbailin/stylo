@@ -1,5 +1,4 @@
 import { createNodeWorkflowWithBridge } from "../../agents/bridge/workflowBuilder";
-import { EdgeMemorySession, readEdgeSessionMessages } from "../../agents/runtime/edgeSession";
 import { runQalamAgentCore } from "../../agents/runtime/core";
 import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
@@ -7,7 +6,11 @@ import {
   type AgentHttpRunRequest,
 } from "../../agents/runtime/httpProtocol";
 import { resolveAgentProvider, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
+import { StaticSkillLoader } from "../../agents/runtime/skills";
+import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
+import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
+import { createAgentSessionKey, D1EdgeSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
 import type { ProjectData } from "../../types";
 import type { WorkflowFile, WorkflowNode, WorkflowNodeData, WorkflowViewport, NodeType } from "../../node-workspace/types";
 import type {
@@ -57,11 +60,6 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
 
 const edgeIdFromConnection = (sourceNodeId: string, targetNodeId: string, sourceHandle: string, targetHandle: string) =>
   `edge-${sourceNodeId}-${targetNodeId}-${sourceHandle || "default"}-${targetHandle || "default"}`;
-
-const normalizeNodeRef = (value?: string | null) => {
-  if (typeof value !== "string") return "";
-  return value.trim();
-};
 
 const resolvePreferredConnectionHandles = (sourceType: string, targetType: string) => {
   const sourceOutputs = getNodeHandles(sourceType).outputs;
@@ -234,7 +232,6 @@ const createEdgeBridgeState = (projectData: ProjectData, workflow?: WorkflowFile
     }
   );
   let workflowUpdated = false;
-  const workflowNodeRefs: Record<string, string> = {};
   let nodeIdCounter = (currentWorkflow.nodes || []).reduce((max, node) => {
     const match = String(node.id || "").match(/-(\d+)$/);
     return match ? Math.max(max, Number(match[1])) : max;
@@ -244,14 +241,14 @@ const createEdgeBridgeState = (projectData: ProjectData, workflow?: WorkflowFile
   const getNodeCount = () => currentWorkflow.nodes.length;
   const getWorkflowNode = (input: WorkflowNodeLookupInput): WorkflowNodeLookupResult | null => {
     const resolvedRef = normalizeNodeRef(input.nodeRef);
-    const resolvedNodeId = resolvedRef ? workflowNodeRefs[resolvedRef] : input.nodeId;
-    if (!resolvedNodeId) return null;
-    const node = currentWorkflow.nodes.find((item) => item.id === resolvedNodeId);
+    const node = resolvedRef
+      ? currentWorkflow.nodes.find((item) => getWorkflowNodeRef(item) === resolvedRef)
+      : currentWorkflow.nodes.find((item) => item.id === input.nodeId);
     if (!node) return null;
     const handles = getNodeHandles(node.type);
     return {
       nodeId: node.id,
-      nodeRef: resolvedRef || Object.entries(workflowNodeRefs).find(([, value]) => value === node.id)?.[0],
+      nodeRef: getWorkflowNodeRef(node),
       nodeType: node.type,
       inputHandles: handles.inputs as WorkflowBuilderHandle[],
       outputHandles: handles.outputs as WorkflowBuilderHandle[],
@@ -303,9 +300,6 @@ const createEdgeBridgeState = (projectData: ProjectData, workflow?: WorkflowFile
       nodes: currentWorkflow.nodes.filter((node) => node.id !== nodeId),
       edges: currentWorkflow.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
     };
-    Object.entries(workflowNodeRefs).forEach(([key, value]) => {
-      if (value === nodeId) delete workflowNodeRefs[key];
-    });
     workflowUpdated = true;
   };
 
@@ -416,11 +410,13 @@ const createEdgeBridgeState = (projectData: ProjectData, workflow?: WorkflowFile
         if (type === "text" && !String((extraData as any).text || "").trim()) {
           throw new Error("createWorkflowNode 创建文本节点时缺少 text。");
         }
-        const nodeId = addNode(type as NodeType, position, parentId, extraData as Partial<WorkflowNodeData>);
         const resolvedNodeRef = normalizeNodeRef(nodeRef);
-        if (resolvedNodeRef) {
-          workflowNodeRefs[resolvedNodeRef] = nodeId;
-        }
+        const nodeId = addNode(
+          type as NodeType,
+          position,
+          parentId,
+          setWorkflowNodeRef(extraData as Partial<WorkflowNodeData>, resolvedNodeRef)
+        );
         const nodeHandles = getNodeHandles(type);
         return {
           nodeId,
@@ -593,6 +589,14 @@ export const onRequestPost = async (context: any) => {
   }
 
   const provider = resolveAgentProvider(body.runtime.provider);
+  let sessionOwner: string | null = null;
+  try {
+    sessionOwner = await resolveAgentSessionOwner(context.request, context.env || {});
+  } catch (error) {
+    if (error instanceof Response) return error;
+    throw error;
+  }
+  const sessionKey = createAgentSessionKey(body.run.sessionId, sessionOwner);
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
@@ -600,6 +604,7 @@ export const onRequestPost = async (context: any) => {
       const tracingEnabled = false;
       const traceId = `local-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const bridgeState = createEdgeBridgeState(body.projectData, body.workflow);
+      const skillLoader = new StaticSkillLoader();
       try {
         debugLog(debugEnabled, traceId, "request received", {
           provider,
@@ -610,14 +615,19 @@ export const onRequestPost = async (context: any) => {
         const effectiveModel = resolveProviderModel(provider, body.runtime.model);
         const resolvedBaseUrl = resolveBaseUrl(provider, body.runtime.baseUrl);
         const resolvedApiKey = resolveApiKey(context.env || {}, provider);
+        const enabledSkills = (
+          await Promise.all((body.run.enabledSkillIds || []).map((skillId) => skillLoader.getSkill(skillId)))
+        ).filter(Boolean);
+        const disabledTools = buildDisabledTools({ qalamTools: body.runtime.qalamTools }, enabledSkills as Array<{ disabledTools?: string[] }>);
         debugLog(debugEnabled, traceId, "provider resolved", {
           provider,
           model: effectiveModel,
           baseURL: resolvedBaseUrl,
           hasApiKey: Boolean(resolvedApiKey),
+          enabledSkills: enabledSkills.map((skill) => skill.id),
         });
-        const session = new EdgeMemorySession(body.run.sessionId);
-        const sessionMessages = readEdgeSessionMessages(body.run.sessionId);
+        const session = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
+        const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         const runResult = await runQalamAgentCore({
           input: body.run,
           config: {
@@ -632,8 +642,8 @@ export const onRequestPost = async (context: any) => {
           runtimeMode: "edge_full",
           runtimeLabel: "Qalam Edge Agent",
           workflowName: "Qalam Edge Agent",
-          enabledSkills: [],
-          disabledTools: ["ping_tool"],
+          enabledSkills: enabledSkills as any,
+          disabledTools,
           maxTurns: EDGE_AGENT_MAX_TURNS,
           signal: context.request.signal,
           onEvent: (event) => emitEvent(controller, event),

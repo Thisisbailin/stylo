@@ -1,8 +1,9 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { normalizeQalamToolSettings } from "../../node-workspace/components/qalam/tooling";
 import { readPersistedAgentSessionMessages } from "./session";
 import { runQalamAgentCore } from "./core";
 import { resolveAgentProvider, resolveBaseUrl } from "./providerConfig";
+import { StaticSkillLoader } from "./skills";
+import { buildDisabledTools } from "./toolPolicy";
 import type {
   QalamAgentConfigProvider,
   QalamAgentRuntime,
@@ -11,10 +12,6 @@ import type {
   QalamSessionStore,
   QalamSkillLoader,
 } from "./types";
-
-const STABILIZATION_DISABLED_TOOLS = [
-  "ping_tool",
-] as const;
 
 const AGENT_MAX_TURNS = 50;
 
@@ -79,24 +76,6 @@ const debugGroupEnd = () => {
   console.groupEnd();
 };
 
-const buildDisabledTools = (config: Awaited<ReturnType<QalamAgentConfigProvider["getConfig"]>>, enabledSkills: Array<{ disabledTools?: string[] }>) => {
-  const toolSettings = normalizeQalamToolSettings(config.qalamTools);
-  const disabledTools = enabledSkills.flatMap((skill) => skill?.disabledTools || []);
-  disabledTools.push(...STABILIZATION_DISABLED_TOOLS);
-  if (!toolSettings.projectData.enabled) {
-    disabledTools.push(
-      "list_project_resources",
-      "read_project_resource",
-      "search_project_resource",
-      "edit_project_resource"
-    );
-  }
-  if (!toolSettings.workflowBuilder.enabled) {
-    disabledTools.push("operate_project_resource");
-  }
-  return Array.from(new Set(disabledTools));
-};
-
 export const createQalamAgentRuntime = ({
   bridge,
   skillLoader,
@@ -115,8 +94,9 @@ export const createQalamAgentRuntime = ({
         apiKey: resolveApiKey(provider, rawConfig.apiKey),
         baseUrl: resolveBaseUrl(provider, rawConfig.baseUrl),
       };
+      const loader = skillLoader || new StaticSkillLoader();
       const enabledSkills = (
-        await Promise.all((input.enabledSkillIds || []).map((skillId) => skillLoader.getSkill(skillId)))
+        await Promise.all((input.enabledSkillIds || []).map((skillId) => loader.getSkill(skillId)))
       ).filter(Boolean);
       const disabledTools = buildDisabledTools(rawConfig, enabledSkills as Array<{ disabledTools?: string[] }>);
       const session = await sessionStore.getSession(input.sessionId);

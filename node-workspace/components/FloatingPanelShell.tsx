@@ -6,6 +6,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   width?: number | string;
+  position?: "center" | "right";
   children: React.ReactNode;
 };
 
@@ -15,20 +16,23 @@ export const FloatingPanelShell: React.FC<Props> = ({
   isOpen,
   onClose,
   width = 900,
+  position = "center",
   children,
 }) => {
   if (!isOpen) return null;
 
+  const isRight = position === "right";
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
+    <div className={`fixed inset-0 z-[60] flex ${isRight ? "items-stretch justify-end p-4" : "items-center justify-center"}`}>
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className="relative max-h-[86vh] overflow-hidden rounded-3xl app-panel"
-        style={{ width }}
+        className={`relative flex flex-col overflow-hidden app-panel ${isRight ? "h-full rounded-[30px] border border-[var(--app-border)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]" : "max-h-[86vh] rounded-3xl"}`}
+        style={{ width, maxWidth: isRight ? "calc(100vw - 32px)" : undefined }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--app-border)]">
           <div className="text-sm font-semibold">{title}</div>
@@ -41,7 +45,7 @@ export const FloatingPanelShell: React.FC<Props> = ({
             <X size={16} className="mx-auto text-[var(--app-text-secondary)]" />
           </button>
         </div>
-        <div className="max-h-[calc(86vh-64px)] overflow-auto p-5">{children}</div>
+        <div className={`${isRight ? "flex-1 min-h-0" : "max-h-[calc(86vh-64px)]"} overflow-auto p-5`}>{children}</div>
       </div>
     </div>
   );

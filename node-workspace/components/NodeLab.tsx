@@ -86,6 +86,7 @@ interface ConnectionDropState {
 interface NodeLabProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
+  getAuthToken?: () => Promise<string | null>;
   onAssetLoad?: (
     type:
       | "script"
@@ -403,6 +404,7 @@ const getPatternDefinitions = (
 const NodeLabInner: React.FC<NodeLabProps> = ({
   projectData,
   setProjectData,
+  getAuthToken,
   onAssetLoad,
   onOpenModule,
   syncIndicator,
@@ -1012,6 +1014,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
           <QalamAgent
             projectData={projectData}
             setProjectData={setProjectData}
+            getAuthToken={getAuthToken}
             onOpenStats={onOpenStats}
             onToggleAgentSettings={() => setShowAgentSettings((prev) => !prev)}
             openRequest={qalamOpenRequest}
@@ -1113,13 +1116,20 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
                   type="button"
                   onClick={() => {
                     const text = composerInput.trim();
-                    if (!text) return;
+                    if (!text) {
+                      setQalamOpenRequest((prev) => prev + 1);
+                      return;
+                    }
                     setComposerInput("");
                     setQalamSubmitRequest({ id: Date.now(), text });
                   }}
-                  disabled={!composerInput.trim()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--app-accent-strong)] text-white transition hover:brightness-105 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Send to Qalam"
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
+                    composerInput.trim()
+                      ? "bg-[var(--app-accent-strong)] hover:brightness-105"
+                      : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
+                  }`}
+                  title={composerInput.trim() ? "Send to Qalam" : "Open Qalam"}
+                  aria-label={composerInput.trim() ? "Send to Qalam" : "Open Qalam"}
                 >
                   <ArrowUp size={16} weight="bold" />
                 </button>
