@@ -46,6 +46,7 @@ import {
   readAgentToolActivity,
   type AgentToolActivityRecord,
 } from "../../agents/runtime/activity";
+import { listBuiltinSkills } from "../../agents/runtime/skills";
 import { useWorkflowStore } from "../store/workflowStore";
 import { fetchArkModels, type ArkModel } from "../../services/arkResponsesService";
 import { fetchTextModels } from "../../services/responsesTextService";
@@ -370,6 +371,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
       },
     };
   }, [config.textConfig.qalamTools]);
+  const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
+  const activeAgentSkillIds = config.textConfig.agentSkillIds || [];
   const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
   const activeAgentBaseUrl =
     config.textConfig.agentBaseUrl ||
@@ -486,6 +489,22 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
             ...(prev.textConfig.qalamTools || {}),
             workflowBuilder: next,
           },
+        },
+      };
+    });
+  };
+
+  const toggleAgentSkill = (skillId: string) => {
+    setConfig((prev) => {
+      const current = prev.textConfig.agentSkillIds || [];
+      const next = current.includes(skillId)
+        ? current.filter((id) => id !== skillId)
+        : [...current, skillId];
+      return {
+        ...prev,
+        textConfig: {
+          ...prev.textConfig,
+          agentSkillIds: next,
         },
       };
     });
@@ -1012,6 +1031,58 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                         <div>Effective provider: <span className="text-[var(--app-text-primary)]">{activeAgentProvider}</span></div>
                         <div>Effective model: <span className="text-[var(--app-text-primary)]">{activeAgentModel || "unset"}</span></div>
                         <div className="truncate">Effective baseUrl: <span className="text-[var(--app-text-primary)]">{activeAgentBaseUrl || "unset"}</span></div>
+                      </div>
+                      <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">Agent Skills</div>
+                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                              Skill 会向统一 Agent Core 注入额外 system overlay，用于强化特定任务风格，不会创建第二个 agent。
+                            </div>
+                          </div>
+                          <span className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                            {activeAgentSkillIds.length}/{availableAgentSkills.length || 0} 已启用
+                          </span>
+                        </div>
+                        {availableAgentSkills.length ? (
+                          <div className="grid grid-cols-1 gap-2">
+                            {availableAgentSkills.map((skill) => {
+                              const active = activeAgentSkillIds.includes(skill.id);
+                              return (
+                                <button
+                                  key={skill.id}
+                                  type="button"
+                                  onClick={() => toggleAgentSkill(skill.id)}
+                                  className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                                    active
+                                      ? "border-emerald-400/40 bg-emerald-500/10"
+                                      : "border-[var(--app-border)] bg-[var(--app-panel-muted)] hover:border-[var(--app-border-strong)]"
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</div>
+                                      <div className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+                                        {skill.description}
+                                      </div>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                                        active
+                                          ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                                          : "border border-[var(--app-border)] text-[var(--app-text-secondary)]"
+                                      }`}
+                                    >
+                                      {active ? "Enabled" : "Disabled"}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
+                        )}
                       </div>
                     </div>
                   )}

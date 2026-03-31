@@ -768,6 +768,7 @@ export const QalamAgent: React.FC<Props> = ({
     try {
       const runResult = await runAgentMessage({
         userText: cleanedInput,
+        enabledSkillIds: config.textConfig?.agentSkillIds || [],
         uiContext: {
           mentionTags: mentionTags.map((tag) => ({
             kind: tag.kind,
@@ -811,7 +812,7 @@ export const QalamAgent: React.FC<Props> = ({
       setIsSending(false);
       setMood("thinking");
     }
-  }, [isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [config.textConfig?.agentSkillIds, isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
 
   const sendMessage = useCallback(async () => {
     if (!canSend) return;
