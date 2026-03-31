@@ -387,6 +387,9 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const [observabilityData, setObservabilityData] = useState<AgentObservabilityPayload | null>(null);
   const [observabilityLoading, setObservabilityLoading] = useState(false);
   const [observabilityError, setObservabilityError] = useState<string | null>(null);
+  const [selectedTraceId, setSelectedTraceId] = useState<string>("");
+  const [traceProviderFilter, setTraceProviderFilter] = useState<string>("all");
+  const [traceSearch, setTraceSearch] = useState("");
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: "qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
@@ -447,6 +450,20 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
   const selectedCloudTrace = observabilityData?.selectedTrace || null;
   const cloudSessions = observabilityData?.sessions || [];
   const cloudTraces = observabilityData?.traces || [];
+  const traceProviderOptions = useMemo(
+    () => ["all", ...Array.from(new Set(cloudTraces.map((item) => item.provider).filter(Boolean)))],
+    [cloudTraces]
+  );
+  const filteredTraceSummaries = useMemo(() => {
+    const keyword = traceSearch.trim().toLowerCase();
+    return cloudTraces.filter((trace) => {
+      if (traceProviderFilter !== "all" && trace.provider !== traceProviderFilter) return false;
+      if (!keyword) return true;
+      return [trace.traceId, trace.model, trace.workflowName, trace.sessionId]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
+    });
+  }, [cloudTraces, traceProviderFilter, traceSearch]);
   const activeToolItem = useMemo(
     () => TOOL_ITEMS.find((item) => item.key === activeTool) || TOOL_ITEMS[0],
     [activeTool]
@@ -506,7 +523,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   }, [getToken]);
 
-  const loadObservability = useCallback(async () => {
+  const loadObservability = useCallback(async (traceIdOverride?: string) => {
     if (!isAuthSignedIn || !activeConversation?.id) {
       setObservabilityData(null);
       setObservabilityError(null);
@@ -517,7 +534,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     try {
       const token = await getAuthToken();
       if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
-      const response = await fetch(`/api/agent-observability?sessionId=${encodeURIComponent(activeConversation.id)}`, {
+      const params = new URLSearchParams({ sessionId: activeConversation.id });
+      const traceId = (traceIdOverride || selectedTraceId || "").trim();
+      if (traceId) params.set("traceId", traceId);
+      const response = await fetch(`/api/agent-observability?${params.toString()}`, {
         headers: {
           authorization: `Bearer ${token}`,
         },
@@ -533,12 +553,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     } finally {
       setObservabilityLoading(false);
     }
-  }, [activeConversation?.id, getAuthToken, isAuthSignedIn]);
+  }, [activeConversation?.id, getAuthToken, isAuthSignedIn, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;
     void loadObservability();
   }, [isOpen, loadObservability, runtimeMetaVersion, selectedPanel]);
+
+  useEffect(() => {
+    setSelectedTraceId("");
+    setTraceProviderFilter("all");
+    setTraceSearch("");
+  }, [activeConversation?.id]);
   const updateProjectToolSettings = (patch: Partial<typeof qalamToolSettings.projectData>) => {
     setConfig((prev) => {
       const existing = prev.textConfig.qalamTools?.projectData || {};
@@ -2230,6 +2256,82 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
                               {cloudTraces.length} traces
                             </span>
+                          </div>
+                          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3 space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                              {traceProviderOptions.map((provider) => {
+                                const active = traceProviderFilter === provider;
+                                return (
+                                  <button
+                                    key={provider}
+                                    type="button"
+                                    onClick={() => setTraceProviderFilter(provider)}
+                                    className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                                      active
+                                        ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-muted)] text-[var(--app-text-primary)]"
+                                        : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-muted)]"
+                                    }`}
+                                  >
+                                    {provider === "all" ? "全部 provider" : provider}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <input
+                              value={traceSearch}
+                              onChange={(e) => setTraceSearch(e.target.value)}
+                              placeholder="搜索 model / workflow / trace id"
+                              className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-[12px] text-[var(--app-text-primary)] placeholder:text-[var(--app-text-muted)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
+                            />
+                            <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                              {filteredTraceSummaries.length ? (
+                                filteredTraceSummaries.map((trace) => {
+                                  const active = selectedCloudTrace?.traceId === trace.traceId;
+                                  return (
+                                    <button
+                                      key={trace.traceId}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedTraceId(trace.traceId);
+                                        void loadObservability(trace.traceId);
+                                      }}
+                                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                                        active
+                                          ? "border-[var(--app-border-strong)] bg-[var(--app-panel-muted)]"
+                                          : "border-[var(--app-border)] bg-transparent hover:bg-[var(--app-panel-muted)]"
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                                              {trace.provider}
+                                            </span>
+                                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)] break-all">
+                                              {trace.model}
+                                            </span>
+                                          </div>
+                                          <div className="mt-1 text-[11px] text-[var(--app-text-secondary)] break-all">
+                                            {trace.workflowName || "Qalam Edge Agent"}
+                                          </div>
+                                          <div className="mt-1 text-[10px] text-[var(--app-text-muted)] break-all">
+                                            {trace.traceId}
+                                          </div>
+                                        </div>
+                                        <div className="text-right text-[10px] text-[var(--app-text-muted)]">
+                                          <div>{formatRelativeTime(trace.updatedAt)}</div>
+                                          <div className="mt-1">{formatTimestamp(trace.updatedAt)}</div>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                                  当前过滤条件下没有 trace。
+                                </div>
+                              )}
+                            </div>
                           </div>
                           {selectedCloudTrace ? (
                             <div className="space-y-3">
