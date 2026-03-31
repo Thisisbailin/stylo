@@ -118,6 +118,14 @@ export const checkImageTaskStatus = async (
         const data = await response.json();
 
         if (data.code !== undefined) {
+            if (Number(data.code) !== 200) {
+                return {
+                    id: taskId,
+                    status: "failed",
+                    errorMsg: data.msg || `Provider Error (${data.code})`,
+                };
+            }
+
             const d = data.data;
             if (!d) return { id: taskId, status: 'processing' };
 

@@ -16,7 +16,11 @@ const resolveNanoBananaApiKey = (env: Record<string, unknown>) => {
 };
 
 const isNanoBananaTarget = (url: URL) =>
-    url.hostname === "api.wuyinkeji.com" && url.pathname.includes("/api/async/image_nanoBanana_pro");
+    url.hostname === "api.wuyinkeji.com" &&
+    (
+        url.pathname.includes("/api/async/image_nanoBanana_pro") ||
+        url.pathname.includes("/api/async/detail")
+    );
 
 export const onRequest = async ({ request, env }) => {
     // Handle CORS preflight
