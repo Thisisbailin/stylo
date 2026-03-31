@@ -1,5 +1,6 @@
 import type { Session } from "@openai/agents";
 import type { ProjectData, QalamToolSettings } from "../../types";
+import type { WorkflowFile } from "../../node-workspace/types";
 
 export type AgentAttachment = {
   id: string;
@@ -148,6 +149,7 @@ export type QalamRunResult = {
   outputItems: AgentOutputItem[];
   toolCalls: AgentExecutedToolCall[];
   updatedProjectData?: ProjectData;
+  updatedWorkflow?: WorkflowFile;
   tracing?: {
     enabled: boolean;
     traceId?: string;

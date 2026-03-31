@@ -49,6 +49,7 @@ export const QWEN_WAN_VIDEO_MODEL = 'wan2.6-i2v';
 export const QWEN_WAN_REFERENCE_VIDEO_MODEL = 'wan2.6-r2v';
 export const QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL = 'wan2.6-r2v-flash';
 export const NANOBANANA_PRO_ENDPOINT = 'https://api.wuyinkeji.com/api/async/image_nanoBanana_pro';
+export const WUYINKEJI_ASYNC_DETAIL_ENDPOINT = 'https://api.wuyinkeji.com/api/async/detail';
 export const NANOBANANA_PRO_MODEL = 'nano banana pro';
 export const NANOBANANA_IDENTITY_PROMPT = '生成全身三视图以及一张面部特写(最左边占满三分之一的位置是超大的面部特写，右边三分之二放正视图、侧视图、后视图，纯白背景,';
 

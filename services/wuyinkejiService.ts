@@ -1,6 +1,6 @@
 import { MultimodalConfig, TokenUsage } from "../types";
 import { wrapWithProxy } from "../utils/api";
-import { NANOBANANA_PRO_ENDPOINT } from "../constants";
+import { NANOBANANA_PRO_ENDPOINT, WUYINKEJI_ASYNC_DETAIL_ENDPOINT } from "../constants";
 
 export interface ImageTaskSubmissionResult {
     id: string;
@@ -88,12 +88,10 @@ export const checkImageTaskStatus = async (
     taskId: string,
     config: MultimodalConfig
 ): Promise<ImageTaskStatusResult> => {
-    const { baseUrl, apiKey } = config;
+    const { apiKey } = config;
     const resolvedApiKey = (apiKey || "").trim();
 
-    const detailUrl = new URL((baseUrl || NANOBANANA_PRO_ENDPOINT).trim());
-    detailUrl.pathname = detailUrl.pathname.replace(/\/detail\/?$/, "").replace(/\/+$/, "") + "/detail";
-
+    const detailUrl = new URL(WUYINKEJI_ASYNC_DETAIL_ENDPOINT);
     detailUrl.searchParams.set("id", taskId);
     if (resolvedApiKey && !detailUrl.searchParams.get("key")) {
         detailUrl.searchParams.set("key", resolvedApiKey);
@@ -123,18 +121,31 @@ export const checkImageTaskStatus = async (
             const d = data.data;
             if (!d) return { id: taskId, status: 'processing' };
 
-            const s = d.status;
+            const s = Number(d.status);
+            const finalUrl =
+                d.remote_url ||
+                d.img_url ||
+                d.image_url ||
+                d.result_url ||
+                d.url ||
+                d.images?.[0] ||
+                d.urls?.[0] ||
+                d.data?.images?.[0] ||
+                d.data?.urls?.[0];
 
-            if (s === 1) {
-                const finalUrl = d.remote_url || d.img_url || d.url || d.images?.[0] || d.urls?.[0];
+            // Official result-detail doc:
+            // 0 初始化, 1 进行中, 2 成功, 3 失败
+            if (s === 2) {
                 if (finalUrl) return { id: taskId, status: 'succeeded', url: finalUrl };
+                return { id: taskId, status: 'processing' };
             }
 
-            if (s === 2) {
-                return { id: taskId, status: 'failed', errorMsg: d.fail_reason || "Unknown failure" };
+            if (s === 3) {
+                return { id: taskId, status: 'failed', errorMsg: d.message || d.fail_reason || "Unknown failure" };
             }
 
             if (s === 0) return { id: taskId, status: 'queued' };
+            if (s === 1) return { id: taskId, status: 'processing' };
 
             return { id: taskId, status: 'processing' };
         }

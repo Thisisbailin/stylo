@@ -16,6 +16,7 @@ import {
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
+import type { WorkflowFile } from "../types";
 import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import { QalamChatContent } from "./qalam/QalamChatContent";
@@ -235,7 +236,13 @@ export const QalamAgent: React.FC<Props> = ({
   const toggleEdgePause = useWorkflowStore((state) => state.toggleEdgePause);
   const removeNode = useWorkflowStore((state) => state.removeNode);
   const removeEdge = useWorkflowStore((state) => state.removeEdge);
+  const loadWorkflow = useWorkflowStore((state) => state.loadWorkflow);
   const nodes = useWorkflowStore((state) => state.nodes);
+  const edges = useWorkflowStore((state) => state.edges);
+  const edgeStyle = useWorkflowStore((state) => state.edgeStyle);
+  const globalAssetHistory = useWorkflowStore((state) => state.globalAssetHistory);
+  const labContext = useWorkflowStore((state) => state.labContext);
+  const activeView = useWorkflowStore((state) => state.activeView);
   const viewport = useWorkflowStore((state) => state.viewport);
   const [collapsed, setCollapsed] = useState(true);
   const [mood, setMood] = useState<"default" | "thinking" | "loading" | "playful" | "question">("default");
@@ -523,8 +530,35 @@ export const QalamAgent: React.FC<Props> = ({
           baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
         }),
         getProjectDataSnapshot: () => projectData,
+        getWorkflowSnapshot: () =>
+          ({
+            version: 1,
+            name: projectData.fileName || "Qalam Workflow",
+            nodes,
+            edges,
+            edgeStyle,
+            globalAssetHistory,
+            labContext,
+            viewport: viewport || undefined,
+            activeView: activeView ?? null,
+          }) satisfies WorkflowFile,
       }),
-    [config.textConfig?.agentBaseUrl, config.textConfig?.agentModel, config.textConfig?.agentProvider, config.textConfig?.baseUrl, config.textConfig?.model, config.textConfig?.provider, projectData]
+    [
+      activeView,
+      config.textConfig?.agentBaseUrl,
+      config.textConfig?.agentModel,
+      config.textConfig?.agentProvider,
+      config.textConfig?.baseUrl,
+      config.textConfig?.model,
+      config.textConfig?.provider,
+      edgeStyle,
+      edges,
+      globalAssetHistory,
+      labContext,
+      nodes,
+      projectData,
+      viewport,
+    ]
   );
   const runtime = useMemo(
     () => ({
@@ -752,6 +786,9 @@ export const QalamAgent: React.FC<Props> = ({
       if (runResult.updatedProjectData) {
         setProjectData(runResult.updatedProjectData);
       }
+      if (runResult.updatedWorkflow) {
+        loadWorkflow(runResult.updatedWorkflow);
+      }
     } catch (err: any) {
       const message = String(err?.message || err || "");
       const isAborted =
@@ -781,7 +818,7 @@ export const QalamAgent: React.FC<Props> = ({
       setIsSending(false);
       setMood("thinking");
     }
-  }, [isSending, mentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
 
   const sendMessage = useCallback(async () => {
     if (!canSend) return;
