@@ -365,7 +365,6 @@ export type AgentTextProvider = TextProvider | 'ark';
 export interface TextServiceConfig {
   provider: TextProvider;
   agentProvider?: AgentTextProvider;
-  agentRuntimeTarget?: 'browser' | 'edge';
   apiKey: string;
   baseUrl: string;
   model: string;

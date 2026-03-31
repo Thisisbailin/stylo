@@ -22,17 +22,35 @@ export const FloatingPanelShell: React.FC<Props> = ({
   if (!isOpen) return null;
 
   const isRight = position === "right";
+  const resolvedWidth = isRight
+    ? typeof width === "number"
+      ? `min(max(${width}px, calc(100vw - 456px)), calc(100vw - 32px))`
+      : width
+    : width;
+
+  React.useEffect(() => {
+    if (!isRight || typeof document === "undefined") return undefined;
+    const root = document.documentElement;
+    root.classList.add("qalam-right-panel-open");
+    root.style.setProperty("--qalam-right-panel-width", typeof resolvedWidth === "string" ? resolvedWidth : `${resolvedWidth}`);
+    return () => {
+      root.classList.remove("qalam-right-panel-open");
+      root.style.removeProperty("--qalam-right-panel-width");
+    };
+  }, [isRight, resolvedWidth]);
 
   return (
-    <div className={`fixed inset-0 z-[60] flex ${isRight ? "items-stretch justify-end p-4" : "items-center justify-center"}`}>
+    <div className={`fixed inset-0 z-[60] flex ${isRight ? "pointer-events-none items-stretch justify-end p-4" : "items-center justify-center"}`}>
+      {!isRight && (
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        className={`relative flex flex-col overflow-hidden app-panel ${isRight ? "h-full rounded-[30px] border border-[var(--app-border)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]" : "max-h-[86vh] rounded-3xl"}`}
-        style={{ width, maxWidth: isRight ? "calc(100vw - 32px)" : undefined }}
+        className={`relative flex flex-col overflow-hidden app-panel ${isRight ? "pointer-events-auto h-full rounded-[30px] border border-[var(--app-border)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]" : "max-h-[86vh] rounded-3xl"}`}
+        style={{ width: resolvedWidth, maxWidth: isRight ? "calc(100vw - 32px)" : undefined }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--app-border)]">
           <div className="text-sm font-semibold">{title}</div>

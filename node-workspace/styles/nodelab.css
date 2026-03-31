@@ -219,6 +219,14 @@
   width: calc(100% - var(--qalam-split-width, 0px));
 }
 
+:root.qalam-right-panel-open .qalam-bottom-controls,
+:root.qalam-right-panel-open .qalam-bottom-toolbar,
+:root.qalam-right-panel-open .qalam-bottom-assets {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(12px) !important;
+}
+
 body.qalam-resizing,
 body.qalam-resizing * {
   user-select: none !important;

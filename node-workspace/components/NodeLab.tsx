@@ -1041,7 +1041,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         </div>
       </div>
       <div
-        className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
           isQalamCollapsed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
         }`}
       >
