@@ -24,13 +24,11 @@ import type { ChatMessage, Message } from "./qalam/types";
 import { useWorkflowStore } from "../store/workflowStore";
 import type { QalamAgentBridge, WorkflowBuilderHandle, WorkflowNodeLookupInput } from "../../agents/bridge/qalamBridge";
 import { createNodeWorkflowWithBridge } from "../../agents/bridge/workflowBuilder";
-import { createQalamAgentRuntime } from "../../agents/runtime/agent";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
-import { StaticSkillLoader } from "../../agents/runtime/skills";
-import { LocalStorageSessionStore } from "../../agents/runtime/session";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
+import type { QalamAgentRuntime } from "../../agents/runtime/types";
 
 type Props = {
   projectData: ProjectData;
@@ -163,6 +161,50 @@ const resolveAgentProviderConfig = async (textConfig: any) => {
     model,
     qalamTools: textConfig?.qalamTools,
     tracingDisabled: true,
+  };
+};
+
+const isBrowserRuntimeDebugEnabled = () =>
+  typeof window !== "undefined" &&
+  import.meta.env.DEV &&
+  window.localStorage.getItem("qalam_agent_runtime_target") === "browser";
+
+const createBrowserRuntimeOverride = (
+  bridge: QalamAgentBridge,
+  getConfig: () => Promise<any>
+): QalamAgentRuntime => {
+  let runtimePromise: Promise<QalamAgentRuntime> | null = null;
+
+  const loadRuntime = async () => {
+    const [{ createQalamAgentRuntime }, { StaticSkillLoader }, { LocalStorageSessionStore }] = await Promise.all([
+      import("../../agents/runtime/agent"),
+      import("../../agents/runtime/skills"),
+      import("../../agents/runtime/session"),
+    ]);
+    return createQalamAgentRuntime({
+      bridge,
+      skillLoader: new StaticSkillLoader(),
+      sessionStore: new LocalStorageSessionStore(),
+      configProvider: {
+        getConfig: async () => ({
+          ...(await getConfig()),
+          runtimeTarget: "browser" as const,
+        }),
+      },
+    });
+  };
+
+  return {
+    async run(input, options) {
+      if (!isBrowserRuntimeDebugEnabled()) {
+        throw new Error("Browser runtime 仅作为本地开发调试入口保留，当前产品路径固定走 edge。");
+      }
+      if (!runtimePromise) {
+        runtimePromise = loadRuntime();
+      }
+      const runtime = await runtimePromise;
+      return runtime.run(input, options);
+    },
   };
 };
 
@@ -318,8 +360,6 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const handledSubmitRequestRef = useRef<number>(0);
-  const skillLoaderRef = useRef(new StaticSkillLoader());
-  const sessionStoreRef = useRef(new LocalStorageSessionStore());
   const bridge = useMemo<QalamAgentBridge>(
     () => ({
       getProjectData: () => projectData,
@@ -487,25 +527,11 @@ export const QalamAgent: React.FC<Props> = ({
     }),
     [addNode, nodes.length, onConnect, projectData, removeEdge, removeNode, setProjectData, toggleEdgePause, updateNodeStyle, viewport]
   );
-  const browserRuntime = useMemo(
-    () => {
-      const allowBrowserRuntime =
-        typeof window !== "undefined" &&
-        import.meta.env.DEV &&
-        window.localStorage.getItem("qalam_agent_runtime_target") === "browser";
-      if (!allowBrowserRuntime) return null;
-      return createQalamAgentRuntime({
-        bridge,
-        skillLoader: skillLoaderRef.current,
-        sessionStore: sessionStoreRef.current,
-        configProvider: {
-          getConfig: async () => ({
-            ...(await resolveAgentProviderConfig(config.textConfig)),
-            runtimeTarget: "browser",
-          }),
-        },
-      });
-    },
+  const browserRuntimeOverride = useMemo(
+    () =>
+      import.meta.env.DEV
+        ? createBrowserRuntimeOverride(bridge, () => resolveAgentProviderConfig(config.textConfig))
+        : null,
     [bridge, config.textConfig]
   );
   const edgeRuntime = useMemo(
@@ -555,13 +581,13 @@ export const QalamAgent: React.FC<Props> = ({
   const runtime = useMemo(
     () => ({
       run: (input: any, options?: any) => {
-        if (browserRuntime) {
-          return browserRuntime.run(input, options);
+        if (browserRuntimeOverride && isBrowserRuntimeDebugEnabled()) {
+          return browserRuntimeOverride.run(input, options);
         }
         return edgeRuntime.run(input, options);
       },
     }),
-    [browserRuntime, edgeRuntime]
+    [browserRuntimeOverride, edgeRuntime]
   );
   const mentionTargets = useMemo(() => {
     const targets: Array<{ kind: "character" | "location"; name: string; label: string; search: string; id?: string }> = [];
