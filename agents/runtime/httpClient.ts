@@ -98,6 +98,9 @@ export const createHttpQalamAgentRuntime = ({
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
         browserAgentDebug("httpClient event", packet.event);
+        if (packet.event.type === "run_completed") {
+          finalResult = packet.event.result;
+        }
         if (packet.event.type === "run_failed") {
           streamedError = packet.event.error;
         }

@@ -304,6 +304,26 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         streamedMessageSeenRef.current[event.runId] = false;
         toolFailureCountsRef.current[event.runId] = {};
         runAbortMessageRef.current[event.runId] = undefined;
+        const statusId = ensureActiveStatusId(event.runId, "reasoning");
+        setMessages((prev) =>
+          upsertStatusMessage(prev, statusId, (current) => ({
+            role: "assistant",
+            kind: "status",
+            order: current?.order || nextMessageOrder(prev),
+            statusCard: {
+              id: statusId,
+              runId: event.runId,
+              status: current?.statusCard.status || "running",
+              headline: "思考",
+              detail: "Agent 已进入工作状态，正在准备本轮分析。",
+              summary: current?.statusCard.summary,
+              steps: current?.statusCard.steps || [],
+              startedAt: current?.statusCard.startedAt || Date.now(),
+              updatedAt: Date.now(),
+              isThinking: true,
+            },
+          }))
+        );
         return;
       }
 

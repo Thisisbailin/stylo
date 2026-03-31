@@ -25,7 +25,7 @@ const toolStatusClass: Record<ToolStatus, string> = {
 };
 
 const lineSummaryClass =
-  "max-w-[92%] px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
+  "w-full px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
 const formatWorkedDuration = (durationMs: number) => {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
@@ -807,11 +807,11 @@ const renderDisclosureHeader = ({
   expandable?: boolean;
   animate?: boolean;
 }) => (
-  <div className="flex min-w-0 items-center gap-2">
+  <div className="inline-flex max-w-full items-center gap-2 align-top">
     <span className={`inline-flex shrink-0 items-center justify-center ${toneClass} ${animate ? "animate-pulse" : ""}`}>
       {icon}
     </span>
-    <span className="min-w-0 flex-1 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
+    <span className="shrink min-w-0 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
     {meta ? <span className="shrink-0 text-[11px] font-medium">{meta}</span> : null}
     {expandable ? (
       <CaretRight
@@ -856,7 +856,7 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
   const lines = [content, ...stepDetails].filter(Boolean);
   if (!lines.length) return null;
   return (
-    <div className="ml-7 mt-2 border-l-2 border-[var(--app-border)] pl-4">
+    <div className="mt-2 border-l-2 border-[var(--app-border)] pl-4">
       <div className="space-y-2 text-[12px] leading-7 text-[var(--app-text-secondary)]">
         {lines.map((line, index) => (
           <div key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap">
@@ -872,7 +872,7 @@ const renderToolExpansion = (thread: ToolThread) => {
   const content = buildToolDetailsText(thread);
   if (!content) return null;
   return (
-    <pre className="ml-7 mt-2 overflow-x-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
+    <pre className="mt-2 max-h-[280px] overflow-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
       <code>{content}</code>
     </pre>
   );
@@ -898,7 +898,7 @@ const renderToolThread = (thread: ToolThread) => {
   if (!hasDetails && !thread.result) {
     return (
       <div className={lineSummaryClass}>
-        <div className="flex items-center gap-2">
+        <div className="inline-flex max-w-full items-center gap-2">
           {renderDisclosureHeader({
             icon: <Wrench size={12} weight="duotone" />,
             label: actionLabel,
@@ -911,8 +911,8 @@ const renderToolThread = (thread: ToolThread) => {
   }
 
   return (
-    <details className={`${lineSummaryClass} group max-w-[92%]`}>
-      <summary className="list-none cursor-pointer py-1 [&::-webkit-details-marker]:hidden">
+    <details className={`${lineSummaryClass} group`}>
+      <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Wrench size={12} weight="duotone" />,
           label: actionLabel,
@@ -951,7 +951,7 @@ const renderStatusLine = (message: StatusMessage) => {
   if (!status.steps.length && !status.detail) {
     return (
       <div className={lineSummaryClass}>
-        <div className="flex items-center gap-2">
+        <div className="inline-flex max-w-full items-center gap-2">
           {renderDisclosureHeader({
             icon: <Brain size={12} weight="duotone" />,
             label: buildThinkingLabel(status),
@@ -964,8 +964,8 @@ const renderStatusLine = (message: StatusMessage) => {
   }
 
   return (
-    <details className={`${lineSummaryClass} group max-w-[92%]`}>
-      <summary className="list-none cursor-pointer py-1 [&::-webkit-details-marker]:hidden">
+    <details className={`${lineSummaryClass} group`}>
+      <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Brain size={12} weight="duotone" />,
           label: buildThinkingLabel(status),
