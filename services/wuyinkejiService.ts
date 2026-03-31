@@ -21,6 +21,42 @@ const readProxyDebugHeaders = (response: Response) => ({
     keyQuery: response.headers.get("x-qalam-proxy-key-query") || "",
 });
 
+const findFirstMediaUrl = (value: unknown): string | undefined => {
+    if (!value) return undefined;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (/^https?:\/\/\S+/i.test(trimmed) || /^data:image\//i.test(trimmed)) return trimmed;
+        return undefined;
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const hit = findFirstMediaUrl(item);
+            if (hit) return hit;
+        }
+        return undefined;
+    }
+    if (typeof value === "object") {
+        for (const candidateKey of ["remote_url", "img_url", "image_url", "result_url", "url", "src"]) {
+            const hit = findFirstMediaUrl((value as Record<string, unknown>)[candidateKey]);
+            if (hit) return hit;
+        }
+        for (const nested of Object.values(value as Record<string, unknown>)) {
+            const hit = findFirstMediaUrl(nested);
+            if (hit) return hit;
+        }
+    }
+    return undefined;
+};
+
+const safePreview = (value: unknown) => {
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized.length > 400 ? `${serialized.slice(0, 400)}...` : serialized;
+    } catch {
+        return String(value);
+    }
+};
+
 /**
  * SUBMIT IMAGE TASK
  * Sends the generation request to Nano Banana Pro.
@@ -160,22 +196,17 @@ export const checkImageTaskStatus = async (
             if (!d) return { id: taskId, status: 'processing' };
 
             const s = Number(d.status);
-            const finalUrl =
-                d.remote_url ||
-                d.img_url ||
-                d.image_url ||
-                d.result_url ||
-                d.url ||
-                d.images?.[0] ||
-                d.urls?.[0] ||
-                d.data?.images?.[0] ||
-                d.data?.urls?.[0];
+            const finalUrl = findFirstMediaUrl(d) || findFirstMediaUrl(data.debug);
 
             // Official result-detail doc:
             // 0 初始化, 1 进行中, 2 成功, 3 失败
             if (s === 2) {
                 if (finalUrl) return { id: taskId, status: 'succeeded', url: finalUrl };
-                return { id: taskId, status: 'processing' };
+                return {
+                    id: taskId,
+                    status: 'failed',
+                    errorMsg: `Task completed but no media URL found. payload=${safePreview(d)} debug=${safePreview(data.debug)}`,
+                };
             }
 
             if (s === 3) {
@@ -192,6 +223,10 @@ export const checkImageTaskStatus = async (
 
     } catch (e: any) {
         console.warn("Check status warning:", e);
-        return { id: taskId, status: 'processing' };
+        return {
+            id: taskId,
+            status: 'failed',
+            errorMsg: e?.message || "Polling failed.",
+        };
     }
 };
