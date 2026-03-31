@@ -119,20 +119,6 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
   throw new Error("Reference upload failed: no accessible URL returned.");
 };
 
-const blobUrlToDataUrl = async (source: string) => {
-  const response = await fetch(source);
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("无法读取本地引用资源。"));
-    };
-    reader.onerror = () => reject(reader.error || new Error("读取本地引用资源失败。"));
-    reader.readAsDataURL(blob);
-  });
-};
-
 const normalizeWanImages = async (sources: string[]) => {
   const results: string[] = [];
   for (const src of sources) {
@@ -201,12 +187,8 @@ const normalizeSeedanceVideos = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:video/")) {
-      results.push(src);
-      continue;
-    }
-    if (src.startsWith("blob:")) {
-      results.push(await blobUrlToDataUrl(src));
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-video/" }));
       continue;
     }
     results.push(src);
@@ -222,12 +204,8 @@ const normalizeSeedanceImages = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:image/")) {
-      results.push(src);
-      continue;
-    }
-    if (src.startsWith("blob:")) {
-      results.push(await blobUrlToDataUrl(src));
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-image/" }));
       continue;
     }
     try {
@@ -259,12 +237,8 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
       results.push(src);
       continue;
     }
-    if (src.startsWith("data:audio/")) {
-      results.push(src);
-      continue;
-    }
-    if (src.startsWith("blob:")) {
-      results.push(await blobUrlToDataUrl(src));
+    if (src.startsWith("data:audio/") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }));
       continue;
     }
     try {
@@ -507,6 +481,28 @@ const upsertPrimaryPortrait = (role: ProjectRoleIdentity, imageUrl: string): Pro
   return applyRolePortraits(role, portraits);
 };
 
+const buildImageVersionHistory = (
+  currentImage: string | null | undefined,
+  nextImage: string | null | undefined,
+  currentHistory: Array<{ id: string; src: string; createdAt: number }> | undefined
+) => {
+  const normalizedHistory = Array.isArray(currentHistory) ? currentHistory : [];
+  const dedupedHistory = normalizedHistory.filter((item) => item?.src && item.src !== nextImage);
+
+  if (!currentImage || currentImage === nextImage) {
+    return dedupedHistory.slice(0, 12);
+  }
+
+  return [
+    {
+      id: `imgver-${Date.now()}`,
+      src: currentImage,
+      createdAt: Date.now(),
+    },
+    ...dedupedHistory.filter((item) => item.src !== currentImage),
+  ].slice(0, 12);
+};
+
 export const useLabExecutor = () => {
   const store = useWorkflowStore();
   const config = store.appConfig;
@@ -580,9 +576,15 @@ export const useLabExecutor = () => {
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           const result = await WuyinkejiService.checkImageTaskStatus(id, configToUse);
           if (result.status === "succeeded") {
+            const nextVersionHistory = buildImageVersionHistory(
+              data.outputImage,
+              result.url,
+              data.versionHistory
+            );
             store.updateNodeData(nodeId, {
               status: "complete",
               outputImage: result.url,
+              versionHistory: nextVersionHistory,
               error: null,
               model: configToUse.model,
               identityId: activeIdentityId,

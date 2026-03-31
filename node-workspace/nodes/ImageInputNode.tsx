@@ -2,7 +2,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "
 import { BaseNode } from "./BaseNode";
 import { ImageInputNodeData } from "../types";
 import { useWorkflowStore } from "../store/workflowStore";
-import { AtSign, ImagePlus } from "lucide-react";
+import { AtSign, ImagePlus, Upload } from "lucide-react";
 import {
   buildMentionIndex,
   buildMentionTargets,
@@ -145,11 +145,11 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const [cursorPos, setCursorPos] = useState(labelDraft.length);
   const [isFocused, setIsFocused] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
-  const lastRatioRef = useRef<number | null>(null);
   const dimensionLabel = useMemo(() => {
     if (!data.dimensions?.width || !data.dimensions?.height) return null;
     return `${data.dimensions.width} × ${data.dimensions.height}`;
   }, [data.dimensions?.height, data.dimensions?.width]);
+  const nodeTitle = data.title && data.title !== "Visual Input" ? data.title : "image";
 
   const mentionTargets = useMemo(() => {
     const roles = labContext?.context?.roles || [];
@@ -326,24 +326,11 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   }, [renderedHtml, labelDraft, cursorPos, updatePickerPosition]);
 
   useLayoutEffect(() => {
-    if (!data.image || !data.dimensions?.width || !data.dimensions?.height) return;
-    const ratio = data.dimensions.height / data.dimensions.width;
-    if (!Number.isFinite(ratio) || ratio <= 0) return;
-    const nodeEl = shellRef.current?.closest(".react-flow__node") as HTMLElement | null;
-    if (!nodeEl) return;
-    const width = nodeEl.getBoundingClientRect().width;
-    if (!width) return;
-    const nextHeight = Math.round(width * ratio);
+    if (!data.image) return;
     const node = getNodeById(id);
-    const rawHeight = node?.style?.height;
-    const currentHeight =
-      typeof rawHeight === "number" ? rawHeight : rawHeight ? Number.parseFloat(String(rawHeight)) : NaN;
-    const ratioChanged = lastRatioRef.current !== ratio;
-    if (ratioChanged || !Number.isFinite(currentHeight) || Math.abs(currentHeight - nextHeight) > 2) {
-      updateNodeStyle(id, { height: nextHeight });
-    }
-    lastRatioRef.current = ratio;
-  }, [data.image, data.dimensions?.width, data.dimensions?.height, getNodeById, id, updateNodeStyle]);
+    if (!node?.style || node.style.height === undefined) return;
+    updateNodeStyle(id, { height: undefined });
+  }, [data.image, getNodeById, id, updateNodeStyle]);
 
   React.useEffect(() => {
     if (isComposingRef.current) return;
@@ -397,24 +384,14 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   };
 
   return (
-    <BaseNode title="Visual Input" outputs={["image"]} selected={selected} variant="media">
+    <BaseNode title={nodeTitle} onTitleChange={(title) => updateNodeData(id, { title })} outputs={["image"]} selected={selected} variant="media">
       <div ref={shellRef} className="image-input-shell relative w-full h-full">
         {data.image ? (
-          <div
-            className="image-input-frame group"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <img src={data.image} alt="preview" className="image-input-img" />
-            <div className="image-input-overlay" />
-            <div className="image-input-topbar">
-              <div className="image-input-meta">
-                <div className="image-input-meta-kicker">Source</div>
-                <div className="image-input-meta-value">{data.filename || "Uploaded image"}</div>
-              </div>
-              {dimensionLabel ? <div className="image-input-badge">{dimensionLabel}</div> : null}
+          <div className="image-input-frame">
+            <div className="image-input-media" onClick={() => fileInputRef.current?.click()}>
+              <img src={data.image} alt="preview" className="image-input-img" />
             </div>
-            <div className="image-input-bottom">
-              <div className="image-input-replace">Replace image</div>
+            <div className="image-input-caption">
               <div className="image-input-label">
                 <div
                   ref={editorRef}
@@ -472,6 +449,17 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
                   }}
                 />
               </div>
+              {dimensionLabel ? <div className="image-input-dimension">{dimensionLabel}</div> : null}
+            </div>
+            <div className="image-input-actions">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
+              >
+                <Upload size={12} />
+                Replace
+              </button>
             </div>
           </div>
         ) : (

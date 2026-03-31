@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Sparkles, AlertCircle, Download, X } from "lucide-react";
+import { RefreshCw, Sparkles, AlertCircle, Download, X, Layers3, ChevronUp } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { ImageGenNodeData } from "../types";
 import { useWorkflowStore } from "../store/workflowStore";
@@ -15,8 +15,9 @@ type Props = {
 export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, labContext, getConnectedInputs } = useWorkflowStore();
   const { runImageGen } = useLabExecutor();
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isPromptOpen, setIsPromptOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const isLoading = data.status === "loading";
   const { connectedIdentity } = getConnectedInputs(id);
@@ -35,6 +36,22 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
     () => (labContext?.context?.roles || []).find((role) => role.id === activeIdentityId),
     [activeIdentityId, labContext?.context?.roles]
   );
+  const versionHistory = useMemo(
+    () =>
+      (Array.isArray(data.versionHistory) ? data.versionHistory : []).filter(
+        (item) => item?.src && item.src !== data.outputImage
+      ),
+    [data.outputImage, data.versionHistory]
+  );
+  const stackedHistory = versionHistory.slice(0, 2);
+  const galleryImages = useMemo(
+    () =>
+      (data.outputImage
+        ? [{ id: "current", src: data.outputImage, createdAt: Number.MAX_SAFE_INTEGER }]
+        : []
+      ).concat(versionHistory),
+    [data.outputImage, versionHistory]
+  );
 
   useEffect(() => {
     if (!isLoading) {
@@ -49,6 +66,12 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
     }, 400);
     return () => clearInterval(timer);
   }, [isLoading]);
+
+  useEffect(() => {
+    if (!data.outputImage && previewImage) {
+      setPreviewImage(null);
+    }
+  }, [data.outputImage, previewImage]);
 
   useEffect(() => {
     if (!connectedIdentity) return;
@@ -86,6 +109,10 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
     link.remove();
   };
 
+  const handleOpenPreview = (image: string) => {
+    setPreviewImage(image);
+  };
+
   return (
     <BaseNode
       title={data.title || "Nano Banana"}
@@ -95,16 +122,118 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
       selected={selected}
     >
       <div className="space-y-4 flex-1 flex flex-col">
+        {data.outputImage && isHistoryOpen && galleryImages.length > 1 && (
+          <div className="absolute bottom-[calc(100%+14px)] left-0 right-0 z-30">
+            <div className="rounded-[26px] border border-[var(--node-border)] bg-[rgba(10,14,12,0.96)] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black uppercase tracking-[0.18em] text-[var(--node-text-secondary)]">
+                    Nano Banana History
+                  </div>
+                  <div className="text-[11px] font-semibold text-[var(--node-text-primary)]">
+                    最新版始终绑定当前节点，旧版本保留在历史堆叠中
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsHistoryOpen(false);
+                  }}
+                  className="flex items-center gap-1 rounded-full border border-[var(--node-border)] px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] hover:text-[var(--node-text-primary)]"
+                >
+                  <ChevronUp size={12} />
+                  收起
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {galleryImages.map((image, index) => (
+                  <button
+                    key={image.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenPreview(image.src);
+                    }}
+                    className="group relative overflow-hidden rounded-[18px] border border-white/10 bg-black/20 text-left"
+                  >
+                    <img
+                      src={image.src}
+                      alt={index === 0 ? "latest nano banana" : "nano banana history"}
+                      className="h-28 w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-2.5 py-2">
+                      <span className="text-[8px] font-black uppercase tracking-[0.18em] text-white/80">
+                        {index === 0 ? "Latest" : `History ${index}`}
+                      </span>
+                      {index === 0 && (
+                        <span className="rounded-full bg-emerald-500/85 px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.14em] text-white">
+                          当前绑定
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={`relative group/img cursor-pointer ${data.outputImage ? "" : "h-[180px]"}`}>
           {data.outputImage ? (
-            <div
-              className="node-surface node-media-frame relative overflow-hidden rounded-[24px] shadow-[0_18px_40px_rgba(0,0,0,0.45)] group-hover/img:border-white/30 transition-all"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsPreviewOpen(true);
-              }}
-            >
-              <img src={data.outputImage} alt="generated" className="node-media-preview bg-black/40" />
+            <div className="relative min-h-[180px]">
+              {stackedHistory.length > 0 &&
+                stackedHistory.slice().reverse().map((item, index) => {
+                  const offset = (index + 1) * 8;
+                  return (
+                    <div
+                      key={item.id}
+                      className="pointer-events-none absolute inset-x-3 overflow-hidden rounded-[22px] border border-white/8 bg-black/25 shadow-[0_18px_40px_rgba(0,0,0,0.28)]"
+                      style={{
+                        top: `${offset}px`,
+                        bottom: `${-offset}px`,
+                        opacity: 0.4 - index * 0.12,
+                        transform: `scale(${1 - (index + 1) * 0.02})`,
+                      }}
+                    >
+                      <img
+                        src={item.src}
+                        alt="nano banana history stack"
+                        className="h-full w-full object-cover blur-[1px] brightness-75"
+                      />
+                    </div>
+                  );
+                })}
+
+              <div
+                className="node-surface node-media-frame relative overflow-hidden rounded-[24px] shadow-[0_18px_40px_rgba(0,0,0,0.45)] group-hover/img:border-white/30 transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenPreview(data.outputImage!);
+                }}
+              >
+                <img src={data.outputImage} alt="generated" className="node-media-preview bg-black/40" />
+                <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-black/80 via-black/10 to-transparent px-3 py-3">
+                  <div>
+                    <div className="text-[8px] font-black uppercase tracking-[0.18em] text-white/65">Current</div>
+                    <div className="text-[11px] font-semibold text-white">最新版</div>
+                  </div>
+                  {versionHistory.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsHistoryOpen((open) => !open);
+                      }}
+                      className="flex items-center gap-1.5 rounded-full border border-white/12 bg-black/45 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-white/80 hover:bg-black/65 hover:text-white"
+                    >
+                      <Layers3 size={12} />
+                      {isHistoryOpen ? "收起历史" : `展开 ${galleryImages.length} 张`}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <div
@@ -154,6 +283,19 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
               下载
             </button>
             <div className="flex-1" />
+            {versionHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsHistoryOpen((open) => !open);
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-[var(--node-text-secondary)] bg-white/5 hover:bg-white/10 transition"
+              >
+                <Layers3 size={12} />
+                历史 {versionHistory.length}
+              </button>
+            )}
             {isLoading ? (
               <div className="flex items-center gap-2 text-[9px] font-semibold text-amber-300/90">
                 <div className="h-1 w-24 rounded-full bg-white/10 overflow-hidden">
@@ -273,20 +415,20 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
         )}
       </div>
 
-      {isPreviewOpen && data.outputImage && (
-        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setIsPreviewOpen(false)}>
+      {previewImage && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setPreviewImage(null)}>
           <div className="relative max-h-[90vh] max-w-[90vw]">
             <button
               className="absolute -top-3 -right-3 h-8 w-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center border border-white/10 shadow-lg"
               onClick={(e) => {
                 e.stopPropagation();
-                setIsPreviewOpen(false);
+                setPreviewImage(null);
               }}
               aria-label="Close preview"
             >
               <X size={18} />
             </button>
-            <img src={data.outputImage} alt="generated preview" className="max-h-[90vh] max-w-[90vw] rounded-2xl border border-white/10 shadow-2xl" />
+            <img src={previewImage} alt="generated preview" className="max-h-[90vh] max-w-[90vw] rounded-2xl border border-white/10 shadow-2xl" />
           </div>
         </div>
       )}

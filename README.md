@@ -134,9 +134,23 @@ SYNC_ROLLOUT_PERCENT=100
 SYNC_ROLLOUT_SALT=
 SYNC_ROLLOUT_ALLOWLIST=
 
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE=
+SUPABASE_SECRET_KEY=
 ```
+
+### Wrangler-managed vars
+
+This project uses `wrangler.toml` for non-secret Pages variables. Add plain-text values such as `SUPABASE_URL` under `[vars]` in `wrangler.toml`, not in the Cloudflare dashboard secret editor.
+
+```toml
+[vars]
+SUPABASE_URL = "https://<project-ref>.supabase.co"
+```
+
+Notes:
+
+- Keep `SUPABASE_SECRET_KEY` in Cloudflare Pages secrets.
+- `SUPABASE_SERVICE_ROLE` is still supported by the code for backward compatibility, but `SUPABASE_SECRET_KEY` is the preferred current name.
+- Asset uploads expect Supabase Storage buckets `public-assets` and `assets` to exist.
 
 ### Required bindings
 

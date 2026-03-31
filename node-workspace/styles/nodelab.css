@@ -280,50 +280,90 @@ body.qalam-resizing * {
 
 /* Handles - Minimal and integrated */
 .react-flow__handle {
-  width: 8px !important;
-  height: 8px !important;
-  border-radius: 50% !important;
-  border: 1.5px solid var(--bg-panel) !important;
-  background: var(--text-secondary) !important;
-  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(74, 222, 128, 0.42) !important;
+  background: rgba(8, 15, 10, 0.92) !important;
+  transition: opacity 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
   opacity: 0;
-  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  overflow: visible;
+}
+
+.react-flow__handle::before,
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: rgba(220, 252, 231, 0.98);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.45);
+}
+
+.react-flow__handle::after {
+  width: 1.5px;
+  height: 10px;
 }
 
 .react-flow__handle-left {
-  transform: translate(-50%, -50%) scale(0.4);
+  transform: translate(calc(-100% - 10px), -50%) scale(0.72);
 }
 
 .react-flow__handle-right {
-  transform: translate(50%, -50%) scale(0.4);
+  transform: translate(calc(100% + 10px), -50%) scale(0.72);
 }
 
 .react-flow__node:hover .react-flow__handle-left {
-  transform: translate(-50%, -50%) scale(1);
+  transform: translate(calc(-100% - 14px), -50%) scale(1);
   opacity: 1;
-  box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.18);
+  border-color: rgba(134, 239, 172, 0.72) !important;
+  box-shadow:
+    0 0 0 7px rgba(74, 222, 128, 0.09),
+    0 0 26px rgba(34, 197, 94, 0.28);
+  animation: node-port-pulse 1.5s ease-in-out infinite;
 }
 
 .react-flow__node:hover .react-flow__handle-right {
-  transform: translate(50%, -50%) scale(1);
+  transform: translate(calc(100% + 14px), -50%) scale(1);
   opacity: 1;
-  box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.18);
+  border-color: rgba(134, 239, 172, 0.72) !important;
+  box-shadow:
+    0 0 0 7px rgba(74, 222, 128, 0.09),
+    0 0 26px rgba(34, 197, 94, 0.28);
+  animation: node-port-pulse 1.5s ease-in-out infinite;
 }
 
 .react-flow__handle[data-handletype="image"] {
-  background: var(--accent-green) !important;
-  box-shadow: 0 0 8px var(--accent-green-alpha, rgba(34, 197, 94, 0.4));
+  border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
 .react-flow__handle[data-handletype="text"],
 .react-flow__handle[data-handletype="prompt"] {
-  background: var(--accent-blue) !important;
-  box-shadow: 0 0 8px var(--accent-blue-alpha, rgba(59, 130, 246, 0.4));
+  border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
 .react-flow__handle[data-handletype="audio"] {
-  background: #f59e0b !important;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.36);
+  border-color: rgba(74, 222, 128, 0.42) !important;
+}
+
+.node-lab-canvas[data-connecting="true"] .react-flow__handle {
+  opacity: 0 !important;
+  animation: none !important;
+  box-shadow: none !important;
+}
+
+.node-lab-canvas[data-connecting="true"] .react-flow__connection-path {
+  stroke: rgba(74, 222, 128, 0.96) !important;
+  stroke-width: 3.5px !important;
+  stroke-linecap: round;
+  stroke-dasharray: 8 10;
+  filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.55));
+  animation: node-connection-pulse 1.05s linear infinite;
 }
 
 /* Edges - Strong and visible */
@@ -753,158 +793,80 @@ body.qalam-resizing * {
   flex-direction: column;
   width: 100%;
   min-height: 220px;
+  gap: 12px;
 }
 
 .image-input-frame {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
-  min-height: 220px;
-  border-radius: 24px;
+}
+
+.image-input-media {
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--node-bg);
+  border-radius: 24px;
   border: 1px solid var(--node-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--node-bg);
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.12);
   cursor: pointer;
 }
 
 .image-input-img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   display: block;
 }
 
-.image-input-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg, rgba(10, 14, 18, 0.14), transparent 30%),
-    linear-gradient(0deg, rgba(10, 14, 18, 0.62), transparent 34%);
-  pointer-events: none;
-}
-
-.image-input-topbar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+.image-input-caption {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  pointer-events: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 2px;
 }
 
-.image-input-meta,
-.image-input-badge,
-.image-input-replace {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-.image-input-meta {
-  max-width: calc(100% - 80px);
-  padding: 8px 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(11, 16, 20, 0.38);
-  color: rgba(255, 255, 255, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.image-input-meta-kicker {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.image-input-meta-value {
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.image-input-badge {
-  padding: 7px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(11, 16, 20, 0.34);
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 10px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.image-input-bottom {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
+.image-input-actions {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.image-input-replace {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(11, 16, 20, 0.34);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  opacity: 0.78;
-  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
-}
-
-.image-input-frame:hover .image-input-replace {
-  opacity: 1;
-  transform: translateY(-1px);
-  background: rgba(11, 16, 20, 0.46);
+  align-items: center;
 }
 
 .image-input-label {
-  max-width: min(72%, 240px);
-  pointer-events: none;
+  width: 100%;
 }
 
 .image-input-editor {
-  pointer-events: auto;
   min-width: 56px;
-  max-width: 100%;
-  background: rgba(11, 16, 20, 0.58);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 18px;
-  padding: 9px 12px;
-  font-size: 12px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.96);
+  color: var(--node-text-primary);
   outline: none;
-  display: inline-block;
+  display: block;
   white-space: pre-wrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 .image-input-editor:empty::before {
   content: attr(data-placeholder);
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--node-text-secondary);
 }
 
 .image-input-editor .text-mention {
   padding: 0 4px;
   margin: 0 1px;
   font-size: 10px;
+}
+
+.image-input-dimension {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--node-text-secondary);
 }
 
 .image-input-empty {
@@ -1297,22 +1259,21 @@ body.qalam-resizing * {
 }
 
 .node-card-port--multi {
-  width: 14px !important;
-  height: 14px !important;
+  width: 22px !important;
+  height: 22px !important;
   border-radius: 999px !important;
-  opacity: 1 !important;
-  background: linear-gradient(135deg, #34d399, #60a5fa 55%, #f59e0b) !important;
+  background: rgba(8, 15, 10, 0.92) !important;
   box-shadow:
-    0 0 0 8px rgba(96, 165, 250, 0.12),
-    0 10px 26px rgba(37, 99, 235, 0.18) !important;
+    0 0 0 8px rgba(74, 222, 128, 0.08),
+    0 10px 26px rgba(34, 197, 94, 0.22) !important;
 }
 
 .react-flow__handle-left.node-card-port--multi {
-  transform: translate(-50%, -50%) scale(1) !important;
+  transform: translate(calc(-100% - 14px), -50%) scale(1) !important;
 }
 
 .react-flow__handle-right.node-card-port--multi {
-  transform: translate(50%, -50%) scale(1) !important;
+  transform: translate(calc(100% + 14px), -50%) scale(1) !important;
 }
 
 .node-title-input {
@@ -1406,6 +1367,34 @@ body.qalam-resizing * {
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #fecaca;
   border-radius: 16px;
+}
+
+@keyframes node-port-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(74, 222, 128, 0.14),
+      0 0 18px rgba(34, 197, 94, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(74, 222, 128, 0.04),
+      0 0 28px rgba(74, 222, 128, 0.34);
+  }
+}
+
+@keyframes node-connection-pulse {
+  0% {
+    stroke-dashoffset: 0;
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -18;
+    opacity: 0.72;
+  }
 }
 
 /* NodeResizer integration */

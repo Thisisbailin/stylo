@@ -169,6 +169,11 @@ export interface IdentityCardNodeData extends BaseNodeData {
 export interface ImageGenNodeData extends BaseNodeData {
   inputImages: string[];
   outputImage: string | null;
+  versionHistory?: Array<{
+    id: string;
+    src: string;
+    createdAt: number;
+  }>;
   status: 'idle' | 'loading' | 'complete' | 'error';
   error: string | null;
   model?: string;

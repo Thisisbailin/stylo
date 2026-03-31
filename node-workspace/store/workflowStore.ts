@@ -631,6 +631,7 @@ const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
       return {
         inputImages: [],
         outputImage: null,
+        versionHistory: [],
         status: "idle",
         error: null,
         aspectRatio: "1:1",

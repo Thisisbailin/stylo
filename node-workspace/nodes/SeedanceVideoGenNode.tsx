@@ -18,6 +18,7 @@ import {
   SEEDANCE_DEFAULT_MODEL,
   SEEDANCE_FAST_MODEL,
 } from "../../constants";
+import { buildApiUrl } from "../../utils/api";
 
 type Props = {
   id: string;
@@ -26,17 +27,6 @@ type Props = {
 };
 
 const clampDuration = (value: number) => Math.max(4, Math.min(15, Math.round(value)));
-
-const readFileAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("无法读取参考视频。"));
-    };
-    reader.onerror = () => reject(reader.error || new Error("读取参考视频失败。"));
-    reader.readAsDataURL(file);
-  });
 
 export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useWorkflowStore();
@@ -82,6 +72,51 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
     link.remove();
   };
 
+  const uploadReferenceVideo = async (file: File) => {
+    const safeName = file.name.normalize("NFKD").replace(/[^\w.\-]+/g, "_").toLowerCase();
+    const payload = {
+      fileName: `seedance-reference-video/${Date.now()}-${safeName}`,
+      bucket: "assets",
+      contentType: file.type || "video/mp4",
+    };
+    const res = await fetch(buildApiUrl("/api/upload-url"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const message = await res.text();
+      throw new Error(`Upload URL error ${res.status}: ${message || "unknown error"}`);
+    }
+    const dataRes = await res.json();
+    if (!dataRes?.signedUrl) throw new Error("Missing signedUrl");
+
+    const uploadRes = await fetch(dataRes.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": payload.contentType },
+      body: file,
+    });
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text();
+      throw new Error(`Upload failed ${uploadRes.status}: ${text}`);
+    }
+
+    let url = dataRes.publicUrl || "";
+    if (!url && dataRes.path) {
+      const signedRes = await fetch(buildApiUrl("/api/download-url"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: dataRes.path, bucket: dataRes.bucket || "assets" }),
+      });
+      if (signedRes.ok) {
+        const signedData = await signedRes.json();
+        url = signedData.signedUrl || "";
+      }
+    }
+    if (!url) throw new Error("Missing uploaded video URL");
+    return url;
+  };
+
   const handleReferenceVideos = async (files: FileList | null) => {
     if (!files?.length) return;
     const capacity = Math.max(0, 3 - referenceVideos.length);
@@ -92,16 +127,16 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
     setIsUploadingVideoRefs(true);
     try {
       const selected = Array.from(files).slice(0, capacity);
-      const encoded: string[] = [];
+      const uploaded: string[] = [];
       for (const file of selected) {
-        encoded.push(await readFileAsDataUrl(file));
+        uploaded.push(await uploadReferenceVideo(file));
       }
       updateNodeData(id, {
-        referenceVideos: [...referenceVideos, ...encoded],
+        referenceVideos: [...referenceVideos, ...uploaded],
         error: null,
       });
     } catch (e: any) {
-      updateNodeData(id, { error: e?.message || "参考视频读取失败。" });
+      updateNodeData(id, { error: e?.message || "参考视频上传失败。" });
     } finally {
       setIsUploadingVideoRefs(false);
       if (refVideoInputRef.current) refVideoInputRef.current.value = "";

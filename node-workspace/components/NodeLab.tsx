@@ -462,6 +462,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
 
@@ -469,9 +470,14 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
       onConnect(connection);
+      setIsConnecting(false);
     },
     [onConnect]
   );
+
+  const handleConnectStart = useCallback(() => {
+    setIsConnecting(true);
+  }, []);
 
   /* New: Sync global style guide to store so executors can use it */
   useEffect(() => {
@@ -578,6 +584,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
 
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
+      setIsConnecting(false);
       if (connectionState.isValid || !connectionState.fromNode) return;
       // Extract clientX/clientY from the event correctly (it can be MouseEvent or TouchEvent)
       const e = event as any;
@@ -933,6 +940,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       <div
         className="flex-1 relative node-lab-canvas"
         data-zoomed={zoomValue > 1}
+        data-connecting={isConnecting}
         style={backgroundStyle}
       >
         <ReactFlow
@@ -941,6 +949,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
+          onConnectStart={handleConnectStart}
           onConnectEnd={handleConnectEnd}
           onMove={(_, vp) => setLiveViewport(vp)}
           onMoveEnd={(_, vp) => {
@@ -961,6 +970,12 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
+          connectionLineStyle={{
+            stroke: "rgba(74, 222, 128, 0.96)",
+            strokeWidth: 3,
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+          }}
           proOptions={{ hideAttribution: true }}
           data-active-mode="default"
         >

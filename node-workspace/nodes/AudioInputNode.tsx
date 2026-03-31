@@ -25,6 +25,7 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData } = useWorkflowStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const nodeTitle = data.title && data.title !== "Audio Input" ? data.title : "audio";
 
   const handleFile = async (file?: File | null) => {
     if (!file) return;
@@ -44,7 +45,7 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
 
   return (
     <BaseNode
-      title={data.title || "Audio Input"}
+      title={nodeTitle}
       onTitleChange={(title) => updateNodeData(id, { title })}
       outputs={["audio"]}
       selected={selected}
@@ -53,13 +54,8 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
         {data.audio ? (
           <div className="node-panel p-3 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--node-text-secondary)]">
-                  Audio Reference
-                </div>
-                <div className="mt-1 truncate text-[12px] font-semibold text-[var(--node-text-primary)]">
-                  {data.filename || "untitled-audio"}
-                </div>
+              <div className="min-w-0 truncate text-[12px] font-semibold text-[var(--node-text-primary)]">
+                {data.filename || "untitled-audio"}
               </div>
               <button
                 type="button"
@@ -114,9 +110,6 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
             <Upload size={12} />
             {data.audio ? "Replace" : "Select"}
           </button>
-          <div className="text-[9px] uppercase tracking-[0.14em] text-[var(--node-text-secondary)]">
-            output: audio
-          </div>
         </div>
 
         <input
