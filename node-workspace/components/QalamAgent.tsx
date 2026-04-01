@@ -8,7 +8,6 @@ import {
   Paperclip,
   Question,
   Robot,
-  SidebarSimple,
   Sparkle,
   X,
 } from "@phosphor-icons/react";
@@ -354,13 +353,9 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const [isSending, setIsSending] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [layoutMode, setLayoutMode] = useState<"floating" | "split">("floating");
-  const [splitWidth, setSplitWidth] = useState(560);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1200
   );
-  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const handledSubmitRequestRef = useRef<number>(0);
   const bridge = useMemo<QalamAgentBridge>(
     () => ({
@@ -693,54 +688,12 @@ export const QalamAgent: React.FC<Props> = ({
     sessionId: activeConversation?.id || conversationState.activeId || "qalam-default",
     setMessages,
   });
-  const splitMinWidth = Math.min(360, Math.max(280, Math.round(viewportWidth * 0.4)));
-  const splitMaxWidth = viewportWidth;
-  const splitThreshold = 0.72;
-  const handleSplitToggle = () => {
-    setLayoutMode((prev) => (prev === "split" ? "floating" : "split"));
-    setIsFullscreen(false);
-    if (typeof window !== "undefined") {
-      const width = window.innerWidth;
-      setViewportWidth(width);
-      if (layoutMode !== "split") {
-        const target = Math.round(width * 0.5);
-        const localMin = Math.min(360, Math.max(280, Math.round(width * 0.4)));
-        const nextWidth = Math.min(Math.max(target, localMin), width);
-        setSplitWidth(nextWidth);
-        setIsFullscreen(nextWidth >= width * splitThreshold);
-      }
-    }
-  };
-
   useEffect(() => {
-    if (layoutMode !== "split") return;
-    const handleResize = () => {
-      setViewportWidth(window.innerWidth);
-      setIsFullscreen(splitWidth >= window.innerWidth * splitThreshold);
-    };
-    const handleMove = (e: MouseEvent) => {
-      if (!dragStateRef.current) return;
-      const delta = e.clientX - dragStateRef.current.startX;
-      const nextWidth = Math.min(splitMaxWidth, Math.max(splitMinWidth, dragStateRef.current.startWidth + delta));
-      const isWide = nextWidth >= window.innerWidth * splitThreshold;
-      setSplitWidth(nextWidth);
-      setIsFullscreen(isWide);
-    };
-    const handleUp = () => {
-      dragStateRef.current = null;
-      if (typeof document !== "undefined") {
-        document.body.classList.remove("qalam-resizing");
-      }
-    };
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
+    if (typeof window === "undefined") return;
+    const handleResize = () => setViewportWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [layoutMode, splitMaxWidth, splitMinWidth, splitThreshold, splitWidth]);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (conversationState.items.length) return;
@@ -784,8 +737,6 @@ export const QalamAgent: React.FC<Props> = ({
   useEffect(() => {
     if (!settingsOpen) return;
     setCollapsed(false);
-    setLayoutMode("split");
-    setIsFullscreen(false);
   }, [settingsOpen]);
 
   useEffect(() => {
@@ -793,32 +744,12 @@ export const QalamAgent: React.FC<Props> = ({
   }, [input, resizeInput]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const root = document.documentElement;
-    const className = "qalam-split";
-    const shouldSplit = layoutMode === "split" && !collapsed;
-    if (shouldSplit) {
-      root.classList.add(className);
-      const width = isFullscreen ? viewportWidth : splitWidth;
-      root.style.setProperty("--qalam-split-width", `${width}px`);
-    } else {
-      root.classList.remove(className);
-      root.style.removeProperty("--qalam-split-width");
-    }
-    return () => {
-      root.classList.remove(className);
-      root.style.removeProperty("--qalam-split-width");
-    };
-  }, [layoutMode, splitWidth, isFullscreen, viewportWidth, collapsed]);
-
-  useEffect(() => {
-    const dockWidth = layoutMode === "split" && !collapsed ? (isFullscreen ? viewportWidth : splitWidth) : 0;
     onDockFrameChange?.({
-      dockWidth,
-      isSplit: layoutMode === "split",
+      dockWidth: 0,
+      isSplit: false,
       collapsed,
     });
-  }, [collapsed, isFullscreen, layoutMode, onDockFrameChange, splitWidth, viewportWidth]);
+  }, [collapsed, onDockFrameChange]);
   const submitText = useCallback(async (rawText: string) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
@@ -913,30 +844,16 @@ export const QalamAgent: React.FC<Props> = ({
     }
   };
   const moodState = moodVisual();
-  const isSplit = layoutMode === "split";
-  const panelClassName = isSplit
-    ? "pointer-events-auto qalam-surface overflow-hidden qalam-panel border-r border-[var(--app-border)] rounded-none"
-    : "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] overflow-hidden qalam-panel";
-  const panelStyle: React.CSSProperties | undefined = isSplit
-    ? {
-        position: "fixed",
-        top: 0,
-        bottom: 0,
-        left: 0,
-        right: isFullscreen ? 0 : undefined,
-        width: isFullscreen ? "100vw" : splitWidth,
-        maxWidth: "100vw",
-        zIndex: 80,
-      }
-    : {
-        position: "fixed",
-        top: 16,
-        bottom: 16,
-        left: 16,
-        width: Math.min(420, Math.max(320, viewportWidth - 32)),
-        maxWidth: "calc(100vw - 32px)",
-        zIndex: 80,
-      };
+  const panelClassName = "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] overflow-hidden qalam-panel";
+  const panelStyle: React.CSSProperties | undefined = {
+    position: "fixed",
+    top: 16,
+    bottom: 16,
+    left: 16,
+    width: Math.min(420, Math.max(320, viewportWidth - 32)),
+    maxWidth: "calc(100vw - 32px)",
+    zIndex: 80,
+  };
 
   const tokenUsage = useMemo(() => {
     const sumPhase = (obj: any): number => {
@@ -1010,62 +927,41 @@ export const QalamAgent: React.FC<Props> = ({
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
-      {isSplit && !isFullscreen && (
-        <div
-          className="absolute right-0 top-0 h-full w-2 cursor-col-resize z-20"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dragStateRef.current = { startX: e.clientX, startWidth: splitWidth };
-            if (typeof document !== "undefined") {
-              document.body.classList.add("qalam-resizing");
-            }
-          }}
-        />
-      )}
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
-      <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">Qalam</div>
-          <button
-            type="button"
-            onClick={onOpenStats}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
-            title="打开 Agent Setting"
-          >
-            <span className="text-[var(--app-text-primary)]">Agent Setting</span>
-            <span>{formatNumber(tokenUsage)}</span>
-          </button>
+        <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">Qalam</div>
+            <button
+              type="button"
+              onClick={onOpenStats}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
+              title="打开 Agent Setting"
+            >
+              <span className="text-[var(--app-text-primary)]">Agent Setting</span>
+              <span>{formatNumber(tokenUsage)}</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCollapsed(true)}
+              className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+              title="Close"
+            >
+              <X size={14} className="mx-auto" weight="bold" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSplitToggle}
-            className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-            title={isSplit ? "Exit Split View" : "Split View"}
-          >
-            <SidebarSimple size={14} className="mx-auto" weight="regular" />
-          </button>
-          <button
-            onClick={() => setCollapsed(true)}
-            className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-            title="Close"
-          >
-            <X size={14} className="mx-auto" weight="bold" />
-          </button>
+        <div className="flex min-h-0 overflow-hidden">
+          <QalamChatContent messages={messages} isSending={isSending} />
         </div>
-      </div>
 
-      <div className="flex min-h-0 overflow-hidden">
-        <QalamChatContent messages={messages} isSending={isSending} />
-      </div>
-
-      <div className="qalam-composer-shell relative shrink-0 px-4 pb-4 pt-3">
-        <div
-          className="qalam-subtle-surface rounded-[24px] p-3"
-          style={{
-            boxShadow: "0 18px 40px -30px rgba(44, 72, 47, 0.24), inset 0 1px 0 rgba(255,255,255,0.08)",
-          }}
-        >
+        <div className="qalam-composer-shell relative shrink-0 px-4 pb-4 pt-3">
+          <div
+            className="qalam-subtle-surface rounded-[24px] p-3"
+            style={{
+              boxShadow: "0 18px 40px -30px rgba(44, 72, 47, 0.24), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}
+          >
           <textarea
             ref={inputRef}
             className="qalam-scrollbar w-full bg-transparent text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] resize-none focus:outline-none"
@@ -1171,8 +1067,8 @@ export const QalamAgent: React.FC<Props> = ({
               )}
             </button>
           </div>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

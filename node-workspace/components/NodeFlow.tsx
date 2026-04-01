@@ -1031,7 +1031,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             projectData={projectData}
             setProjectData={setProjectData}
             getAuthToken={getAuthToken}
-            onOpenStats={() => openAgentSettingsPanel("dashboard")}
+            onOpenStats={() => openAgentSettingsPanel("provider")}
             settingsOpen={showAgentSettings}
             openRequest={qalamOpenRequest}
             submitRequest={qalamSubmitRequest}
@@ -1091,7 +1091,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             onExportCsv={onExportCsv}
             onExportXls={onExportXls}
             onExportUnderstandingJson={onExportUnderstandingJson}
-            onOpenStats={() => openAgentSettingsPanel("dashboard")}
+            onOpenStats={() => openAgentSettingsPanel("provider")}
             onToggleTheme={onToggleTheme}
             onOpenTheme={(anchorRect) => {
               if (anchorRect) {

@@ -953,30 +953,33 @@ export const AgentSettingsPanel: React.FC<Props> = ({
         ? {
             label: "Tools",
             title: activeToolItem.title,
-            description: "查看 read / edit / operate 三个能力面的工具构成、边界和最近活动。",
+            description: "",
           }
         : selectedPanel === "skills"
           ? {
               label: "Skills",
               title: activeSkill?.title || "Skills",
-              description: "内建 skill 作为按需方法包存在，Agent 不会默认预注入，而是在任务需要时检索并读取。",
+              description: "",
             }
           : selectedPanel === "dashboard"
             ? {
                 label: "Dashboard",
                 title: "Project Metrics",
-                description: "把 token 用量、项目追踪和 agent setting 合并到同一个侧栏工作面。",
+                description: "",
               }
         : {
             label: "History",
             title: "Conversation & Trace",
-            description: "在同一块工作台里追踪对话、session 和 SDK tracing 生命周期。",
+            description: "",
           };
 
   return (
     <div
-      className="fixed inset-y-0 right-0 z-[75] min-w-0 border-l border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)]"
-      style={{ left: dockLeft }}
+      className="fixed right-4 top-4 bottom-4 z-[75] min-w-0 overflow-hidden rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
+      style={{
+        width: `min(max(560px, calc(100vw - ${Math.max(468, dockLeft + 48)}px)), calc(100vw - 32px))`,
+        maxWidth: "calc(100vw - 32px)",
+      }}
     >
       <div className="grid h-full min-w-0 grid-cols-1 xl:grid-cols-[292px_minmax(0,1fr)]">
         <aside className="min-w-0 overflow-y-auto border-r border-[var(--app-border)] px-5 py-5">
@@ -986,9 +989,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
                     Agent Settings
-                  </div>
-                  <div className="mt-2 text-[13px] leading-6 text-[var(--app-text-secondary)]">
-                    和 workspace 一样使用常驻侧栏结构，左边切换 provider / tools / skills / dashboard / history，右边展开当前工作面。
                   </div>
                 </div>
                 <button
@@ -1218,9 +1218,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               </div>
               <div className="mt-2 flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
                 {panelMeta.title}
-              </div>
-              <div className="mt-2 max-w-2xl text-[13px] leading-6 text-[var(--app-text-secondary)]">
-                {panelMeta.description}
               </div>
             </div>
 
