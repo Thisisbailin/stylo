@@ -27,6 +27,19 @@ const resolveNanoBananaApiKey = (env: Record<string, unknown>) => {
     };
 };
 
+const normalizeApiKeyValue = (value: unknown) => {
+    if (typeof value !== "string") return "";
+    let normalized = value.trim();
+    if (
+        (normalized.startsWith('"') && normalized.endsWith('"')) ||
+        (normalized.startsWith("'") && normalized.endsWith("'"))
+    ) {
+        normalized = normalized.slice(1, -1).trim();
+    }
+    normalized = normalized.replace(/^(Token|Bearer)\s+/i, "").trim();
+    return normalized;
+};
+
 const isNanoBananaTarget = (url: URL) =>
     url.hostname === "api.wuyinkeji.com" &&
     (
@@ -39,9 +52,9 @@ const resolveViduApiKey = (env: Record<string, unknown>) => {
         { name: "VIDU_API_KEY", value: env.VIDU_API_KEY },
         { name: "VITE_VIDU_API_KEY", value: env.VITE_VIDU_API_KEY },
     ];
-    const hit = candidates.find((item) => typeof item.value === "string" && item.value.trim().length > 0);
+    const hit = candidates.find((item) => normalizeApiKeyValue(item.value).length > 0);
     return {
-        key: typeof hit?.value === "string" ? hit.value.trim() : "",
+        key: normalizeApiKeyValue(hit?.value),
         source: hit?.name || "missing",
     };
 };

@@ -1062,101 +1062,103 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         </div>
       </div>
       <div
-        className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
-          isQalamCollapsed ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-        }`}
+        className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar"
       >
-        <div className={`flex w-[min(560px,calc(100vw-48px))] flex-col items-center gap-2 ${isQalamCollapsed ? "pointer-events-auto" : "pointer-events-none"}`}>
-          <FloatingActionBar
-            onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
-            onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
-            onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
-            onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
-            onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
-            onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
-            onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
-            onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
-            onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
-            onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
-            onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
-            onAddWanVideoGen={() => handleAddNode("wanVideoGen", { x: 520, y: 120 })}
-            onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
-            onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
-            onAddGroup={() => handleAddNode("group", { x: 100, y: 100 })}
-            onImport={() => fileInputRef.current?.click()}
-            onExport={() => exportNodeFlow()}
-            onRun={runAll}
-            templates={groupTemplates}
-            canCreateTemplate={!!selectedGroup}
-            onCreateTemplate={handleCreateTemplate}
-            onLoadTemplate={handleLoadTemplate}
-            onDeleteTemplate={handleDeleteTemplate}
-            floating={false}
-            onOpenModule={onOpenModule}
-            onExportCsv={onExportCsv}
-            onExportXls={onExportXls}
-            onExportUnderstandingJson={onExportUnderstandingJson}
-            onOpenStats={() => openAgentSettingsPanel("provider")}
-            onToggleTheme={onToggleTheme}
-            onOpenTheme={(anchorRect) => {
-              if (anchorRect) {
-                setThemeAnchor(anchorRect);
-              }
-              setShowThemeModal(true);
-            }}
-            isDarkMode={isDarkMode}
-            onOpenSyncPanel={onOpenSyncPanel}
-            syncIndicator={syncIndicator}
-            onOpenInfoPanel={onOpenInfoPanel}
-            onResetProject={onResetProject}
-            onSignOut={onSignOut}
-            onAssetLoad={onAssetLoad}
-            accountInfo={accountInfo}
-            onToggleWorkflow={onToggleWorkflow}
-            onOpenQalam={() => setQalamOpenRequest((prev) => prev + 1)}
-            variant="embedded"
-          />
-          {isQalamCollapsed && (
-            <div
-              className="qalam-surface w-full rounded-[40px] px-6 py-4"
-              style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
-            >
-              <div className="flex items-end gap-3">
-                <textarea
-                  ref={composerRef}
-                  value={composerInput}
-                  onChange={(e) => {
-                    setComposerInput(e.target.value);
-                    resizeComposer(e.currentTarget);
-                  }}
-                  rows={1}
-                  className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
-                  placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = composerInput.trim();
-                    if (!text) {
-                      setQalamOpenRequest((prev) => prev + 1);
-                      return;
-                    }
-                    setComposerInput("");
-                    setQalamSubmitRequest({ id: Date.now(), text });
-                  }}
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
-                    composerInput.trim()
-                      ? "bg-[var(--app-accent-strong)] hover:brightness-105"
-                      : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
-                  }`}
-                  title={composerInput.trim() ? "Send to Qalam" : "Open Qalam"}
-                  aria-label={composerInput.trim() ? "Send to Qalam" : "Open Qalam"}
-                >
-                  <ArrowUp size={16} weight="bold" />
-                </button>
-              </div>
+        <div className="flex w-[min(560px,calc(100vw-48px))] flex-col items-center gap-2">
+          <div
+            className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isQalamCollapsed ? "opacity-100 translate-y-0" : "pointer-events-none -translate-y-3 opacity-0"
+            }`}
+          >
+            <FloatingActionBar
+              onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
+              onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
+              onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
+              onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
+              onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
+              onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
+              onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
+              onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
+              onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
+              onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
+              onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
+              onAddWanVideoGen={() => handleAddNode("wanVideoGen", { x: 520, y: 120 })}
+              onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+              onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
+              onAddGroup={() => handleAddNode("group", { x: 100, y: 100 })}
+              onImport={() => fileInputRef.current?.click()}
+              onExport={() => exportNodeFlow()}
+              onRun={runAll}
+              templates={groupTemplates}
+              canCreateTemplate={!!selectedGroup}
+              onCreateTemplate={handleCreateTemplate}
+              onLoadTemplate={handleLoadTemplate}
+              onDeleteTemplate={handleDeleteTemplate}
+              floating={false}
+              onOpenModule={onOpenModule}
+              onExportCsv={onExportCsv}
+              onExportXls={onExportXls}
+              onExportUnderstandingJson={onExportUnderstandingJson}
+              onOpenStats={() => openAgentSettingsPanel("provider")}
+              onToggleTheme={onToggleTheme}
+              onOpenTheme={(anchorRect) => {
+                if (anchorRect) {
+                  setThemeAnchor(anchorRect);
+                }
+                setShowThemeModal(true);
+              }}
+              isDarkMode={isDarkMode}
+              onOpenSyncPanel={onOpenSyncPanel}
+              syncIndicator={syncIndicator}
+              onOpenInfoPanel={onOpenInfoPanel}
+              onResetProject={onResetProject}
+              onSignOut={onSignOut}
+              onAssetLoad={onAssetLoad}
+              accountInfo={accountInfo}
+              onToggleWorkflow={onToggleWorkflow}
+              onOpenQalam={() => setQalamOpenRequest((prev) => prev + 1)}
+              variant="embedded"
+            />
+          </div>
+          <div
+            className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
+            style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
+          >
+            <div className="flex items-end gap-3">
+              <textarea
+                ref={composerRef}
+                value={composerInput}
+                onChange={(e) => {
+                  setComposerInput(e.target.value);
+                  resizeComposer(e.currentTarget);
+                }}
+                rows={1}
+                className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
+                placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const text = composerInput.trim();
+                  if (!text) {
+                    setQalamOpenRequest((prev) => prev + 1);
+                    return;
+                  }
+                  setComposerInput("");
+                  setQalamSubmitRequest({ id: Date.now(), text });
+                }}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
+                  composerInput.trim()
+                    ? "bg-[var(--app-accent-strong)] hover:brightness-105"
+                    : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
+                }`}
+                title={composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
+                aria-label={composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
+              >
+                <ArrowUp size={16} weight="bold" />
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
       <div className="fixed bottom-4 right-4 z-30 pointer-events-none">

@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  At,
-  ArrowUp,
-  CircleNotch,
-  Paperclip,
   X,
 } from "@phosphor-icons/react";
 import { useConfig } from "../../hooks/useConfig";
@@ -666,7 +662,7 @@ export const QalamAgent: React.FC<Props> = ({
     void sendMessage();
   }, [cancelAgentRun, isSending, sendMessage]);
 
-  const panelClassName = "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
+  const panelClassName = "pointer-events-auto qalam-surface qalam-panel-cloud w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const panelStyle: React.CSSProperties | undefined = {
@@ -752,7 +748,7 @@ export const QalamAgent: React.FC<Props> = ({
       <div
         className={`pointer-events-none absolute left-0 top-0 h-36 w-56 bg-[radial-gradient(circle_at_top_left,rgba(122,183,160,0.22),transparent_62%)] blur-2xl transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-55"}`}
       />
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
         <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             {qalamMark}
@@ -778,121 +774,6 @@ export const QalamAgent: React.FC<Props> = ({
         </div>
         <div className="flex min-h-0 overflow-hidden">
           <QalamChatContent messages={messages} isSending={isSending} />
-        </div>
-
-        <div className="qalam-composer-shell relative shrink-0 px-4 pb-4 pt-3">
-          <div
-            className="qalam-subtle-surface rounded-[24px] p-3"
-            style={{
-              boxShadow: "0 18px 40px -30px rgba(44, 72, 47, 0.24), inset 0 1px 0 rgba(255,255,255,0.08)",
-            }}
-          >
-          <textarea
-            ref={inputRef}
-            className="qalam-scrollbar w-full bg-transparent text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] resize-none focus:outline-none"
-            rows={1}
-            placeholder="Ask Qalam about scenes, roles, nodes, workflow changes, or anything in this project."
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              setCursorPos(e.target.selectionStart ?? e.target.value.length);
-              resizeInput(e.currentTarget);
-            }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            onKeyUp={(e) => {
-              setCursorPos((e.currentTarget as HTMLTextAreaElement).selectionStart ?? input.length);
-            }}
-            onClick={(e) => {
-              setCursorPos((e.currentTarget as HTMLTextAreaElement).selectionStart ?? input.length);
-            }}
-            onFocus={(e) => {
-              setIsInputFocused(true);
-              setCursorPos((e.currentTarget as HTMLTextAreaElement).selectionStart ?? input.length);
-            }}
-            onBlur={() => {
-              setIsInputFocused(false);
-            }}
-          />
-
-          {showMentionPicker && (
-            <div className="qalam-subtle-surface mt-3 rounded-[20px] px-3 py-3 space-y-2">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                <At size={11} weight="regular" />
-                选择绑定数据
-                {mentionState?.query ? <span className="text-[var(--app-text-muted)]">@{mentionState.query}</span> : null}
-              </div>
-              {filteredMentions.length > 0 ? (
-                <div className="max-h-40 overflow-y-auto space-y-1">
-                  {filteredMentions.map((item) => (
-                    <button
-                      key={`${item.kind}-${item.name}-${item.id || "none"}`}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        const start = mentionState ? mentionState.start : cursorPos;
-                        const end = mentionState ? mentionState.end : cursorPos;
-                        const before = input.slice(0, start);
-                        const after = input.slice(end);
-                        const insertion = `@${item.name} `;
-                        const next = `${before}${insertion}${after}`;
-                        const nextPos = start + insertion.length;
-                        setInput(next);
-                        setCursorPos(nextPos);
-                        requestAnimationFrame(() => {
-                          if (!inputRef.current) return;
-                          inputRef.current.focus();
-                          inputRef.current.setSelectionRange(nextPos, nextPos);
-                        });
-                      }}
-                      className="w-full flex items-center gap-2 rounded-[16px] border border-transparent px-2.5 py-2.5 transition text-left hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)]"
-                    >
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">
-                        {item.kind === "character" ? "角色" : "场景"}
-                      </span>
-                      <span className="text-[12px] text-[var(--app-text-primary)]">{item.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[12px] text-[var(--app-text-secondary)]">未找到匹配项</div>
-              )}
-            </div>
-          )}
-
-          <div className="mt-3 flex items-center justify-between gap-3 pt-1">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)]"
-                title="Attachments offline"
-              >
-                <Paperclip size={14} weight="regular" />
-              </button>
-              <div className="inline-flex h-9 items-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-3 text-[11px] text-[var(--app-text-secondary)]">
-                {currentModelLabel}
-              </div>
-            </div>
-            <button
-              onClick={handleComposerAction}
-              disabled={!isSending && !canSend}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--app-accent-strong)] text-white transition hover:brightness-105 active:translate-y-px disabled:cursor-not-allowed disabled:bg-[var(--app-accent)]/60 disabled:text-white/75"
-              title={isSending ? "停止生成" : "发送"}
-              aria-label={isSending ? "停止生成" : "发送"}
-            >
-              {isSending ? (
-                <CircleNotch size={16} className="animate-spin" weight="bold" />
-              ) : (
-                <ArrowUp size={16} weight="bold" />
-              )}
-            </button>
-          </div>
-          </div>
         </div>
       </div>
     </div>

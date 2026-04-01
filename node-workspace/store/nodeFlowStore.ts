@@ -53,6 +53,12 @@ import {
   createEmptyNodeFlowCanvasState,
   createEmptyNodeFlowContextSnapshot,
   createIdleNodeFlowExecutionState,
+  setNodeFlowActiveViewState,
+  setNodeFlowContextState,
+  setNodeFlowCurrentNodeState,
+  setNodeFlowPausedNodeState,
+  setNodeFlowRunningState,
+  setNodeFlowViewportState,
 } from "../nodeflow/sessionState";
 import {
   appendGlobalAssetHistoryItem,
@@ -60,6 +66,13 @@ import {
   createEmptyNodeFlowAssetState,
   removeGlobalAssetHistoryEntry,
 } from "../nodeflow/assets";
+import {
+  createEmptyNodeFlowCollaborationState,
+  mutateNodeFlowProjectRole,
+  setNodeFlowAppConfigState,
+  setNodeFlowProjectRoleUpdaterState,
+  type NodeFlowRoleUpdater,
+} from "../nodeflow/collaboration";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -150,9 +163,9 @@ interface NodeFlowStore {
   // Global Config
   appConfig: any; // Using any to avoid circular dependencies if types are complex, but AppConfig is best
   setAppConfig: (config: any) => void;
-  projectRoleUpdater: ((roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void) | null;
+  projectRoleUpdater: NodeFlowRoleUpdater | null;
   setProjectRoleUpdater: (
-    updater: ((roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void) | null
+    updater: NodeFlowRoleUpdater | null
   ) => void;
   mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
 }
@@ -177,26 +190,23 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   ...createIdleNodeFlowExecutionState(),
   ...createEmptyNodeFlowAssetState(),
   ...createEmptyNodeFlowCanvasState(),
+  ...createEmptyNodeFlowCollaborationState(),
   groupTemplates: loadNodeFlowTemplates(),
   globalStyleGuide: undefined,
   availableImageModels: [],
   availableVideoModels: [],
   nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
-  appConfig: null,
-  projectRoleUpdater: null,
 
   setAvailableImageModels: (models) => set({ availableImageModels: models }),
   setAvailableVideoModels: (models) => set({ availableVideoModels: models }),
-  setNodeFlowContext: (ctx) => set({ nodeFlowContext: ctx }),
-  setViewportState: (viewport) => set({ viewport }),
+  setNodeFlowContext: (ctx) => set((state) => setNodeFlowContextState(state, ctx)),
+  setViewportState: (viewport) => set((state) => setNodeFlowViewportState(state, viewport)),
 
-  setActiveView: (view) => set({ activeView: view }),
-  setAppConfig: (config) => set({ appConfig: config }),
-  setProjectRoleUpdater: (updater) => set({ projectRoleUpdater: updater }),
+  setActiveView: (view) => set((state) => setNodeFlowActiveViewState(state, view)),
+  setAppConfig: (config) => set((state) => setNodeFlowAppConfigState(state, config)),
+  setProjectRoleUpdater: (updater) => set((state) => setNodeFlowProjectRoleUpdaterState(state, updater)),
   mutateProjectRole: (roleId, updater) => {
-    const apply = get().projectRoleUpdater;
-    if (!apply) return;
-    apply(roleId, updater);
+    mutateNodeFlowProjectRole(get(), roleId, updater);
   },
 
   setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
@@ -396,9 +406,9 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       ...createIdleNodeFlowExecutionState(),
     })),
 
-  setRunning: (running) => set({ isRunning: running }),
-  setCurrentNode: (nodeId) => set({ currentNodeId: nodeId }),
-  setPausedNode: (nodeId) => set({ pausedAtNodeId: nodeId }),
+  setRunning: (running) => set((state) => setNodeFlowRunningState(state, running)),
+  setCurrentNode: (nodeId) => set((state) => setNodeFlowCurrentNodeState(state, nodeId)),
+  setPausedNode: (nodeId) => set((state) => setNodeFlowPausedNodeState(state, nodeId)),
 
   addToGlobalHistory: (item) => {
     set((state) => appendGlobalAssetHistoryItem(state, item));

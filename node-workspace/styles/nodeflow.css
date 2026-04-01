@@ -214,6 +214,27 @@
   animation: qalam-enter 280ms ease forwards;
 }
 
+.qalam-panel-cloud {
+  background:
+    radial-gradient(circle at top left, rgba(122, 183, 160, 0.16), transparent 28%),
+    radial-gradient(circle at 58% 12%, rgba(255, 255, 255, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(14, 18, 16, 0.74) 0%, rgba(14, 18, 16, 0.46) 28%, rgba(14, 18, 16, 0.16) 62%, rgba(14, 18, 16, 0) 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 32px 64px -48px rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(30px) saturate(120%);
+  -webkit-backdrop-filter: blur(30px) saturate(120%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.94) 38%, rgba(0, 0, 0, 0.72) 66%, rgba(0, 0, 0, 0.12) 90%, transparent 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.94) 38%, rgba(0, 0, 0, 0.72) 66%, rgba(0, 0, 0, 0.12) 90%, transparent 100%);
+}
+
+.qalam-panel-cloud::before {
+  background:
+    radial-gradient(circle at 18% 14%, rgba(122, 183, 160, 0.22), transparent 32%),
+    radial-gradient(circle at 82% 20%, rgba(255, 255, 255, 0.06), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+  opacity: 0.95;
+}
+
 :root.qalam-split .node-flow-canvas {
   margin-left: var(--qalam-split-width, 0px);
   width: calc(100% - var(--qalam-split-width, 0px));
