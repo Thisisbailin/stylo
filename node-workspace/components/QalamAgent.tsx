@@ -227,6 +227,7 @@ export const QalamAgent: React.FC<Props> = ({
   const { config } = useConfig("qalam_config_v1");
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
+  const addGraphLink = useNodeFlowStore((state) => state.addGraphLink);
   const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
   const connectNodes = useNodeFlowStore((state) => state.connectNodes);
   const toggleLinkPause = useNodeFlowStore((state) => state.toggleLinkPause);
@@ -235,6 +236,7 @@ export const QalamAgent: React.FC<Props> = ({
   const importNodeFlow = useNodeFlowStore((state) => state.importNodeFlow);
   const nodes = useNodeFlowStore((state) => state.nodes);
   const links = useNodeFlowStore((state) => state.links);
+  const graphLinks = useNodeFlowStore((state) => state.graphLinks);
   const revision = useNodeFlowStore((state) => state.revision);
   const linkStyle = useNodeFlowStore((state) => state.linkStyle);
   const globalAssetHistory = useNodeFlowStore((state) => state.globalAssetHistory);
@@ -323,6 +325,7 @@ export const QalamAgent: React.FC<Props> = ({
         name: projectData.fileName || "Qalam NodeFlow",
         nodes,
         links,
+        graphLinks,
         linkStyle,
         globalAssetHistory,
         nodeFlowContext,
@@ -332,13 +335,14 @@ export const QalamAgent: React.FC<Props> = ({
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
       updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
+      addGraphLink: (sourceRef, targetRef) => addGraphLink(sourceRef, targetRef),
       updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
       connectNodes,
       removeNode,
       removeLink,
       toggleLinkPause,
     }),
-    [activeView, addNode, updateNodeData, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
+    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -366,6 +370,7 @@ export const QalamAgent: React.FC<Props> = ({
             name: projectData.fileName || "Qalam NodeFlow",
             nodes,
             links,
+            graphLinks,
             linkStyle,
             globalAssetHistory,
             nodeFlowContext,
@@ -384,6 +389,7 @@ export const QalamAgent: React.FC<Props> = ({
       config.textConfig?.qalamTools,
       linkStyle,
       links,
+      graphLinks,
       revision,
       getAuthToken,
       globalAssetHistory,

@@ -2,6 +2,7 @@ import { resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import {
   buildProjectGraphMaps,
+  findExecutionLink,
   findGraphLink,
   findGraphNode,
   findProjectedSourceNode,
@@ -11,6 +12,7 @@ export const READ_PROJECT_RESOURCE_TYPES = [
   "skill_package",
   "source_node",
   "graph_node",
+  "execution_link",
   "graph_link",
   "map",
 ] as const;
@@ -45,7 +47,7 @@ const readProjectResourceParameters = {
     },
     link_id: {
       type: "string",
-      description: "Graph link id for graph_link.",
+      description: "Link id for execution_link or graph_link.",
     },
     map_id: {
       type: "string",
@@ -106,9 +108,9 @@ const parseArgs = (input: unknown) => {
   if (resourceType === "graph_node" && !nodeId && !nodeRef) {
     throw new Error("graph_node 需要 node_id 或 node_ref。");
   }
-  if (resourceType === "graph_link" && !linkId) {
-    throw new Error("graph_link 需要 link_id。");
-  }
+    if ((resourceType === "graph_link" || resourceType === "execution_link") && !linkId) {
+      throw new Error(`${resourceType} 需要 link_id。`);
+    }
   if (resourceType === "map" && !mapId && !view && !name) {
     throw new Error("map 需要 map_id、view 或 name。");
   }
@@ -227,11 +229,11 @@ export const readProjectResourceToolDef = {
           };
     }
 
-    if (args.resourceType === "graph_link") {
-      const link = findGraphLink(workflow, args.linkId!);
+    if (args.resourceType === "execution_link") {
+      const link = findExecutionLink(workflow, args.linkId!);
       return link
         ? {
-            resource_type: "graph_link",
+            resource_type: "execution_link",
             found: true,
             link_id: link.id,
             from_node_id: link.fromNodeId,
@@ -239,6 +241,23 @@ export const readProjectResourceToolDef = {
             from_port: link.fromPort,
             to_port: link.toPort,
             paused: link.paused,
+          }
+        : {
+            resource_type: "execution_link",
+            found: false,
+            link_id: args.linkId || null,
+          };
+    }
+
+    if (args.resourceType === "graph_link") {
+      const link = findGraphLink(workflow, args.linkId!);
+      return link
+        ? {
+            resource_type: "graph_link",
+            found: true,
+            link_id: link.id,
+            source_ref: link.sourceRef,
+            target_ref: link.targetRef,
           }
         : {
             resource_type: "graph_link",
@@ -277,6 +296,7 @@ export const readProjectResourceToolDef = {
     if (output.resource_type === "skill_package") return `读取技能包 ${output.title || output.item_id}`;
     if (output.resource_type === "source_node") return `读取 source 节点 ${output.title || output.ref}`;
     if (output.resource_type === "graph_node") return `读取 graph 节点 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "execution_link") return `读取执行连线 ${output.link_id}`;
     if (output.resource_type === "graph_link") return `读取 graph 连线 ${output.link_id}`;
     return `读取地图 ${output.name || output.map_id}`;
   },

@@ -74,11 +74,14 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
     }
   }
   if (call.name === "operate_project_resource") {
-    if (output.resource_type === "workflow_node" && typeof output.title === "string") {
-      return `Workflow node · ${output.title}`;
+    if (output.resource_type === "execution_node" && typeof output.title === "string") {
+      return `Execution node · ${output.title}`;
     }
-    if (output.resource_type === "workflow_connection") {
-      return `Workflow connection · ${output.source_ref || output.source_node_id || "source"} -> ${output.target_ref || output.target_node_id || "target"}`;
+    if (output.resource_type === "execution_link") {
+      return `Execution link · ${output.source_ref || output.source_node_id || "source"} -> ${output.target_ref || output.target_node_id || "target"}`;
+    }
+    if (output.resource_type === "graph_link") {
+      return `Graph link · ${output.source_ref || "source"} -> ${output.target_ref || "target"}`;
     }
   }
   return undefined;

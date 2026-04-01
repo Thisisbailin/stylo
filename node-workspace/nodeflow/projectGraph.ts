@@ -1,5 +1,5 @@
 import type { ProjectData } from "../../types";
-import type { NodeFlowFile } from "../types";
+import type { NodeFlowFile, NodeFlowGraphLink } from "../types";
 import {
   getNodeFlowNodeAssetType,
   getNodeFlowNodePlane,
@@ -32,6 +32,12 @@ export type ProjectGraphMapRecord = {
   nodeCount: number;
   linkCount: number;
   isActive: boolean;
+};
+
+export type ProjectGraphLinkRecord = {
+  id: string;
+  sourceRef: string;
+  targetRef: string;
 };
 
 const trimText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
@@ -154,6 +160,18 @@ export const findProjectedSourceNode = (
   });
 };
 
+export const findProjectGraphNodeByRef = (
+  projectData: ProjectData,
+  workflow: NodeFlowFile,
+  ref: string
+) => {
+  const resolvedRef = trimText(ref);
+  if (!resolvedRef) return null;
+  const projectedSource = findProjectedSourceNode(projectData, { ref: resolvedRef });
+  if (projectedSource) return projectedSource;
+  return findGraphNode(workflow, { nodeRef: resolvedRef });
+};
+
 export const findGraphNode = (
   workflow: NodeFlowFile,
   locator: { nodeId?: string; nodeRef?: string }
@@ -180,18 +198,27 @@ export const findGraphNode = (
 };
 
 export const findGraphLink = (workflow: NodeFlowFile, linkId: string) => {
+  const link = (workflow.graphLinks || []).find((item) => item.id === linkId);
+  return link ? { id: link.id, sourceRef: link.sourceRef, targetRef: link.targetRef } : null;
+};
+
+export const findExecutionLink = (workflow: NodeFlowFile, linkId: string) => {
   const link = workflow.links.find((item) => item.id === linkId);
   return link ? toNodeFlowLinkRecord(link) : null;
 };
 
 export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRecord[] => {
+  const workflowNodeRefs = new Set(workflow.nodes.map((node) => getNodeFlowNodeRef(node)));
+  const workspaceGraphLinkCount = (workflow.graphLinks || []).filter(
+    (link) => workflowNodeRefs.has(link.sourceRef) || workflowNodeRefs.has(link.targetRef)
+  ).length;
   const maps: ProjectGraphMapRecord[] = [
     {
       mapId: "map:workspace",
       name: workflow.name || "NodeFlow",
       view: null,
       nodeCount: workflow.nodes.length,
-      linkCount: workflow.links.length,
+      linkCount: workflow.links.length + workspaceGraphLinkCount,
       isActive: !workflow.activeView,
     },
   ];
@@ -212,17 +239,27 @@ export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRe
           .filter((node) => trimText((node.data as Record<string, unknown>)?.view) === view)
           .map((node) => node.id)
       );
+      const nodeRefs = new Set(
+        workflow.nodes
+          .filter((node) => trimText((node.data as Record<string, unknown>)?.view) === view)
+          .map((node) => getNodeFlowNodeRef(node))
+      );
       const groupTitleNode = workflow.nodes.find(
         (node) => node.type === "group" && trimText((node.data as Record<string, unknown>)?.view) === view
       );
       const groupTitle = trimText((groupTitleNode?.data as Record<string, unknown> | undefined)?.title) || view;
-      const linkCount = workflow.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target)).length;
+      const executionLinkCount = workflow.links.filter(
+        (link) => nodeIds.has(link.source) && nodeIds.has(link.target)
+      ).length;
+      const graphLinkCount = (workflow.graphLinks || []).filter(
+        (link) => nodeRefs.has(link.sourceRef) && nodeRefs.has(link.targetRef)
+      ).length;
       maps.push({
         mapId: `map:view:${view}`,
         name: String(groupTitle || view),
         view,
         nodeCount: nodeIds.size,
-        linkCount,
+        linkCount: executionLinkCount + graphLinkCount,
         isActive: workflow.activeView === view,
       });
     });
@@ -232,3 +269,10 @@ export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRe
 
 export const buildProjectGraphSearchText = (node: ProjectGraphNodeRecord) =>
   [node.ref, node.plane, node.type, node.title, JSON.stringify(node.body)].filter(Boolean).join(" ");
+
+export const buildProjectGraphLinks = (workflow: NodeFlowFile): ProjectGraphLinkRecord[] =>
+  (workflow.graphLinks || []).map((link: NodeFlowGraphLink) => ({
+    id: link.id,
+    sourceRef: link.sourceRef,
+    targetRef: link.targetRef,
+  }));

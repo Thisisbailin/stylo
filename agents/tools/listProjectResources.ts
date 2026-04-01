@@ -10,6 +10,7 @@ export const LIST_PROJECT_RESOURCE_TYPES = [
   "skill_packages",
   "source_nodes",
   "graph_nodes",
+  "execution_links",
   "graph_links",
   "maps",
 ] as const;
@@ -129,7 +130,7 @@ export const listProjectResourcesToolDef = {
       };
     }
 
-    if (args.resourceType === "graph_links") {
+    if (args.resourceType === "execution_links") {
       const items = workflow.links.slice(0, args.maxItems).map((link) => ({
         link_id: link.id,
         from_node_id: link.source,
@@ -139,15 +140,28 @@ export const listProjectResourcesToolDef = {
         paused: Boolean(link.data?.hasPause),
       }));
       return {
-        resource_type: "graph_links",
+        resource_type: "execution_links",
         total: workflow.links.length,
         items,
       };
     }
 
+    if (args.resourceType === "graph_links") {
+      const items = (workflow.graphLinks || []).slice(0, args.maxItems).map((link) => ({
+        link_id: link.id,
+        source_ref: link.sourceRef,
+        target_ref: link.targetRef,
+      }));
+      return {
+        resource_type: "graph_links",
+        total: (workflow.graphLinks || []).length,
+        items,
+      };
+    }
+
     const maps = buildProjectGraphMaps(workflow);
-    return {
-      resource_type: "maps",
+      return {
+        resource_type: "maps",
       total: maps.length,
       items: maps.slice(0, args.maxItems).map((map) => ({
         map_id: map.mapId,
@@ -163,6 +177,7 @@ export const listProjectResourcesToolDef = {
     if (output?.resource_type === "skill_packages") return `列出 ${output.items?.length || 0} 个技能包`;
     if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 source 节点`;
     if (output?.resource_type === "graph_nodes") return `列出 ${output.items?.length || 0} 个 graph 节点`;
+    if (output?.resource_type === "execution_links") return `列出 ${output.items?.length || 0} 条执行连线`;
     if (output?.resource_type === "graph_links") return `列出 ${output.items?.length || 0} 条 graph 连线`;
     return `列出 ${output?.items?.length || 0} 张地图`;
   },

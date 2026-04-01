@@ -1,12 +1,9 @@
 import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
+import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
+import { findProjectedSourceNode } from "../../node-workspace/nodeflow/projectGraph";
 
-export const OPERATE_PROJECT_RESOURCE_TYPES = ["execution_node", "graph_link"] as const;
+export const OPERATE_PROJECT_RESOURCE_TYPES = ["execution_node", "execution_link", "graph_link"] as const;
 export const OPERATE_WORKFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
-const OPERATE_PROJECT_RESOURCE_PARAMETER_TYPES = [
-  ...OPERATE_PROJECT_RESOURCE_TYPES,
-  "workflow_node",
-  "workflow_connection",
-] as const;
 
 const slugifyRefToken = (value: string, fallback: string) =>
   value
@@ -22,7 +19,7 @@ const operateProjectResourceParameters = {
   properties: {
     resource_type: {
       type: "string",
-      enum: [...OPERATE_PROJECT_RESOURCE_PARAMETER_TYPES],
+      enum: [...OPERATE_PROJECT_RESOURCE_TYPES],
       description: "Which graph/execution resource to operate on.",
     },
     node_kind: {
@@ -67,11 +64,11 @@ const operateProjectResourceParameters = {
     },
     source_handle: {
       type: "string",
-      description: "Optional explicit source handle for graph_link.",
+      description: "Optional explicit source handle for execution_link.",
     },
     target_handle: {
       type: "string",
-      description: "Optional explicit target handle for graph_link.",
+      description: "Optional explicit target handle for execution_link.",
     },
   },
   additionalProperties: false,
@@ -79,13 +76,13 @@ const operateProjectResourceParameters = {
   oneOf: [
     {
       properties: {
-        resource_type: { enum: ["execution_node", "workflow_node"] },
+        resource_type: { enum: ["execution_node"] },
       },
       required: ["resource_type", "node_kind"],
     },
     {
       properties: {
-        resource_type: { enum: ["graph_link", "workflow_connection"] },
+        resource_type: { enum: ["execution_link", "graph_link"] },
       },
       required: ["resource_type"],
       anyOf: [
@@ -120,6 +117,15 @@ type ParsedArgs =
       characterId?: string;
     }
   | {
+      resourceType: "execution_link";
+      sourceRef?: string;
+      targetRef?: string;
+      sourceNodeId?: string;
+      targetNodeId?: string;
+      sourceHandle?: string;
+      targetHandle?: string;
+    }
+  | {
       resourceType: "graph_link";
       sourceRef?: string;
       targetRef?: string;
@@ -135,12 +141,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
   }
   const raw = input as Record<string, unknown>;
   const rawResourceType = normalizeString(raw.resource_type ?? raw.resourceType);
-  const resourceType =
-    rawResourceType === "workflow_node"
-      ? "execution_node"
-      : rawResourceType === "workflow_connection"
-        ? "graph_link"
-        : rawResourceType;
+  const resourceType = rawResourceType;
 
   if (resourceType === "execution_node") {
     const rawNodeKind = normalizeString(raw.node_kind ?? raw.nodeKind);
@@ -182,7 +183,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  if (resourceType === "graph_link") {
+  if (resourceType === "execution_link" || resourceType === "graph_link") {
     const sourceRef = normalizeString(raw.source_ref ?? raw.sourceRef) || undefined;
     const targetRef = normalizeString(raw.target_ref ?? raw.targetRef) || undefined;
     const sourceNodeId = normalizeString(raw.source_node_id ?? raw.sourceNodeId) || undefined;
@@ -191,14 +192,14 @@ const parseArgs = (input: unknown): ParsedArgs => {
     const targetHandle = normalizeString(raw.target_handle ?? raw.targetHandle) || undefined;
 
     if ((!sourceRef && !sourceNodeId) || (!targetRef && !targetNodeId)) {
-      throw new Error("graph_link 需要为两端分别提供 ref 或 node_id。");
+      throw new Error(`${resourceType} 需要为两端分别提供 ref 或 node_id。`);
     }
     if ((sourceRef || sourceNodeId) === (targetRef || targetNodeId)) {
-      throw new Error("graph_link 不能连接同一个节点到自己。");
+      throw new Error(`${resourceType} 不能连接同一个节点到自己。`);
     }
 
     return {
-      resourceType: "graph_link",
+      resourceType,
       sourceRef,
       targetRef,
       sourceNodeId,
@@ -208,7 +209,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  throw new Error("operate_project_resource 仅支持 execution_node 或 graph_link。");
+  throw new Error("operate_project_resource 仅支持 execution_node、execution_link 或 graph_link。");
 };
 
 const resolveNodeType = (nodeKind: Extract<ParsedArgs, { resourceType: "execution_node" }>["nodeKind"]) => {
@@ -237,7 +238,7 @@ const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "execution_nod
 export const operateProjectResourceToolDef = {
   name: "operate_project_resource",
   description:
-    "Operate execution resources in NodeFlow or create graph links between existing nodes.",
+    "Operate execution resources in NodeFlow or create graph links between projected/source/graph nodes.",
   parameters: operateProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -265,29 +266,59 @@ export const operateProjectResourceToolDef = {
       };
     }
 
-    const expectedRevision = bridge.getNodeFlowSnapshot().revision;
-    const connected = bridge.connectNodeFlowNodes({
-      expectedRevision,
-      sourceRef: args.sourceRef,
-      targetRef: args.targetRef,
-      sourceNodeId: args.sourceNodeId,
-      targetNodeId: args.targetNodeId,
-      sourceHandle: args.sourceHandle as NodeFlowHandle | undefined,
-      targetHandle: args.targetHandle as NodeFlowHandle | undefined,
+    if (args.resourceType === "execution_link") {
+      const expectedRevision = bridge.getNodeFlowSnapshot().revision;
+      const connected = bridge.connectNodeFlowNodes({
+        expectedRevision,
+        sourceRef: args.sourceRef,
+        targetRef: args.targetRef,
+        sourceNodeId: args.sourceNodeId,
+        targetNodeId: args.targetNodeId,
+        sourceHandle: args.sourceHandle as NodeFlowHandle | undefined,
+        targetHandle: args.targetHandle as NodeFlowHandle | undefined,
+      });
+      return {
+        resource_type: "execution_link",
+        link_id: connected.linkId,
+        source_node_id: connected.sourceNodeId,
+        target_node_id: connected.targetNodeId,
+        source_ref: connected.sourceRef,
+        target_ref: connected.targetRef,
+        source_handle: connected.sourceHandle,
+        target_handle: connected.targetHandle,
+      };
+    }
+
+    const workflow = bridge.getNodeFlowSnapshot();
+    const projectData = bridge.getProjectData();
+    const resolveRef = (nodeId?: string, ref?: string) => {
+      if (ref) return ref;
+      if (!nodeId) return undefined;
+      const workflowNode = workflow.nodes.find((node) => node.id === nodeId);
+      if (workflowNode) return getNodeFlowRef(workflowNode) || workflowNode.id;
+      const projected = findProjectedSourceNode(projectData, { ref: nodeId, sourceRef: nodeId, title: nodeId });
+      return projected?.ref;
+    };
+    const sourceRef = resolveRef(args.sourceNodeId, args.sourceRef);
+    const targetRef = resolveRef(args.targetNodeId, args.targetRef);
+    if (!sourceRef || !targetRef) {
+      throw new Error("graph_link 需要可解析的 source_ref 和 target_ref。source 节点请使用 source_ref。");
+    }
+    const created = bridge.createNodeFlowGraphLink({
+      expectedRevision: workflow.revision,
+      sourceRef,
+      targetRef,
     });
     return {
       resource_type: "graph_link",
-      link_id: connected.linkId,
-      source_node_id: connected.sourceNodeId,
-      target_node_id: connected.targetNodeId,
-      source_ref: connected.sourceRef,
-      target_ref: connected.targetRef,
-      source_handle: connected.sourceHandle,
-      target_handle: connected.targetHandle,
+      link_id: created.linkId,
+      source_ref: created.sourceRef,
+      target_ref: created.targetRef,
     };
   },
   summarize: (output: any) => {
     if (output?.resource_type === "execution_node") return `创建执行节点 ${output.title || output.node_ref || output.node_id}`;
+    if (output?.resource_type === "execution_link") return `创建执行连线 ${output?.link_id || ""}`.trim();
     return `创建 graph 连线 ${output?.link_id || ""}`.trim();
   },
 };

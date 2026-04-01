@@ -138,6 +138,18 @@ export type CreateNodeFlowMapResult = {
   linkCount: number;
 };
 
+export type CreateNodeFlowGraphLinkInput = {
+  expectedRevision?: number;
+  sourceRef: string;
+  targetRef: string;
+};
+
+export type CreateNodeFlowGraphLinkResult = {
+  linkId: string;
+  sourceRef: string;
+  targetRef: string;
+};
+
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
@@ -145,6 +157,7 @@ export interface QalamAgentBridge {
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;
   updateNodeFlowNodeData(nodeId: string, data: Record<string, unknown>): void;
+  createNodeFlowGraphLink(input: CreateNodeFlowGraphLinkInput): CreateNodeFlowGraphLinkResult;
   connectNodeFlowNodes(input: ConnectNodeFlowNodesInput): ConnectNodeFlowNodesResult;
   getNodeFlowNode(input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null;
   createNodeFlowMap(input: CreateNodeFlowMapInput): CreateNodeFlowMapResult;

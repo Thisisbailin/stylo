@@ -1,6 +1,7 @@
 import type { XYPosition } from "@xyflow/react";
 import type {
   NodeFlowFile,
+  NodeFlowGraphLink,
   NodeFlowLink,
   NodeFlowNode,
   NodeFlowNodeStyle,
@@ -8,6 +9,8 @@ import type {
 } from "../types";
 import { createDefaultNodeFlowNodeData } from "./defaults";
 import { buildNodeFlowLinkId } from "./links";
+import { normalizeNodeFlowGraphLinks } from "./graphLinks";
+import { dedupeNodeFlowRefs } from "./refs";
 
 const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
   audioInput: 280,
@@ -82,14 +85,17 @@ export const normalizeNodeFlowLink = (link: NodeFlowLink, index: number): NodeFl
 };
 
 export const normalizeNodeFlowData = (nodeFlow: NodeFlowFile) => {
-  const nodes = Array.isArray(nodeFlow.nodes) ? nodeFlow.nodes.map(normalizeNodeFlowNode) : [];
+  const nodes = dedupeNodeFlowRefs(
+    Array.isArray(nodeFlow.nodes) ? nodeFlow.nodes.map(normalizeNodeFlowNode) : []
+  );
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links = Array.isArray(nodeFlow.links)
     ? nodeFlow.links
         .map(normalizeNodeFlowLink)
         .filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
-  return { nodes, links };
+  const graphLinks: NodeFlowGraphLink[] = normalizeNodeFlowGraphLinks(nodeFlow.graphLinks);
+  return { nodes, links, graphLinks };
 };
 
 export const normalizeNodeFlowGroupBindings = (nodes: NodeFlowNode[], links: NodeFlowLink[]) => {

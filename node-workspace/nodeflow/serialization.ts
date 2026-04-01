@@ -2,6 +2,7 @@ import type {
   GlobalAssetHistoryItem,
   NodeFlowContextSnapshot,
   NodeFlowFile,
+  NodeFlowGraphLink,
   NodeFlowLink,
   NodeFlowNode,
   NodeFlowViewport,
@@ -14,6 +15,7 @@ type BuildNodeFlowFileInput = {
   revision: number;
   nodes: NodeFlowNode[];
   links: NodeFlowLink[];
+  graphLinks?: NodeFlowGraphLink[];
   linkStyle?: NodeFlowLinkStyle;
   globalAssetHistory?: GlobalAssetHistoryItem[];
   nodeFlowContext?: NodeFlowContextSnapshot;
@@ -26,6 +28,7 @@ export const buildNodeFlowFile = ({
   revision,
   nodes,
   links,
+  graphLinks,
   linkStyle,
   globalAssetHistory,
   nodeFlowContext,
@@ -38,6 +41,7 @@ export const buildNodeFlowFile = ({
   name: name || `nodeflow-${new Date().toISOString().slice(0, 10)}`,
   nodes,
   links,
+  graphLinks,
   linkStyle,
   globalAssetHistory,
   nodeFlowContext,
@@ -69,11 +73,12 @@ export const hydrateImportedNodeFlow = (
   nodeFlow: NodeFlowFile,
   fallbackContext: NodeFlowContextSnapshot
 ) => {
-  const { nodes, links } = normalizeNodeFlowData(nodeFlow);
+  const { nodes, links, graphLinks } = normalizeNodeFlowData(nodeFlow);
   return {
     revision: typeof nodeFlow.revision === "number" ? nodeFlow.revision : 1,
     nodes,
     links,
+    graphLinks,
     linkStyle: nodeFlow.linkStyle || "angular",
     activeView: nodeFlow.activeView ?? null,
     globalAssetHistory: nodeFlow.globalAssetHistory ?? [],

@@ -2,10 +2,14 @@ import type { Connection } from "@xyflow/react";
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
+import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
+import { findProjectGraphNodeByRef } from "../../node-workspace/nodeflow/projectGraph";
 import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
-import { getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../runtime/nodeFlowRefs";
+import { ensureUniqueNodeRef, getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../runtime/nodeFlowRefs";
 import { createNodeFlowMapWithBridge } from "./nodeFlowBuilder";
 import type {
+  CreateNodeFlowGraphLinkInput,
+  CreateNodeFlowGraphLinkResult,
   CreateNodeFlowMapInput,
   CreateNodeFlowMapResult,
   CreateNodeFlowNodeInput,
@@ -26,6 +30,7 @@ type NodeFlowBridgeDeps = {
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
+  addGraphLink: (sourceRef: string, targetRef: string) => string;
   updateNodeStyle: (nodeId: string, style: Record<string, unknown>) => void;
   connectNodes: (connection: Connection) => void;
   removeNode: (nodeId: string) => void;
@@ -188,7 +193,11 @@ const createNodeFlowNode = (
   }
   const position = getNodeFlowPlacement(snapshot, input.x, input.y);
   const resolvedTitle = resolveNodeTitle(input.type, input.title);
-  const resolvedNodeRef = normalizeNodeRef(input.nodeRef);
+  const desiredNodeRef = normalizeNodeRef(input.nodeRef);
+  const resolvedNodeRef = ensureUniqueNodeRef({
+    desiredRef: desiredNodeRef,
+    nodes: snapshot.nodes,
+  }) || undefined;
   const extraData = setNodeFlowRef(buildNodeExtraData(input, resolvedTitle), resolvedNodeRef);
   const nodeId = deps.addNode(input.type, position, input.parentId, extraData);
   const nodeHandles = getNodeHandles(input.type);
@@ -208,6 +217,34 @@ const createNodeFlowNode = (
   };
 };
 
+const createNodeFlowGraphLink = (
+  deps: NodeFlowBridgeDeps,
+  input: CreateNodeFlowGraphLinkInput
+): CreateNodeFlowGraphLinkResult => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  const projectData = deps.getProjectData();
+  assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  const sourceRef = normalizeNodeRef(input.sourceRef);
+  const targetRef = normalizeNodeRef(input.targetRef);
+  if (!sourceRef || !targetRef) {
+    throw new Error("createNodeFlowGraphLink 需要合法的 sourceRef 和 targetRef。");
+  }
+  if (sourceRef === targetRef) {
+    throw new Error("createNodeFlowGraphLink 不能连接同一个 ref 到自己。");
+  }
+  const sourceNode = findProjectGraphNodeByRef(projectData, snapshot, sourceRef);
+  const targetNode = findProjectGraphNodeByRef(projectData, snapshot, targetRef);
+  if (!sourceNode || !targetNode) {
+    throw new Error("createNodeFlowGraphLink 只能连接已存在的 source/graph 节点。");
+  }
+  const linkId = deps.addGraphLink(sourceRef, targetRef);
+  return {
+    linkId: linkId || buildNodeFlowGraphLinkId(sourceRef, targetRef),
+    sourceRef,
+    targetRef,
+  };
+};
+
 const connectNodeFlowNodes = (
   deps: NodeFlowBridgeDeps,
   input: ConnectNodeFlowNodesInput
@@ -223,7 +260,7 @@ const connectNodeFlowNodes = (
     nodeRef: input.targetRef,
   });
   if (!sourceNode || !targetNode) {
-    throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 workflow_node。");
+    throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 execution_node。");
   }
   const sourceHandles = sourceNode.outputHandles;
   const targetHandles = targetNode.inputHandles;
@@ -316,6 +353,7 @@ export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBrid
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),
   updateNodeFlowNodeData: (nodeId, data) => deps.updateNodeData(nodeId, data as Partial<NodeFlowNodeData>),
+  createNodeFlowGraphLink: (input) => createNodeFlowGraphLink(deps, input),
   connectNodeFlowNodes: (input) => connectNodeFlowNodes(deps, input),
   getNodeFlowNode: (input) => lookupNodeFlowNodeInSnapshot(deps.getNodeFlowSnapshot(), input),
   createNodeFlowMap: (input) => createNodeFlowMap(deps, input),

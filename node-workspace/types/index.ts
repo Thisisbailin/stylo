@@ -370,6 +370,12 @@ export interface NodeFlowLink {
   markerEnd?: string;
 }
 
+export interface NodeFlowGraphLink {
+  id: string;
+  sourceRef: string;
+  targetRef: string;
+}
+
 export type GlobalAssetType = "image" | "video" | "audio";
 
 export type GlobalAssetHistoryItem = {
@@ -407,6 +413,7 @@ export interface NodeFlowFile {
   name: string;
   nodes: NodeFlowNode[];
   links: NodeFlowLink[];
+  graphLinks?: NodeFlowGraphLink[];
   linkStyle?: "angular" | "curved";
   globalAssetHistory?: GlobalAssetHistoryItem[];
   nodeFlowContext?: NodeFlowContextSnapshot;

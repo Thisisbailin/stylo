@@ -2,6 +2,7 @@ import type { Connection, EdgeChange, NodeChange, XYPosition } from "@xyflow/rea
 import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
 import type { NodeFlowCanvasLink, NodeFlowCanvasNode } from "./reactflow";
 import { buildNodeFlowLinkId } from "./links";
+import { ensureUniqueNodeRef, getNodeFlowRef, setNodeFlowRef } from "./refs";
 import {
   appendNodeToNodeFlow,
   appendNodesAndLinksToNodeFlow,
@@ -62,13 +63,21 @@ export const createNodeFlowNodeCommand = ({
 
   const dim = DEFAULT_NODE_DIMENSIONS[type];
   const nodeId = allocateNodeId(type);
+  const requestedRef = getNodeFlowRef({ id: nodeId, type, position, data: effectiveExtraData as NodeFlowNodeData } as NodeFlowNode);
+  const uniqueRef = ensureUniqueNodeRef({
+    desiredRef: requestedRef,
+    nodes: state.nodes,
+  });
   const nextNode: NodeFlowNode = {
     id: nodeId,
     type,
     position,
     parentId: effectiveParentId,
     extent: effectiveParentId ? "parent" : undefined,
-    data: { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as NodeFlowNodeData,
+    data: setNodeFlowRef(
+      { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as Record<string, unknown>,
+      uniqueRef
+    ) as NodeFlowNodeData,
     style: dim ? { width: dim.width, height: dim.height } : undefined,
   };
 
@@ -98,18 +107,25 @@ export const pasteClipboardIntoNodeFlow = ({
     ? state.nodes.find((node) => node.type === "group" && (node.data as { view?: string }).view === state.activeView)
     : null;
 
+  const stagedNodes: NodeFlowNode[] = [];
   const newNodes: NodeFlowNode[] = clipboard.nodes.map((node) => {
     const newData = { ...node.data } as NodeFlowNodeData & { view?: string };
     if (state.activeView) newData.view = state.activeView;
-    return {
+    const uniqueRef = ensureUniqueNodeRef({
+      desiredRef: getNodeFlowRef(node),
+      nodes: [...state.nodes, ...stagedNodes],
+    });
+    const nextNode = {
       ...node,
       id: idMapping.get(node.id)!,
       position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
       selected: true,
       parentId: node.parentId || matchingGroup?.id,
       extent: node.parentId || matchingGroup?.id ? "parent" : undefined,
-      data: newData,
+      data: setNodeFlowRef(newData as Record<string, unknown>, uniqueRef) as NodeFlowNodeData,
     };
+    stagedNodes.push(nextNode);
+    return nextNode;
   });
 
   const newLinks: NodeFlowLink[] = clipboard.links.map((link) => ({

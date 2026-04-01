@@ -8,6 +8,7 @@ import {
 import {
   NodeFlowNode,
   NodeFlowLink,
+  NodeFlowGraphLink,
   NodeType,
   NodeFlowNodeData,
   NodeFlowFile,
@@ -66,6 +67,7 @@ import {
   createEmptyNodeFlowAssetState,
   removeGlobalAssetHistoryEntry,
 } from "../nodeflow/assets";
+import { createNodeFlowGraphLink, removeNodeFlowGraphLink } from "../nodeflow/graphLinks";
 import {
   createEmptyNodeFlowCollaborationState,
   mutateNodeFlowProjectRole,
@@ -91,6 +93,7 @@ interface NodeFlowStore {
   revision: number;
   nodes: NodeFlowNode[];
   links: NodeFlowLink[];
+  graphLinks: NodeFlowGraphLink[];
   linkStyle: LinkStyle;
   clipboard: ClipboardData | null;
   globalAssetHistory: GlobalAssetHistoryItem[];
@@ -120,6 +123,8 @@ interface NodeFlowStore {
   onLinksChange: (changes: EdgeChange<NodeFlowCanvasLink>[]) => void;
   connectNodes: (connection: Connection, options?: RevisionGuardOptions) => void;
   removeLink: (linkId: string, options?: RevisionGuardOptions) => void;
+  addGraphLink: (sourceRef: string, targetRef: string, options?: RevisionGuardOptions) => string;
+  removeGraphLink: (linkId: string, options?: RevisionGuardOptions) => void;
   toggleLinkPause: (linkId: string, options?: RevisionGuardOptions) => void;
 
   // Copy/Paste operations
@@ -185,6 +190,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   revision: 0,
   nodes: [],
   links: [],
+  graphLinks: [],
   linkStyle: "curved" as LinkStyle,
   clipboard: null,
   ...createIdleNodeFlowExecutionState(),
@@ -256,6 +262,28 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     set((state) => removeNodeFlowLinkCommand({ state, linkId }).state);
   },
 
+  addGraphLink: (sourceRef, targetRef, options) => {
+    const { revision, graphLinks } = get();
+    assertExpectedRevision(revision, options?.expectedRevision);
+    const result = createNodeFlowGraphLink(graphLinks, sourceRef, targetRef);
+    set((state) => ({
+      ...state,
+      revision: state.revision + 1,
+      graphLinks: result.links,
+    }));
+    return result.linkId;
+  },
+
+  removeGraphLink: (linkId, options) => {
+    const { revision } = get();
+    assertExpectedRevision(revision, options?.expectedRevision);
+    set((state) => ({
+      ...state,
+      revision: state.revision + 1,
+      graphLinks: removeNodeFlowGraphLink(state.graphLinks, linkId),
+    }));
+  },
+
   toggleLinkPause: (linkId, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);
     set((state) => toggleNodeFlowLinkPauseCommand({ state, linkId }).state);
@@ -296,11 +324,12 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   validateNodeFlow: () => validateNodeFlowState({ nodes: get().nodes, links: get().links }),
 
   exportNodeFlow: (name) => {
-    const { revision, nodes, links, linkStyle, globalAssetHistory, nodeFlowContext, viewport, activeView } = get();
+    const { revision, nodes, links, graphLinks, linkStyle, globalAssetHistory, nodeFlowContext, viewport, activeView } = get();
     const nodeFlow = buildNodeFlowFile({
       revision,
       nodes,
       links,
+      graphLinks,
       linkStyle,
       globalAssetHistory,
       nodeFlowContext,
@@ -319,6 +348,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       revision: hydrated.revision,
       nodes: hydrated.nodes,
       links: hydrated.links,
+      graphLinks: hydrated.graphLinks,
       linkStyle: hydrated.linkStyle,
       activeView: hydrated.activeView,
       globalAssetHistory: hydrated.globalAssetHistory,
@@ -403,6 +433,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       revision: state.revision + 1,
       nodes: [],
       links: [],
+      graphLinks: [],
       ...createIdleNodeFlowExecutionState(),
     })),
 

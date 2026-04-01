@@ -171,12 +171,7 @@ export const createQalamToolInputGuardrails = (
             typeof (args.resource_type ?? args.resourceType) === "string"
               ? String(args.resource_type ?? args.resourceType).trim()
               : "";
-          const normalizedResourceType =
-            resourceType === "workflow_node"
-              ? "execution_node"
-              : resourceType === "workflow_connection"
-                ? "graph_link"
-                : resourceType;
+          const normalizedResourceType = resourceType;
 
           if (normalizedResourceType === "execution_node") {
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
@@ -196,12 +191,12 @@ export const createQalamToolInputGuardrails = (
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType: normalizedResourceType, nodeKind });
           }
 
-          if (normalizedResourceType === "graph_link") {
+          if (normalizedResourceType === "execution_link" || normalizedResourceType === "graph_link") {
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType: normalizedResourceType });
           }
 
           return ToolGuardrailFunctionOutputFactory.rejectContent(
-            "operate_project_resource 仅支持 execution_node 和 graph_link。",
+            "operate_project_resource 仅支持 execution_node、execution_link 和 graph_link。",
             { resourceType }
           );
         },
@@ -249,7 +244,7 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
             }
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType, nodeId, nodeRef });
           }
-          if (resourceType === "graph_link") {
+          if (resourceType === "execution_link") {
             const linkId =
               typeof result?.link_id === "string"
                 ? result.link_id
@@ -265,6 +260,18 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
               });
             }
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType, linkId, sourceNodeId, targetNodeId });
+          }
+          if (resourceType === "graph_link") {
+            const linkId = typeof result?.link_id === "string" ? result.link_id : "";
+            const sourceRef = typeof result?.source_ref === "string" ? result.source_ref : "";
+            const targetRef = typeof result?.target_ref === "string" ? result.target_ref : "";
+            if (!linkId || !sourceRef || !targetRef) {
+              return ToolGuardrailFunctionOutputFactory.throwException({
+                toolName,
+                reason: "missing_graph_link_identity",
+              });
+            }
+            return ToolGuardrailFunctionOutputFactory.allow({ resourceType, linkId, sourceRef, targetRef });
           }
           return ToolGuardrailFunctionOutputFactory.throwException({
             toolName,

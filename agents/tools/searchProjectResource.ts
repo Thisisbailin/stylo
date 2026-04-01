@@ -2,6 +2,7 @@ import { listBuiltinSkills, resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import {
   buildGraphNodesFromWorkflow,
+  buildProjectGraphLinks,
   buildProjectedSourceNodes,
   buildProjectGraphMaps,
   buildProjectGraphSearchText,
@@ -180,6 +181,17 @@ export const searchProjectResourceToolDef = {
         ]
           .filter(Boolean)
           .join(" ");
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "execution_link",
+            link_id: link.id,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
+      }
+      for (const link of buildProjectGraphLinks(workflow)) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = [link.id, link.sourceRef, link.targetRef].filter(Boolean).join(" ");
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
             scope: "graph_link",
