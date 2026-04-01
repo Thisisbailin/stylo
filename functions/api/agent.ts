@@ -23,11 +23,16 @@ import type {
 import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
 import {
   buildNodeFlowLinkId,
-  createNodeFlowLink,
-  removeNodeFlowLink,
-  toggleNodeFlowLinkPause,
 } from "../../node-workspace/nodeflow/links";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
+import {
+  appendNodeToNodeFlow,
+  connectNodesInNodeFlow,
+  patchNodeFlowNodeStyle,
+  removeLinkFromNodeFlow,
+  removeNodeFromNodeFlow,
+  toggleNodeFlowLinkPauseInState,
+} from "../../node-workspace/nodeflow/mutations";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +70,14 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
   console.log(prefix, payload);
 };
 
+const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
+  if (typeof expectedRevision !== "number") return;
+  if (expectedRevision !== currentRevision) {
+    throw new Error(
+      `NodeFlow revision mismatch: expected ${expectedRevision}, current ${currentRevision}. 请先重新读取最新 NodeFlow 再执行修改。`
+    );
+  }
+};
 
 const resolvePreferredConnectionHandles = (sourceType: string, targetType: string) => {
   const sourceOutputs = getNodeHandles(sourceType).outputs;
@@ -141,62 +154,33 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
       data: { ...createDefaultNodeFlowNodeData(type), ...(extraData || {}) } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      nodes: [...currentNodeFlow.nodes, newNode],
-    };
+    currentNodeFlow = appendNodeToNodeFlow(currentNodeFlow, newNode);
     nodeFlowUpdated = true;
     return id;
   };
 
   const updateNodeStyle = (nodeId: string, style: Record<string, unknown>) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      nodes: currentNodeFlow.nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, style: { ...(node.style || {}), ...(style || {}) } }
-          : node
-      ),
-    };
+    currentNodeFlow = patchNodeFlowNodeStyle(currentNodeFlow, nodeId, style);
     nodeFlowUpdated = true;
   };
 
   const removeNode = (nodeId: string) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      nodes: currentNodeFlow.nodes.filter((node) => node.id !== nodeId),
-      links: currentNodeFlow.links.filter((link) => link.source !== nodeId && link.target !== nodeId),
-    };
+    currentNodeFlow = removeNodeFromNodeFlow(currentNodeFlow, nodeId);
     nodeFlowUpdated = true;
   };
 
   const connectNodes = (connection: { source: string; target: string; sourceHandle?: string; targetHandle?: string }) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      links: createNodeFlowLink(connection, currentNodeFlow.links),
-    };
+    currentNodeFlow = connectNodesInNodeFlow(currentNodeFlow, connection);
     nodeFlowUpdated = true;
   };
 
   const removeLink = (linkId: string) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      links: removeNodeFlowLink(currentNodeFlow.links, linkId),
-    };
+    currentNodeFlow = removeLinkFromNodeFlow(currentNodeFlow, linkId);
     nodeFlowUpdated = true;
   };
 
   const toggleLinkPause = (linkId: string) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      links: toggleNodeFlowLinkPause(currentNodeFlow.links, linkId),
-    };
+    currentNodeFlow = toggleNodeFlowLinkPauseInState(currentNodeFlow, linkId);
     nodeFlowUpdated = true;
   };
 
@@ -220,7 +204,8 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
         const nodeId = addNode("text", position, parentId, { title, text });
         return { id: nodeId, title };
       },
-      createNodeFlowNode: ({ type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
+      createNodeFlowNode: ({ expectedRevision, type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
+        assertExpectedRevision(currentNodeFlow.revision, expectedRevision);
         const activeViewport = getViewport();
         const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
         const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;
@@ -282,7 +267,8 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
           defaultInputHandles: nodeHandles.inputs as WorkflowBuilderHandle[],
         };
       },
-      connectNodeFlowNodes: ({ sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
+      connectNodeFlowNodes: ({ expectedRevision, sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
+        assertExpectedRevision(currentNodeFlow.revision, expectedRevision);
         const sourceNode = getNodeFlowNode({ nodeId: sourceNodeId, nodeRef: sourceRef });
         const targetNode = getNodeFlowNode({ nodeId: targetNodeId, nodeRef: targetRef });
         if (!sourceNode || !targetNode) {
@@ -325,6 +311,7 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
       },
       getNodeFlowNode,
       createNodeFlowMap: (input: CreateNodeFlowMapInput) => {
+        assertExpectedRevision(currentNodeFlow.revision, input.expectedRevision);
         const activeViewport = getViewport();
         const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
         const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;

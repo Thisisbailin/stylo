@@ -180,6 +180,8 @@ export const FloatingActionBar: React.FC<Props> = ({
     "text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]";
   const sectionCardClass =
     "rounded-[26px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4";
+  const popoverHeaderClass =
+    "rounded-[26px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-4 py-4";
   const utilityButtonClass =
     "group flex min-h-[60px] items-center gap-3 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px";
   const docButtonClass =
@@ -209,7 +211,7 @@ export const FloatingActionBar: React.FC<Props> = ({
       maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
     };
   };
-  const templatePopoverStyle = useMemo(() => getPopoverStyle(projectAnchorRect, 408), [projectAnchorRect]);
+  const templatePopoverStyle = useMemo(() => getPopoverStyle(projectAnchorRect, 420), [projectAnchorRect]);
   const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 720), [nodesAnchorRect]);
   const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, 420), [accountAnchorRect]);
 
@@ -330,6 +332,26 @@ export const FloatingActionBar: React.FC<Props> = ({
   };
 
   const ioActions: { label: string; desc: string; Icon: any; onClick?: () => void; color: string }[] = [];
+
+  const renderPopoverHeader = (
+    title: string,
+    description: string,
+    Icon: React.ComponentType<{ size?: number; className?: string }>,
+    toneClass: string
+  ) => (
+    <div className={popoverHeaderClass}>
+      <div className="flex items-start gap-3">
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${toneClass}`}>
+          <Icon size={18} />
+        </div>
+        <div className="min-w-0">
+          <div className={sectionEyebrowClass}>{title}</div>
+          <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{title}</div>
+          <div className="mt-1 text-[12px] leading-5 text-[var(--app-text-secondary)]">{description}</div>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderAgentSettingModules = () => (
     <div className="space-y-2">
@@ -676,12 +698,7 @@ export const FloatingActionBar: React.FC<Props> = ({
             style={{ ...panelStyle, ...templatePopoverStyle }}
           >
             <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
-              <div className="space-y-1 px-1">
-                <div className={sectionEyebrowClass}>Project</div>
-                <div className="text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                  项目层只保留 IO 与模板，输入输出和复用资产都从这里进入。
-                </div>
-              </div>
+              {renderPopoverHeader("Project", "项目层只保留 IO 与模板，输入输出和复用资产都从这里进入。", SquareStack, "bg-blue-500/10 text-blue-200")}
 
               {renderIoPanel()}
 
@@ -854,13 +871,9 @@ export const FloatingActionBar: React.FC<Props> = ({
             style={{ ...panelStyle, ...fileMenuPopoverStyle }}
           >
             <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
+              {renderPopoverHeader("Account", "聚焦账户状态、头像、主题与 agent 工作台入口。", User, "bg-emerald-500/10 text-emerald-300")}
+
               <div className={`${sectionCardClass} space-y-3`}>
-                <div className="space-y-1">
-                  <div className={sectionEyebrowClass}>Account</div>
-                  <div className="text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                    聚焦账户状态、当前工作台身份与 agent 能力入口。
-                  </div>
-                </div>
                 {!accountLoaded ? (
                   <div className="flex items-center gap-3 animate-pulse">
                     <div className="h-14 w-14 rounded-[18px] bg-[var(--app-panel-soft)]" />
@@ -917,7 +930,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">dashboard / 模型 / tools</span>
+                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">模型 / tools / dashboard</span>
                           </span>
                         </button>
                       )}
@@ -1014,7 +1027,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">先查看 dashboard 与设置</span>
+                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">查看 agent 设置与 dashboard</span>
                         </span>
                       </button>
                       <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">

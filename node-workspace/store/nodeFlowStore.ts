@@ -35,9 +35,6 @@ import { resolveEdgeHandleType } from "../utils/handles";
 import {
   applyNodeFlowLinkChanges,
   buildNodeFlowLinkId,
-  createNodeFlowLink,
-  removeNodeFlowLink,
-  toggleNodeFlowLinkPause,
 } from "../nodeflow/links";
 import { applyNodeFlowNodeChanges, type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/reactflow";
 import {
@@ -47,6 +44,16 @@ import {
   normalizeNodeFlowGroupBindings,
 } from "../nodeflow/state";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+import {
+  appendNodeToNodeFlow,
+  appendNodesAndLinksToNodeFlow,
+  connectNodesInNodeFlow,
+  patchNodeFlowNodeData,
+  patchNodeFlowNodeStyle,
+  removeLinkFromNodeFlow,
+  removeNodeFromNodeFlow,
+  toggleNodeFlowLinkPauseInState,
+} from "../nodeflow/mutations";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -268,7 +275,6 @@ interface NodeFlowStore {
 }
 
 let nodeIdCounter = 0;
-const bumpNodeFlowRevision = (revision: number) => revision + 1;
 
 export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   revision: 0,
@@ -360,48 +366,27 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       data: { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
-    set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
-      nodes: [...state.nodes, newNode],
-    }));
+    set((state) => appendNodeToNodeFlow(state, newNode));
     return id;
   },
 
   updateNodeData: (nodeId, data) => {
-    set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
-      nodes: state.nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, ...data } as NodeFlowNodeData }
-          : node
-      ),
-    }));
+    set((state) => patchNodeFlowNodeData(state, nodeId, data));
   },
 
   updateNodeStyle: (nodeId, style) => {
-    set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
-      nodes: state.nodes.map((node) =>
-        node.id === nodeId
-          ? { ...node, style: { ...(node.style || {}), ...(style || {}) } }
-          : node
-      ),
-    }));
+    set((state) => patchNodeFlowNodeStyle(state, nodeId, style));
   },
 
   removeNode: (nodeId) => {
-    set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
-      nodes: state.nodes.filter((node) => node.id !== nodeId),
-      links: state.links.filter((link) => link.source !== nodeId && link.target !== nodeId),
-    }));
+    set((state) => removeNodeFromNodeFlow(state, nodeId));
   },
 
   onNodesChange: (changes) =>
     set((state) => {
       const nextNodes = applyNodeFlowNodeChanges(changes, state.nodes);
       return {
-        revision: bumpNodeFlowRevision(state.revision),
+        revision: state.revision + 1,
         nodes: normalizeNodeFlowGroupBindings(nextNodes, state.links),
       };
     }),
@@ -410,38 +395,21 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     set((state) => {
       const nextLinks = applyNodeFlowLinkChanges(changes, state.links);
       return {
-        revision: bumpNodeFlowRevision(state.revision),
+        revision: state.revision + 1,
         links: nextLinks,
         nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
       };
     }),
 
   connectNodes: (connection) => {
-    set((state) => {
-      const nextLinks = createNodeFlowLink(connection, state.links);
-      return {
-        revision: bumpNodeFlowRevision(state.revision),
-        links: nextLinks,
-        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
-      };
-    });
+    set((state) => connectNodesInNodeFlow(state, connection));
   },
 
   removeLink: (linkId) =>
-    set((state) => {
-      const nextLinks = removeNodeFlowLink(state.links, linkId);
-      return {
-        revision: bumpNodeFlowRevision(state.revision),
-        links: nextLinks,
-        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
-      };
-    }),
+    set((state) => removeLinkFromNodeFlow(state, linkId)),
 
   toggleLinkPause: (linkId) => {
-    set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
-      links: toggleNodeFlowLinkPause(state.links, linkId),
-    }));
+    set((state) => toggleNodeFlowLinkPauseInState(state, linkId));
   },
 
   copySelectedNodes: () => {
@@ -499,7 +467,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     }));
     const updatedNodes = nodes.map((node) => ({ ...node, selected: false }));
     set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
+      revision: state.revision + 1,
       nodes: [...updatedNodes, ...newNodes],
       links: [...links, ...newLinks],
     }));
@@ -845,7 +813,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
     const updatedNodes = nodes.map((node) => ({ ...node, selected: false }));
     set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
+      revision: state.revision + 1,
       nodes: [...updatedNodes, ...newNodes],
       links: [...links, ...newLinks],
     }));
@@ -947,7 +915,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     ];
 
     set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
+      revision: state.revision + 1,
       nodes: [...deselected, groupNode, textNode, ...imageNodes, viduNode],
       links: [...links, ...newLinks],
     }));
@@ -1011,7 +979,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
     const mergedNodes = normalizeNodeFlowGroupBindings([...nextNodes, groupNode], links);
     set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
+      revision: state.revision + 1,
       nodes: mergedNodes,
     }));
     return { ok: true };
@@ -1019,7 +987,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   clearNodeFlow: () =>
     set((state) => ({
-      revision: bumpNodeFlowRevision(state.revision),
+      revision: state.revision + 1,
       nodes: [],
       links: [],
       isRunning: false,
@@ -1060,10 +1028,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     }, nodeIdCounter);
     nodeIdCounter = maxId;
 
-    set((state) => ({
-      nodes: [...state.nodes, ...newNodes],
-      revision: bumpNodeFlowRevision(state.revision),
-      links: [...state.links, ...newLinks],
-    }));
+    set((state) => appendNodesAndLinksToNodeFlow(state, newNodes, newLinks));
   },
 }));

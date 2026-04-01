@@ -27,6 +27,7 @@ import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../../agents/runtime/nodeFlowRefs";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
 import type { QalamAgentRuntime } from "../../agents/runtime/types";
+import { buildNodeFlowLinkId } from "../nodeflow/links";
 
 type Props = {
   projectData: ProjectData;
@@ -74,10 +75,16 @@ const WORK_HINT_KEYWORDS = [
 
 const toSearch = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
-const linkIdFromConnection = (sourceNodeId: string, targetNodeId: string, sourceHandle: string, targetHandle: string) =>
-  `link-${sourceNodeId}-${targetNodeId}-${sourceHandle || "default"}-${targetHandle || "default"}`;
-
 const getNodeFlowSnapshot = () => useNodeFlowStore.getState();
+
+const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
+  if (typeof expectedRevision !== "number") return;
+  if (expectedRevision !== currentRevision) {
+    throw new Error(
+      `NodeFlow revision mismatch: expected ${expectedRevision}, current ${currentRevision}. 请先重新读取最新 NodeFlow 再执行修改。`
+    );
+  }
+};
 
 const lookupNodeFlowNodeSnapshot = (input: NodeFlowNodeLookupInput) => {
   const snapshot = getNodeFlowSnapshot();
@@ -386,8 +393,9 @@ export const QalamAgent: React.FC<Props> = ({
         const nodeId = addNode("text", position, parentId, { title, text });
         return { id: nodeId, title };
       },
-      createNodeFlowNode: ({ type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
+      createNodeFlowNode: ({ expectedRevision, type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
         const snapshot = getNodeFlowSnapshot();
+        assertExpectedRevision(snapshot.revision, expectedRevision);
         const hasXY = typeof x === "number" && typeof y === "number";
         const activeViewport = snapshot.viewport || viewport;
         const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
@@ -463,7 +471,8 @@ export const QalamAgent: React.FC<Props> = ({
           nodeId,
           nodeRef,
         }),
-      connectNodeFlowNodes: ({ sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
+      connectNodeFlowNodes: ({ expectedRevision, sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
+        assertExpectedRevision(getNodeFlowSnapshot().revision, expectedRevision);
         const sourceNode = lookupNodeFlowNodeSnapshot({ nodeId: sourceNodeId, nodeRef: sourceRef });
         const targetNode = lookupNodeFlowNodeSnapshot({ nodeId: targetNodeId, nodeRef: targetRef });
         if (!sourceNode || !targetNode) {
@@ -494,7 +503,7 @@ export const QalamAgent: React.FC<Props> = ({
           sourceHandle: resolvedSourceHandle,
           targetHandle: resolvedTargetHandle,
         });
-        const resolvedLinkId = linkIdFromConnection(
+        const resolvedLinkId = buildNodeFlowLinkId(
           sourceNode.nodeId,
           targetNode.nodeId,
           resolvedSourceHandle,
@@ -519,6 +528,7 @@ export const QalamAgent: React.FC<Props> = ({
         };
       },
       createNodeFlowMap: (input) => {
+        assertExpectedRevision(getNodeFlowSnapshot().revision, input.expectedRevision);
         const baseX = viewport ? (-viewport.x + 120) / viewport.zoom : 120;
         const baseY = viewport ? (-viewport.y + 120) / viewport.zoom : 120;
         const offset = (nodes.length % 5) * 24;

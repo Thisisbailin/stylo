@@ -15,6 +15,7 @@ export type CreateTextNodeResult = {
 };
 
 export type CreateNodeFlowNodeInput = {
+  expectedRevision?: number;
   type: Extract<NodeType, "text" | "imageGen" | "scriptBoard" | "storyboardBoard" | "identityCard">;
   nodeRef?: string;
   title?: string;
@@ -40,6 +41,7 @@ export type CreateNodeFlowNodeResult = {
 };
 
 export type ConnectNodeFlowNodesInput = {
+  expectedRevision?: number;
   sourceNodeId?: string;
   targetNodeId?: string;
   sourceRef?: string;
@@ -97,6 +99,7 @@ export type CreateNodeFlowMapLinkInput = {
 };
 
 export type CreateNodeFlowMapInput = {
+  expectedRevision?: number;
   title?: string;
   description?: string;
   wrapInGroup?: boolean;

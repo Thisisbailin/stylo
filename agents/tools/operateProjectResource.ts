@@ -234,7 +234,9 @@ export const operateProjectResourceToolDef = {
 
     if (args.resourceType === "workflow_node") {
       const nodeType = resolveNodeType(args.nodeKind);
+      const expectedRevision = bridge.getNodeFlowSnapshot().revision;
       const created = bridge.createNodeFlowNode({
+        expectedRevision,
         type: nodeType,
         nodeRef: defaultNodeRef(args),
         title: defaultTitle(args),
@@ -253,7 +255,9 @@ export const operateProjectResourceToolDef = {
       };
     }
 
+    const expectedRevision = bridge.getNodeFlowSnapshot().revision;
     const connected = bridge.connectNodeFlowNodes({
+      expectedRevision,
       sourceRef: args.sourceRef,
       targetRef: args.targetRef,
       sourceNodeId: args.sourceNodeId,
