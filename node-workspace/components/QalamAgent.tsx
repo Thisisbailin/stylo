@@ -618,7 +618,7 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setMessages, setProjectData]);
 
-  const panelClassName = "pointer-events-auto qalam-panel-cloud w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
+  const panelClassName = "pointer-events-auto qalam-panel-cloud w-[420px] max-w-[95vw] qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const panelStyle: React.CSSProperties | undefined = {
@@ -694,10 +694,14 @@ export const QalamAgent: React.FC<Props> = ({
       className={panelClassName}
       style={{
         ...panelStyle,
-        clipPath: panelPhase === "open" ? "inset(0 0 0 0 round 30px)" : collapsedClipPath,
-        borderRadius: panelPhase === "open" ? 30 : titleOrigin.radius,
+        clipPath:
+          panelPhase === "open"
+            ? "inset(-56px -72px -180px -36px round 0px)"
+            : collapsedClipPath,
+        borderRadius: panelPhase === "open" ? 0 : titleOrigin.radius,
         transition: `clip-path ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), border-radius ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
         pointerEvents: panelPhase === "closing" ? "none" : "auto",
+        overflow: panelPhase === "open" ? "visible" : "hidden",
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >

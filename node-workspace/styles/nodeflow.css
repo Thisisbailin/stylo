@@ -234,31 +234,31 @@
 .qalam-panel-cloud::before {
   content: "";
   position: absolute;
-  inset: -28px -24px -92px -22px;
+  inset: -46px -36px -140px -32px;
   z-index: 0;
   pointer-events: none;
-  border-radius: 54px;
+  border-radius: 72px;
   background:
-    radial-gradient(circle at 18% 10%, rgba(122, 183, 160, 0.2), transparent 24%),
-    radial-gradient(circle at 68% 12%, rgba(255, 255, 255, 0.08), transparent 28%),
-    linear-gradient(180deg, rgba(12, 16, 15, 0.78) 0%, rgba(12, 16, 15, 0.48) 28%, rgba(12, 16, 15, 0.22) 58%, rgba(12, 16, 15, 0.08) 76%, transparent 100%);
-  filter: blur(18px);
-  opacity: 0.92;
+    radial-gradient(circle at 16% 8%, rgba(122, 183, 160, 0.22), transparent 22%),
+    radial-gradient(circle at 70% 10%, rgba(255, 255, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(12, 16, 15, 0.82) 0%, rgba(12, 16, 15, 0.5) 24%, rgba(12, 16, 15, 0.22) 54%, rgba(12, 16, 15, 0.06) 74%, transparent 100%);
+  filter: blur(28px);
+  opacity: 0.9;
 }
 
 .qalam-panel-cloud::after {
   content: "";
   position: absolute;
-  inset: -8px -10px -48px -10px;
+  inset: -20px -20px -96px -20px;
   z-index: 0;
   pointer-events: none;
-  border-radius: 44px;
+  border-radius: 64px;
   background:
-    radial-gradient(circle at 12% 0%, rgba(122, 183, 160, 0.14), transparent 22%),
-    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.06), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0.008) 18%, rgba(255, 255, 255, 0) 48%);
-  filter: blur(34px);
-  opacity: 0.78;
+    radial-gradient(circle at 10% 0%, rgba(122, 183, 160, 0.16), transparent 18%),
+    radial-gradient(circle at 82% 16%, rgba(255, 255, 255, 0.05), transparent 20%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.012) 14%, rgba(255, 255, 255, 0) 42%);
+  filter: blur(44px);
+  opacity: 0.72;
 }
 
 .qalam-panel-cloud > * {

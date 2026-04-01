@@ -202,7 +202,7 @@ export const FloatingActionBar: React.FC<Props> = ({
       Math.min(anchorRect.left + anchorRect.width / 2 - width / 2, window.innerWidth - viewportPadding - width)
     );
     const gap = 12;
-    const bottom = Math.max(16, window.innerHeight - anchorRect.top + gap);
+    const bottom = Math.max(16, window.innerHeight - anchorRect.bottom + gap);
     return {
       position: "fixed",
       left,
