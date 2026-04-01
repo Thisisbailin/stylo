@@ -13,7 +13,10 @@ const DEFAULT_BASE_URL = VIDU_DEFAULT_BASE_URL;
 const DEFAULT_REFERENCE_MODEL = "viduq3";
 
 const normalizeBaseUrl = (baseUrl?: string) =>
-  (baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
+  (baseUrl || DEFAULT_BASE_URL)
+    .replace("https://api.vidu.com/ent/v2", VIDU_DEFAULT_BASE_URL)
+    .replace("http://api.vidu.com/ent/v2", VIDU_DEFAULT_BASE_URL)
+    .replace(/\/+$/, "");
 
 const mapState = (state?: string): ViduTaskState => {
   if (!state) return "processing";

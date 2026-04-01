@@ -7,13 +7,11 @@ import {
   Film,
   FileText,
   Image,
-  ListChecks,
-  MapPin,
-  NotebookText,
+  Layers3,
+  Network,
   Shield,
   Sparkles,
   Target,
-  Users,
 } from "lucide-react";
 import type { AppConfig, ProjectData, SyncState } from "../../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
@@ -24,6 +22,11 @@ import {
   UnderstandingPanel,
   type UnderstandingSectionKey,
 } from "./UnderstandingPanel";
+import {
+  buildGraphNodesFromWorkflow,
+  buildProjectedSourceNodes,
+  buildProjectGraphMaps,
+} from "../nodeflow/projectGraph";
 
 export type WorkspaceSection =
   | `understanding:${UnderstandingSectionKey}`
@@ -80,42 +83,37 @@ export const WorkspacePanel: React.FC<Props> = ({
   syncRollout,
   onResetProject,
   onOpenLanding,
-  initialSection = "understanding:overview",
+  initialSection = "understanding:source",
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
-  const { globalAssetHistory } = useNodeFlowStore();
+  const { globalAssetHistory, revision, nodes, links, activeView } = useNodeFlowStore();
 
   useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
 
-  const understandingSummary = projectData.context.projectSummary?.trim() || "";
-  const episodeSummaries = projectData.context.episodeSummaries || [];
-  const characterCount = useMemo(
-    () => (projectData.context.roles || []).filter((role) => role.kind === "person").length,
-    [projectData.context.roles]
+  const workflow = useMemo(
+    () => ({
+      version: 2,
+      revision,
+      name: projectData.fileName || "Qalam NodeFlow",
+      nodes,
+      links,
+      activeView,
+    }),
+    [activeView, links, nodes, projectData.fileName, revision]
   );
-  const sceneCount = useMemo(
-    () => (projectData.context.roles || []).filter((role) => role.kind === "scene").length,
-    [projectData.context.roles]
+  const sourceNodeCount = useMemo(() => buildProjectedSourceNodes(projectData).length, [projectData]);
+  const graphNodes = useMemo(() => buildGraphNodesFromWorkflow(workflow), [workflow]);
+  const semanticNodeCount = useMemo(
+    () => graphNodes.filter((node) => node.plane === "semantic").length,
+    [graphNodes]
   );
-  const guideCount = useMemo(
-    () =>
-      [
-        projectData.globalStyleGuide,
-        projectData.shotGuide,
-        projectData.soraGuide,
-        projectData.storyboardGuide,
-        projectData.dramaGuide,
-      ].filter((item) => (item || "").trim().length > 0).length,
-    [
-      projectData.dramaGuide,
-      projectData.globalStyleGuide,
-      projectData.shotGuide,
-      projectData.soraGuide,
-      projectData.storyboardGuide,
-    ]
+  const designNodeCount = useMemo(
+    () => graphNodes.filter((node) => node.plane === "design").length,
+    [graphNodes]
   );
+  const mapCount = useMemo(() => buildProjectGraphMaps(workflow).length, [workflow]);
   const imageCount = useMemo(
     () => globalAssetHistory.filter((item) => item.type === "image").length,
     [globalAssetHistory]
@@ -135,38 +133,31 @@ export const WorkspacePanel: React.FC<Props> = ({
       icon: BookOpen,
       items: [
         {
-          key: "understanding:overview",
-          label: "Overview",
-          description: understandingSummary ? "Summary ready" : "No summary yet",
+          key: "understanding:source",
+          label: "Source",
+          description: `${sourceNodeCount} canonical nodes`,
           icon: BookOpen,
-          tone: "text-yellow-300",
+          tone: "text-amber-300",
         },
         {
-          key: "understanding:episodes",
-          label: "Episodes",
-          description: `${episodeSummaries.length} summaries`,
-          icon: ListChecks,
+          key: "understanding:semantic",
+          label: "Semantic",
+          description: `${semanticNodeCount} assets`,
+          icon: Network,
           tone: "text-emerald-300",
         },
         {
-          key: "understanding:characters",
-          label: "Characters",
-          description: `${characterCount} tracked`,
-          icon: Users,
-          tone: "text-emerald-200",
+          key: "understanding:design",
+          label: "Design",
+          description: `${designNodeCount} assets`,
+          icon: Sparkles,
+          tone: "text-sky-300",
         },
         {
-          key: "understanding:scenes",
-          label: "Scenes",
-          description: `${sceneCount} parsed`,
-          icon: MapPin,
-          tone: "text-cyan-300",
-        },
-        {
-          key: "understanding:guides",
-          label: "Guides",
-          description: `${guideCount} loaded`,
-          icon: NotebookText,
+          key: "understanding:maps",
+          label: "Maps",
+          description: `${mapCount} projections`,
+          icon: Layers3,
           tone: "text-violet-300",
         },
       ],
@@ -254,7 +245,7 @@ export const WorkspacePanel: React.FC<Props> = ({
               Workspace
             </div>
             <div className="mt-2 text-[13px] leading-6 text-[var(--app-text-secondary)]">
-              理解、素材、同步和项目信息都收进同一个工作台侧栏，只在这里切换上下文。
+              文学地图、素材、同步和项目信息都收进同一个工作台侧栏，只在这里切换上下文。
             </div>
           </div>
 

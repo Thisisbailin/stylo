@@ -16,6 +16,13 @@ export const useConfig = (key: string) => {
     },
     deserialize: (value) => {
       const parsed = JSON.parse(value);
+      const normalizeViduBaseUrl = (baseUrl?: string) => {
+        if (typeof baseUrl !== "string" || !baseUrl.trim()) return INITIAL_VIDU_CONFIG.baseUrl;
+        return baseUrl
+          .trim()
+          .replace("https://api.vidu.com/ent/v2", INITIAL_VIDU_CONFIG.baseUrl)
+          .replace("http://api.vidu.com/ent/v2", INITIAL_VIDU_CONFIG.baseUrl);
+      };
       const rememberApiKeys = parsed.rememberApiKeys ?? INITIAL_REMEMBER_KEYS;
       const syncApiKeys = parsed.syncApiKeys ?? INITIAL_SYNC_KEYS;
       const safeText = rememberApiKeys ? parsed.textConfig : { ...parsed.textConfig, apiKey: '' };
@@ -43,7 +50,7 @@ export const useConfig = (key: string) => {
       const safeVidu = {
         ...INITIAL_VIDU_CONFIG,
         ...(rawVidu || {}),
-        baseUrl: rawVidu?.baseUrl?.trim() ? rawVidu.baseUrl : INITIAL_VIDU_CONFIG.baseUrl,
+        baseUrl: normalizeViduBaseUrl(rawVidu?.baseUrl),
       };
       return {
         syncApiKeys,
