@@ -1,4 +1,6 @@
-import { createNodeFlowMapWithBridge } from "../../agents/bridge/nodeFlowBuilder";
+import {
+  createQalamAgentBridge,
+} from "../../agents/bridge/nodeFlowBridgeCore";
 import { runQalamAgentCore } from "../../agents/runtime/core";
 import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
@@ -8,22 +10,11 @@ import {
 import { resolveAgentProvider, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
-import { getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../../agents/runtime/nodeFlowRefs";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
 import { createAgentSessionKey, D1EdgeSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
-import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
-import type {
-  CreateNodeFlowMapInput,
-  WorkflowBuilderHandle,
-  NodeFlowNodeLookupInput,
-  NodeFlowNodeLookupResult,
-} from "../../agents/bridge/qalamBridge";
-import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
-import {
-  buildNodeFlowLinkId,
-} from "../../node-workspace/nodeflow/links";
+import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 import {
   appendNodeToNodeFlow,
@@ -70,31 +61,6 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
   console.log(prefix, payload);
 };
 
-const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
-  if (typeof expectedRevision !== "number") return;
-  if (expectedRevision !== currentRevision) {
-    throw new Error(
-      `NodeFlow revision mismatch: expected ${expectedRevision}, current ${currentRevision}. 请先重新读取最新 NodeFlow 再执行修改。`
-    );
-  }
-};
-
-const resolvePreferredConnectionHandles = (sourceType: string, targetType: string) => {
-  const sourceOutputs = getNodeHandles(sourceType).outputs;
-  const targetInputs = getNodeHandles(targetType).inputs;
-  const multimodalSourceHandle = sourceOutputs.find((handle) => handle === "image" || handle === "text" || handle === "audio");
-  if (multimodalSourceHandle && targetInputs.includes("multi")) {
-    return { sourceHandle: multimodalSourceHandle as "image" | "text" | "audio", targetHandle: "multi" as const };
-  }
-  if (sourceOutputs.includes("text") && targetInputs.includes("text")) {
-    return { sourceHandle: "text" as const, targetHandle: "text" as const };
-  }
-  if (sourceOutputs.includes("audio") && targetInputs.includes("audio")) {
-    return { sourceHandle: "audio" as const, targetHandle: "audio" as const };
-  }
-  return null;
-};
-
 const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlowFile) => {
   let currentProjectData = projectData;
   let projectDataUpdated = false;
@@ -118,23 +84,6 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
   }, 0);
 
   const getViewport = () => currentNodeFlow.viewport || null;
-  const getNodeCount = () => currentNodeFlow.nodes.length;
-  const getNodeFlowNode = (input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null => {
-    const resolvedRef = normalizeNodeRef(input.nodeRef);
-    const node = resolvedRef
-      ? currentNodeFlow.nodes.find((item) => getNodeFlowRef(item) === resolvedRef)
-      : currentNodeFlow.nodes.find((item) => item.id === input.nodeId);
-    if (!node) return null;
-    const handles = getNodeHandles(node.type);
-    return {
-      nodeId: node.id,
-      nodeRef: getNodeFlowRef(node),
-      nodeType: node.type,
-      inputHandles: handles.inputs as WorkflowBuilderHandle[],
-      outputHandles: handles.outputs as WorkflowBuilderHandle[],
-    };
-  };
-
   const addNode = (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => {
     const id = `${type}-${++nodeIdCounter}`;
     const defaultDimensions: Partial<Record<NodeType, { width: number; height?: number }>> = {
@@ -185,156 +134,20 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
   };
 
   return {
-    bridge: {
+    bridge: createQalamAgentBridge({
       getProjectData: () => currentProjectData,
       getNodeFlowSnapshot: () => currentNodeFlow,
       updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
         currentProjectData = updater(currentProjectData);
         projectDataUpdated = true;
       },
-      addTextNode: ({ title, text, x, y, parentId }) => {
-        const activeViewport = getViewport();
-        const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
-        const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;
-        const offset = (getNodeCount() % 5) * 24;
-        const position =
-          typeof x === "number" && typeof y === "number"
-            ? { x, y }
-            : { x: Math.round(baseX + offset), y: Math.round(baseY + offset) };
-        const nodeId = addNode("text", position, parentId, { title, text });
-        return { id: nodeId, title };
-      },
-      createNodeFlowNode: ({ expectedRevision, type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
-        assertExpectedRevision(currentNodeFlow.revision, expectedRevision);
-        const activeViewport = getViewport();
-        const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
-        const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;
-        const offset = (getNodeCount() % 5) * 24;
-        const position =
-          typeof x === "number" && typeof y === "number"
-            ? { x, y }
-            : { x: Math.round(baseX + offset), y: Math.round(baseY + offset) };
-        if (!["text", "imageGen", "scriptBoard", "storyboardBoard", "identityCard"].includes(type)) {
-          throw new Error("createNodeFlowNode 当前仅支持 text、imageGen、scriptBoard、storyboardBoard、identityCard。");
-        }
-        const resolvedTitle =
-          (title || "").trim() ||
-          (type === "text"
-            ? "文本节点"
-            : type === "imageGen"
-              ? "Img Gen"
-              : type === "scriptBoard"
-                ? "剧本卡片"
-                : type === "storyboardBoard"
-                  ? "分镜表格卡片"
-                  : "身份卡片");
-        const extraData =
-          type === "text"
-            ? { title: resolvedTitle, text: (text || "").trim() }
-            : type === "imageGen"
-              ? { title: resolvedTitle, aspectRatio: (aspectRatio || "1:1").trim() || "1:1" }
-              : type === "scriptBoard"
-                ? { title: resolvedTitle, episodeId }
-                : type === "storyboardBoard"
-                  ? {
-                      title: resolvedTitle,
-                      episodeId,
-                      sceneId: (sceneId || "").trim() || undefined,
-                      displayMode: displayMode === "workflow" ? "workflow" : "table",
-                    }
-                  : {
-                      title: resolvedTitle,
-                      entityType: entityType === "scene" ? "scene" : "character",
-                      entityId: (entityId || "").trim() || undefined,
-                    };
-        if (type === "text" && !String((extraData as any).text || "").trim()) {
-          throw new Error("createNodeFlowNode 创建文本节点时缺少 text。");
-        }
-        const resolvedNodeRef = normalizeNodeRef(nodeRef);
-        const nodeId = addNode(
-          type as NodeType,
-          position,
-          parentId,
-          setNodeFlowRef(extraData as Partial<NodeFlowNodeData>, resolvedNodeRef)
-        );
-        const nodeHandles = getNodeHandles(type);
-        return {
-          nodeId,
-          nodeRef: resolvedNodeRef || undefined,
-          nodeType: type,
-          title: resolvedTitle,
-          defaultOutputHandle: (nodeHandles.outputs[0] as WorkflowBuilderHandle | undefined) ?? null,
-          defaultInputHandles: nodeHandles.inputs as WorkflowBuilderHandle[],
-        };
-      },
-      connectNodeFlowNodes: ({ expectedRevision, sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
-        assertExpectedRevision(currentNodeFlow.revision, expectedRevision);
-        const sourceNode = getNodeFlowNode({ nodeId: sourceNodeId, nodeRef: sourceRef });
-        const targetNode = getNodeFlowNode({ nodeId: targetNodeId, nodeRef: targetRef });
-        if (!sourceNode || !targetNode) {
-          throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 workflow_node。");
-        }
-        const sourceHandles = sourceNode.outputHandles;
-        const targetHandles = targetNode.inputHandles;
-        if (sourceHandles.length === 0 || targetHandles.length === 0) {
-          throw new Error("当前节点类型不存在可用的输入/输出 handle。");
-        }
-        const preferred = resolvePreferredConnectionHandles(sourceNode.nodeType, targetNode.nodeType);
-        const resolvedSourceHandle = sourceHandle || preferred?.sourceHandle;
-        const resolvedTargetHandle = targetHandle || preferred?.targetHandle;
-        if (!resolvedSourceHandle || !resolvedTargetHandle) {
-          throw new Error(
-            `connectNodeFlowNodes 无法自动推断 ${sourceNode.nodeType} -> ${targetNode.nodeType} 的连接端口。请显式提供 source_handle 和 target_handle。`
-          );
-        }
-        if (!sourceHandles.includes(resolvedSourceHandle) || !targetHandles.includes(resolvedTargetHandle)) {
-          throw new Error("connectNodeFlowNodes 收到无效的 handle。");
-        }
-        if (!isValidConnection({ sourceHandle: resolvedSourceHandle, targetHandle: resolvedTargetHandle })) {
-          throw new Error("connectNodeFlowNodes 收到不合法的连线类型。");
-        }
-        connectNodes({
-          source: sourceNode.nodeId,
-          target: targetNode.nodeId,
-          sourceHandle: resolvedSourceHandle,
-          targetHandle: resolvedTargetHandle,
-        });
-        return {
-          linkId: buildNodeFlowLinkId(sourceNode.nodeId, targetNode.nodeId, resolvedSourceHandle, resolvedTargetHandle),
-          sourceNodeId: sourceNode.nodeId,
-          targetNodeId: targetNode.nodeId,
-          sourceRef: sourceNode.nodeRef || undefined,
-          targetRef: targetNode.nodeRef || undefined,
-          sourceHandle: resolvedSourceHandle as WorkflowBuilderHandle,
-          targetHandle: resolvedTargetHandle as WorkflowBuilderHandle,
-        };
-      },
-      getNodeFlowNode,
-      createNodeFlowMap: (input: CreateNodeFlowMapInput) => {
-        assertExpectedRevision(currentNodeFlow.revision, input.expectedRevision);
-        const activeViewport = getViewport();
-        const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
-        const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;
-        const offset = (getNodeCount() % 5) * 24;
-        return createNodeFlowMapWithBridge(
-          {
-            ...input,
-            originX: input.originX ?? Math.round(baseX + offset),
-            originY: input.originY ?? Math.round(baseY + offset),
-          },
-          {
-            addNode,
-            updateNodeStyle,
-            connectNodes,
-            toggleLinkPause,
-            removeNode,
-            removeLink,
-          }
-        );
-      },
-      getViewport: () => getViewport() as NodeFlowViewport | null,
-      getNodeCount,
-    },
+      addNode,
+      updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
+      connectNodes,
+      removeNode,
+      removeLink,
+      toggleLinkPause,
+    }),
     getProjectData: () => currentProjectData,
     hasUpdatedProjectData: () => projectDataUpdated,
     getNodeFlow: () => currentNodeFlow,

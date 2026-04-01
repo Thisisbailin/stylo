@@ -86,7 +86,7 @@ export const INITIAL_TEXT_CONFIG: TextServiceConfig = {
 
 export const SORA_DEFAULT_BASE_URL = "https://api.wuyinkeji.com/api/sora2/submit";
 export const SORA_DEFAULT_MODEL = "sora-2";
-export const VIDU_DEFAULT_BASE_URL = "https://api.vidu.com/ent/v2";
+export const VIDU_DEFAULT_BASE_URL = "http://api.vidu.com/ent/v2";
 export const SEEDANCE_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 export const SEEDANCE_DEFAULT_MODEL = "doubao-seedance-2-0-260128";
 export const SEEDANCE_FAST_MODEL = "doubao-seedance-2-0-fast-260128";

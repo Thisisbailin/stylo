@@ -55,18 +55,19 @@ export const onRequest = async ({ request, env }) => {
         return new Response("Missing x-proxy-url header or url param", { status: 400 });
     }
 
-    try {
-        const method = request.method;
-        const headers = new Headers(request.headers);
-        const targetUrl = new URL(proxyUrl);
-        const debugHeaders: Record<string, string> = {
+    const method = request.method;
+    const headers = new Headers(request.headers);
+    const targetUrl = new URL(proxyUrl);
+    const debugHeaders: Record<string, string> = {
             "x-qalam-proxy-target": targetUrl.pathname,
             "x-qalam-proxy-nanobanana": "false",
             "x-qalam-proxy-vidu": "false",
             "x-qalam-proxy-key-source": "n/a",
             "x-qalam-proxy-auth-header": headers.get("Authorization") ? "forwarded" : "none",
             "x-qalam-proxy-key-query": targetUrl.searchParams.get("key") ? "forwarded" : "none",
-        };
+    };
+
+    try {
 
         // Clean up headers that shouldn't be forwarded to the target
         headers.delete("host");
@@ -142,6 +143,12 @@ export const onRequest = async ({ request, env }) => {
             headers: responseHeaders,
         });
     } catch (err: any) {
-        return new Response(`Proxy Error: ${err.message}`, { status: 500, headers: corsHeaders });
+        return new Response(`Proxy Error: ${err.message}`, {
+            status: 500,
+            headers: {
+                ...corsHeaders,
+                ...debugHeaders,
+            },
+        });
     }
 };
