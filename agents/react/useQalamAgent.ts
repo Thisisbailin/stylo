@@ -24,6 +24,47 @@ type DisplayAwareError = Error & {
   qalamAlreadyDisplayed?: boolean;
 };
 
+const summarizeEventForDebug = (event: AgentRuntimeEvent) => {
+  if (event.type === "reasoning_delta" || event.type === "message_delta") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      deltaChars: event.delta.length,
+      accumulatedChars: event.accumulatedText.length,
+    };
+  }
+  if (event.type === "reasoning_completed" || event.type === "message_completed") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      textChars: event.text.length,
+    };
+  }
+  if (event.type === "run_completed") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      result: {
+        sessionId: event.result.sessionId,
+        finalTextChars: event.result.finalText.length,
+        toolCalls: event.result.toolCalls.length,
+      },
+    };
+  }
+  if (event.type === "trace") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      entry: {
+        stage: event.entry.stage,
+        status: event.entry.status,
+        title: event.entry.title,
+      },
+    };
+  }
+  return event;
+};
+
 const upsertToolStatus = (messages: Message[], callId: string, status: "running" | "success" | "error", summary?: string) =>
   messages.map((message) => {
     if (message.kind !== "tool" || message.tool.callId !== callId) return message;
@@ -254,6 +295,23 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
 
       clearRevealTimers(runId);
       const total = text.length;
+      if (total > 1800) {
+        setMessages((prev) =>
+          upsertStreamingAssistantMessage(prev, runId, (current) => ({
+            role: "assistant",
+            kind: "chat",
+            order: current?.order || nextMessageOrder(prev),
+            text,
+            meta: {
+              ...current?.meta,
+              runId,
+              isStreaming: false,
+              planItems,
+            },
+          }))
+        );
+        return;
+      }
       const chunkSize = total > 900 ? 56 : total > 420 ? 40 : 24;
       const delay = total > 900 ? 20 : 16;
       const slices: string[] = [];
@@ -306,7 +364,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
 
   const handleEvent = useCallback(
     (event: AgentRuntimeEvent) => {
-      browserAgentDebug("useQalamAgent event", event);
+      browserAgentDebug("useQalamAgent event", summarizeEventForDebug(event));
       if (event.type === "run_started") {
         activeRunIdRef.current = event.runId;
         activeRunStartedAtRef.current = Date.now();
@@ -560,7 +618,11 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "run_completed") {
-        browserAgentDebug("useQalamAgent run completed", event.result);
+        browserAgentDebug("useQalamAgent run completed", {
+          sessionId: event.result.sessionId,
+          finalTextChars: event.result.finalText.length,
+          toolCalls: event.result.toolCalls.length,
+        });
         activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
         delete activeReasoningStatusIdRef.current[event.runId];
@@ -635,7 +697,13 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
             onEvent: handleEvent,
           }
         );
-        browserAgentDebug("useQalamAgent runtime result", result);
+        browserAgentDebug("useQalamAgent runtime result", {
+          sessionId: result.sessionId,
+          finalTextChars: result.finalText.length,
+          toolCalls: result.toolCalls.length,
+          outputItems: result.outputItems.length,
+          usage: result.usage,
+        });
         return result;
       } catch (error: any) {
         const activeRunId = activeRunIdRef.current;

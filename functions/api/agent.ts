@@ -742,33 +742,6 @@ export const onRequestPost = async (context: any) => {
         debugLog(debugEnabled, traceId, "emit error packet", { emitted, message });
       } finally {
         try {
-          emitWrapperTrace("runtime", "info", "Persisting trace records");
-          await forceFlushAgentTracing();
-          await persistBufferedTrace(context.env || {}, {
-            traceId,
-            sessionId: body.run.sessionId,
-            sessionKey,
-            userId: sessionOwner,
-            provider,
-            model: resolveProviderModel(provider, body.runtime.model),
-            workflowName,
-            groupId,
-            metadata: {
-              sessionId: body.run.sessionId,
-              sessionKey,
-              provider,
-              model: resolveProviderModel(provider, body.runtime.model),
-              userId: sessionOwner || "anonymous",
-              runtimeMode: "edge_full",
-            },
-          });
-          emitWrapperTrace("runtime", "success", "Trace records persisted");
-        } catch (traceError: any) {
-          debugLog(debugEnabled, traceId, "trace persistence error", traceError?.message || String(traceError));
-          emitWrapperTrace("runtime", "error", "Trace persistence error", traceError?.message || String(traceError));
-        }
-        try {
-          emitWrapperTrace("runtime", "info", "Closing SSE stream");
           controller.close();
         } catch (error: any) {
           if (!String(error?.message || error).includes("Controller is already closed")) {
@@ -776,6 +749,36 @@ export const onRequestPost = async (context: any) => {
           }
         } finally {
           requestAbortSignal?.removeEventListener("abort", onAbort);
+        }
+        const persistTracePromise = (async () => {
+          try {
+            await forceFlushAgentTracing();
+            await persistBufferedTrace(context.env || {}, {
+              traceId,
+              sessionId: body.run.sessionId,
+              sessionKey,
+              userId: sessionOwner,
+              provider,
+              model: resolveProviderModel(provider, body.runtime.model),
+              workflowName,
+              groupId,
+              metadata: {
+                sessionId: body.run.sessionId,
+                sessionKey,
+                provider,
+                model: resolveProviderModel(provider, body.runtime.model),
+                userId: sessionOwner || "anonymous",
+                runtimeMode: "edge_full",
+              },
+            });
+          } catch (traceError: any) {
+            debugLog(debugEnabled, traceId, "trace persistence error", traceError?.message || String(traceError));
+          }
+        })();
+        if (typeof context.waitUntil === "function") {
+          context.waitUntil(persistTracePromise);
+        } else {
+          void persistTracePromise;
         }
       }
     },

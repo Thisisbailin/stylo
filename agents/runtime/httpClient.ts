@@ -6,6 +6,85 @@ import {
 } from "./httpProtocol";
 import { browserAgentDebug, browserAgentDebugError } from "./debug";
 
+const summarizeEventForDebug = (event: any) => {
+  if (!event || typeof event !== "object") return event;
+  if (event.type === "reasoning_delta" || event.type === "message_delta") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      deltaChars: typeof event.delta === "string" ? event.delta.length : 0,
+      accumulatedChars: typeof event.accumulatedText === "string" ? event.accumulatedText.length : 0,
+    };
+  }
+  if (event.type === "reasoning_completed" || event.type === "message_completed") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      textChars: typeof event.text === "string" ? event.text.length : 0,
+    };
+  }
+  if (event.type === "run_completed") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      result: {
+        sessionId: event.result?.sessionId,
+        finalTextChars: typeof event.result?.finalText === "string" ? event.result.finalText.length : 0,
+        toolCalls: Array.isArray(event.result?.toolCalls) ? event.result.toolCalls.length : 0,
+      },
+    };
+  }
+  if (event.type === "trace") {
+    return {
+      type: event.type,
+      runId: event.runId,
+      entry: {
+        stage: event.entry?.stage,
+        status: event.entry?.status,
+        title: event.entry?.title,
+      },
+    };
+  }
+  return event;
+};
+
+const summarizeRawPacketForDebug = (rawPacket: string) => {
+  try {
+    const packet = parseAgentStreamPacket(rawPacket);
+    if (packet.kind === "event") {
+      return {
+        kind: packet.kind,
+        event: summarizeEventForDebug(packet.event),
+      };
+    }
+    if (packet.kind === "result") {
+      return {
+        kind: packet.kind,
+        sessionId: packet.result?.sessionId,
+        finalTextChars: typeof packet.result?.finalText === "string" ? packet.result.finalText.length : 0,
+        toolCalls: Array.isArray(packet.result?.toolCalls) ? packet.result.toolCalls.length : 0,
+      };
+    }
+    return {
+      kind: packet.kind,
+      errorChars: typeof packet.error === "string" ? packet.error.length : 0,
+    };
+  } catch {
+    return {
+      kind: "unknown",
+      rawChars: rawPacket.length,
+    };
+  }
+};
+
+const summarizeResultForDebug = (result: QalamRunResult) => ({
+  sessionId: result.sessionId,
+  finalTextChars: typeof result.finalText === "string" ? result.finalText.length : 0,
+  toolCalls: result.toolCalls.length,
+  outputItems: result.outputItems.length,
+  usage: result.usage,
+});
+
 type HttpRuntimeDeps = {
   endpoint: string;
   getRuntimeConfig: () => AgentHttpRunRequest["runtime"];
@@ -109,10 +188,10 @@ export const createHttpQalamAgentRuntime = ({
     let lastEventType: string | null = null;
     let lastMessageCompletedText = "";
     await decodeStreamChunks(response.body, (rawPacket) => {
-      browserAgentDebug("httpClient raw packet", rawPacket);
+      browserAgentDebug("httpClient raw packet", summarizeRawPacketForDebug(rawPacket));
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
-        browserAgentDebug("httpClient event", packet.event);
+        browserAgentDebug("httpClient event", summarizeEventForDebug(packet.event));
         lastEventType = packet.event.type;
         if (packet.event.type === "run_completed") {
           finalResult = packet.event.result;
@@ -127,7 +206,7 @@ export const createHttpQalamAgentRuntime = ({
         return;
       }
       if (packet.kind === "result") {
-        browserAgentDebug("httpClient result", packet.result);
+        browserAgentDebug("httpClient result", summarizeResultForDebug(packet.result));
         finalResult = packet.result;
         return;
       }
@@ -169,7 +248,7 @@ export const createHttpQalamAgentRuntime = ({
       );
     }
     browserAgentDebug("httpClient completed", {
-      finalText: finalResult.finalText,
+      finalTextChars: finalResult.finalText.length,
       toolCalls: finalResult.toolCalls.length,
     });
     return finalResult;

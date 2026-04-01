@@ -1,5 +1,5 @@
 const BROWSER_DEBUG_STORAGE_KEY = "qalam:agent-debug";
-const FORCE_BROWSER_AGENT_DEBUG = true;
+const FORCE_BROWSER_AGENT_DEBUG = false;
 
 const isTruthy = (value?: string | null) => {
   if (!value) return false;
