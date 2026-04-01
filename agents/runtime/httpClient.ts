@@ -11,7 +11,7 @@ type HttpRuntimeDeps = {
   getRuntimeConfig: () => AgentHttpRunRequest["runtime"];
   getProjectDataSnapshot?: () => AgentHttpRunRequest["projectData"];
   getWorkflowSnapshot?: () => AgentHttpRunRequest["workflow"];
-  getAuthToken?: () => Promise<string | null>;
+  getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
 };
 
 const decodeStreamChunks = async (
@@ -65,17 +65,30 @@ export const createHttpQalamAgentRuntime = ({
       sessionId: requestBody.run.sessionId,
       userText: requestBody.run.userText,
     });
-    const authToken = await getAuthToken?.();
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: AGENT_HTTP_STREAM_CONTENT_TYPE,
-        ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
-      },
-      body: JSON.stringify(requestBody),
-      signal: options?.signal,
-    });
+    let authToken = await getAuthToken?.();
+    if (!authToken && getAuthToken) {
+      authToken = await getAuthToken({ skipCache: true });
+    }
+    const executeRequest = (token?: string | null) =>
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: AGENT_HTTP_STREAM_CONTENT_TYPE,
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(requestBody),
+        signal: options?.signal,
+      });
+    let response = await executeRequest(authToken);
+    if ((response.status === 401 || response.status === 403) && getAuthToken) {
+      browserAgentDebug("httpClient auth retry", { status: response.status });
+      const refreshedToken = await getAuthToken({ skipCache: true });
+      if (refreshedToken) {
+        authToken = refreshedToken;
+        response = await executeRequest(refreshedToken);
+      }
+    }
     browserAgentDebug("httpClient response", {
       status: response.status,
       ok: response.ok,

@@ -86,7 +86,7 @@ interface ConnectionDropState {
 interface NodeLabProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
-  getAuthToken?: () => Promise<string | null>;
+  getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   onAssetLoad?: (
     type:
       | "script"

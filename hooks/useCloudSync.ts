@@ -10,7 +10,7 @@ import { buildApiUrl } from "../utils/api";
 type UseCloudSyncOptions = {
   isSignedIn: boolean;
   isLoaded: boolean;
-  getToken: () => Promise<string | null>;
+  getToken: (options?: { skipCache?: boolean }) => Promise<string | null>;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   setHasLoadedRemote: (val: boolean) => void;
@@ -221,25 +221,37 @@ export const useCloudSync = ({
     emitStatus('syncing', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
 
     try {
-      const token = await getToken();
+      let token = await getToken();
+      if (!token) {
+        token = await getToken({ skipCache: true });
+      }
       if (!token) {
         isSavingRef.current = false;
         return;
       }
-      const res = await fetch(buildApiUrl("/api/project"), {
-        method: "PUT",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-device-id": deviceIdRef.current
-        },
-        body: JSON.stringify(
-          op.delta
-            ? { delta: op.delta, updatedAt: op.baseVersion, opId: op.id }
-            : { projectData: op.data, updatedAt: op.baseVersion, opId: op.id },
-          dropFileReplacer
-        )
-      });
+      const executeSave = (authToken: string) =>
+        fetch(buildApiUrl("/api/project"), {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${authToken}`,
+            "x-device-id": deviceIdRef.current
+          },
+          body: JSON.stringify(
+            op.delta
+              ? { delta: op.delta, updatedAt: op.baseVersion, opId: op.id }
+              : { projectData: op.data, updatedAt: op.baseVersion, opId: op.id },
+            dropFileReplacer
+          )
+        });
+
+      let res = await executeSave(token);
+      if ((res.status === 401 || res.status === 403)) {
+        const refreshedToken = await getToken({ skipCache: true });
+        if (refreshedToken) {
+          res = await executeSave(refreshedToken);
+        }
+      }
 
       if (res.status === 409) {
         emitStatus('conflict', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
@@ -431,18 +443,29 @@ export const useCloudSync = ({
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
       try {
-        const token = await getToken();
+        let token = await getToken();
+        if (!token) {
+          token = await getToken({ skipCache: true });
+        }
         if (!token) {
           scheduleRetry(loadRemote);
           return;
         }
+        const executeLoad = (authToken: string) =>
+          fetch(buildApiUrl("/api/project"), {
+            headers: {
+              authorization: `Bearer ${authToken}`,
+              "x-device-id": deviceIdRef.current
+            }
+          });
 
-        const res = await fetch(buildApiUrl("/api/project"), {
-          headers: {
-            authorization: `Bearer ${token}`,
-            "x-device-id": deviceIdRef.current
+        let res = await executeLoad(token);
+        if (res.status === 401 || res.status === 403) {
+          const refreshedToken = await getToken({ skipCache: true });
+          if (refreshedToken) {
+            res = await executeLoad(refreshedToken);
           }
-        });
+        }
 
         if (res.status === 404) {
           remoteHasDataRef.current = false;

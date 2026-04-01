@@ -356,14 +356,38 @@ const readAppViewFromLocation = (): "main" | "landing" => {
   return window.location.hash === LANDING_ROUTE_HASH ? "landing" : "main";
 };
 
+const decodeJwtExpiry = (token: string) => {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const normalized = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+    const decoded = JSON.parse(atob(normalized));
+    return typeof decoded?.exp === "number" ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
+
+const isJwtExpiredOrNearExpiry = (token: string, leewayMs = 30_000) => {
+  const expiresAt = decodeJwtExpiry(token);
+  if (!expiresAt) return false;
+  return expiresAt - Date.now() <= leewayMs;
+};
+
 const App: React.FC = () => {
   // Clerk Auth Hooks
   const { isSignedIn: userSignedIn, user, isLoaded: isUserLoaded } = useUser();
   const { openSignIn, signOut } = useClerk();
   const { getToken, isLoaded: isAuthLoaded, isSignedIn: authSignedIn } = useAuth();
-  const getAuthToken = useCallback(async () => {
+  const getAuthToken = useCallback(async (options?: { skipCache?: boolean }) => {
     try {
-      return await getToken({ template: "default" });
+      const token = await getToken({ template: "default", ...(options?.skipCache ? { skipCache: true } : {}) });
+      if (!token) return null;
+      if (!options?.skipCache && isJwtExpiredOrNearExpiry(token)) {
+        return await getToken({ template: "default", skipCache: true });
+      }
+      return token;
     } catch {
       return null;
     }
