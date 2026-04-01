@@ -100,7 +100,6 @@ export const createQalamAgentRuntime = ({
         explicitSkillIds,
         implicitSkillIds,
       } = await resolveActivatedSkills({
-        userText: input.userText,
         explicitSkillIds: input.enabledSkillIds || [],
         loader,
       });

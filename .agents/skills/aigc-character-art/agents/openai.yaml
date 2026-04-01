@@ -1,0 +1,21 @@
+id: aigc-character-art
+title: AIGC 形象美术设计 Skill
+description: 在角色形象、美术方向与可生成视觉设定设计时调用的内部 playbook。
+sourcePath: .agents/skills/aigc-character-art/SKILL.md
+activationMode: explicit
+tags:
+  - aigc
+  - character
+  - visual
+  - art-direction
+preferredTools:
+  - read_project_resource
+  - search_project_resource
+  - edit_project_resource
+disabledTools: []
+implicitInvocationHints:
+  - 形象设计
+  - 角色设计
+  - 美术设计
+  - 视觉设定
+  - prompt

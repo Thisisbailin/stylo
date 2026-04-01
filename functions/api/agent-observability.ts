@@ -22,6 +22,30 @@ const summarizeMessagePreview = (messages: any[]) => {
   return text.length > 140 ? `${text.slice(0, 140)}...` : text;
 };
 
+const extractSkillReads = (messages: any[]) => {
+  const reads = (Array.isArray(messages) ? messages : [])
+    .filter((message) => message?.role === "tool" && message?.toolName === "read_skill_package")
+    .map((message) => {
+      const output = message?.toolOutput && typeof message.toolOutput === "object" ? message.toolOutput : {};
+      return {
+        id: String((output as any)?.id || ""),
+        title: String((output as any)?.title || (output as any)?.id || ""),
+        version: String((output as any)?.version || ""),
+        createdAt: Number(message?.createdAt || 0),
+      };
+    })
+    .filter((item) => item.id);
+  const deduped = new Map<string, { id: string; title: string; version: string; createdAt: number }>();
+  reads.forEach((item) => {
+    const key = `${item.id}:${item.version}`;
+    const current = deduped.get(key);
+    if (!current || item.createdAt > current.createdAt) {
+      deduped.set(key, item);
+    }
+  });
+  return Array.from(deduped.values()).sort((a, b) => b.createdAt - a.createdAt);
+};
+
 const toSessionSummary = (row: any) => {
   const messages = safeParseJson<any[]>(row?.messages, []);
   return {
@@ -111,12 +135,14 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         .bind(userId, sessionId)
         .first();
       if (row) {
+        const messages = safeParseJson<any[]>(row.messages, []);
         selectedSession = {
           sessionKey: String(row.session_key || ""),
           sessionId: String(row.session_id || ""),
           updatedAt: Number(row.updated_at || 0),
           items: safeParseJson<any[]>(row.items, []),
-          messages: safeParseJson<any[]>(row.messages, []),
+          messages,
+          skillReads: extractSkillReads(messages),
         };
       }
     }
@@ -162,9 +188,20 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         )
           .bind(resolvedTraceId)
           .all();
+        const traceSessionId = String(traceRow.session_id || "");
+        let traceMessages: any[] = [];
+        if (traceSessionId) {
+          const sessionRow = await context.env.DB.prepare(
+            "SELECT messages FROM agent_sessions WHERE user_id = ?1 AND session_id = ?2 LIMIT 1"
+          )
+            .bind(userId, traceSessionId)
+            .first();
+          traceMessages = safeParseJson<any[]>(sessionRow?.messages, []);
+        }
         selectedTrace = {
           ...toTraceSummary(traceRow),
           spans: ((spanRows.results || []) as any[]).map(toSpanRecord),
+          skillReads: extractSkillReads(traceMessages),
         };
       }
     }

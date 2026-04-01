@@ -36,9 +36,11 @@ type Props = {
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   onOpenStats?: () => void;
   onToggleAgentSettings?: () => void;
+  settingsOpen?: boolean;
   openRequest?: number;
   submitRequest?: { id: number; text: string } | null;
   onCollapsedChange?: (collapsed: boolean) => void;
+  onDockFrameChange?: (frame: { dockWidth: number; isSplit: boolean; collapsed: boolean }) => void;
   renderCollapsedTrigger?: boolean;
 };
 
@@ -261,9 +263,11 @@ export const QalamAgent: React.FC<Props> = ({
   getAuthToken,
   onOpenStats,
   onToggleAgentSettings,
+  settingsOpen = false,
   openRequest = 0,
   submitRequest = null,
   onCollapsedChange,
+  onDockFrameChange,
   renderCollapsedTrigger = true,
 }) => {
   const { config } = useConfig("qalam_config_v1");
@@ -759,6 +763,13 @@ export const QalamAgent: React.FC<Props> = ({
   }, [collapsed, onCollapsedChange]);
 
   useEffect(() => {
+    if (!settingsOpen) return;
+    setCollapsed(false);
+    setLayoutMode("split");
+    setIsFullscreen(false);
+  }, [settingsOpen]);
+
+  useEffect(() => {
     resizeInput(inputRef.current);
   }, [input, resizeInput]);
 
@@ -780,6 +791,15 @@ export const QalamAgent: React.FC<Props> = ({
       root.style.removeProperty("--qalam-split-width");
     };
   }, [layoutMode, splitWidth, isFullscreen, viewportWidth, collapsed]);
+
+  useEffect(() => {
+    const dockWidth = layoutMode === "split" && !collapsed ? (isFullscreen ? viewportWidth : splitWidth) : 0;
+    onDockFrameChange?.({
+      dockWidth,
+      isSplit: layoutMode === "split",
+      collapsed,
+    });
+  }, [collapsed, isFullscreen, layoutMode, onDockFrameChange, splitWidth, viewportWidth]);
   const submitText = useCallback(async (rawText: string) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
@@ -794,7 +814,7 @@ export const QalamAgent: React.FC<Props> = ({
     try {
       const runResult = await runAgentMessage({
         userText: cleanedInput,
-        enabledSkillIds: config.textConfig?.agentSkillIds || [],
+        enabledSkillIds: [],
         uiContext: {
           mentionTags: mentionTags.map((tag) => ({
             kind: tag.kind,
@@ -841,7 +861,7 @@ export const QalamAgent: React.FC<Props> = ({
       setIsSending(false);
       setMood("thinking");
     }
-  }, [config.textConfig?.agentSkillIds, isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
 
   const sendMessage = useCallback(async () => {
     if (!canSend) return;

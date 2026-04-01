@@ -82,7 +82,6 @@ export const INITIAL_TEXT_CONFIG: TextServiceConfig = {
   voiceDesignModel: "",
   voiceDubbingModel: "",
   qalamTools: DEFAULT_QALAM_TOOL_SETTINGS,
-  agentSkillIds: [],
 };
 
 export const SORA_DEFAULT_BASE_URL = "https://api.wuyinkeji.com/api/sora2/submit";

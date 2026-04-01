@@ -426,6 +426,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
+  const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
   const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
@@ -1008,7 +1009,11 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       </div>
 
       <MultiSelectToolbar />
-      <AgentSettingsPanel isOpen={showAgentSettings} onClose={() => setShowAgentSettings(false)} />
+      <AgentSettingsPanel
+        isOpen={showAgentSettings}
+        onClose={() => setShowAgentSettings(false)}
+        leftOffset={agentDockWidth}
+      />
       <div className="fixed bottom-4 left-4 z-30 pointer-events-none">
         <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
           <QalamAgent
@@ -1017,9 +1022,11 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             getAuthToken={getAuthToken}
             onOpenStats={onOpenStats}
             onToggleAgentSettings={() => setShowAgentSettings((prev) => !prev)}
+            settingsOpen={showAgentSettings}
             openRequest={qalamOpenRequest}
             submitRequest={qalamSubmitRequest}
             onCollapsedChange={setIsQalamCollapsed}
+            onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
             renderCollapsedTrigger={false}
           />
           <div

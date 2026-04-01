@@ -2,15 +2,19 @@ import { tool } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import type { AgentExecutedToolCall, AgentRuntimeEvent } from "../runtime/types";
 import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
+import { listSkillPackagesToolDef } from "./listSkillPackages";
 import { listProjectResourcesToolDef } from "./listProjectResources";
 import { operateProjectResourceToolDef } from "./operateProjectResource";
 import { pingToolDef } from "./ping";
 import { readProjectResourceToolDef } from "./readProjectResource";
+import { readSkillPackageToolDef } from "./readSkillPackage";
 import { searchProjectResourceToolDef } from "./searchProjectResource";
 import { editUnderstandingResourceToolDef } from "./editUnderstandingResource";
 
 const LOOKUP_TOOL_NAMES = new Set([
+  "list_skill_packages",
   "list_project_resources",
+  "read_skill_package",
   "read_project_resource",
   "search_project_resource",
 ]);
@@ -21,7 +25,9 @@ const MUTATING_TOOL_NAMES = new Set([
 
 const TOOL_DEFS = [
   pingToolDef,
+  listSkillPackagesToolDef,
   listProjectResourcesToolDef,
+  readSkillPackageToolDef,
   readProjectResourceToolDef,
   searchProjectResourceToolDef,
   editUnderstandingResourceToolDef,

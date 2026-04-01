@@ -4,26 +4,54 @@ import type { QalamResolvedSkill, QalamSkillManifest } from "./types";
 
 type SkillRegistryEntry = {
   manifest: QalamSkillManifest;
-  resolve: () => Promise<QalamResolvedSkill>;
+  guidanceMarkdown: string;
 };
 
 const SKILL_REGISTRY: Record<string, SkillRegistryEntry> = {
-  "design-taste-frontend": {
+  "aigc-character-art": {
     manifest: {
-      id: "design-taste-frontend",
-      title: "High-Agency Frontend Skill",
-      description: "Senior UI/UX engineer overlay for layout, visual direction, and interface refinement work.",
-      sourcePath: ".agents/skills/design-taste-frontend/SKILL.md",
+      id: "aigc-character-art",
+      title: "AIGC 形象美术设计 Skill",
+      description: "在角色形象、美术方向与可生成视觉设定设计时调用的内部 playbook。",
+      sourcePath: ".agents/skills/aigc-character-art/SKILL.md",
       activationMode: "explicit" as const,
-      tags: ["frontend","ui","design"],
-      preferredTools: [],
+      tags: ["aigc","character","visual","art-direction"],
+      preferredTools: ["read_project_resource","search_project_resource","edit_project_resource"],
       disabledTools: [],
-      implicitInvocationHints: ["frontend","界面","布局","视觉设计","UI polish"],
+      implicitInvocationHints: ["形象设计","角色设计","美术设计","视觉设定","prompt"],
+      version: "1eb8e196f71b",
     },
-    resolve: async () => {
-      const mod = await import("./skillPackages/designTasteFrontend");
-      return mod["resolveDesignTasteFrontendSkill"](SKILL_REGISTRY["design-taste-frontend"].manifest);
+    guidanceMarkdown: "# AIGC 形象美术设计 Skill\n\n在用户要求你为角色、场景或核心视觉形象设计 AIGC 美术方向时使用本 skill。\n\n## 适用场景\n\n- 用户要你设计角色形象、人设视觉、服装、材质、气质与辨识度\n- 用户要你形成可用于图像生成或角色卡片的视觉设定\n- 用户要你把剧情、角色功能与视觉风格统一起来\n\n## 工作方法\n\n1. 先确认角色在剧情中的定位与叙事功能，不要把美术设计与角色功能割裂。\n2. 设计时优先明确：\n   - 核心身份与气质关键词\n   - 轮廓、体态、服装层级、材质与配色\n   - 年龄感、时代感、职业感、世界观一致性\n   - 与其他角色的差异化点\n3. 如果项目里已有角色档案、风格指南或世界观约束，先读取再设计。\n4. 输出应尽量能直接转成角色卡、视觉 brief 或图像提示词素材。\n\n## 推荐输出框架\n\n- 视觉定位\n- 造型关键词\n- 服装 / 材质 / 配色\n- 表情与姿态倾向\n- 可直接用于生成的描述要点\n\n## 约束\n\n- 不要只给抽象形容词，不给可执行的视觉特征。\n- 不要忽视项目已有风格约束。\n- 不要把角色设计做成与剧情功能无关的空洞“美型设定”。\n",
+  },
+  "script-study": {
+    manifest: {
+      id: "script-study",
+      title: "剧本学习 Skill",
+      description: "在深入理解剧情、角色关系、冲突推进与叙事结构时调用的内部 playbook。",
+      sourcePath: ".agents/skills/script-study/SKILL.md",
+      activationMode: "explicit" as const,
+      tags: ["script","drama","narrative","analysis"],
+      preferredTools: ["list_project_resources","read_project_resource","search_project_resource"],
+      disabledTools: [],
+      implicitInvocationHints: ["剧本学习","剧情分析","角色关系","叙事结构","情节推进"],
+      version: "656343f00209",
     },
+    guidanceMarkdown: "# 剧本学习 Skill\n\n在用户需要你深入理解剧本、角色关系、情节推进、冲突结构、主题线索或叙事问题时使用本 skill。\n\n## 适用场景\n\n- 用户要求你先学习、消化、拆解或总结某一集剧本\n- 用户要你判断角色动机、关系变化、情节逻辑、节奏问题\n- 用户希望你在后续分镜、角色设计或 workflow 生成前，先建立可靠的剧情理解\n\n## 工作方法\n\n1. 先用项目读取工具定位相关剧本与理解资产，不要直接凭空概括。\n2. 优先建立以下结构化认知：\n   - 主线冲突是什么\n   - 每个关键角色在本段剧情里的目标、阻碍、转折是什么\n   - 场景顺序如何推动信息披露、关系变化与情绪升级\n   - 是否存在逻辑断裂、情绪跳步、信息缺失或重复\n3. 如果材料不足，明确指出缺的集数、场景、角色资料或项目摘要。\n4. 输出结论时，优先给出“剧情理解”和“可用于后续工作的事实”，而不是泛泛文学评论。\n\n## 推荐输出框架\n\n- 剧情目标与主冲突\n- 关键角色状态变化\n- 场景推进链\n- 重要视觉/表演信息\n- 后续分镜或美术设计需要继承的约束\n\n## 约束\n\n- 不要把未经读取验证的情节当作事实。\n- 不要跳过查阅，直接生成“看似合理”的剧情理解。\n- 不要过早进入分镜或美术方案，除非用户已经明确要求。\n",
+  },
+  "storyboard-design": {
+    manifest: {
+      id: "storyboard-design",
+      title: "分镜设计 Skill",
+      description: "在将剧情理解转成镜头方案、分镜表与 workflow 结构时调用的内部 playbook。",
+      sourcePath: ".agents/skills/storyboard-design/SKILL.md",
+      activationMode: "explicit" as const,
+      tags: ["storyboard","shot","directing","workflow"],
+      preferredTools: ["read_project_resource","edit_project_resource","operate_project_resource"],
+      disabledTools: [],
+      implicitInvocationHints: ["分镜","镜头设计","storyboard","镜头调度","workflow"],
+      version: "c57c6d1bafa5",
+    },
+    guidanceMarkdown: "# 分镜设计 Skill\n\n在用户要求你设计、重构、补全或优化分镜时使用本 skill。\n\n## 适用场景\n\n- 用户要你把剧本转成镜头方案或分镜表\n- 用户要你补全镜头设计、镜头连接、调度、节奏与段落层次\n- 用户已经有剧情理解，希望你把它转成可执行的 storyboard 资产或 workflow\n\n## 工作方法\n\n1. 先确认剧情理解是否足够，不足时先回到剧本学习。\n2. 每个镜头至少要明确：\n   - 叙事目的\n   - 画面主体与空间关系\n   - 景别 / 机位 / 运动\n   - 角色调度与情绪推进\n   - 与前后镜头的衔接逻辑\n3. 分镜设计要服务叙事与角色，而不是堆砌花哨镜头。\n4. 当需要写回项目或创建 workflow 时，优先使用结构化编辑与操作工具。\n\n## 推荐输出框架\n\n- 段落目标\n- 镜头链路\n- 关键视觉强调\n- 节奏变化点\n- 需要落地到 storyboard / workflow 的具体项\n\n## 约束\n\n- 不要跳过剧情理解，直接凭空生成一整套分镜。\n- 不要把视觉炫技放在叙事清晰度之前。\n- 不要声称已经写入或创建节点，除非相关工具真正成功执行。\n",
   }
 };
 
@@ -32,5 +60,13 @@ export const GENERATED_SKILL_MANIFESTS: QalamSkillManifest[] = Object.values(SKI
 export const resolveGeneratedSkill = async (id: string): Promise<QalamResolvedSkill | null> => {
   const entry = SKILL_REGISTRY[id];
   if (!entry) return null;
-  return entry.resolve();
+  return {
+    ...entry.manifest,
+    guidanceMarkdown: entry.guidanceMarkdown,
+    overlays: [entry.guidanceMarkdown],
+    metadata: {
+      sourcePath: entry.manifest.sourcePath || "",
+      version: entry.manifest.version || "",
+    },
+  };
 };

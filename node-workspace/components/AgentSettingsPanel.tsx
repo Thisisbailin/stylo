@@ -51,6 +51,7 @@ import { createStableId } from "../../utils/id";
 type Props = {
   isOpen: boolean;
   onClose: () => void;
+  leftOffset?: number;
 };
 
 type ConversationRecord = {
@@ -75,6 +76,13 @@ type CloudSessionSummary = {
   preview: string;
 };
 
+type SkillReadRecord = {
+  id: string;
+  title: string;
+  version: string;
+  createdAt: number;
+};
+
 type CloudTraceSummary = {
   traceId: string;
   sessionId: string;
@@ -95,6 +103,7 @@ type CloudSessionDetail = {
   updatedAt: number;
   items: any[];
   messages: Array<any>;
+  skillReads: SkillReadRecord[];
 };
 
 type CloudSpanRecord = {
@@ -110,6 +119,7 @@ type CloudSpanRecord = {
 
 type CloudTraceDetail = CloudTraceSummary & {
   spans: CloudSpanRecord[];
+  skillReads: SkillReadRecord[];
 };
 
 type AgentObservabilityPayload = {
@@ -141,12 +151,12 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的资源目录、读取与搜索接口查阅剧本、分镜、项目摘要、角色与场景资料，为回答和后续动作取证。",
-    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    surfaces: ["episode script", "episode storyboard", "project summary", "character profile", "scene profile"],
+    description: "Agent 通过统一的目录、读取与搜索接口查阅项目资料，也可以按需读取内部 skill 包，先学习方法再执行任务。",
+    tools: ["list_skill_packages", "read_skill_package", "list_project_resources", "read_project_resource", "search_project_resource"],
+    surfaces: ["skill package", "episode script", "episode storyboard", "project summary", "character profile", "scene profile"],
     boundary: "只读，不允许直接修改项目状态。",
-    artifact: "返回证据、摘要和结构化片段，作为理解与操作的前置输入。",
-    note: "负责读取项目资料与证据。",
+    artifact: "返回方法指导、证据、摘要和结构化片段，作为理解与操作的前置输入。",
+    note: "负责读取内部方法与项目证据。",
     Icon: Eye,
   },
   {
@@ -352,7 +362,7 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
   return text.length > 20 ? `${text.slice(0, 20)}...` : text;
 };
 
-export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
+export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffset = 0 }) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
   const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
   const { applyViduReferenceDemo } = useWorkflowStore();
@@ -428,7 +438,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     };
   }, [config.textConfig.qalamTools]);
   const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
-  const activeAgentSkillIds = config.textConfig.agentSkillIds || [];
   const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
   const activeAgentBaseUrl =
     config.textConfig.agentBaseUrl ||
@@ -606,22 +615,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
             ...(prev.textConfig.qalamTools || {}),
             workflowBuilder: next,
           },
-        },
-      };
-    });
-  };
-
-  const toggleAgentSkill = (skillId: string) => {
-    setConfig((prev) => {
-      const current = prev.textConfig.agentSkillIds || [];
-      const next = current.includes(skillId)
-        ? current.filter((id) => id !== skillId)
-        : [...current, skillId];
-      return {
-        ...prev,
-        textConfig: {
-          ...prev.textConfig,
-          agentSkillIds: next,
         },
       };
     });
@@ -919,37 +912,56 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
+  const dockLeft = leftOffset > 0 ? Math.min(leftOffset, Math.max(0, viewportWidth - 360)) : 0;
+  const panelMeta =
+    selectedPanel === "provider"
+      ? {
+          label: "Provider",
+          title: activeType === "chat" ? "Chat Providers" : activeType === "multi" ? "Multi Providers" : "Video Providers",
+          description: "统一管理 Agent 路线、模型和 runtime 基线，不再单独悬浮成居中弹窗。",
+        }
+      : selectedPanel === "tools"
+        ? {
+            label: "Tools",
+            title: activeToolItem.title,
+            description: "查看 read / edit / operate 三个能力面的工具构成、边界和最近活动。",
+          }
+        : {
+            label: "History",
+            title: "Conversation & Trace",
+            description: "在同一块工作台里追踪对话、session 和 SDK tracing 生命周期。",
+          };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
-      onClick={onClose}
+      className="fixed inset-y-0 right-0 z-[75] min-w-0 border-l border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)]"
+      style={{ left: dockLeft }}
     >
-      <div
-        className="w-[960px] max-w-[96vw] max-h-[85vh] rounded-2xl app-panel flex flex-col pointer-events-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-[var(--app-border)]">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-violet-500/30 via-fuchsia-500/10 to-transparent border border-[var(--app-border)] flex items-center justify-center">
-              <Sparkles size={16} className="text-violet-200" />
+      <div className="grid h-full min-w-0 grid-cols-1 xl:grid-cols-[292px_minmax(0,1fr)]">
+        <aside className="min-w-0 overflow-y-auto border-r border-[var(--app-border)] px-5 py-5">
+          <div className="space-y-4">
+            <div className="rounded-[28px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
+                    Agent Settings
+                  </div>
+                  <div className="mt-2 text-[13px] leading-6 text-[var(--app-text-secondary)]">
+                    和 workspace 一样使用常驻侧栏结构，左边切换 provider / tools / skills / history，右边展开当前工作面。
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-9 w-9 shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                  title="Close"
+                >
+                  <X size={14} className="mx-auto" />
+                </button>
+              </div>
             </div>
-            <div>
-              <div className="text-sm font-semibold">Agent Settings</div>
-              <div className="text-[11px] app-text-muted">AI 路线与模型</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 w-8 rounded-full border border-[var(--app-border)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] transition"
-            title="Close"
-          >
-            <X size={14} className="mx-auto text-[var(--app-text-secondary)]" />
-          </button>
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">
             <div className="space-y-4">
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                 <div className="text-[11px] uppercase tracking-widest app-text-muted">Provider</div>
@@ -1022,34 +1034,40 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[11px] uppercase tracking-widest app-text-muted">Skills</div>
                   <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    {activeAgentSkillIds.length}/{availableAgentSkills.length || 0}
+                    {availableAgentSkills.length || 0} internal
                   </span>
                 </div>
                 {availableAgentSkills.length ? (
                   <div className="flex flex-col gap-2">
                     {availableAgentSkills.map((skill) => {
-                      const active = activeAgentSkillIds.includes(skill.id);
                       return (
-                        <button
+                        <div
                           key={skill.id}
-                          type="button"
-                          onClick={() => toggleAgentSkill(skill.id)}
-                          className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-[12px] border transition ${
-                            active
-                              ? "border-emerald-400/40 bg-emerald-500/10 text-[var(--app-text-primary)]"
-                              : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                          }`}
+                          className="flex items-start justify-between gap-3 px-3 py-3 rounded-xl text-[12px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]"
                         >
-                          <span className="flex items-center gap-3 text-left">
-                            <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-emerald-400/30 bg-emerald-500/10" : "border-[var(--app-border)] bg-transparent"}`}>
-                              <Sparkles size={14} className={active ? "text-emerald-300" : "text-[var(--app-text-secondary)]"} />
+                          <span className="flex items-start gap-3 text-left">
+                            <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center shrink-0">
+                              <Sparkles size={14} className="text-[var(--app-text-secondary)]" />
                             </span>
-                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
+                            <span className="space-y-1">
+                              <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
+                              <span className="block text-[11px] leading-5 text-[var(--app-text-secondary)]">{skill.description}</span>
+                              {skill.tags?.length ? (
+                                <span className="block text-[10px] text-[var(--app-text-muted)]">
+                                  {skill.tags.map((tag) => `#${tag}`).join(" ")}
+                                </span>
+                              ) : null}
+                            </span>
                           </span>
-                          <span className={`h-2.5 w-2.5 rounded-full ${active ? "bg-emerald-300 shadow-[0_0_0_4px_rgba(52,211,153,0.12)]" : "bg-[var(--app-border-strong)]"}`} />
-                        </button>
+                          <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                            agent 按需读取
+                          </span>
+                        </div>
                       );
                     })}
+                    <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-muted)]">
+                      这些 skill 不会预先注入到系统提示词里。Agent 会在任务需要时先调用 skill catalog / read 工具，再按需学习并应用对应方法。
+                    </div>
                   </div>
                 ) : (
                   <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
@@ -1122,6 +1140,22 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                   <div className="text-[11px] app-text-muted">暂无对话记录。</div>
                 )}
                 <div className="text-[11px] app-text-muted">仅对 Qalam 对话生效。</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0 overflow-y-auto px-6 py-5">
+          <div className="space-y-4">
+            <div className="rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-5">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
+                {panelMeta.label}
+              </div>
+              <div className="mt-2 flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+                {panelMeta.title}
+              </div>
+              <div className="mt-2 max-w-2xl text-[13px] leading-6 text-[var(--app-text-secondary)]">
+                {panelMeta.description}
               </div>
             </div>
 
@@ -2161,6 +2195,22 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                                   </div>
                                 </div>
                               </div>
+                              {selectedCloudSession.skillReads?.length ? (
+                                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3 space-y-2">
+                                  <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Read Skill Packages</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {selectedCloudSession.skillReads.map((skill) => (
+                                      <div
+                                        key={`${skill.id}:${skill.version}`}
+                                        className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]"
+                                      >
+                                        {skill.title}
+                                        {skill.version ? ` · ${skill.version}` : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                               {filteredCloudSessionMessages.length ? (
                                 filteredCloudSessionMessages.map((message, index) => (
                                   <div
@@ -2357,6 +2407,22 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                                   </div>
                                 </div>
                               </div>
+                              {selectedCloudTrace.skillReads?.length ? (
+                                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3 space-y-2">
+                                  <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Skill Reads</div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {selectedCloudTrace.skillReads.map((skill) => (
+                                      <div
+                                        key={`${skill.id}:${skill.version}`}
+                                        className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]"
+                                      >
+                                        {skill.title}
+                                        {skill.version ? ` · ${skill.version}` : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                               <div className="flex flex-wrap gap-2">
                                 {[
                                   { key: "all", label: `全部 spans ${selectedCloudTrace.spans.length}` },
@@ -2439,10 +2505,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                   </div>
                 </div>
               )}
-        </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
-  </div>
-</div>
   );
 };

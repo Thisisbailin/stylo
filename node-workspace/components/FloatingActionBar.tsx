@@ -19,8 +19,6 @@ import {
   BookOpen,
   Palette,
   FileCode,
-  RefreshCw,
-  Info,
   Sun,
   Moon,
   Trash2,
@@ -133,9 +131,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onToggleTheme,
   onOpenTheme,
   isDarkMode,
-  onOpenSyncPanel,
   syncIndicator,
-  onOpenInfoPanel,
   onToggleAgentSettings,
   onResetProject,
   onSignOut,
@@ -556,7 +552,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <div className="space-y-1">
                   <div className={sectionEyebrowClass}>Account</div>
                   <div className="text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                    聚焦账户状态、同步入口与当前工作台身份。
+                    聚焦账户状态、当前工作台身份与 agent 能力入口。
                   </div>
                 </div>
                 {!accountLoaded ? (
@@ -589,7 +585,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                         <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
                         {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
                         <div className="flex flex-wrap gap-2 pt-1">
-                          {["Cloud sync", "Project state", "Theme settings"].map((chip) => (
+                          {["Workspace access", "Project state", "Theme settings"].map((chip) => (
                             <span
                               key={chip}
                               className="rounded-full border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)]"
@@ -619,38 +615,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                           </span>
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          onOpenSyncPanel?.();
-                          closeMenus();
-                        }}
-                      >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
-                            <RefreshCw size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sync</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">同步状态</span>
-                          </span>
-                        </button>
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          onOpenInfoPanel?.();
-                          closeMenus();
-                        }}
-                      >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                            <Info size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Info</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">账户说明</span>
-                          </span>
-                        </button>
                       <button
                         type="button"
                         className={utilityButtonClass}
@@ -724,7 +688,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                       </div>
                       <div className="flex-1 space-y-1.5">
                         <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">未登录</div>
-                        <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">登录后可开启同步、主题偏好与项目管理。</div>
+                        <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">登录后可启用 workspace 同步能力、主题偏好与项目管理。</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -764,21 +728,21 @@ export const FloatingActionBar: React.FC<Props> = ({
                         type="button"
                         className={utilityButtonClass}
                         onClick={() => {
-                          onOpenInfoPanel?.();
+                          onToggleAgentSettings?.();
                           closeMenus();
                         }}
                       >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                          <Info size={16} />
+                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-secondary)]">
+                          <Globe size={16} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Info</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">了解账户能力</span>
+                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Settings</span>
+                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">模型与服务商</span>
                         </span>
                       </button>
                       <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">
                         <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
-                        实时同步 / 背景主题 / 项目仪表盘
+                        Workspace / Theme / Dashboard
                       </div>
                     </div>
                   </div>

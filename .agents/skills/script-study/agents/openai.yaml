@@ -1,0 +1,21 @@
+id: script-study
+title: 剧本学习 Skill
+description: 在深入理解剧情、角色关系、冲突推进与叙事结构时调用的内部 playbook。
+sourcePath: .agents/skills/script-study/SKILL.md
+activationMode: explicit
+tags:
+  - script
+  - drama
+  - narrative
+  - analysis
+preferredTools:
+  - list_project_resources
+  - read_project_resource
+  - search_project_resource
+disabledTools: []
+implicitInvocationHints:
+  - 剧本学习
+  - 剧情分析
+  - 角色关系
+  - 叙事结构
+  - 情节推进

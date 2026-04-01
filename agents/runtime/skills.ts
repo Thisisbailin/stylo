@@ -7,47 +7,19 @@ export const resolveBuiltinSkill = async (id: string): Promise<QalamResolvedSkil
   return resolveGeneratedSkill(id);
 };
 
-export const matchBuiltinSkills = (input: {
-  userText: string;
-  explicitSkillIds?: string[];
-}): QalamSkillManifest[] => {
-  const explicit = new Set(input.explicitSkillIds || []);
-  const text = input.userText.trim().toLowerCase();
-  if (!text) return [];
-  return GENERATED_SKILL_MANIFESTS.filter((skill) => {
-    if (explicit.has(skill.id)) return false;
-    if (skill.activationMode !== "implicit") return false;
-    const hints = [...(skill.tags || []), ...(skill.implicitInvocationHints || [])]
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean);
-    return hints.some((hint) => text.includes(hint));
-  });
-};
-
 export const resolveActivatedSkills = async (input: {
-  userText: string;
   explicitSkillIds?: string[];
   loader?: QalamSkillLoader;
 }) => {
   const loader = input.loader || new StaticSkillLoader();
   const explicitSkillIds = Array.from(new Set((input.explicitSkillIds || []).filter(Boolean)));
-  const implicitMatches = matchBuiltinSkills({
-    userText: input.userText,
-    explicitSkillIds,
-  });
-  const activatedSkillIds = Array.from(
-    new Set([
-      ...explicitSkillIds,
-      ...implicitMatches.map((skill) => skill.id),
-    ])
-  );
   const resolved = (
-    await Promise.all(activatedSkillIds.map((skillId) => loader.getSkill(skillId)))
+    await Promise.all(explicitSkillIds.map((skillId) => loader.getSkill(skillId)))
   ).filter(Boolean) as QalamResolvedSkill[];
   return {
     skills: resolved,
     explicitSkillIds,
-    implicitSkillIds: implicitMatches.map((skill) => skill.id),
+    implicitSkillIds: [] as string[],
   };
 };
 

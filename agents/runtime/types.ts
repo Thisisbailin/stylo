@@ -208,13 +208,14 @@ export type QalamSkillManifest = {
   preferredTools?: string[];
   disabledTools?: string[];
   implicitInvocationHints?: string[];
+  version?: string;
 };
 
 export type QalamResolvedSkill = QalamSkillManifest & {
+  guidanceMarkdown: string;
   overlays: string[];
   preferredTools?: string[];
   disabledTools?: string[];
-  version?: string;
   metadata?: Record<string, string>;
 };
 

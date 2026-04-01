@@ -378,7 +378,6 @@ export interface TextServiceConfig {
   // Tooling / advanced options (provider-specific)
   tools?: any[];
   qalamTools?: QalamToolSettings;
-  agentSkillIds?: string[];
 }
 
 export type QalamToolSettings = {

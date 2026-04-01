@@ -1,0 +1,21 @@
+id: storyboard-design
+title: 分镜设计 Skill
+description: 在将剧情理解转成镜头方案、分镜表与 workflow 结构时调用的内部 playbook。
+sourcePath: .agents/skills/storyboard-design/SKILL.md
+activationMode: explicit
+tags:
+  - storyboard
+  - shot
+  - directing
+  - workflow
+preferredTools:
+  - read_project_resource
+  - edit_project_resource
+  - operate_project_resource
+disabledTools: []
+implicitInvocationHints:
+  - 分镜
+  - 镜头设计
+  - storyboard
+  - 镜头调度
+  - workflow

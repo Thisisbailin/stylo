@@ -647,7 +647,6 @@ export const onRequestPost = async (context: any) => {
           explicitSkillIds,
           implicitSkillIds,
         } = await resolveActivatedSkills({
-          userText: body.run.userText,
           explicitSkillIds: body.run.enabledSkillIds || [],
           loader: skillLoader,
         });

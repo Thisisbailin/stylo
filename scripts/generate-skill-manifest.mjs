@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -50,6 +51,9 @@ const parseSimpleYaml = (source) => {
 const escapeText = (value) =>
   JSON.stringify(value ?? "");
 
+const createSkillVersion = (input) =>
+  createHash("sha256").update(input).digest("hex").slice(0, 12);
+
 const buildFile = (entries) => {
   const registryEntries = entries
     .map((entry) => {
@@ -68,11 +72,9 @@ const buildFile = (entries) => {
       preferredTools: ${JSON.stringify(preferredTools)},
       disabledTools: ${JSON.stringify(disabledTools)},
       implicitInvocationHints: ${JSON.stringify(implicitInvocationHints)},
+      version: ${escapeText(entry.version)},
     },
-    resolve: async () => {
-      const mod = await import(${JSON.stringify(entry.entryModule)});
-      return mod[${JSON.stringify(entry.resolverExport)}](SKILL_REGISTRY[${JSON.stringify(entry.id)}].manifest);
-    },
+    guidanceMarkdown: ${escapeText(entry.guidanceMarkdown)},
   }`;
     })
     .join(",\n");
@@ -83,7 +85,7 @@ import type { QalamResolvedSkill, QalamSkillManifest } from "./types";
 
 type SkillRegistryEntry = {
   manifest: QalamSkillManifest;
-  resolve: () => Promise<QalamResolvedSkill>;
+  guidanceMarkdown: string;
 };
 
 const SKILL_REGISTRY: Record<string, SkillRegistryEntry> = {
@@ -95,7 +97,15 @@ export const GENERATED_SKILL_MANIFESTS: QalamSkillManifest[] = Object.values(SKI
 export const resolveGeneratedSkill = async (id: string): Promise<QalamResolvedSkill | null> => {
   const entry = SKILL_REGISTRY[id];
   if (!entry) return null;
-  return entry.resolve();
+  return {
+    ...entry.manifest,
+    guidanceMarkdown: entry.guidanceMarkdown,
+    overlays: [entry.guidanceMarkdown],
+    metadata: {
+      sourcePath: entry.manifest.sourcePath || "",
+      version: entry.manifest.version || "",
+    },
+  };
 };
 `;
 };
@@ -109,10 +119,22 @@ const loadSkillEntries = async () => {
     try {
       const source = await readFile(metadataPath, "utf8");
       const parsed = parseSimpleYaml(source);
-      for (const field of ["id", "title", "description", "sourcePath", "entryModule", "resolverExport"]) {
+      const sourcePath = parsed.sourcePath || `.agents/skills/${dir.name}/SKILL.md`;
+      const skillPath = path.join(repoRoot, sourcePath);
+      const guidanceMarkdown = await readFile(skillPath, "utf8");
+      const version = createSkillVersion(JSON.stringify({
+        parsed,
+        guidanceMarkdown,
+      }));
+      for (const field of ["id", "title", "description"]) {
         if (!parsed[field]) throw new Error(`Missing required field "${field}" in ${metadataPath}`);
       }
-      entries.push(parsed);
+      entries.push({
+        ...parsed,
+        sourcePath,
+        guidanceMarkdown,
+        version,
+      });
     } catch (error) {
       if (error && error.code === "ENOENT") continue;
       throw error;
