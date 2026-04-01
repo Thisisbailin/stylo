@@ -286,7 +286,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
-  const projectModules = [
+  const agentSettingModules = [
     { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },
     { key: "workspace" as ModuleKey, label: "Workspace", desc: "理解 / 素材 / Sync / Info", Icon: SquareStack, tone: "text-blue-200", surface: "bg-blue-500/10" },
     { key: "projector" as ModuleKey, label: "放映机", desc: "视听实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
@@ -331,6 +331,337 @@ export const FloatingActionBar: React.FC<Props> = ({
 
   const ioActions: { label: string; desc: string; Icon: any; onClick?: () => void; color: string }[] = [];
 
+  const renderAgentSettingModules = () => (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-1">
+        <div className={sectionEyebrowClass}>Agent Setting</div>
+        <div className="text-[10px] text-[var(--app-text-muted)]">{agentSettingModules.length} modules</div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {agentSettingModules.map(({ key, label, desc, Icon, tone, surface }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              onOpenModule?.(key);
+              closeMenus();
+            }}
+            className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+          >
+            <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
+              <Icon size={16} />
+            </span>
+            <span className="block min-w-0">
+              <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
+              <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderIoPanel = () => (
+    <div className={`${sectionCardClass} space-y-3`}>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className={sectionEyebrowClass}>IO</div>
+            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">导入源文件、理解指南与导出都归入项目层。</div>
+          </div>
+          <div className="flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
+            <button
+              type="button"
+              onClick={() => setIoPane("project")}
+              className={`${compactTabClass} ${ioPane === "project" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+            >
+              Files
+            </button>
+            <button
+              type="button"
+              onClick={() => setIoPane("guides")}
+              className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+            >
+              Understanding
+            </button>
+            <button
+              type="button"
+              onClick={() => setIoPane("export")}
+              className={`${compactTabClass} ${ioPane === "export" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+            >
+              Export
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {ioActions.length > 0 && (
+        <div className="rounded-[22px] app-card overflow-hidden divide-y divide-white/8">
+          {ioActions.map((item) => {
+            const disabled = !item.onClick;
+            return (
+              <button
+                key={item.label}
+                onClick={() => {
+                  if (item.onClick) item.onClick();
+                  closeMenus();
+                }}
+                disabled={disabled}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${disabled
+                    ? "bg-transparent text-[var(--app-text-muted)] cursor-not-allowed"
+                    : "hover:bg-[var(--app-panel-muted)] text-[var(--app-text-primary)]"
+                  }`}
+              >
+                <span
+                  className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)]"
+                  style={{ background: disabled ? "rgba(255,255,255,0.06)" : item.color }}
+                >
+                  <item.Icon size={16} className={disabled ? "text-[var(--app-text-secondary)]" : "text-black"} />
+                </span>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold">{item.label}</div>
+                  <div className="text-[11px] text-[var(--app-text-secondary)]">{item.desc}</div>
+                </div>
+                <ChevronRight size={14} className="text-[var(--app-text-muted)]" />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {ioPane === "project" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => {
+              onImport();
+              closeMenus();
+            }}
+            className={docButtonClass}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
+                <SquareStack size={16} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={scriptInputRef}
+            type="file"
+            accept=".txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "script")}
+          />
+          <button type="button" onClick={() => scriptInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-blue-500/10 text-blue-300">
+                <FileText size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">剧本</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">文本脚本</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "csvShots")}
+          />
+          <button type="button" onClick={() => csvInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
+                <List size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots CSV</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={understandingInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "understandingJson")}
+          />
+          <button type="button" onClick={() => understandingInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
+                <BookOpen size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {ioPane === "guides" && (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            ref={globalStyleInputRef}
+            type="file"
+            accept=".md,.txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "globalStyleGuide")}
+          />
+          <button type="button" onClick={() => globalStyleInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-stone-500/10 text-stone-300">
+                <Palette size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Style</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">风格说明</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={shotGuideInputRef}
+            type="file"
+            accept=".md,.txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "shotGuide")}
+          />
+          <button type="button" onClick={() => shotGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-yellow-500/10 text-yellow-300">
+                <FileCode size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shot</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头提示词</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={soraGuideInputRef}
+            type="file"
+            accept=".md,.txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "soraGuide")}
+          />
+          <button type="button" onClick={() => soraGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-rose-500/10 text-rose-300">
+                <Sparkles size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sora</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">视频说明</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={storyboardGuideInputRef}
+            type="file"
+            accept=".md,.txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "storyboardGuide")}
+          />
+          <button type="button" onClick={() => storyboardGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-orange-500/10 text-orange-300">
+                <ImageIcon size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Storyboard</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">分镜提示词</span>
+              </span>
+            </div>
+          </button>
+          <input
+            ref={dramaGuideInputRef}
+            type="file"
+            accept=".md,.txt"
+            className="hidden"
+            onChange={(e) => handleAssetFileChange(e, "dramaGuide")}
+          />
+          <button type="button" onClick={() => dramaGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-indigo-500/10 text-indigo-300">
+                <FileCode size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Drama</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">剧情说明</span>
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {ioPane === "export" && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => {
+              onExport();
+              closeMenus();
+            }}
+            className={docButtonClass}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
+                <Share size={16} />
+              </span>
+              <span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
+              </span>
+            </div>
+          </button>
+          {onExportCsv && (
+            <button
+              onClick={() => {
+                onExportCsv();
+                closeMenus();
+              }}
+              className={docButtonClass}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
+                  <List size={16} />
+                </span>
+                <span>
+                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots</span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
+                </span>
+              </div>
+            </button>
+          )}
+          {onExportUnderstandingJson && (
+            <button
+              onClick={() => {
+                onExportUnderstandingJson();
+                closeMenus();
+              }}
+              className={docButtonClass}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
+                  <FileText size={16} />
+                </span>
+                <span>
+                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
+                </span>
+              </div>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
 
   return (
     <div className={rootClass}>
@@ -348,36 +679,11 @@ export const FloatingActionBar: React.FC<Props> = ({
               <div className="space-y-1 px-1">
                 <div className={sectionEyebrowClass}>Project</div>
                 <div className="text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                  更像目录视图的项目浮窗，保证常规页面高度也能完整操作。
+                  项目层只保留 IO 与模板，输入输出和复用资产都从这里进入。
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>Workspace</div>
-                  <div className="text-[10px] text-[var(--app-text-muted)]">{projectModules.length} modules</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {projectModules.map(({ key, label, desc, Icon, tone, surface }) => (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        onOpenModule?.(key);
-                        closeMenus();
-                      }}
-                      className="group flex min-h-[82px] items-center gap-3 rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
-                    >
-                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                        <Icon size={16} />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
-                        <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {renderIoPanel()}
 
               <div className={`${sectionCardClass} space-y-3`}>
                 <div className="flex items-center justify-between">
@@ -568,9 +874,9 @@ export const FloatingActionBar: React.FC<Props> = ({
                     </div>
                   </div>
                 ) : accountSignedIn ? (
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3.5">
-                      {accountInfo?.avatarUrl ? (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3.5">
+                        {accountInfo?.avatarUrl ? (
                         <img
                           src={accountInfo.avatarUrl}
                           alt="Avatar"
@@ -581,14 +887,14 @@ export const FloatingActionBar: React.FC<Props> = ({
                           <User size={18} />
                         </div>
                       )}
-                      <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
-                        {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {["Workspace access", "Project state", "Theme settings"].map((chip) => (
-                            <span
-                              key={chip}
-                              className="rounded-full border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)]"
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
+                            {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
+                            <div className="flex flex-wrap gap-2 pt-1">
+                          {["Agent setting", "Account state", "Theme settings"].map((chip) => (
+                                <span
+                                  key={chip}
+                                  className="rounded-full border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)]"
                             >
                               {chip}
                             </span>
@@ -659,13 +965,16 @@ export const FloatingActionBar: React.FC<Props> = ({
                           handleSignOut?.();
                           closeMenus();
                         }}
-                      >
-                        Sign Out
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
+                        >
+                          Sign Out
+                        </button>
+                      )}
+                      <div className="border-t border-[var(--app-border)] pt-3">
+                        {renderAgentSettingModules()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
                     <div className="flex items-start gap-3.5">
                       <div className="flex h-14 w-14 items-center justify-center rounded-[18px] border border-dashed border-[var(--app-border-strong)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)]">
                         <User size={18} />
@@ -710,308 +1019,12 @@ export const FloatingActionBar: React.FC<Props> = ({
                       </button>
                       <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">
                         <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
-                        Workspace / Theme / Agent Setting
+                        Account / Theme / Agent Setting
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-
-              <div className={`${sectionCardClass} space-y-3`}>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className={sectionEyebrowClass}>IO</div>
-                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">切换导入、理解指南与导出，作为独立操作面板使用。</div>
+                    <div className="border-t border-[var(--app-border)] pt-3">
+                      {renderAgentSettingModules()}
                     </div>
-                    <div className="flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
-                      <button
-                        type="button"
-                        onClick={() => setIoPane("project")}
-                        className={`${compactTabClass} ${ioPane === "project" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-                      >
-                        Files
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIoPane("guides")}
-                        className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-                      >
-                        Understanding
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIoPane("export")}
-                        className={`${compactTabClass} ${ioPane === "export" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-                      >
-                        Export
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {ioActions.length > 0 && (
-                  <div className="rounded-[22px] app-card overflow-hidden divide-y divide-white/8">
-                    {ioActions.map((item) => {
-                      const disabled = !item.onClick;
-                      return (
-                        <button
-                          key={item.label}
-                          onClick={() => {
-                            if (item.onClick) item.onClick();
-                            closeMenus();
-                          }}
-                          disabled={disabled}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${disabled
-                              ? "bg-transparent text-[var(--app-text-muted)] cursor-not-allowed"
-                              : "hover:bg-[var(--app-panel-muted)] text-[var(--app-text-primary)]"
-                            }`}
-                        >
-                          <span
-                            className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)]"
-                            style={{ background: disabled ? "rgba(255,255,255,0.06)" : item.color }}
-                          >
-                            <item.Icon size={16} className={disabled ? "text-[var(--app-text-secondary)]" : "text-black"} />
-                          </span>
-                          <div className="flex-1">
-                            <div className="text-sm font-semibold">{item.label}</div>
-                            <div className="text-[11px] text-[var(--app-text-secondary)]">{item.desc}</div>
-                          </div>
-                          <ChevronRight size={14} className="text-[var(--app-text-muted)]" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {ioPane === "project" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        onImport();
-                        closeMenus();
-                      }}
-                      className={docButtonClass}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
-                          <SquareStack size={16} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={scriptInputRef}
-                      type="file"
-                      accept=".txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "script")}
-                    />
-                    <button type="button" onClick={() => scriptInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-blue-500/10 text-blue-300">
-                          <FileText size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">剧本</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">文本脚本</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={csvInputRef}
-                      type="file"
-                      accept=".csv"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "csvShots")}
-                    />
-                    <button type="button" onClick={() => csvInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
-                          <List size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots CSV</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={understandingInputRef}
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "understandingJson")}
-                    />
-                    <button type="button" onClick={() => understandingInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                          <BookOpen size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-                )}
-
-                {ioPane === "guides" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      ref={globalStyleInputRef}
-                      type="file"
-                      accept=".md,.txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "globalStyleGuide")}
-                    />
-                    <button type="button" onClick={() => globalStyleInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-stone-500/10 text-stone-300">
-                          <Palette size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Style</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">风格说明</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={shotGuideInputRef}
-                      type="file"
-                      accept=".md,.txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "shotGuide")}
-                    />
-                    <button type="button" onClick={() => shotGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-yellow-500/10 text-yellow-300">
-                          <FileCode size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shot</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头提示词</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={soraGuideInputRef}
-                      type="file"
-                      accept=".md,.txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "soraGuide")}
-                    />
-                    <button type="button" onClick={() => soraGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-rose-500/10 text-rose-300">
-                          <Sparkles size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sora</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">视频说明</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={storyboardGuideInputRef}
-                      type="file"
-                      accept=".md,.txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "storyboardGuide")}
-                    />
-                    <button type="button" onClick={() => storyboardGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-orange-500/10 text-orange-300">
-                          <ImageIcon size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Storyboard</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">分镜提示词</span>
-                        </span>
-                      </div>
-                    </button>
-                    <input
-                      ref={dramaGuideInputRef}
-                      type="file"
-                      accept=".md,.txt"
-                      className="hidden"
-                      onChange={(e) => handleAssetFileChange(e, "dramaGuide")}
-                    />
-                    <button type="button" onClick={() => dramaGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-indigo-500/10 text-indigo-300">
-                          <FileCode size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Drama</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">剧情说明</span>
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-                )}
-
-                {ioPane === "export" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        onExport();
-                        closeMenus();
-                      }}
-                      className={docButtonClass}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
-                          <Share size={16} />
-                        </span>
-                        <span>
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
-                        </span>
-                      </div>
-                    </button>
-                    {onExportCsv && (
-                      <button
-                        onClick={() => {
-                          onExportCsv();
-                          closeMenus();
-                        }}
-                        className={docButtonClass}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
-                            <List size={16} />
-                          </span>
-                          <span>
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
-                          </span>
-                        </div>
-                      </button>
-                    )}
-                    {onExportUnderstandingJson && (
-                      <button
-                        onClick={() => {
-                          onExportUnderstandingJson();
-                          closeMenus();
-                        }}
-                        className={docButtonClass}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                            <FileText size={16} />
-                          </span>
-                          <span>
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
-                          </span>
-                        </div>
-                      </button>
-                    )}
                   </div>
                 )}
               </div>
