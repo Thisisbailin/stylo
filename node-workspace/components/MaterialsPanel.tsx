@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Film, Image, Sparkles, Trash2, X } from "lucide-react";
-import { useWorkflowStore, GlobalAssetHistoryItem } from "../store/workflowStore";
+import { useNodeFlowStore, GlobalAssetHistoryItem } from "../store/nodeFlowStore";
 
 export type MaterialsSectionKey = "images" | "videos" | "prompts";
 
@@ -49,7 +49,7 @@ export const MaterialsPanel: React.FC<Props> = ({
   onActiveSectionChange,
   showSidebar = true,
 }) => {
-  const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useWorkflowStore();
+  const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useNodeFlowStore();
   const [internalActive, setInternalActive] = useState<MaterialsSectionKey>(initialSection);
   const active = activeSection ?? internalActive;
 

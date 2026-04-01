@@ -1,5 +1,5 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import type { WorkflowBuilderHandle } from "../bridge/qalamBridge";
+import type { NodeFlowHandle } from "../bridge/qalamBridge";
 
 export const OPERATE_PROJECT_RESOURCE_TYPES = ["workflow_node", "workflow_connection"] as const;
 export const OPERATE_WORKFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
@@ -227,14 +227,14 @@ const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "workflow_node
 export const operateProjectResourceToolDef = {
   name: "operate_project_resource",
   description:
-    "Operate workflow resources in NodeLab. Supports creating a workflow_node (text, script_board, storyboard_board, character_card) or a workflow_connection between existing nodes.",
+    "Operate workflow resources in NodeFlow. Supports creating a workflow_node (text, script_board, storyboard_board, character_card) or a workflow_connection between existing nodes.",
   parameters: operateProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
     if (args.resourceType === "workflow_node") {
       const nodeType = resolveNodeType(args.nodeKind);
-      const created = bridge.createWorkflowNode({
+      const created = bridge.createNodeFlowNode({
         type: nodeType,
         nodeRef: defaultNodeRef(args),
         title: defaultTitle(args),
@@ -253,17 +253,18 @@ export const operateProjectResourceToolDef = {
       };
     }
 
-    const connected = bridge.connectWorkflowNodes({
+    const connected = bridge.connectNodeFlowNodes({
       sourceRef: args.sourceRef,
       targetRef: args.targetRef,
       sourceNodeId: args.sourceNodeId,
       targetNodeId: args.targetNodeId,
-      sourceHandle: args.sourceHandle as WorkflowBuilderHandle | undefined,
-      targetHandle: args.targetHandle as WorkflowBuilderHandle | undefined,
+      sourceHandle: args.sourceHandle as NodeFlowHandle | undefined,
+      targetHandle: args.targetHandle as NodeFlowHandle | undefined,
     });
     return {
       resource_type: "workflow_connection",
-      edge_id: connected.edgeId,
+      link_id: connected.linkId,
+      edge_id: connected.linkId,
       source_node_id: connected.sourceNodeId,
       target_node_id: connected.targetNodeId,
       source_ref: connected.sourceRef,

@@ -1,7 +1,7 @@
 import React from "react";
 import { Timer, MoveRight, Table, LayoutList } from "lucide-react";
 import { ShotNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { BaseNode } from "./BaseNode";
 
 type Props = {
@@ -20,7 +20,7 @@ const DETAIL_FIELDS: Array<{ key: keyof ShotNodeData; label: string; minHeight: 
 ];
 
 export const ShotNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData } = useWorkflowStore();
+  const { updateNodeData } = useNodeFlowStore();
   const isTableView = (data.viewMode || "card") === "table";
 
   const updateField = (key: keyof ShotNodeData, value: string) => {

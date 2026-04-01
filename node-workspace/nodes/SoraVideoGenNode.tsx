@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { VideoGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, Film, RefreshCw, AlertCircle, Download } from "lucide-react";
 
 type Props = {
@@ -11,8 +11,8 @@ type Props = {
 };
 
 export const SoraVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, availableVideoModels, getConnectedInputs } = useWorkflowStore();
-  const { runVideoGen } = useLabExecutor();
+  const { updateNodeData, availableVideoModels, getConnectedInputs } = useNodeFlowStore();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [progress, setProgress] = useState(0);
 

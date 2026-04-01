@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { ImageGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Sparkles, RefreshCw, AlertCircle, Settings2, X, Download } from "lucide-react";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
 
@@ -12,8 +12,8 @@ type Props = {
 };
 
 export const ImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, availableImageModels, labContext, appConfig } = useWorkflowStore();
-  const { runImageGen } = useLabExecutor();
+  const { updateNodeData, availableImageModels, nodeFlowContext, appConfig } = useNodeFlowStore();
+  const { runImageGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -26,13 +26,13 @@ export const ImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, dat
   const isLoading = data.status === "loading";
 
   const identityOptions = useMemo(() => {
-    const roles = labContext?.context?.roles || [];
+    const roles = nodeFlowContext?.context?.roles || [];
     return roles.map((role) => ({
       id: role.id,
       mention: role.mention,
       label: getRoleDisplayLabel(role),
     }));
-  }, [labContext?.context?.roles]);
+  }, [nodeFlowContext?.context?.roles]);
 
   // Derive display model name
   const globalModel = appConfig?.multimodalConfig?.model;

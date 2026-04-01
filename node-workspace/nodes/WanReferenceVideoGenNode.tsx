@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { VideoGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Film, AlertCircle, Download, Upload, X, Video, Image as ImageIcon } from "lucide-react";
 import {
   QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL,
@@ -23,8 +23,8 @@ type ManualReferenceAsset = {
 const clampDuration = (value: number) => Math.max(2, Math.min(10, Math.round(value)));
 
 export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs, labContext } = useWorkflowStore();
-  const { runVideoGen } = useLabExecutor();
+  const { updateNodeData, getConnectedInputs, nodeFlowContext } = useNodeFlowStore();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingVideoRefs, setIsUploadingVideoRefs] = useState(false);
   const [isUploadingImageRefs, setIsUploadingImageRefs] = useState(false);
@@ -44,7 +44,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
   );
   const availableProjectRefs = useMemo(() => {
     const latestByKey = new Map<string, { category: "identity"; refId: string; label: string; url: string; createdAt: number }>();
-    (labContext.designAssets || []).forEach((asset) => {
+    (nodeFlowContext.designAssets || []).forEach((asset) => {
       if (!asset?.url || !asset?.refId) return;
       const key = `${asset.category}:${asset.refId}`;
       const current = latestByKey.get(key);
@@ -59,7 +59,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
       }
     });
     return Array.from(latestByKey.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  }, [labContext.designAssets]);
+  }, [nodeFlowContext.designAssets]);
   const selectedProjectRefKeys = useMemo(
     () => new Set(projectReferenceTargets.map((target) => `${target.category}:${target.refId}`)),
     [projectReferenceTargets]

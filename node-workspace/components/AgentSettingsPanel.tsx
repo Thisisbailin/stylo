@@ -16,7 +16,8 @@ import {
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { useAuth } from "../../lib/auth";
-import { AgentTextProvider } from "../../types";
+import { AgentTextProvider, ProjectData } from "../../types";
+import { Dashboard } from "../../components/Dashboard";
 import {
   ARK_DEFAULT_MODEL,
   ARK_RESPONSES_BASE_URL,
@@ -42,7 +43,7 @@ import {
   type AgentToolActivityRecord,
 } from "../../agents/runtime/activity";
 import { listBuiltinSkills } from "../../agents/runtime/skills";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { fetchArkModels, type ArkModel } from "../../services/arkResponsesService";
 import { fetchTextModels } from "../../services/responsesTextService";
 import { fetchQwenModels, type QwenModel } from "../../services/qwenResponsesService";
@@ -52,6 +53,9 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   leftOffset?: number;
+  projectData: ProjectData;
+  isDarkMode?: boolean;
+  requestedPanel?: "provider" | "tools" | "skills" | "dashboard" | "history";
 };
 
 type ConversationRecord = {
@@ -151,12 +155,12 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的目录、读取与搜索接口查阅项目资料，也可以按需读取内部 skill 包，先学习方法再执行任务。",
-    tools: ["list_skill_packages", "read_skill_package", "list_project_resources", "read_project_resource", "search_project_resource"],
-    surfaces: ["skill package", "episode script", "episode storyboard", "project summary", "character profile", "scene profile"],
+    description: "Agent 通过统一的目录、读取与搜索接口查阅项目资料，包括剧本、理解资产、内部 skill 包，以及当前节点工作流。",
+    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
+    surfaces: ["skill package", "episode script", "episode storyboard", "project summary", "character profile", "scene profile", "workflow node", "workflow connection"],
     boundary: "只读，不允许直接修改项目状态。",
-    artifact: "返回方法指导、证据、摘要和结构化片段，作为理解与操作的前置输入。",
-    note: "负责读取内部方法与项目证据。",
+    artifact: "返回方法指导、项目证据、工作流结构和结构化片段，作为理解与操作的前置输入。",
+    note: "负责读取内部方法、项目证据与节点工作流。",
     Icon: Eye,
   },
   {
@@ -362,15 +366,23 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
   return text.length > 20 ? `${text.slice(0, 20)}...` : text;
 };
 
-export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffset = 0 }) => {
+export const AgentSettingsPanel: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  leftOffset = 0,
+  projectData,
+  isDarkMode = true,
+  requestedPanel = "provider",
+}) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
   const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
-  const { applyViduReferenceDemo } = useWorkflowStore();
+  const { applyViduReferenceDemo } = useNodeFlowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
-  const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "history">("provider");
+  const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
   const [activeTool, setActiveTool] = useState<ToolKey>("asset-library");
+  const [activeSkillId, setActiveSkillId] = useState("");
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
   const [isLoadingTextModels, setIsLoadingTextModels] = useState(false);
   const [textModelFetchMessage, setTextModelFetchMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -438,6 +450,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
     };
   }, [config.textConfig.qalamTools]);
   const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
+  const activeSkill = useMemo(
+    () => availableAgentSkills.find((skill) => skill.id === activeSkillId) || availableAgentSkills[0] || null,
+    [activeSkillId, availableAgentSkills]
+  );
   const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
   const activeAgentBaseUrl =
     config.textConfig.agentBaseUrl ||
@@ -670,6 +686,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
   useEffect(() => {
     setActiveMultiProvider(resolveMultiProviderKey(config.multimodalConfig.provider));
   }, [config.multimodalConfig.provider]);
+
+  useEffect(() => {
+    if (!availableAgentSkills.length) return;
+    if (!activeSkillId || !availableAgentSkills.some((skill) => skill.id === activeSkillId)) {
+      setActiveSkillId(availableAgentSkills[0].id);
+    }
+  }, [activeSkillId, availableAgentSkills]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedPanel(requestedPanel);
+  }, [isOpen, requestedPanel]);
 
   const setProvider = (p: AgentTextProvider) => {
     setConfig((prev) => {
@@ -927,6 +955,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
             title: activeToolItem.title,
             description: "查看 read / edit / operate 三个能力面的工具构成、边界和最近活动。",
           }
+        : selectedPanel === "skills"
+          ? {
+              label: "Skills",
+              title: activeSkill?.title || "Skills",
+              description: "内建 skill 作为按需方法包存在，Agent 不会默认预注入，而是在任务需要时检索并读取。",
+            }
+          : selectedPanel === "dashboard"
+            ? {
+                label: "Dashboard",
+                title: "Project Metrics",
+                description: "把 token 用量、项目追踪和 agent setting 合并到同一个侧栏工作面。",
+              }
         : {
             label: "History",
             title: "Conversation & Trace",
@@ -948,7 +988,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
                     Agent Settings
                   </div>
                   <div className="mt-2 text-[13px] leading-6 text-[var(--app-text-secondary)]">
-                    和 workspace 一样使用常驻侧栏结构，左边切换 provider / tools / skills / history，右边展开当前工作面。
+                    和 workspace 一样使用常驻侧栏结构，左边切换 provider / tools / skills / dashboard / history，右边展开当前工作面。
                   </div>
                 </div>
                 <button
@@ -1040,29 +1080,31 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
                 {availableAgentSkills.length ? (
                   <div className="flex flex-col gap-2">
                     {availableAgentSkills.map((skill) => {
+                      const active = activeSkill?.id === skill.id;
                       return (
-                        <div
+                        <button
                           key={skill.id}
-                          className="flex items-start justify-between gap-3 px-3 py-3 rounded-xl text-[12px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]"
+                          type="button"
+                          onClick={() => {
+                            setActiveSkillId(skill.id);
+                            setSelectedPanel("skills");
+                          }}
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                            active
+                              ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                              : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                          }`}
                         >
-                          <span className="flex items-start gap-3 text-left">
-                            <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center shrink-0">
-                              <Sparkles size={14} className="text-[var(--app-text-secondary)]" />
+                          <span className="flex items-center gap-3 text-left">
+                            <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                              <Sparkles size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
                             </span>
-                            <span className="space-y-1">
-                              <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
-                              <span className="block text-[11px] leading-5 text-[var(--app-text-secondary)]">{skill.description}</span>
-                              {skill.tags?.length ? (
-                                <span className="block text-[10px] text-[var(--app-text-muted)]">
-                                  {skill.tags.map((tag) => `#${tag}`).join(" ")}
-                                </span>
-                              ) : null}
-                            </span>
+                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
                           </span>
                           <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                            agent 按需读取
+                            {skill.tags?.length || 0} tags
                           </span>
-                        </div>
+                        </button>
                       );
                     })}
                     <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-muted)]">
@@ -1072,6 +1114,29 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
                 ) : (
                   <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
                 )}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="text-[11px] uppercase tracking-widest app-text-muted">Dashboard</div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPanel("dashboard")}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                    selectedPanel === "dashboard"
+                      ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                      : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                >
+                  <span className="flex items-center gap-3 text-left">
+                    <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${selectedPanel === "dashboard" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                      <Layers size={14} className={selectedPanel === "dashboard" ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
+                    </span>
+                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">dashboard</span>
+                  </span>
+                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                    metrics
+                  </span>
+                </button>
               </div>
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
@@ -1823,7 +1888,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
                           <div>
                             <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">操作开关</div>
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以把理解转成 NodeLab 中的真实节点与连线。
+                              控制 Agent 是否可以把理解转成 NodeFlow 中的真实节点与连线。
                             </div>
                           </div>
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
@@ -2020,6 +2085,61 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose, leftOffse
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {selectedPanel === "skills" && (
+                <div className="space-y-4">
+                  {activeSkill ? (
+                    <>
+                      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] flex items-center justify-center">
+                                <Sparkles size={16} className="text-[var(--app-text-primary)]" />
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-[var(--app-text-muted)]">internal skill</div>
+                                <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">{activeSkill.title}</div>
+                              </div>
+                            </div>
+                            <div className="max-w-[62ch] text-[12px] leading-relaxed text-[var(--app-text-secondary)]">
+                              {activeSkill.description}
+                            </div>
+                          </div>
+                          <span className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                            on-demand
+                          </span>
+                        </div>
+                        {activeSkill.tags?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {activeSkill.tags.map((tag) => (
+                              <span
+                                key={`${activeSkill.id}-${tag}`}
+                                className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-muted)]">
+                        这些 skill 不会预先注入到系统提示词里。Agent 会在任务需要时先调用 skill catalog / read 工具，再按需学习并应用对应方法。
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-4 text-[11px] text-[var(--app-text-muted)]">
+                      当前没有可启用的内建 skill。
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedPanel === "dashboard" && (
+                <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
+                  <Dashboard data={projectData} isDarkMode={isDarkMode} embedded />
                 </div>
               )}
 

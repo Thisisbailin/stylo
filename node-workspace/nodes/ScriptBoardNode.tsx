@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from "react";
 import { BookOpen } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { ScriptBoardNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { Character } from "../../types";
 
 type Props = {
@@ -35,11 +35,11 @@ const buildCharacterMatcher = (characters: Character[]) => {
 };
 
 export const ScriptBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, labContext } = useWorkflowStore();
-  const episodes = labContext.episodes || [];
+  const { updateNodeData, nodeFlowContext } = useNodeFlowStore();
+  const episodes = nodeFlowContext.episodes || [];
   const characters = useMemo(
-    () => (labContext.context?.characters || []).filter((character) => !!character?.name?.trim()),
-    [labContext.context?.characters]
+    () => (nodeFlowContext.context?.characters || []).filter((character) => !!character?.name?.trim()),
+    [nodeFlowContext.context?.characters]
   );
   const characterMap = useMemo(() => {
     const map = new Map<string, Character>();

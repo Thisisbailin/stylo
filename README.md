@@ -4,14 +4,14 @@ Qalam is a node-first creative workspace for script understanding, asset structu
 
 The current product is no longer related to Google AI Studio. This repository now centers on three surfaces:
 
-- `NodeLab`: the main canvas for building and running node workflows
+- `NodeFlow`: the main canvas for building and running node workflows
 - `Qalam Agent`: a single general-purpose project agent built on `@openai/agents`
 - `Projector`: an audio and media lab for voice and multimodal generation
 
 ## What The App Does
 
 - Import and organize project/script data
-- Build visual workflows in `NodeLab`
+- Build visual workflows in `NodeFlow`
 - Run image, video, audio, and reference-based generation flows
 - Use `Qalam Agent` to read project facts, update structured resources, and help create workflow operations
 - Persist project state locally, with optional cloud sync
@@ -170,7 +170,7 @@ The project sync endpoints create and evolve the required D1 tables in code, so 
 ## Product Structure
 
 - `App.tsx`: top-level application shell
-- `node-workspace/components/NodeLab.tsx`: main node canvas
+- `node-workspace/components/NodeFlow.tsx`: main node canvas
 - `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
 - `components/ProjectorModule.tsx`: projector/audio lab
 - `node-workspace/components/AgentSettingsPanel.tsx`: provider, tool, and runtime settings

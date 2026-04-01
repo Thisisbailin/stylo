@@ -5,7 +5,6 @@ import type {
   AgentSessionMessage,
   QalamAgentEnvironment,
 } from "./types";
-import { listBuiltinSkills } from "./skills";
 import { LIST_PROJECT_RESOURCE_TYPES } from "../tools/listProjectResources";
 import { READ_PROJECT_RESOURCE_TYPES } from "../tools/readProjectResource";
 import { SEARCH_PROJECT_RESOURCE_SCOPES } from "../tools/searchProjectResource";
@@ -42,8 +41,8 @@ const sortRoles = (roles: ProjectRoleIdentity[]) =>
 
 const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
   read: {
-    tools: ["list_skill_packages", "read_skill_package", "list_project_resources", "read_project_resource", "search_project_resource"],
-    resources: ["skill_packages", ...listBuiltinSkills().map((skill) => skill.id), ...LIST_PROJECT_RESOURCE_TYPES, ...READ_PROJECT_RESOURCE_TYPES],
+    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
+    resources: [...LIST_PROJECT_RESOURCE_TYPES, ...READ_PROJECT_RESOURCE_TYPES],
     scopes: [...SEARCH_PROJECT_RESOURCE_SCOPES],
   },
   edit: {

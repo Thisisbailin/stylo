@@ -158,7 +158,7 @@ export interface StoryboardBoardNodeData extends BaseNodeData {
   displayMode?: "table" | "workflow";
   columnWidths?: number[];
   rowHeights?: Record<string, number>;
-  workflowLoadedAt?: number;
+  nodeFlowLoadedAt?: number;
 }
 
 export interface IdentityCardNodeData extends BaseNodeData {
@@ -289,7 +289,7 @@ export interface ShotNodeData extends BaseNodeData {
   viewMode?: "card" | "table";
 }
 
-export type WorkflowNodeData =
+export type NodeFlowNodeData =
   | ImageInputNodeData
   | AudioInputNodeData
   | AnnotationNodeData
@@ -304,13 +304,13 @@ export type WorkflowNodeData =
   | GroupNodeData
   | ShotNodeData;
 
-export type WorkflowNode = Node<WorkflowNodeData, NodeType>;
+export type NodeFlowNode = Node<NodeFlowNodeData, NodeType>;
 
-export interface WorkflowEdgeData extends Record<string, unknown> {
+export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
 }
 
-export type WorkflowEdge = Edge<WorkflowEdgeData>;
+export type NodeFlowLink = Edge<NodeFlowLinkData>;
 
 export type GlobalAssetType = "image" | "video" | "audio";
 
@@ -325,7 +325,7 @@ export type GlobalAssetHistoryItem = {
   sourceId?: string;
 };
 
-export type LabContextSnapshot = {
+export type NodeFlowContextSnapshot = {
   rawScript: string;
   episodes: Episode[];
   designAssets: DesignAssetItem[];
@@ -337,27 +337,28 @@ export type LabContextSnapshot = {
   context: ProjectContext;
 };
 
-export type WorkflowViewport = {
+export type NodeFlowViewport = {
   x: number;
   y: number;
   zoom: number;
 };
 
-export interface WorkflowFile {
+export interface NodeFlowFile {
   version: number;
+  revision: number;
   name: string;
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  edgeStyle?: "angular" | "curved";
+  nodes: NodeFlowNode[];
+  links: NodeFlowLink[];
+  linkStyle?: "angular" | "curved";
   globalAssetHistory?: GlobalAssetHistoryItem[];
-  labContext?: LabContextSnapshot;
-  viewport?: WorkflowViewport;
+  nodeFlowContext?: NodeFlowContextSnapshot;
+  viewport?: NodeFlowViewport;
   activeView?: string | null;
 }
 
-export type WorkflowTemplate = {
+export type NodeFlowTemplate = {
   id: string;
   name: string;
   createdAt: number;
-  workflow: WorkflowFile;
+  nodeFlow: NodeFlowFile;
 };

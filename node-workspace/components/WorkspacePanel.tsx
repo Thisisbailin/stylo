@@ -16,7 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import type { AppConfig, ProjectData, SyncState } from "../../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
@@ -83,7 +83,7 @@ export const WorkspacePanel: React.FC<Props> = ({
   initialSection = "understanding:overview",
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
-  const { globalAssetHistory } = useWorkflowStore();
+  const { globalAssetHistory } = useNodeFlowStore();
 
   useEffect(() => {
     setActiveSection(initialSection);

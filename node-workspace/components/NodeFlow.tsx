@@ -12,10 +12,10 @@ import {
   XYPosition,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import "../styles/nodelab.css";
-import { useWorkflowStore } from "../store/workflowStore";
+import "../styles/nodeflow.css";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { getNodeHandles, isValidConnection, nodeSupportsHandle } from "../utils/handles";
-import { WorkflowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
+import { NodeFlowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
 import {
   AudioInputNode,
@@ -34,7 +34,7 @@ import {
   SeedanceVideoGenNode,
   ShotNode,
 } from "../nodes";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { ConnectionDropMenu } from "./ConnectionDropMenu";
@@ -83,7 +83,7 @@ interface ConnectionDropState {
   sourceHandleId: string | null;
 }
 
-interface NodeLabProps {
+interface NodeFlowProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
@@ -401,7 +401,7 @@ const getPatternDefinitions = (
   });
 };
 
-const NodeLabInner: React.FC<NodeLabProps> = ({
+const NodeFlowInner: React.FC<NodeFlowProps> = ({
   projectData,
   setProjectData,
   getAuthToken,
@@ -426,25 +426,33 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
+  const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
   const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
   const [composerInput, setComposerInput] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const openAgentSettingsPanel = useCallback(
+    (panel: "provider" | "tools" | "skills" | "dashboard" | "history" = "provider") => {
+      setAgentSettingsPanel(panel);
+      setShowAgentSettings(true);
+    },
+    []
+  );
   const {
     nodes,
-    edges,
+    links,
     addNode,
-    addNodesAndEdges,
+    addNodesAndLinks,
     updateNodeData,
     onNodesChange,
-    onEdgesChange,
-    onConnect,
-    saveWorkflow,
-    loadWorkflow,
+    onLinksChange,
+    connectNodes,
+    exportNodeFlow,
+    importNodeFlow,
     setGlobalStyleGuide,
-    setLabContext,
+    setNodeFlowContext,
     setProjectRoleUpdater,
     setViewportState,
     saveGroupTemplate,
@@ -454,10 +462,10 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
     viewport,
     addToGlobalHistory,
     globalAssetHistory,
-  } = useWorkflowStore();
+  } = useNodeFlowStore();
   const { setViewport, screenToFlowPosition, getViewport, fitView } = useReactFlow();
   const { show: showToast } = useToast();
-  const { runImageGen, runVideoGen } = useLabExecutor();
+  const { runImageGen, runVideoGen } = useNodeFlowExecutor();
 
   const minZoom = 0.25;
   const maxZoom = 4;
@@ -472,10 +480,10 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
-      onConnect(connection);
+      connectNodes(connection);
       setIsConnecting(false);
     },
-    [onConnect]
+    [connectNodes]
   );
 
   const handleConnectStart = useCallback(() => {
@@ -490,7 +498,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   }, [projectData.globalStyleGuide, setGlobalStyleGuide]);
 
   useEffect(() => {
-  setLabContext({
+  setNodeFlowContext({
       rawScript: projectData.rawScript || "",
       episodes: projectData.episodes || [],
       designAssets: projectData.designAssets || [],
@@ -501,7 +509,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       dramaGuide: projectData.dramaGuide || "",
       context: projectData.context,
     });
-  }, [projectData, setLabContext]);
+  }, [projectData, setNodeFlowContext]);
 
   useEffect(() => {
     setProjectRoleUpdater((roleId, updater) => {
@@ -637,7 +645,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
       }
       if (connectionDrop.connectionType === "source") {
         const resolvedTargetHandle = newNodeHandles.inputs.includes("multi") ? "multi" : connectionDrop.handleType;
-        onConnect({
+        connectNodes({
           source: connectionDrop.sourceNodeId!,
           sourceHandle: connectionDrop.sourceHandleId!,
           target: newId,
@@ -645,7 +653,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         });
       } else {
         const resolvedSourceHandle = newNodeHandles.outputs.includes("multi") ? "multi" : connectionDrop.handleType;
-        onConnect({
+        connectNodes({
           source: newId,
           sourceHandle: resolvedSourceHandle,
           target: connectionDrop.sourceNodeId!,
@@ -662,10 +670,10 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = JSON.parse(evt.target?.result as string) as WorkflowFile;
-        loadWorkflow(data);
+        const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
+        importNodeFlow(data);
       } catch (err) {
-        alert("Failed to import workflow JSON");
+        alert("Failed to import NodeFlow JSON");
       }
     };
     reader.readAsText(file);
@@ -757,7 +765,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   }, []);
 
   const displayNodes = nodes;
-  const displayEdges = edges;
+  const displayEdges = links;
   const selectedGroup = getSelectedGroup();
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
@@ -941,7 +949,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   return (
     <div className="h-full w-full flex flex-col app-text-primary" style={backgroundStyle}>
       <div
-        className="flex-1 relative node-lab-canvas"
+        className="flex-1 relative node-flow-canvas"
         data-zoomed={zoomValue > 1}
         data-connecting={isConnecting}
         style={backgroundStyle}
@@ -950,7 +958,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
           nodes={displayNodes}
           edges={displayEdges}
           onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={onLinksChange}
           onConnect={handleConnect}
           onConnectStart={handleConnectStart}
           onConnectEnd={handleConnectEnd}
@@ -984,12 +992,12 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         >
           {showMiniMap && (
             <div
-              className="nodelab-minimap-drawer"
+              className="nodeflow-minimap-drawer"
               data-open={showMiniMap}
               style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
             >
               <MiniMap
-                className="nodelab-minimap"
+                className="nodeflow-minimap"
                 style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
                 maskColor="rgba(255,255,255,0.04)"
                 nodeStrokeColor="#38bdf8"
@@ -1013,6 +1021,9 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
         leftOffset={agentDockWidth}
+        projectData={projectData}
+        isDarkMode={isDarkMode}
+        requestedPanel={agentSettingsPanel}
       />
       <div className="fixed bottom-4 left-4 z-30 pointer-events-none">
         <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
@@ -1020,8 +1031,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             projectData={projectData}
             setProjectData={setProjectData}
             getAuthToken={getAuthToken}
-            onOpenStats={onOpenStats}
-            onToggleAgentSettings={() => setShowAgentSettings((prev) => !prev)}
+            onOpenStats={() => openAgentSettingsPanel("dashboard")}
             settingsOpen={showAgentSettings}
             openRequest={qalamOpenRequest}
             submitRequest={qalamSubmitRequest}
@@ -1069,7 +1079,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
             onAddGroup={() => handleAddNode("group", { x: 100, y: 100 })}
             onImport={() => fileInputRef.current?.click()}
-            onExport={() => saveWorkflow()}
+            onExport={() => exportNodeFlow()}
             onRun={runAll}
             templates={groupTemplates}
             canCreateTemplate={!!selectedGroup}
@@ -1081,7 +1091,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             onExportCsv={onExportCsv}
             onExportXls={onExportXls}
             onExportUnderstandingJson={onExportUnderstandingJson}
-            onOpenStats={onOpenStats}
+            onOpenStats={() => openAgentSettingsPanel("dashboard")}
             onToggleTheme={onToggleTheme}
             onOpenTheme={(anchorRect) => {
               if (anchorRect) {
@@ -1093,7 +1103,6 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
             onOpenSyncPanel={onOpenSyncPanel}
             syncIndicator={syncIndicator}
             onOpenInfoPanel={onOpenInfoPanel}
-            onToggleAgentSettings={() => setShowAgentSettings((prev) => !prev)}
             onResetProject={onResetProject}
             onSignOut={onSignOut}
             onAssetLoad={onAssetLoad}
@@ -1117,7 +1126,7 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
                   }}
                   rows={1}
                   className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
-                  placeholder="Ask Qalam about scenes, roles, nodes, assets, or workflow changes."
+                  placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
                 />
                 <button
                   type="button"
@@ -1260,10 +1269,10 @@ const NodeLabInner: React.FC<NodeLabProps> = ({
   );
 };
 
-export const NodeLab: React.FC<NodeLabProps> = (props) => {
+export const NodeFlow: React.FC<NodeFlowProps> = (props) => {
   return (
     <ReactFlowProvider>
-      <NodeLabInner {...props} />
+      <NodeFlowInner {...props} />
     </ReactFlowProvider>
   );
 };

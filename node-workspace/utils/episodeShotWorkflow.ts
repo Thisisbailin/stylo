@@ -6,10 +6,11 @@ import type {
   ShotNodeData,
   TextNodeData,
   VideoGenNodeData,
-  WorkflowEdge,
-  WorkflowNode,
+  NodeFlowLink,
+  NodeFlowNode,
 } from "../types";
 import { buildShotOverview } from "../../utils/shotSchema";
+import { buildNodeFlowLinkId } from "../nodeflow/links";
 
 const estimateTextNodeHeight = (text: string) => {
   const safe = (text || "").trim();
@@ -20,7 +21,7 @@ const estimateTextNodeHeight = (text: string) => {
   return baseHeight + lines * lineHeight;
 };
 
-export const getSuggestedCanvasOrigin = (nodes: WorkflowNode[]): XYPosition => {
+export const getSuggestedCanvasOrigin = (nodes: NodeFlowNode[]): XYPosition => {
   const topLevelNodes = nodes.filter((node) => !node.parentId);
   if (topLevelNodes.length === 0) return { x: 50, y: 60 };
   const maxY = Math.max(
@@ -32,16 +33,16 @@ export const getSuggestedCanvasOrigin = (nodes: WorkflowNode[]): XYPosition => {
   return { x: 50, y: maxY + 160 };
 };
 
-export const buildEpisodeShotWorkflow = ({
+export const buildEpisodeShotNodeFlow = ({
   episode,
   origin,
 }: {
   episode: Episode;
   origin: XYPosition;
-}): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } => {
+}): { nodes: NodeFlowNode[]; links: NodeFlowLink[] } => {
   const stamp = Date.now();
-  const nodes: WorkflowNode[] = [];
-  const edges: WorkflowEdge[] = [];
+  const nodes: NodeFlowNode[] = [];
+  const links: NodeFlowLink[] = [];
   const topPadding = 120;
   const bottomPadding = 180;
   const shotGap = 160;
@@ -170,30 +171,30 @@ export const buildEpisodeShotWorkflow = ({
       } as ImageGenNodeData,
     });
 
-    edges.push(
+    links.push(
       {
-        id: `edge-shot-sora-${suffix}`,
+        id: buildNodeFlowLinkId(shotNodeId, soraPromptNodeId, "text", "text"),
         source: shotNodeId,
         target: soraPromptNodeId,
         sourceHandle: "text",
         targetHandle: "text",
       },
       {
-        id: `edge-shot-storyboard-${suffix}`,
+        id: buildNodeFlowLinkId(shotNodeId, storyboardPromptNodeId, "text", "text"),
         source: shotNodeId,
         target: storyboardPromptNodeId,
         sourceHandle: "text",
         targetHandle: "text",
       },
       {
-        id: `edge-sora-wanvid-${suffix}`,
+        id: buildNodeFlowLinkId(soraPromptNodeId, wanVideoNodeId, "text", "text"),
         source: soraPromptNodeId,
         target: wanVideoNodeId,
         sourceHandle: "text",
         targetHandle: "text",
       },
       {
-        id: `edge-storyboard-wanimg-${suffix}`,
+        id: buildNodeFlowLinkId(storyboardPromptNodeId, wanImageNodeId, "text", "text"),
         source: storyboardPromptNodeId,
         target: wanImageNodeId,
         sourceHandle: "text",
@@ -202,5 +203,5 @@ export const buildEpisodeShotWorkflow = ({
     );
   });
 
-  return { nodes, edges };
+  return { nodes, links };
 };

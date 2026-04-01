@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { X, Type } from "lucide-react";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 
 type Props = {
     nodeId: string;
@@ -9,7 +9,7 @@ type Props = {
 };
 
 export const NodeEditorOverlay: React.FC<Props> = ({ nodeId, position, onClose }) => {
-    const { nodes, updateNodeData } = useWorkflowStore();
+    const { nodes, updateNodeData } = useNodeFlowStore();
     const node = nodes.find((n) => n.id === nodeId);
 
     if (!node) return null;

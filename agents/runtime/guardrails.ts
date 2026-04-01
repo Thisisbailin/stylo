@@ -281,16 +281,16 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType, nodeId, nodeRef });
           }
           if (resourceType === "workflow_connection") {
-            const edgeId = typeof result?.edge_id === "string" ? result.edge_id : "";
+            const linkId = typeof result?.edge_id === "string" ? result.edge_id : "";
             const sourceNodeId = typeof result?.source_node_id === "string" ? result.source_node_id : "";
             const targetNodeId = typeof result?.target_node_id === "string" ? result.target_node_id : "";
-            if (!edgeId || !sourceNodeId || !targetNodeId) {
+            if (!linkId || !sourceNodeId || !targetNodeId) {
               return ToolGuardrailFunctionOutputFactory.throwException({
                 toolName,
                 reason: "missing_edge_identity",
               });
             }
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType, edgeId, sourceNodeId, targetNodeId });
+            return ToolGuardrailFunctionOutputFactory.allow({ resourceType, linkId, sourceNodeId, targetNodeId });
           }
           return ToolGuardrailFunctionOutputFactory.throwException({
             toolName,

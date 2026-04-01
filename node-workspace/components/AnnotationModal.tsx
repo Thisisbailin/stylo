@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Circle, Arrow, Line, Text } from "react-konva";
 import { useAnnotationStore } from "../store/annotationStore";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AnnotationShape } from "../types";
 
 const drawShape = (shape: AnnotationShape, isSelected: boolean) => {
@@ -57,7 +57,7 @@ export const AnnotationModal: React.FC = () => {
     toolOptions,
     setToolOptions,
   } = useAnnotationStore();
-  const { updateNodeData } = useWorkflowStore();
+  const { updateNodeData } = useNodeFlowStore();
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawing, setDrawing] = useState(false);
   const [newPoints, setNewPoints] = useState<number[]>([]);

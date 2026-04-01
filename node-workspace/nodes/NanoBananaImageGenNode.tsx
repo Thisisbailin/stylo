@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Sparkles, AlertCircle, Download, X, Layers3, ChevronUp } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { ImageGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { NANOBANANA_IDENTITY_PROMPT, NANOBANANA_PRO_MODEL } from "../../constants";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
 
@@ -13,8 +13,8 @@ type Props = {
 };
 
 export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, labContext, getConnectedInputs } = useWorkflowStore();
-  const { runImageGen } = useLabExecutor();
+  const { updateNodeData, nodeFlowContext, getConnectedInputs } = useNodeFlowStore();
+  const { runImageGen } = useNodeFlowExecutor();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -23,18 +23,18 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
   const { connectedIdentity } = getConnectedInputs(id);
 
   const identityOptions = useMemo(() => {
-    const roles = labContext?.context?.roles || [];
+    const roles = nodeFlowContext?.context?.roles || [];
     return roles.map((role) => ({
       id: role.id,
       mention: role.mention,
       label: getRoleDisplayLabel(role),
     }));
-  }, [labContext?.context?.roles]);
+  }, [nodeFlowContext?.context?.roles]);
 
   const activeIdentityId = connectedIdentity?.identityId || data.identityId;
   const activeIdentity = useMemo(
-    () => (labContext?.context?.roles || []).find((role) => role.id === activeIdentityId),
-    [activeIdentityId, labContext?.context?.roles]
+    () => (nodeFlowContext?.context?.roles || []).find((role) => role.id === activeIdentityId),
+    [activeIdentityId, nodeFlowContext?.context?.roles]
   );
   const versionHistory = useMemo(
     () =>

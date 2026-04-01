@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { SeedanceVideoGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import {
   AlertCircle,
   AudioLines,
@@ -29,8 +29,8 @@ type Props = {
 const clampDuration = (value: number) => Math.max(4, Math.min(15, Math.round(value)));
 
 export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs } = useWorkflowStore();
-  const { runVideoGen } = useLabExecutor();
+  const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingVideoRefs, setIsUploadingVideoRefs] = useState(false);
   const refVideoInputRef = useRef<HTMLInputElement>(null);

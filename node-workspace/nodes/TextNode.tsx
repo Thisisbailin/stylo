@@ -1,7 +1,7 @@
 import React, { useRef, useLayoutEffect, useState, useEffect, useMemo, useCallback } from "react";
 import { BaseNode } from "./BaseNode";
 import { TextNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AtSign } from "lucide-react";
 import {
     buildMentionIndex,
@@ -130,7 +130,7 @@ const getCaretRect = (el: HTMLElement) => {
 };
 
 export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, selected }) => {
-    const { updateNodeData, labContext } = useWorkflowStore();
+    const { updateNodeData, nodeFlowContext } = useNodeFlowStore();
     const editorRef = useRef<HTMLDivElement>(null);
     const shellRef = useRef<HTMLDivElement>(null);
     const isComposingRef = useRef(false);
@@ -146,9 +146,9 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
 
     const mentionTargets = useMemo(() => {
-        const roles = labContext?.context?.roles || [];
+        const roles = nodeFlowContext?.context?.roles || [];
         return buildMentionTargets(roles);
-    }, [labContext?.context?.roles]);
+    }, [nodeFlowContext?.context?.roles]);
 
     const mentionIndex = useMemo(() => {
         return buildMentionIndex(mentionTargets.all);

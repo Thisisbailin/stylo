@@ -32,17 +32,16 @@ import { WorkflowCard } from './components/layout/Header';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
-import { NodeLab } from './node-workspace/components/NodeLab';
+import { NodeFlow } from './node-workspace/components/NodeFlow';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { ProjectorModule } from './components/ProjectorModule';
-import { Dashboard } from './components/Dashboard';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import { FloatingPanelShell } from './node-workspace/components/FloatingPanelShell';
 import * as ResponsesTextService from './services/responsesTextService';
 import * as SoraService from './services/soraService';
-import { useWorkflowStore } from './node-workspace/store/workflowStore';
+import { useNodeFlowStore } from './node-workspace/store/nodeFlowStore';
 import defaultShotGuide from './guides/ShotGuide.md?raw';
 import defaultSoraGuide from './guides/PromptGuide.md?raw';
 import defaultDramaGuide from './guides/DramaGuide.md?raw';
@@ -421,10 +420,10 @@ const App: React.FC = () => {
   );
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
-  const setAppConfigStore = useWorkflowStore(state => state.setAppConfig);
-  const addWorkflowNode = useWorkflowStore(state => state.addNode);
-  const workflowNodes = useWorkflowStore(state => state.nodes);
-  const workflowViewport = useWorkflowStore(state => state.viewport);
+  const setAppConfigStore = useNodeFlowStore(state => state.setAppConfig);
+  const addWorkflowNode = useNodeFlowStore(state => state.addNode);
+  const workflowNodes = useNodeFlowStore(state => state.nodes);
+  const workflowViewport = useNodeFlowStore(state => state.viewport);
 
   useEffect(() => {
     setAppConfigStore(config);
@@ -532,7 +531,6 @@ const App: React.FC = () => {
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<ModuleKey | null>(null);
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("understanding:overview");
-  const [showStatsModal, setShowStatsModal] = useState(false);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -585,7 +583,6 @@ const App: React.FC = () => {
 
   const openLandingPage = useCallback(() => {
     setOpenLabModal(null);
-    setShowStatsModal(false);
     setShowWorkflow(false);
     navigateToAppView("landing");
   }, [navigateToAppView]);
@@ -610,12 +607,6 @@ const App: React.FC = () => {
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
   }, []);
-
-  const handleOpenStats = useCallback(() => {
-    setShowStatsModal(true);
-  }, []);
-
-  const closeStats = useCallback(() => setShowStatsModal(false), []);
 
   // Processing Queues for Phase 1 Batches handled via reducer
 
@@ -2135,7 +2126,7 @@ const App: React.FC = () => {
     );
 
     if (existing) {
-      useWorkflowStore.setState((state) => ({
+      useNodeFlowStore.setState((state) => ({
         nodes: state.nodes.map((node) => ({
           ...node,
           selected: node.id === existing.id,
@@ -2165,7 +2156,7 @@ const App: React.FC = () => {
       case 'lab':
         return (
           <div className="h-full">
-            <NodeLab
+            <NodeFlow
               projectData={projectData}
               setProjectData={setProjectData}
               getAuthToken={getAuthToken}
@@ -2181,7 +2172,6 @@ const App: React.FC = () => {
               onOpenInfoPanel={() => openWorkspacePanel("info:about")}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
-              onOpenStats={handleOpenStats}
               accountInfo={{
                 isLoaded: isUserLoaded,
                 isSignedIn: !!userSignedIn,
@@ -2301,11 +2291,6 @@ const App: React.FC = () => {
         {labModalTitle && labModalContent && (
           <FloatingPanelShell title={labModalTitle} isOpen onClose={closeLabModal} width={labModalWidth} position="right">
             {labModalContent}
-          </FloatingPanelShell>
-        )}
-        {showStatsModal && (
-          <FloatingPanelShell title="Dashboard" isOpen onClose={closeStats} width={960}>
-            <Dashboard data={projectData} isDarkMode={isDarkMode} />
           </FloatingPanelShell>
         )}
       </AppShell>

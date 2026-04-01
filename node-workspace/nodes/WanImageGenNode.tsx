@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { ImageGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Sparkles, AlertCircle, Download, X } from "lucide-react";
 import { QWEN_WAN_IMAGE_MODEL } from "../../constants";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
@@ -13,8 +13,8 @@ type Props = {
 };
 
 export const WanImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs, labContext } = useWorkflowStore();
-  const { runImageGen } = useLabExecutor();
+  const { updateNodeData, getConnectedInputs, nodeFlowContext } = useNodeFlowStore();
+  const { runImageGen } = useNodeFlowExecutor();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const ensureSeed = () => Math.floor(Math.random() * 1_000_000_000);
@@ -31,13 +31,13 @@ export const WanImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, 
   const isLoading = data.status === "loading";
 
   const identityOptions = useMemo(() => {
-    const roles = labContext?.context?.roles || [];
+    const roles = nodeFlowContext?.context?.roles || [];
     return roles.map((role) => ({
       id: role.id,
       mention: role.mention,
       label: getRoleDisplayLabel(role),
     }));
-  }, [labContext?.context?.roles]);
+  }, [nodeFlowContext?.context?.roles]);
 
   useEffect(() => {
     if (!isLoading) {

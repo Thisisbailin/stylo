@@ -3,8 +3,8 @@ import { useReactFlow } from "@xyflow/react";
 import { GripVertical, LayoutPanelTop, Play, TableProperties } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { StoryboardBoardNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { buildEpisodeShotWorkflow, getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { buildEpisodeShotNodeFlow, getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
 import { SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
 
 type Props = {
@@ -45,9 +45,9 @@ const ValueStack: React.FC<{ primary?: string; secondary?: string; tertiary?: st
 );
 
 export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, labContext, addNodesAndEdges, nodes } = useWorkflowStore();
+  const { updateNodeData, nodeFlowContext, addNodesAndLinks, nodes } = useNodeFlowStore();
   const { setViewport } = useReactFlow();
-  const episodes = labContext.episodes || [];
+  const episodes = nodeFlowContext.episodes || [];
 
   const episode = useMemo(() => {
     if (!episodes.length) return null;
@@ -132,11 +132,11 @@ export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ 
   const handleLoadWorkflow = useCallback(() => {
     if (!episode) return;
     const origin = getSuggestedCanvasOrigin(nodes);
-    const workflow = buildEpisodeShotWorkflow({ episode, origin });
-    addNodesAndEdges(workflow.nodes, workflow.edges);
-    updateNodeData(id, { workflowLoadedAt: Date.now() });
+    const nodeFlowMap = buildEpisodeShotNodeFlow({ episode, origin });
+    addNodesAndLinks(nodeFlowMap.nodes, nodeFlowMap.links);
+    updateNodeData(id, { nodeFlowLoadedAt: Date.now() });
     setViewport({ x: -origin.x + 80, y: -origin.y + 80, zoom: 0.7 }, { duration: 800 });
-  }, [addNodesAndEdges, episode, id, nodes, setViewport, updateNodeData]);
+  }, [addNodesAndLinks, episode, id, nodes, setViewport, updateNodeData]);
 
   return (
     <BaseNode title={data.title || "分镜表面板节点"} outputs={["text"]} selected={selected}>
@@ -172,7 +172,7 @@ export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ 
             <div className="flex items-center rounded-full border border-[var(--node-border)] bg-[var(--node-surface)]/80 p-1">
               {[
                 { key: "table", label: "表格", Icon: TableProperties },
-                { key: "workflow", label: "Workflow", Icon: Play },
+                { key: "workflow", label: "NodeFlow", Icon: Play },
               ].map(({ key, label, Icon }) => {
                 const active = displayMode === key;
                 return (
@@ -198,7 +198,7 @@ export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ 
               disabled={displayMode !== "workflow"}
               className="rounded-full border border-[var(--node-border)] px-3 py-1.5 text-[11px] font-medium text-[var(--node-text-primary)] transition enabled:hover:border-[var(--node-accent)] enabled:hover:bg-[var(--node-surface)] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              加载 workflow
+              加载 NodeFlow
             </button>
           </div>
         </div>

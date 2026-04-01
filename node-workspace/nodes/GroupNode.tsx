@@ -1,10 +1,10 @@
 import React, { useCallback, useRef, useState } from "react";
 import { NodeProps, NodeResizer } from "@xyflow/react";
 import { GroupNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 
 export const GroupNode: React.FC<NodeProps> = ({ id, data, selected }) => {
-    const { updateNodeData } = useWorkflowStore();
+    const { updateNodeData } = useNodeFlowStore();
     const groupData = data as GroupNodeData;
     const groupRef = useRef<HTMLDivElement>(null);
     const [showResizer, setShowResizer] = useState(false);

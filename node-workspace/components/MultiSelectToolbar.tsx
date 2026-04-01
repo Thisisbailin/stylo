@@ -1,11 +1,11 @@
 import React, { useMemo } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { Copy, ClipboardType, Trash2, BoxSelect } from "lucide-react";
 import { useToast } from "./Toast";
 
 export const MultiSelectToolbar: React.FC = () => {
-  const { nodes, removeNode, clearClipboard, copySelectedNodes, pasteNodes, createGroupFromSelection } = useWorkflowStore();
+  const { nodes, removeNode, clearClipboard, copySelectedNodes, pasteNodes, createGroupFromSelection } = useNodeFlowStore();
   const { getNodes, flowToScreenPosition } = useReactFlow();
   const { show: showToast } = useToast();
 

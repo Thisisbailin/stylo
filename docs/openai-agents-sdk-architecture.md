@@ -49,7 +49,7 @@ The agent must be able to read what already exists in the project, including:
 - project summary and episode summaries
 - character library
 - location library
-- existing NodeLab context when relevant
+- existing NodeFlow context when relevant
 
 This capability is the retrieval foundation for all grounded work.
 
@@ -74,7 +74,7 @@ For the current implementation, the first durable understanding artifacts are pe
 - `context.episodeSummaries[]`
 - `episodes[].summary`
 
-The runtime also supports `create_text_node` as the first operational artifact write path inside NodeLab.
+The runtime also supports `create_text_node` as the first operational artifact write path inside NodeFlow.
 Later, the project may introduce a dedicated understanding registry, but the conceptual capability should already be explicit now.
 
 ### Capability 3: node workflow operations
@@ -88,7 +88,7 @@ Examples:
 - create workflow scaffolding for downstream generation work
 
 The agent should eventually do more than create isolated nodes.
-Its long-term workflow role is to assemble practical working structures inside NodeLab.
+Its long-term workflow role is to assemble practical working structures inside NodeFlow.
 
 The system should prefer LLM autonomy in reasoning and planning, while restricting execution to a small, reliable tool surface.
 
@@ -227,7 +227,7 @@ export interface QalamAgentBridge {
     y?: number;
     parentId?: string;
   }): { id: string; title: string };
-  getViewport(): WorkflowViewport | null;
+  getViewport(): NodeFlowViewport | null;
   getNodeCount(): number;
 }
 ```
@@ -497,7 +497,7 @@ Canonical truth stays in:
 - `ProjectData`
 - character library
 - location library
-- NodeLab nodes
+- NodeFlow nodes
 
 The model may remember a draft in session, but any approved artifact should be written via tools.
 

@@ -1,5 +1,5 @@
 import type { ProjectData } from "../../types";
-import type { WorkflowFile } from "../../node-workspace/types";
+import type { NodeFlowFile } from "../../node-workspace/types";
 import type { QalamToolSettings } from "../../types";
 import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
 
@@ -14,7 +14,7 @@ export type AgentHttpRunRequest = {
   run: QalamRunInput;
   runtime: AgentHttpRuntimeConfig;
   projectData?: ProjectData;
-  workflow?: WorkflowFile;
+  nodeFlow?: NodeFlowFile;
 };
 
 export type AgentHttpStreamPacket =

@@ -1,4 +1,4 @@
-import { useWorkflowStore } from "./workflowStore";
+import { useNodeFlowStore } from "./nodeFlowStore";
 import * as MultimodalService from "../../services/multimodalService";
 import * as SoraService from "../../services/soraService";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
@@ -503,8 +503,8 @@ const buildImageVersionHistory = (
   ].slice(0, 12);
 };
 
-export const useLabExecutor = () => {
-  const store = useWorkflowStore();
+export const useNodeFlowExecutor = () => {
+  const store = useNodeFlowStore();
   const config = store.appConfig;
 
   const extractImageUrl = (content: string): string | null => {
@@ -791,7 +791,7 @@ export const useLabExecutor = () => {
     const mode = data.mode || "audioVideo";
     const useCharacters = data.useCharacters !== false;
 
-    const labContext = store.labContext;
+    const nodeFlowContext = store.nodeFlowContext;
     const resolvedIdentities = resolveBoundIdentities(entityBindings, atMentions as MentionData[] | undefined);
     const mentions = resolvedIdentities.length ? resolvedIdentities.map((item) => item.mention) : parseAtMentions(prompt);
     const resolvedIdentityByMention = new Map(resolvedIdentities.map((item) => [item.mention.toLowerCase(), item]));
@@ -1134,8 +1134,8 @@ export const useLabExecutor = () => {
       }
       let promptForRequest = prompt;
       if (isWanReferenceVideoNode) {
-        const latestProjectRefs = buildProjectReferenceIndex(store.labContext.context.roles || [], store.labContext.designAssets || []);
-        const roles = store.labContext.context.roles || [];
+        const latestProjectRefs = buildProjectReferenceIndex(store.nodeFlowContext.context.roles || [], store.nodeFlowContext.designAssets || []);
+        const roles = store.nodeFlowContext.context.roles || [];
         const { rewrittenPrompt, refs: promptDrivenRefs } = resolvePromptProjectReferences(
           prompt,
           atMentions as MentionData[] | undefined,

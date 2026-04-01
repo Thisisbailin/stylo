@@ -22,12 +22,12 @@ interface Props {
     onResetProject?: () => void;
 }
 
-import { useWorkflowStore } from '../node-workspace/store/workflowStore';
+import { useNodeFlowStore } from '../node-workspace/store/nodeFlowStore';
 
 export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConfigChange, isSignedIn, getAuthToken, onForceSync, syncState, syncRollout, activeTabOverride, onResetProject }) => {
     const [activeTab, setActiveTab] = useState<'multimodal' | 'video' | 'sync' | 'about'>('multimodal');
     const deviceIdRef = useRef<string>(getDeviceId());
-    const { setAvailableImageModels: setAvailableImageModelsStore, setAvailableVideoModels: setAvailableVideoModelsStore } = useWorkflowStore();
+    const { setAvailableImageModels: setAvailableImageModelsStore, setAvailableVideoModels: setAvailableVideoModelsStore } = useNodeFlowStore();
 
     // Model Fetch States
     const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -762,7 +762,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                             <div className="text-center space-y-2">
                                 <img src="/icon-256.png" alt="Qalam Icon" className="h-16 w-16 mx-auto rounded-2xl shadow-lg shadow-emerald-500/15" />
                                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Qalam</h1>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">v0.3 · NodeLab</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">v0.3 · NodeFlow</div>
                                 <p className="text-sm text-gray-600 dark:text-gray-400 max-w-xl mx-auto leading-relaxed">
                                     当前阶段：节点主导的 AIGC 工作流，可视化编排节点驱动多模态生成。
                                 </p>
@@ -779,7 +779,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                         {[
                                             { ver: "0.1 · Qalam", desc: "组件导向：手动点击完成基础逻辑。", active: false },
                                             { ver: "0.2 · Qalam", desc: "工作流导向：流程化自动批处理。", active: false },
-                                            { ver: "0.3 · NodeLab", desc: "节点导向：自由搭建 AIGC 节点组合。", active: true },
+                                            { ver: "0.3 · NodeFlow", desc: "节点导向：自由搭建 AIGC 节点组合。", active: true },
                                             { ver: "0.4 · Qalam", desc: "Agent 主导：助理制定并执行创意计划。", active: false },
                                             { ver: "0.5 · Zendo", desc: "多 Agent：研究小组协作，感知化实时交互。", active: false },
                                         ].map((item) => (

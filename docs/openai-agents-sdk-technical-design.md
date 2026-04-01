@@ -254,7 +254,7 @@ Suggested file:
 
 ```ts
 import type { ProjectData } from "../types";
-import type { WorkflowViewport } from "../../node-workspace/types";
+import type { NodeFlowViewport } from "../../node-workspace/types";
 
 export type CreateTextNodeInput = {
   title: string;
@@ -273,7 +273,7 @@ export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
-  getViewport(): WorkflowViewport | null;
+  getViewport(): NodeFlowViewport | null;
   getNodeCount(): number;
 }
 ```
@@ -509,7 +509,7 @@ export type WriteUnderstandingResourceOutput = {
 Input:
 
 ```ts
-export type CreateWorkflowNodeInput = {
+export type CreateNodeFlowNodeInput = {
   node_ref: string;
   node_type: "text" | "imageGen";
   title?: string;
@@ -536,7 +536,7 @@ export type CreateWorkflowNodeOutput = {
 Input:
 
 ```ts
-export type ConnectWorkflowNodesInput = {
+export type ConnectNodeFlowNodesInput = {
   source_ref?: string;
   target_ref?: string;
   source_node_id?: string;

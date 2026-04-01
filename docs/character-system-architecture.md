@@ -1,7 +1,7 @@
 # 统一角色系统架构设计
 
 ## 1. 目标
-- 把“角色”提升为项目全局一级对象，成为剧本、理解、AIGC 定模、`@` 绑定、NodeLab 工作流、Agent 工具的共同主键。
+- 把“角色”提升为项目全局一级对象，成为剧本、理解、AIGC 定模、`@` 绑定、NodeFlow 工作流、Agent 工具的共同主键。
 - 让角色像“身份证”一样稳定存在：名字可以改、形态可以扩、资产可以追加，但角色身份本身不漂移。
 - 本期只设计角色系统；场景系统后续沿用同一思路扩展。
 
@@ -11,7 +11,7 @@
 - 理解层已经有 `Character` 和 `CharacterForm` 两级结构，字段足够覆盖角色抽象描述、形态描述、定模清单、语音设计。
 - AIGC 流程已经明确要求为角色生成“形态级”定模需求：`hair/face/body/costume/accessories/props/materialPalette/poses/expressions/deliverables/genPrompts/voicePrompt` 等。
 - 设计资产层已经按 `form` 绑定定模图，`refId = ${character.id}|${form.id}`。
-- NodeLab 已经能在文本节点、图片节点、视频节点里用 `@` 解析角色/形态，并将其映射到参考资产或 subjects。
+- NodeFlow 已经能在文本节点、图片节点、视频节点里用 `@` 解析角色/形态，并将其映射到参考资产或 subjects。
 
 ### 2.2 当前断层
 - `Character.id` 仍然混用“稳定 id”和“角色名”。
@@ -47,7 +47,7 @@
 来源：
 - `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/TextNode.tsx`
 - `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/ImageInputNode.tsx`
-- `/Users/joe/Documents/APP/Qalam/node-workspace/store/useLabExecutor.ts`
+- `/Users/joe/Documents/APP/Qalam/node-workspace/store/useNodeFlowExecutor.ts`
 
 当前机制：
 - 文本输入时通过 `@xxx` 做实时解析。
@@ -228,7 +228,7 @@ interface EntityBinding {
 - 分镜表里的人物字段、台词字段、调度字段，也应该可以解析角色绑定。
 - 这样 agent 在“读剧本 -> 生成分镜 -> 生成图/视频”链路里能保持同一角色身份。
 
-## 8. NodeLab 集成边界
+## 8. NodeFlow 集成边界
 
 ### 8.1 文本节点
 从：
@@ -247,7 +247,7 @@ interface EntityBinding {
 在角色节点里，父卡就是 `CharacterCard`，子卡就是 `CharacterFormCard`。
 
 ### 8.3 工作流执行器
-`useLabExecutor` 目前已经具备：
+`useNodeFlowExecutor` 目前已经具备：
 - 从 mention 找 form 资产
 - 从 character 回落到第一个可用 form 资产
 
@@ -334,6 +334,6 @@ interface EntityBinding {
 - 保留现有 `Character -> forms -> designAssets(form)` 主结构
 - 补一个真正的“角色身份证层”
 - 把 `@` 从“字符串提示”升级为“结构化实体绑定”
-- 让 NodeLab/AIGC/Agent 全部围绕 `char-* / form-*` 这套稳定身份工作
+- 让 NodeFlow/AIGC/Agent 全部围绕 `char-* / form-*` 这套稳定身份工作
 
 这样后续扩到场景系统时，只需要把同一套“身份证 + 子卡 + 绑定 + 资产 + 工作流消费”模式复制到 `Location / Zone`，而不需要再发明第二套体系。

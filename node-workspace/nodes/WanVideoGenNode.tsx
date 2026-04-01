@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { VideoGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Film, AlertCircle, Download } from "lucide-react";
 import { QWEN_WAN_VIDEO_MODEL } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
@@ -13,8 +13,8 @@ type Props = {
 };
 
 export const WanVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs } = useWorkflowStore();
-  const { runVideoGen } = useLabExecutor();
+  const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const audioInputRef = useRef<HTMLInputElement>(null);

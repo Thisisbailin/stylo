@@ -1,13 +1,18 @@
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
+import { resolveBuiltinSkill } from "../runtime/skills";
+import { listBuiltinSkills } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { buildNodeFlowSearchText, toNodeFlowLinkRecord, toNodeFlowNodeRecord } from "../../node-workspace/nodeflow/model";
 
 export const SEARCH_PROJECT_RESOURCE_SCOPES = [
+  "skills",
   "script",
   "storyboard",
   "understanding",
   "characters",
   "scenes",
   "guides",
+  "workflow",
 ] as const;
 
 const searchProjectResourceParameters = {
@@ -173,12 +178,81 @@ const pushStoryboardMatches = (matches: any[], data: ProjectData, args: ReturnTy
   }
 };
 
-const searchProject = (data: ProjectData, args: ReturnType<typeof parseArgs>) => {
+const pushSkillMatches = async (matches: any[], query: string, maxMatches: number, radius: number) => {
+  const manifests = listBuiltinSkills();
+  for (const manifest of manifests) {
+    if (matches.length >= maxMatches) break;
+    const resolved = await resolveBuiltinSkill(manifest.id);
+    const haystack = [
+      manifest.title,
+      manifest.description,
+      ...(manifest.tags || []),
+      resolved?.guidanceMarkdown || "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (haystack && includesQuery(haystack, query)) {
+      matches.push({
+        scope: "skill_package",
+        itemId: manifest.id,
+        title: manifest.title,
+        snippet: buildSnippet(haystack, query, radius),
+      });
+    }
+  }
+};
+
+const pushWorkflowMatches = (matches: any[], bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>, radius: number) => {
+  const workflow = bridge.getNodeFlowSnapshot();
+  for (const node of workflow.nodes) {
+    if (matches.length >= args.maxMatches) break;
+    const nodeRecord = toNodeFlowNodeRecord(node);
+    const haystack = buildNodeFlowSearchText(node);
+    if (haystack && includesQuery(haystack, args.query)) {
+      matches.push({
+        scope: "workflow_node",
+        nodeId: nodeRecord.id,
+        nodeRef: nodeRecord.ref,
+        nodeType: nodeRecord.kind,
+        nodeKind: nodeRecord.kind,
+        title: nodeRecord.title || nodeRecord.id,
+        snippet: buildSnippet(haystack, args.query, radius),
+      });
+    }
+  }
+  for (const edge of workflow.links) {
+    if (matches.length >= args.maxMatches) break;
+    const link = toNodeFlowLinkRecord(edge);
+    const haystack = [
+      link.id,
+      link.fromNodeId,
+      link.toNodeId,
+      link.fromPort,
+      link.toPort,
+      link.paused ? "pause paused 暂停" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (haystack && includesQuery(haystack, args.query)) {
+      matches.push({
+        scope: "workflow_connection",
+        linkId: link.id,
+        snippet: buildSnippet(haystack, args.query, radius),
+      });
+    }
+  }
+};
+
+const searchProject = async (data: ProjectData, bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
   const matches: any[] = [];
   const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
   const targetEpisodes = args.episodeId
     ? (data.episodes || []).filter((episode) => episode.id === args.episodeId)
     : data.episodes || [];
+
+  if (args.scopes.includes("skills")) {
+    await pushSkillMatches(matches, args.query, args.maxMatches, radius);
+  }
 
   if (args.scopes.includes("script")) {
     for (const episode of targetEpisodes) {
@@ -263,18 +337,22 @@ const searchProject = (data: ProjectData, args: ReturnType<typeof parseArgs>) =>
     }
   }
 
+  if (matches.length < args.maxMatches && args.scopes.includes("workflow")) {
+    pushWorkflowMatches(matches, bridge, args, radius);
+  }
+
   return matches;
 };
 
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search project resources when the exact locator is unknown. Supports script, storyboard, understanding, characters, scenes, and guides scopes.",
+    "Search project resources when the exact locator is unknown. Supports skills, scripts, storyboards, understanding assets, guides, and workflow scopes.",
   parameters: searchProjectResourceParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
-    const matches = searchProject(data, args);
+    const matches = await searchProject(data, bridge, args);
     return {
       resource_type: "search_project_resource",
       query: args.query,

@@ -1,5 +1,5 @@
 import type { ProjectData } from "../../types";
-import type { NodeType, WorkflowViewport } from "../../node-workspace/types";
+import type { NodeType, NodeFlowFile, NodeFlowViewport } from "../../node-workspace/types";
 
 export type CreateTextNodeInput = {
   title: string;
@@ -14,7 +14,7 @@ export type CreateTextNodeResult = {
   title: string;
 };
 
-export type CreateWorkflowNodeInput = {
+export type CreateNodeFlowNodeInput = {
   type: Extract<NodeType, "text" | "imageGen" | "scriptBoard" | "storyboardBoard" | "identityCard">;
   nodeRef?: string;
   title?: string;
@@ -30,50 +30,50 @@ export type CreateWorkflowNodeInput = {
   parentId?: string;
 };
 
-export type CreateWorkflowNodeResult = {
+export type CreateNodeFlowNodeResult = {
   nodeId: string;
   nodeRef?: string;
-  nodeType: CreateWorkflowNodeInput["type"];
+  nodeType: CreateNodeFlowNodeInput["type"];
   title: string;
-  defaultOutputHandle?: WorkflowBuilderHandle | null;
-  defaultInputHandles?: WorkflowBuilderHandle[];
+  defaultOutputHandle?: NodeFlowHandle | null;
+  defaultInputHandles?: NodeFlowHandle[];
 };
 
-export type ConnectWorkflowNodesInput = {
+export type ConnectNodeFlowNodesInput = {
   sourceNodeId?: string;
   targetNodeId?: string;
   sourceRef?: string;
   targetRef?: string;
-  sourceHandle?: WorkflowBuilderHandle;
-  targetHandle?: WorkflowBuilderHandle;
+  sourceHandle?: NodeFlowHandle;
+  targetHandle?: NodeFlowHandle;
 };
 
-export type ConnectWorkflowNodesResult = {
-  edgeId: string;
+export type ConnectNodeFlowNodesResult = {
+  linkId: string;
   sourceNodeId: string;
   targetNodeId: string;
   sourceRef?: string;
   targetRef?: string;
-  sourceHandle: WorkflowBuilderHandle;
-  targetHandle: WorkflowBuilderHandle;
+  sourceHandle: NodeFlowHandle;
+  targetHandle: NodeFlowHandle;
 };
 
-export type WorkflowNodeLookupInput = {
+export type NodeFlowNodeLookupInput = {
   nodeId?: string;
   nodeRef?: string;
 };
 
-export type WorkflowNodeLookupResult = {
+export type NodeFlowNodeLookupResult = {
   nodeId: string;
   nodeRef?: string;
   nodeType: string;
-  inputHandles: WorkflowBuilderHandle[];
-  outputHandles: WorkflowBuilderHandle[];
+  inputHandles: NodeFlowHandle[];
+  outputHandles: NodeFlowHandle[];
 };
 
-export type WorkflowBuilderHandle = "image" | "text" | "audio" | "multi";
+export type NodeFlowHandle = "image" | "text" | "audio" | "multi";
 
-export type CreateNodeWorkflowNodeInput = {
+export type CreateNodeFlowMapNodeInput = {
   key: string;
   type: Extract<
     NodeType,
@@ -88,15 +88,15 @@ export type CreateNodeWorkflowNodeInput = {
   data?: Record<string, unknown>;
 };
 
-export type CreateNodeWorkflowEdgeInput = {
+export type CreateNodeFlowMapLinkInput = {
   from: string;
   to: string;
-  fromHandle?: WorkflowBuilderHandle;
-  toHandle?: WorkflowBuilderHandle;
+  fromHandle?: NodeFlowHandle;
+  toHandle?: NodeFlowHandle;
   paused?: boolean;
 };
 
-export type CreateNodeWorkflowInput = {
+export type CreateNodeFlowMapInput = {
   title?: string;
   description?: string;
   wrapInGroup?: boolean;
@@ -104,29 +104,30 @@ export type CreateNodeWorkflowInput = {
   layout?: "horizontal" | "vertical" | "fanout";
   originX?: number;
   originY?: number;
-  nodes: CreateNodeWorkflowNodeInput[];
-  edges?: CreateNodeWorkflowEdgeInput[];
+  nodes: CreateNodeFlowMapNodeInput[];
+  links?: CreateNodeFlowMapLinkInput[];
 };
 
-export type CreateNodeWorkflowResult = {
+export type CreateNodeFlowMapResult = {
   groupId?: string;
   nodes: Array<{
     key: string;
     id: string;
-    type: CreateNodeWorkflowNodeInput["type"];
+    type: CreateNodeFlowMapNodeInput["type"];
     title?: string;
   }>;
-  edgeCount: number;
+  linkCount: number;
 };
 
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
+  getNodeFlowSnapshot(): NodeFlowFile;
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
-  createWorkflowNode(input: CreateWorkflowNodeInput): CreateWorkflowNodeResult;
-  connectWorkflowNodes(input: ConnectWorkflowNodesInput): ConnectWorkflowNodesResult;
-  getWorkflowNode(input: WorkflowNodeLookupInput): WorkflowNodeLookupResult | null;
-  createNodeWorkflow(input: CreateNodeWorkflowInput): CreateNodeWorkflowResult;
-  getViewport(): WorkflowViewport | null;
+  createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;
+  connectNodeFlowNodes(input: ConnectNodeFlowNodesInput): ConnectNodeFlowNodesResult;
+  getNodeFlowNode(input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null;
+  createNodeFlowMap(input: CreateNodeFlowMapInput): CreateNodeFlowMapResult;
+  getViewport(): NodeFlowViewport | null;
   getNodeCount(): number;
 }

@@ -1,7 +1,7 @@
 import React, { useRef, useLayoutEffect } from "react";
 import { BaseNode } from "./BaseNode";
 import { NoteNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { StickyNote } from "lucide-react";
 
 type Props = {
@@ -10,7 +10,7 @@ type Props = {
 };
 
 export const NoteNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-    const { updateNodeData } = useWorkflowStore();
+    const { updateNodeData } = useNodeFlowStore();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const autoResize = () => {

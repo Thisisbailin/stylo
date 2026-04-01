@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from "@xyflow/react";
-import { WorkflowEdge } from "../types";
+import { NodeFlowLink } from "../types";
 
 type Props = {
   id: string;
@@ -10,7 +10,7 @@ type Props = {
   targetY: number;
   sourcePosition: any;
   targetPosition: any;
-  data?: WorkflowEdge["data"];
+  data?: NodeFlowLink["data"];
   markerEnd?: string;
 };
 

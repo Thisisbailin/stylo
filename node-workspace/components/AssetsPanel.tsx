@@ -7,7 +7,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 
 type AssetTab =
   | "images"
@@ -22,7 +22,7 @@ const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = false }) => {
-  const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useWorkflowStore();
+  const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useNodeFlowStore();
   const [collapsed, setCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState<AssetTab>("images");
 

@@ -24,12 +24,17 @@ const summarizeMessagePreview = (messages: any[]) => {
 
 const extractSkillReads = (messages: any[]) => {
   const reads = (Array.isArray(messages) ? messages : [])
-    .filter((message) => message?.role === "tool" && message?.toolName === "read_skill_package")
+    .filter(
+      (message) =>
+        message?.role === "tool" &&
+        message?.toolName === "read_project_resource" &&
+        message?.toolOutput?.resource_type === "skill_package"
+    )
     .map((message) => {
       const output = message?.toolOutput && typeof message.toolOutput === "object" ? message.toolOutput : {};
       return {
-        id: String((output as any)?.id || ""),
-        title: String((output as any)?.title || (output as any)?.id || ""),
+        id: String((output as any)?.item_id || ""),
+        title: String((output as any)?.title || (output as any)?.item_id || ""),
         version: String((output as any)?.version || ""),
         createdAt: Number(message?.createdAt || 0),
       };

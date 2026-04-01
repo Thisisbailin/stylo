@@ -240,7 +240,7 @@ export const createNodeWorkflowSchema = z.object({
       })
     )
     .min(1),
-  edges: z
+  links: z
     .array(
       z.object({
         from: z.string(),

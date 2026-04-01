@@ -3,14 +3,12 @@ import {
   Connection,
   EdgeChange,
   NodeChange,
-  addEdge,
   applyNodeChanges,
-  applyEdgeChanges,
   XYPosition,
 } from "@xyflow/react";
 import {
-  WorkflowNode,
-  WorkflowEdge,
+  NodeFlowNode,
+  NodeFlowLink,
   NodeType,
   AudioInputNodeData,
   ImageInputNodeData,
@@ -20,46 +18,63 @@ import {
   IdentityCardNodeData,
   TextNodeData,
   ImageGenNodeData,
-  WorkflowNodeData,
-  WorkflowFile,
+  NodeFlowNodeData,
+  NodeFlowFile,
   VideoGenNodeData,
   GroupNodeData,
   ShotNodeData,
   GlobalAssetHistoryItem,
   GlobalAssetType,
-  LabContextSnapshot,
-  WorkflowViewport,
-  WorkflowTemplate,
+  NodeFlowContextSnapshot,
+  NodeFlowViewport,
+  NodeFlowTemplate,
 } from "../types";
 import type { Episode, ProjectRoleIdentity, Scene } from "../../types";
 import { buildProjectIdentities, resolveLegacyIdentity } from "../../utils/identityCards";
 import { resolveEdgeHandleType } from "../utils/handles";
+import {
+  applyNodeFlowLinkChanges,
+  buildNodeFlowLinkId,
+  createNodeFlowLink,
+  removeNodeFlowLink,
+  toggleNodeFlowLinkPause,
+} from "../nodeflow/links";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
-export type EdgeStyle = "angular" | "curved";
+export type LinkStyle = "angular" | "curved";
 
 interface ClipboardData {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
+  nodes: NodeFlowNode[];
+  links: NodeFlowLink[];
 }
 
 const TEMPLATE_STORAGE_KEY = "qalam_group_templates_v1";
 
-const loadTemplates = (): WorkflowTemplate[] => {
+const loadTemplates = (): NodeFlowTemplate[] => {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(TEMPLATE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item) => item && typeof item === "object");
+    return parsed.filter(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        item.nodeFlow &&
+        typeof item.nodeFlow === "object" &&
+        Array.isArray(item.nodeFlow.nodes) &&
+        Array.isArray(item.nodeFlow.links)
+    );
   } catch {
     return [];
   }
 };
 
-const persistTemplates = (templates: WorkflowTemplate[]) => {
+const persistTemplates = (templates: NodeFlowTemplate[]) => {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
@@ -68,7 +83,7 @@ const persistTemplates = (templates: WorkflowTemplate[]) => {
   }
 };
 
-const getNodeDimensions = (node: WorkflowNode) => {
+const getNodeDimensions = (node: NodeFlowNode) => {
   const styleWidth = typeof node.style?.width === "number" ? node.style.width : undefined;
   const styleHeight = typeof node.style?.height === "number" ? node.style.height : undefined;
   const measuredWidth = typeof node.measured?.width === "number" ? node.measured.width : undefined;
@@ -79,7 +94,7 @@ const getNodeDimensions = (node: WorkflowNode) => {
   };
 };
 
-const getAbsolutePosition = (node: WorkflowNode, nodeMap: Map<string, WorkflowNode>) => {
+const getAbsolutePosition = (node: NodeFlowNode, nodeMap: Map<string, NodeFlowNode>) => {
   let x = node.position.x;
   let y = node.position.y;
   let parentId = node.parentId;
@@ -98,7 +113,7 @@ const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
   seedanceVideoGen: 640,
 };
 
-const sanitizeNodeStyle = (type: NodeType, style?: WorkflowNode["style"]) => {
+const sanitizeNodeStyle = (type: NodeType, style?: NodeFlowNode["style"]) => {
   if (!style) return style;
   const nextStyle = { ...style };
   const legacyHeight = LEGACY_AUTO_HEIGHTS[type];
@@ -113,7 +128,7 @@ const sanitizeNodeStyle = (type: NodeType, style?: WorkflowNode["style"]) => {
   return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
 };
 
-const normalizeNode = (node: WorkflowNode): WorkflowNode => {
+const normalizeNode = (node: NodeFlowNode): NodeFlowNode => {
   const base = createDefaultNodeData(node.type as NodeType);
   const data = base ? { ...base, ...(node.data || {}) } : (node.data || {});
   const position = node.position || { x: 0, y: 0 };
@@ -126,28 +141,28 @@ const normalizeNode = (node: WorkflowNode): WorkflowNode => {
   };
 };
 
-const normalizeEdge = (edge: WorkflowEdge, index: number): WorkflowEdge => {
+const normalizeLink = (link: NodeFlowLink, index: number): NodeFlowLink => {
   const id =
-    edge.id ||
-    `edge-${edge.source}-${edge.target}-${edge.sourceHandle || "default"}-${edge.targetHandle || "default"}-${index}`;
-  return { ...edge, id, selected: false };
+    link.id ||
+    `link-${link.source}-${link.target}-${link.sourceHandle || "default"}-${link.targetHandle || "default"}-${index}`;
+  return { ...link, id, selected: false };
 };
 
-const normalizeWorkflowData = (workflow: WorkflowFile) => {
-  const nodes = Array.isArray(workflow.nodes) ? workflow.nodes.map(normalizeNode) : [];
+const normalizeNodeFlowData = (nodeFlow: NodeFlowFile) => {
+  const nodes = Array.isArray(nodeFlow.nodes) ? nodeFlow.nodes.map(normalizeNode) : [];
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const edges = Array.isArray(workflow.edges)
-    ? workflow.edges
-        .map(normalizeEdge)
-        .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+  const links = Array.isArray(nodeFlow.links)
+    ? nodeFlow.links
+        .map(normalizeLink)
+        .filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
-  return { nodes, edges };
+  return { nodes, links };
 };
 
-const normalizeGroupBindings = (nodes: WorkflowNode[], edges: WorkflowEdge[]) => {
+const normalizeGroupBindings = (nodes: NodeFlowNode[], links: NodeFlowLink[]) => {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const adjacency = new Map<string, Set<string>>();
-  edges.forEach((edge) => {
+  links.forEach((edge) => {
     if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
     if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
     adjacency.get(edge.source)!.add(edge.target);
@@ -163,7 +178,7 @@ const normalizeGroupBindings = (nodes: WorkflowNode[], edges: WorkflowEdge[]) =>
   let changed = false;
   let nextNodes = nodes.slice();
 
-  const updateNode = (nodeId: string, updates: Partial<WorkflowNode>) => {
+  const updateNode = (nodeId: string, updates: Partial<NodeFlowNode>) => {
     const index = nextNodes.findIndex((node) => node.id === nodeId);
     if (index === -1) return;
     const updated = { ...nextNodes[index], ...updates };
@@ -460,8 +475,8 @@ const buildStoryboardBoardText = (data: StoryboardBoardNodeData, episodes: Episo
     .join("\n\n");
 };
 
-const buildIdentityCardText = (data: IdentityCardNodeData, labContext: LabContextSnapshot) => {
-  const { context, designAssets } = labContext;
+const buildIdentityCardText = (data: IdentityCardNodeData, nodeFlowContext: NodeFlowContextSnapshot) => {
+  const { context, designAssets } = nodeFlowContext;
   const identities = buildProjectIdentities(context, designAssets);
   const identity = resolveLegacyIdentity(identities, {
     identityId: data.identityId,
@@ -478,39 +493,40 @@ const buildIdentityCardText = (data: IdentityCardNodeData, labContext: LabContex
     .join("\n\n");
 };
 
-interface WorkflowStore {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  edgeStyle: EdgeStyle;
+interface NodeFlowStore {
+  revision: number;
+  nodes: NodeFlowNode[];
+  links: NodeFlowLink[];
+  linkStyle: LinkStyle;
   clipboard: ClipboardData | null;
   globalAssetHistory: GlobalAssetHistoryItem[];
-  viewport: WorkflowViewport | null;
-  groupTemplates: WorkflowTemplate[];
+  viewport: NodeFlowViewport | null;
+  groupTemplates: NodeFlowTemplate[];
   globalStyleGuide?: string;
   availableImageModels: string[];
   availableVideoModels: string[];
   setAvailableImageModels: (models: string[]) => void;
   setAvailableVideoModels: (models: string[]) => void;
-  labContext: LabContextSnapshot;
-  setLabContext: (ctx: LabContextSnapshot) => void;
-  setViewportState: (viewport: WorkflowViewport | null) => void;
+  nodeFlowContext: NodeFlowContextSnapshot;
+  setNodeFlowContext: (ctx: NodeFlowContextSnapshot) => void;
+  setViewportState: (viewport: NodeFlowViewport | null) => void;
 
   // Settings
-  setEdgeStyle: (style: EdgeStyle) => void;
+  setLinkStyle: (style: LinkStyle) => void;
   setGlobalStyleGuide: (guide: string) => void;
 
   // Node operations
-  addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<WorkflowNodeData>) => string;
-  updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void;
-  updateNodeStyle: (nodeId: string, style: Partial<WorkflowNode["style"]>) => void;
+  addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
+  updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
+  updateNodeStyle: (nodeId: string, style: Partial<NodeFlowNode["style"]>) => void;
   removeNode: (nodeId: string) => void;
-  onNodesChange: (changes: NodeChange<WorkflowNode>[]) => void;
+  onNodesChange: (changes: NodeChange<NodeFlowNode>[]) => void;
 
-  // Edge operations
-  onEdgesChange: (changes: EdgeChange<WorkflowEdge>[]) => void;
-  onConnect: (connection: Connection) => void;
-  removeEdge: (edgeId: string) => void;
-  toggleEdgePause: (edgeId: string) => void;
+  // Link operations
+  onLinksChange: (changes: EdgeChange<NodeFlowLink>[]) => void;
+  connectNodes: (connection: Connection) => void;
+  removeLink: (linkId: string) => void;
+  toggleLinkPause: (linkId: string) => void;
 
   // Copy/Paste operations
   copySelectedNodes: () => void;
@@ -526,9 +542,9 @@ interface WorkflowStore {
   setPausedNode: (nodeId: string | null) => void;
 
   // Save/Load
-  saveWorkflow: (name?: string) => void;
-  loadWorkflow: (workflow: WorkflowFile) => void;
-  clearWorkflow: () => void;
+  exportNodeFlow: (name?: string) => void;
+  importNodeFlow: (nodeFlow: NodeFlowFile) => void;
+  clearNodeFlow: () => void;
   saveGroupTemplate: (groupId: string, name?: string) => { ok: boolean; error?: string };
   deleteGroupTemplate: (templateId: string) => void;
   applyGroupTemplate: (templateId: string, offset: XYPosition) => { ok: boolean; error?: string };
@@ -536,7 +552,7 @@ interface WorkflowStore {
   applyViduReferenceDemo: (offset?: XYPosition) => { ok: boolean; error?: string };
 
   // Helpers
-  getNodeById: (id: string) => WorkflowNode | undefined;
+  getNodeById: (id: string) => NodeFlowNode | undefined;
   getConnectedInputs: (nodeId: string) => {
     images: string[];
     audios: string[];
@@ -553,13 +569,13 @@ interface WorkflowStore {
       primaryPortraitUrl?: string;
     };
   };
-  validateWorkflow: () => { valid: boolean; errors: string[] };
+  validateNodeFlow: () => { valid: boolean; errors: string[] };
   addToGlobalHistory: (item: Omit<GlobalAssetHistoryItem, "id" | "timestamp">) => void;
   removeGlobalHistoryItem: (id: string) => void;
   clearGlobalHistory: (type?: GlobalAssetType) => void;
 
   // Batch operations
-  addNodesAndEdges: (nodes: WorkflowNode[], edges: WorkflowEdge[]) => void;
+  addNodesAndLinks: (nodes: NodeFlowNode[], links: NodeFlowLink[]) => void;
 
   // View management
   activeView: string | null;
@@ -575,7 +591,7 @@ interface WorkflowStore {
   mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
 }
 
-const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
+const createDefaultNodeData = (type: NodeType): NodeFlowNodeData => {
   switch (type) {
     case "imageInput":
       return {
@@ -753,11 +769,13 @@ const createDefaultNodeData = (type: NodeType): WorkflowNodeData => {
 };
 
 let nodeIdCounter = 0;
+const bumpNodeFlowRevision = (revision: number) => revision + 1;
 
-export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
+export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
+  revision: 0,
   nodes: [],
-  edges: [],
-  edgeStyle: "curved" as EdgeStyle,
+  links: [],
+  linkStyle: "curved" as LinkStyle,
   clipboard: null,
   isRunning: false,
   currentNodeId: null,
@@ -769,7 +787,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   globalStyleGuide: undefined,
   availableImageModels: [],
   availableVideoModels: [],
-  labContext: {
+  nodeFlowContext: {
     rawScript: "",
     episodes: [],
     designAssets: [],
@@ -789,7 +807,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   setAvailableImageModels: (models) => set({ availableImageModels: models }),
   setAvailableVideoModels: (models) => set({ availableVideoModels: models }),
-  setLabContext: (ctx) => set({ labContext: ctx }),
+  setNodeFlowContext: (ctx) => set({ nodeFlowContext: ctx }),
   setViewportState: (viewport) => set({ viewport }),
 
   setActiveView: (view) => set({ activeView: view }),
@@ -801,10 +819,10 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     apply(roleId, updater);
   },
 
-  setEdgeStyle: (style: EdgeStyle) => set({ edgeStyle: style }),
+  setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
   setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),
 
-  addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<WorkflowNodeData>) => {
+  addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => {
     const { activeView, nodes } = get();
     const id = `${type}-${++nodeIdCounter}`;
 
@@ -834,24 +852,28 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     };
 
     const dim = defaultDimensions[type];
-    const newNode: WorkflowNode = {
+    const newNode: NodeFlowNode = {
       id,
       type,
       position,
       parentId: effectiveParentId,
       extent: effectiveParentId ? 'parent' : undefined,
-      data: { ...createDefaultNodeData(type), ...effectiveExtraData } as WorkflowNodeData,
+      data: { ...createDefaultNodeData(type), ...effectiveExtraData } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
-    set((state) => ({ nodes: [...state.nodes, newNode] }));
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
+      nodes: [...state.nodes, newNode],
+    }));
     return id;
   },
 
   updateNodeData: (nodeId, data) => {
     set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
       nodes: state.nodes.map((node) =>
         node.id === nodeId
-          ? { ...node, data: { ...node.data, ...data } as WorkflowNodeData }
+          ? { ...node, data: { ...node.data, ...data } as NodeFlowNodeData }
           : node
       ),
     }));
@@ -859,6 +881,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   updateNodeStyle: (nodeId, style) => {
     set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
       nodes: state.nodes.map((node) =>
         node.id === nodeId
           ? { ...node, style: { ...(node.style || {}), ...(style || {}) } }
@@ -869,76 +892,74 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
   removeNode: (nodeId) => {
     set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
       nodes: state.nodes.filter((node) => node.id !== nodeId),
-      edges: state.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
+      links: state.links.filter((link) => link.source !== nodeId && link.target !== nodeId),
     }));
   },
 
   onNodesChange: (changes) =>
     set((state) => {
       const nextNodes = applyNodeChanges(changes, state.nodes);
-      return { nodes: normalizeGroupBindings(nextNodes, state.edges) };
-    }),
-
-  onEdgesChange: (changes) =>
-    set((state) => {
-      const nextEdges = applyEdgeChanges(changes, state.edges);
       return {
-        edges: nextEdges,
-        nodes: normalizeGroupBindings(state.nodes, nextEdges),
+        revision: bumpNodeFlowRevision(state.revision),
+        nodes: normalizeGroupBindings(nextNodes, state.links),
       };
     }),
 
-  onConnect: (connection) => {
+  onLinksChange: (changes) =>
     set((state) => {
-      const nextEdges = addEdge(
-        {
-          ...connection,
-          id: `edge-${connection.source}-${connection.target}-${connection.sourceHandle || "default"}-${connection.targetHandle || "default"}`,
-        },
-        state.edges
-      );
+      const nextLinks = applyNodeFlowLinkChanges(changes, state.links);
       return {
-        edges: nextEdges,
-        nodes: normalizeGroupBindings(state.nodes, nextEdges),
+        revision: bumpNodeFlowRevision(state.revision),
+        links: nextLinks,
+        nodes: normalizeGroupBindings(state.nodes, nextLinks),
+      };
+    }),
+
+  connectNodes: (connection) => {
+    set((state) => {
+      const nextLinks = createNodeFlowLink(connection, state.links);
+      return {
+        revision: bumpNodeFlowRevision(state.revision),
+        links: nextLinks,
+        nodes: normalizeGroupBindings(state.nodes, nextLinks),
       };
     });
   },
 
-  removeEdge: (edgeId) =>
+  removeLink: (linkId) =>
     set((state) => {
-      const nextEdges = state.edges.filter((edge) => edge.id !== edgeId);
+      const nextLinks = removeNodeFlowLink(state.links, linkId);
       return {
-        edges: nextEdges,
-        nodes: normalizeGroupBindings(state.nodes, nextEdges),
+        revision: bumpNodeFlowRevision(state.revision),
+        links: nextLinks,
+        nodes: normalizeGroupBindings(state.nodes, nextLinks),
       };
     }),
 
-  toggleEdgePause: (edgeId) => {
+  toggleLinkPause: (linkId) => {
     set((state) => ({
-      edges: state.edges.map((edge) =>
-        edge.id === edgeId
-          ? { ...edge, data: { ...edge.data, hasPause: !edge.data?.hasPause } }
-          : edge
-      ),
+      revision: bumpNodeFlowRevision(state.revision),
+      links: toggleNodeFlowLinkPause(state.links, linkId),
     }));
   },
 
   copySelectedNodes: () => {
-    const { nodes, edges } = get();
+    const { nodes, links } = get();
     const selectedNodes = nodes.filter((node) => node.selected);
     if (selectedNodes.length === 0) return;
     const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
-    const connectedEdges = edges.filter(
-      (edge) => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target)
+    const connectedLinks = links.filter(
+      (link) => selectedNodeIds.has(link.source) && selectedNodeIds.has(link.target)
     );
-    const clonedNodes = JSON.parse(JSON.stringify(selectedNodes)) as WorkflowNode[];
-    const clonedEdges = JSON.parse(JSON.stringify(connectedEdges)) as WorkflowEdge[];
-    set({ clipboard: { nodes: clonedNodes, edges: clonedEdges } });
+    const clonedNodes = JSON.parse(JSON.stringify(selectedNodes)) as NodeFlowNode[];
+    const clonedLinks = JSON.parse(JSON.stringify(connectedLinks)) as NodeFlowLink[];
+    set({ clipboard: { nodes: clonedNodes, links: clonedLinks } });
   },
 
   pasteNodes: (offset: XYPosition = { x: 50, y: 50 }) => {
-    const { clipboard, nodes, edges, activeView } = get();
+    const { clipboard, nodes, links, activeView } = get();
     if (!clipboard || clipboard.nodes.length === 0) return;
 
     const idMapping = new Map<string, string>();
@@ -949,7 +970,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
     const matchingGroup = activeView ? nodes.find(n => n.type === 'group' && (n.data as any).view === activeView) : null;
 
-    const newNodes: WorkflowNode[] = clipboard.nodes.map((node) => {
+    const newNodes: NodeFlowNode[] = clipboard.nodes.map((node) => {
       const newData = { ...node.data };
       if (activeView) {
         (newData as any).view = activeView;
@@ -962,18 +983,27 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         selected: true,
         parentId: node.parentId || (matchingGroup?.id),
         extent: (node.parentId || matchingGroup?.id) ? 'parent' : undefined,
-        data: newData as WorkflowNodeData,
+        data: newData as NodeFlowNodeData,
       };
     });
 
-    const newEdges: WorkflowEdge[] = clipboard.edges.map((edge) => ({
-      ...edge,
-      id: `edge-${idMapping.get(edge.source)}-${idMapping.get(edge.target)}-${edge.sourceHandle || "default"}-${edge.targetHandle || "default"}`,
-      source: idMapping.get(edge.source)!,
-      target: idMapping.get(edge.target)!,
+    const newLinks: NodeFlowLink[] = clipboard.links.map((link) => ({
+      ...link,
+      id: buildNodeFlowLinkId(
+        idMapping.get(link.source)!,
+        idMapping.get(link.target)!,
+        link.sourceHandle,
+        link.targetHandle
+      ),
+      source: idMapping.get(link.source)!,
+      target: idMapping.get(link.target)!,
     }));
     const updatedNodes = nodes.map((node) => ({ ...node, selected: false }));
-    set({ nodes: [...updatedNodes, ...newNodes], edges: [...edges, ...newEdges] });
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
+      nodes: [...updatedNodes, ...newNodes],
+      links: [...links, ...newLinks],
+    }));
   },
 
   clearClipboard: () => set({ clipboard: null }),
@@ -981,7 +1011,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   getNodeById: (id) => get().nodes.find((node) => node.id === id),
 
   getConnectedInputs: (nodeId) => {
-    const { edges, nodes, labContext } = get();
+    const { links, nodes, nodeFlowContext } = get();
     const images: string[] = [];
     const audios: string[] = [];
     const texts: string[] = [];
@@ -998,7 +1028,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
           primaryPortraitUrl?: string;
         }
       | undefined;
-    edges
+    links
       .filter((edge) => edge.target === nodeId)
       .forEach((edge) => {
         const sourceNode = nodes.find((n) => n.id === edge.source);
@@ -1055,15 +1085,15 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
               });
             }
           } else if (sourceNode.type === "scriptBoard") {
-            const value = buildScriptBoardText(sourceNode.data as ScriptBoardNodeData, labContext.episodes || []);
+            const value = buildScriptBoardText(sourceNode.data as ScriptBoardNodeData, nodeFlowContext.episodes || []);
             if (value) texts.push(value);
           } else if (sourceNode.type === "storyboardBoard") {
-            const value = buildStoryboardBoardText(sourceNode.data as StoryboardBoardNodeData, labContext.episodes || []);
+            const value = buildStoryboardBoardText(sourceNode.data as StoryboardBoardNodeData, nodeFlowContext.episodes || []);
             if (value) texts.push(value);
           } else if (sourceNode.type === "identityCard") {
-            const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, labContext);
+            const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, nodeFlowContext);
             if (value) texts.push(value);
-            const identities = buildProjectIdentities(labContext.context, labContext.designAssets || []);
+            const identities = buildProjectIdentities(nodeFlowContext.context, nodeFlowContext.designAssets || []);
             const identity = resolveLegacyIdentity(identities, {
               identityId: (sourceNode.data as IdentityCardNodeData).identityId,
             });
@@ -1092,11 +1122,11 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     };
   },
 
-  validateWorkflow: () => {
-    const { nodes, edges } = get();
+  validateNodeFlow: () => {
+    const { nodes, links } = get();
     const errors: string[] = [];
     const hasIncomingHandleType = (nodeId: string, expectedHandle: "image" | "text" | "audio") =>
-      edges
+      links
         .filter((edge) => edge.target === nodeId)
         .some((edge) => {
           const sourceNode = nodes.find((node) => node.id === edge.source);
@@ -1110,7 +1140,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         });
 
     if (nodes.length === 0) {
-      errors.push("Workflow is empty");
+      errors.push("NodeFlow is empty");
       return { valid: false, errors };
     }
     nodes
@@ -1130,7 +1160,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodes
       .filter((n) => n.type === "seedanceVideoGen")
       .forEach((node) => {
-        const edgeInputTypes = edges
+        const edgeInputTypes = links
           .filter((e) => e.target === node.id)
           .map((e) => {
             const sourceNode = nodes.find((n) => n.id === e.source);
@@ -1167,7 +1197,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodes
       .filter((n) => n.type === "annotation")
       .forEach((node) => {
-        const imageConnected = edges.some((e) => e.target === node.id);
+        const imageConnected = links.some((e) => e.target === node.id);
         const hasManualImage = (node.data as AnnotationNodeData).sourceImage !== null;
         if (!imageConnected && !hasManualImage) {
           errors.push(`Annotation node "${node.id}" missing image input`);
@@ -1176,33 +1206,34 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     return { valid: errors.length === 0, errors };
   },
 
-  saveWorkflow: (name) => {
-    const { nodes, edges, edgeStyle, globalAssetHistory, labContext, viewport, activeView } = get();
-    const workflow: WorkflowFile = {
+  exportNodeFlow: (name) => {
+    const { revision, nodes, links, linkStyle, globalAssetHistory, nodeFlowContext, viewport, activeView } = get();
+    const nodeFlow: NodeFlowFile = {
       version: 2,
-      name: name || `workflow-${new Date().toISOString().slice(0, 10)}`,
+      revision,
+      name: name || `nodeflow-${new Date().toISOString().slice(0, 10)}`,
       nodes,
-      edges,
-      edgeStyle,
+      links,
+      linkStyle,
       globalAssetHistory,
-      labContext,
+      nodeFlowContext,
       viewport: viewport || undefined,
       activeView,
     };
-    const json = JSON.stringify(workflow, null, 2);
+    const json = JSON.stringify(nodeFlow, null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${workflow.name}.json`;
+    link.download = `${nodeFlow.name}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   },
 
-  loadWorkflow: (workflow) => {
-    const { nodes, edges } = normalizeWorkflowData(workflow);
+  importNodeFlow: (nodeFlow) => {
+    const { nodes, links } = normalizeNodeFlowData(nodeFlow);
     const maxId = nodes.reduce((max, node) => {
       const match = node.id.match(/-(\d+)$/);
       if (match) return Math.max(max, parseInt(match[1], 10));
@@ -1211,13 +1242,14 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     nodeIdCounter = maxId;
     const current = get();
     set({
+      revision: typeof nodeFlow.revision === "number" ? nodeFlow.revision : 1,
       nodes,
-      edges,
-      edgeStyle: workflow.edgeStyle || "angular",
-      activeView: workflow.activeView ?? null,
-      globalAssetHistory: workflow.globalAssetHistory ?? [],
-      labContext: workflow.labContext ?? current.labContext,
-      viewport: workflow.viewport ?? null,
+      links,
+      linkStyle: nodeFlow.linkStyle || "angular",
+      activeView: nodeFlow.activeView ?? null,
+      globalAssetHistory: nodeFlow.globalAssetHistory ?? [],
+      nodeFlowContext: nodeFlow.nodeFlowContext ?? current.nodeFlowContext,
+      viewport: nodeFlow.viewport ?? null,
       isRunning: false,
       currentNodeId: null,
       pausedAtNodeId: null,
@@ -1225,7 +1257,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   },
 
   saveGroupTemplate: (groupId, name) => {
-    const { nodes, edges, edgeStyle, groupTemplates } = get();
+    const { revision, nodes, links, linkStyle, groupTemplates } = get();
     const groupNode = nodes.find((node) => node.id === groupId && node.type === "group");
     if (!groupNode) {
       return { ok: false, error: "未找到可保存的 Group 节点。" };
@@ -1237,21 +1269,22 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       selected: false,
     }));
     const nodeIds = new Set(templateNodes.map((node) => node.id));
-    const templateEdges = edges
+    const templateEdges = links
       .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
       .map((edge) => ({ ...edge }));
-    const workflow: WorkflowFile = {
+    const nodeFlow: NodeFlowFile = {
       version: 2,
+      revision,
       name: name || groupNode.data?.title || "Group Template",
       nodes: templateNodes,
-      edges: templateEdges,
-      edgeStyle,
+      links: templateEdges,
+      linkStyle,
     };
-    const template: WorkflowTemplate = {
+    const template: NodeFlowTemplate = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: workflow.name,
+      name: nodeFlow.name,
       createdAt: Date.now(),
-      workflow,
+      nodeFlow,
     };
     const nextTemplates = [...groupTemplates, template];
     persistTemplates(nextTemplates);
@@ -1267,19 +1300,19 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   },
 
   applyGroupTemplate: (templateId, offset) => {
-    const { groupTemplates, nodes, edges, activeView } = get();
+    const { groupTemplates, nodes, links, activeView } = get();
     const template = groupTemplates.find((tpl) => tpl.id === templateId);
     if (!template) return { ok: false, error: "模板不存在或已被删除。" };
-    if (!template.workflow.nodes.length) return { ok: false, error: "模板内容为空。" };
+    if (!template.nodeFlow.nodes.length) return { ok: false, error: "模板内容为空。" };
 
-    const normalizedTemplate = normalizeWorkflowData(template.workflow);
+    const normalizedTemplate = normalizeNodeFlowData(template.nodeFlow);
     const idMapping = new Map<string, string>();
     normalizedTemplate.nodes.forEach((node) => {
       const newId = `${node.type}-${++nodeIdCounter}`;
       idMapping.set(node.id, newId);
     });
 
-    const newNodes: WorkflowNode[] = normalizedTemplate.nodes.map((node) => {
+    const newNodes: NodeFlowNode[] = normalizedTemplate.nodes.map((node) => {
       const parentId = node.parentId ? idMapping.get(node.parentId) : undefined;
       const position = parentId
         ? node.position
@@ -1295,28 +1328,37 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         parentId,
         extent: parentId ? "parent" : undefined,
         selected: true,
-        data: newData as WorkflowNodeData,
+        data: newData as NodeFlowNodeData,
       };
     });
 
-    const newEdges: WorkflowEdge[] = normalizedTemplate.edges.map((edge) => ({
-      ...edge,
-      id: `edge-${idMapping.get(edge.source)}-${idMapping.get(edge.target)}-${edge.sourceHandle || "default"}-${edge.targetHandle || "default"}`,
-      source: idMapping.get(edge.source)!,
-      target: idMapping.get(edge.target)!,
+    const newLinks: NodeFlowLink[] = normalizedTemplate.links.map((link) => ({
+      ...link,
+      id: buildNodeFlowLinkId(
+        idMapping.get(link.source)!,
+        idMapping.get(link.target)!,
+        link.sourceHandle,
+        link.targetHandle
+      ),
+      source: idMapping.get(link.source)!,
+      target: idMapping.get(link.target)!,
     }));
 
     const updatedNodes = nodes.map((node) => ({ ...node, selected: false }));
-    set({ nodes: [...updatedNodes, ...newNodes], edges: [...edges, ...newEdges] });
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
+      nodes: [...updatedNodes, ...newNodes],
+      links: [...links, ...newLinks],
+    }));
     return { ok: true };
   },
 
   applyViduReferenceDemo: (offset = { x: 120, y: 120 }) => {
-    const { nodes, edges, activeView } = get();
+    const { nodes, links, activeView } = get();
     const deselected = nodes.map((n) => ({ ...n, selected: false }));
 
     const groupId = `group-${++nodeIdCounter}`;
-    const groupNode: WorkflowNode = {
+    const groupNode: NodeFlowNode = {
       id: groupId,
       type: "group",
       position: offset,
@@ -1329,7 +1371,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     };
 
     const promptText = "@Chef 和 @Guest 在一起吃火锅，并且旁白音说火锅大家都爱吃。";
-    const textNode: WorkflowNode = {
+    const textNode: NodeFlowNode = {
       id: `text-${++nodeIdCounter}`,
       type: "text",
       position: { x: 80, y: 120 },
@@ -1357,7 +1399,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       { url: "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/image2video.png", identityTag: "chef_normal" },
     ];
 
-    const imageNodes: WorkflowNode[] = imageUrls.map((img, idx) => ({
+    const imageNodes: NodeFlowNode[] = imageUrls.map((img, idx) => ({
       id: `image-${++nodeIdCounter}`,
       type: "imageInput",
       position: { x: 80 + (idx % 3) * 180, y: 260 + Math.floor(idx / 3) * 180 },
@@ -1366,7 +1408,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       data: { image: img.url, filename: `ref-${idx + 1}.png`, dimensions: null, identityTag: img.identityTag, view: activeView || undefined } as any,
     }));
 
-    const viduNode: WorkflowNode = {
+    const viduNode: NodeFlowNode = {
       id: `vidu-${++nodeIdCounter}`,
       type: "viduVideoGen",
       position: { x: 620, y: 260 },
@@ -1390,30 +1432,31 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       style: { width: 360 },
     };
 
-    const newEdges: WorkflowEdge[] = [
+    const newLinks: NodeFlowLink[] = [
       {
-        id: `edge-${textNode.id}-${viduNode.id}-text`,
+        id: buildNodeFlowLinkId(textNode.id, viduNode.id, undefined, "text"),
         source: textNode.id,
         target: viduNode.id,
         targetHandle: "text",
       },
       ...imageNodes.map((img) => ({
-        id: `edge-${img.id}-${viduNode.id}-image`,
+        id: buildNodeFlowLinkId(img.id, viduNode.id, undefined, "image"),
         source: img.id,
         target: viduNode.id,
         targetHandle: "image",
       })),
     ];
 
-    set({
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
       nodes: [...deselected, groupNode, textNode, ...imageNodes, viduNode],
-      edges: [...edges, ...newEdges],
-    });
+      links: [...links, ...newLinks],
+    }));
     return { ok: true };
   },
 
   createGroupFromSelection: () => {
-    const { nodes, edges } = get();
+    const { nodes, links } = get();
     const selectedNodes = nodes.filter((node) => node.selected && node.type !== "group");
     if (selectedNodes.length === 0) {
       return { ok: false, error: "未选中可分组的节点。" };
@@ -1443,7 +1486,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
     };
 
     const groupId = `group-${++nodeIdCounter}`;
-    const groupNode: WorkflowNode = {
+    const groupNode: NodeFlowNode = {
       id: groupId,
       type: "group",
       position: groupPosition,
@@ -1467,12 +1510,23 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       };
     });
 
-    const mergedNodes = normalizeGroupBindings([...nextNodes, groupNode], edges);
-    set({ nodes: mergedNodes });
+    const mergedNodes = normalizeGroupBindings([...nextNodes, groupNode], links);
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
+      nodes: mergedNodes,
+    }));
     return { ok: true };
   },
 
-  clearWorkflow: () => set({ nodes: [], edges: [], isRunning: false, currentNodeId: null, pausedAtNodeId: null }),
+  clearNodeFlow: () =>
+    set((state) => ({
+      revision: bumpNodeFlowRevision(state.revision),
+      nodes: [],
+      links: [],
+      isRunning: false,
+      currentNodeId: null,
+      pausedAtNodeId: null,
+    })),
 
   setRunning: (running) => set({ isRunning: running }),
   setCurrentNode: (nodeId) => set({ currentNodeId: nodeId }),
@@ -1498,7 +1552,7 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       globalAssetHistory: type ? state.globalAssetHistory.filter((item) => item.type !== type) : [],
     })),
 
-  addNodesAndEdges: (newNodes, newEdges) => {
+  addNodesAndLinks: (newNodes, newLinks) => {
     // Basic ID counter update logic
     const maxId = [...newNodes].reduce((max, node) => {
       const match = node.id.match(/-(\d+)$/);
@@ -1509,7 +1563,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
 
     set((state) => ({
       nodes: [...state.nodes, ...newNodes],
-      edges: [...state.edges, ...newEdges],
+      revision: bumpNodeFlowRevision(state.revision),
+      links: [...state.links, ...newLinks],
     }));
   },
 }));

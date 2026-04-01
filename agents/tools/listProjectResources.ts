@@ -1,12 +1,18 @@
+import { listBuiltinSkills } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { toNodeFlowLinkRecord, toNodeFlowMapView } from "../../node-workspace/nodeflow/model";
 
 export const LIST_PROJECT_RESOURCE_TYPES = [
+  "skill_packages",
   "episodes",
   "understanding_project",
   "understanding_episodes",
   "understanding_characters",
   "understanding_scenes",
   "understanding_guides",
+  "workflow_overview",
+  "workflow_nodes",
+  "workflow_connections",
 ] as const;
 
 const listProjectResourcesParameters = {
@@ -63,14 +69,30 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List available script and understanding resources before reading them. Use this to inspect episode directories or understanding coverage.",
+    "List available resource directories before reading them. Supports skill packages, scripts, understanding assets, and workflow structure.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
+    const workflow = bridge.getNodeFlowSnapshot();
     const roles = data.context?.roles || [];
     const characters = roles.filter((role) => role.kind === "person");
     const scenes = roles.filter((role) => role.kind === "scene");
+
+    if (args.resourceType === "skill_packages") {
+      const items = listBuiltinSkills().slice(0, args.maxItems).map((skill) => ({
+        item_id: skill.id,
+        title: skill.title,
+        description: skill.description,
+        tags: skill.tags || [],
+        version: skill.version || "",
+      }));
+      return {
+        resource_type: "skill_packages",
+        total: listBuiltinSkills().length,
+        items,
+      };
+    }
 
     if (args.resourceType === "episodes") {
       const items = (data.episodes || []).slice(0, args.maxItems).map((episode) => ({
@@ -159,6 +181,66 @@ export const listProjectResourcesToolDef = {
       };
     }
 
+    if (args.resourceType === "workflow_overview") {
+      const map = toNodeFlowMapView(workflow);
+      return {
+        resource_type: "workflow_overview",
+        name: map.name,
+        revision: map.revision,
+        node_count: map.nodes.length,
+        link_count: map.links.length,
+        edge_count: map.links.length,
+        viewport: map.viewport,
+        active_view: map.activeView,
+      };
+    }
+
+    if (args.resourceType === "workflow_nodes") {
+      const map = toNodeFlowMapView(workflow);
+      const items = map.nodes.slice(0, args.maxItems).map((node) => ({
+        node_id: node.id,
+        node_ref: node.ref,
+        node_type: node.kind,
+        node_kind: node.kind,
+        title: node.title || node.id,
+        parent_id: node.parentId || null,
+        position: { x: node.x, y: node.y },
+        inputs: node.inputs,
+        outputs: node.outputs,
+      }));
+      return {
+        resource_type: "workflow_nodes",
+        total: map.nodes.length,
+        items,
+      };
+    }
+
+    if (args.resourceType === "workflow_connections") {
+      const map = toNodeFlowMapView(workflow);
+      const items = workflow.links.slice(0, args.maxItems).map((edge) => {
+        const link = toNodeFlowLinkRecord(edge);
+        return {
+          edge_id: link.id,
+          link_id: link.id,
+          source_node_id: link.fromNodeId,
+          target_node_id: link.toNodeId,
+          from_node_id: link.fromNodeId,
+          to_node_id: link.toNodeId,
+          source_handle: link.fromPort,
+          target_handle: link.toPort,
+          from_port: link.fromPort,
+          to_port: link.toPort,
+          paused: link.paused,
+        };
+      });
+      return {
+        resource_type: "workflow_connections",
+        total: map.links.length,
+        link_total: map.links.length,
+        items,
+      };
+    }
+
     const items = scenes.slice(0, args.maxItems).map((role) => {
       return {
         id: role.id,
@@ -176,6 +258,9 @@ export const listProjectResourcesToolDef = {
     };
   },
   summarize: (output: any) => {
+    if (output?.resource_type === "skill_packages") {
+      return `已列出内部 skill 包，共 ${output?.total ?? 0} 项`;
+    }
     if (output?.resource_type === "episodes") {
       return `已列出剧本目录，共 ${output?.total ?? 0} 集`;
     }
@@ -190,6 +275,15 @@ export const listProjectResourcesToolDef = {
     }
     if (output?.resource_type === "understanding_guides") {
       return `已列出理解指南目录，共 ${output?.total ?? 0} 项`;
+    }
+    if (output?.resource_type === "workflow_overview") {
+      return `已读取工作流总览，共 ${output?.node_count ?? 0} 个节点 / ${output?.edge_count ?? 0} 条连线`;
+    }
+    if (output?.resource_type === "workflow_nodes") {
+      return `已列出工作流节点目录，共 ${output?.total ?? 0} 项`;
+    }
+    if (output?.resource_type === "workflow_connections") {
+      return `已列出工作流连线目录，共 ${output?.total ?? 0} 项`;
     }
     return `已列出场景理解目录，共 ${output?.total ?? 0} 项`;
   },

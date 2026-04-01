@@ -65,12 +65,12 @@ const writeActivityMap = (storageKey: string, map: Record<string, AgentToolActiv
 const summarizeArtifact = (call: AgentExecutedToolCall) => {
   const output = call.output as any;
   if (!output || typeof output !== "object") return undefined;
-  if (call.name === "read_skill_package") {
+  if (call.name === "read_project_resource" && output.resource_type === "skill_package") {
     if (typeof output.title === "string" && output.title.trim()) {
       return `Skill package · ${output.title}`;
     }
-    if (typeof output.id === "string" && output.id.trim()) {
-      return `Skill package · ${output.id}`;
+    if (typeof output.item_id === "string" && output.item_id.trim()) {
+      return `Skill package · ${output.item_id}`;
     }
   }
   if (call.name === "operate_project_resource") {

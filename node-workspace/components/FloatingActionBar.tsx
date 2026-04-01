@@ -25,9 +25,8 @@ import {
   LogOut,
   Upload,
   Share,
-  Globe,
 } from "lucide-react";
-import { WorkflowTemplate } from "../types";
+import { NodeFlowTemplate } from "../types";
 import type { ModuleKey } from "./ModuleBar";
 
 type AccountInfo = {
@@ -62,7 +61,7 @@ type Props = {
   onExportXls?: () => void;
   onExportUnderstandingJson?: () => void;
   onRun: () => void;
-  templates: WorkflowTemplate[];
+  templates: NodeFlowTemplate[];
   canCreateTemplate: boolean;
   onCreateTemplate: () => void;
   onLoadTemplate: (templateId: string) => void;
@@ -76,7 +75,6 @@ type Props = {
   onOpenSyncPanel?: () => void;
   syncIndicator?: { label: string; color: string } | null;
   onOpenInfoPanel?: () => void;
-  onToggleAgentSettings?: () => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
@@ -132,7 +130,6 @@ export const FloatingActionBar: React.FC<Props> = ({
   onOpenTheme,
   isDarkMode,
   syncIndicator,
-  onToggleAgentSettings,
   onResetProject,
   onSignOut,
   accountInfo,
@@ -610,27 +607,11 @@ export const FloatingActionBar: React.FC<Props> = ({
                             <BarChart2 size={16} />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Dashboard</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目概览</span>
+                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
+                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">dashboard / 模型 / tools</span>
                           </span>
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          onToggleAgentSettings?.();
-                          closeMenus();
-                        }}
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-secondary)]">
-                          <Globe size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Settings</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">模型与服务商</span>
-                        </span>
-                      </button>
                       {handleUploadAvatar ? (
                         <button
                           type="button"
@@ -720,29 +701,13 @@ export const FloatingActionBar: React.FC<Props> = ({
                           <BarChart2 size={16} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Preview</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">先查看项目面板</span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          onToggleAgentSettings?.();
-                          closeMenus();
-                        }}
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-secondary)]">
-                          <Globe size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Settings</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">模型与服务商</span>
+                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
+                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">先查看 dashboard 与设置</span>
                         </span>
                       </button>
                       <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">
                         <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
-                        Workspace / Theme / Dashboard
+                        Workspace / Theme / Agent Setting
                       </div>
                     </div>
                   </div>

@@ -40,7 +40,7 @@
 }
 
 /* Base canvas */
-.node-lab-canvas {
+.node-flow-canvas {
   background: var(--bg-panel);
   color: var(--text-primary);
   font-family: "Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
@@ -83,7 +83,7 @@
   position: relative;
 }
 
-.node-lab-canvas[data-zoomed="true"] .group-surface {
+.node-flow-canvas[data-zoomed="true"] .group-surface {
   backdrop-filter: none;
   box-shadow: none;
 }
@@ -114,7 +114,7 @@
   overflow: hidden;
 }
 
-.node-lab-canvas[data-zoomed="true"] .connection-menu {
+.node-flow-canvas[data-zoomed="true"] .connection-menu {
   backdrop-filter: none;
   box-shadow: none;
 }
@@ -214,7 +214,7 @@
   animation: qalam-enter 280ms ease forwards;
 }
 
-:root.qalam-split .node-lab-canvas {
+:root.qalam-split .node-flow-canvas {
   margin-left: var(--qalam-split-width, 0px);
   width: calc(100% - var(--qalam-split-width, 0px));
 }
@@ -359,13 +359,13 @@ body.qalam-resizing * {
   border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
-.node-lab-canvas[data-connecting="true"] .react-flow__handle {
+.node-flow-canvas[data-connecting="true"] .react-flow__handle {
   opacity: 0 !important;
   animation: none !important;
   box-shadow: none !important;
 }
 
-.node-lab-canvas[data-connecting="true"] .react-flow__connection-path {
+.node-flow-canvas[data-connecting="true"] .react-flow__connection-path {
   stroke: rgba(74, 222, 128, 0.96) !important;
   stroke-width: 3.5px !important;
   stroke-linecap: round;
@@ -480,7 +480,7 @@ body.qalam-resizing * {
   z-index: 0;
 }
 
-.node-lab-canvas[data-zoomed="true"] .node-card-shell::before {
+.node-flow-canvas[data-zoomed="true"] .node-card-shell::before {
   backdrop-filter: none;
   box-shadow: none;
 }
@@ -1000,7 +1000,7 @@ body.qalam-resizing * {
   pointer-events: none;
 }
 
-.node-lab-canvas[data-zoomed="true"] .app-panel {
+.node-flow-canvas[data-zoomed="true"] .app-panel {
   backdrop-filter: none;
   box-shadow: none;
 }
@@ -1016,7 +1016,7 @@ body.qalam-resizing * {
   overflow: hidden;
 }
 
-.node-lab-canvas[data-zoomed="true"] .app-panel-strong {
+.node-flow-canvas[data-zoomed="true"] .app-panel-strong {
   backdrop-filter: none;
   box-shadow: none;
 }

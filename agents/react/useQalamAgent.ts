@@ -117,10 +117,6 @@ const nextMessageOrder = (messages: Message[]) =>
 
 const humanizeToolName = (name: string) => {
   switch (name) {
-    case "list_skill_packages":
-      return "查看 skill 目录";
-    case "read_skill_package":
-      return "读取 skill 包";
     case "list_project_resources":
       return "查看项目目录";
     case "read_project_resource":

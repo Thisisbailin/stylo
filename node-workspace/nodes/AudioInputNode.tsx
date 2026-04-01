@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { AudioInputNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AudioLines, Upload, X } from "lucide-react";
 
 type Props = {
@@ -22,7 +22,7 @@ const readFileAsDataUrl = (file: File) =>
   });
 
 export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
-  const { updateNodeData } = useWorkflowStore();
+  const { updateNodeData } = useNodeFlowStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const nodeTitle = data.title && data.title !== "Audio Input" ? data.title : "audio";

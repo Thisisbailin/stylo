@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { ViduVideoGenNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
-import { useLabExecutor } from "../store/useLabExecutor";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, RefreshCw, AlertCircle, Film, Sparkles, ShieldCheck, Download } from "lucide-react";
 
 type Props = {
@@ -12,16 +12,16 @@ type Props = {
 };
 
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs } = useWorkflowStore();
-  const labContext = useWorkflowStore((state) => state.labContext);
-  const { runVideoGen } = useLabExecutor();
+  const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
+  const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
+  const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
   const [progress, setProgress] = useState(0);
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
   const isLoading = data.status === "loading";
   const resolvedIdentityMentions = useMemo(() => {
-    const roles = labContext?.context?.roles || [];
+    const roles = nodeFlowContext?.context?.roles || [];
     const results: Array<{ name: string; status: "match" | "missing"; identityId?: string }> = [];
     const pushUnique = (item: { name: string; status: "match" | "missing"; identityId?: string }) => {
       if (results.find((entry) => entry.name === item.name && entry.identityId === item.identityId)) return;
@@ -38,7 +38,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     return (atMentions || [])
       .filter((m) => !m.kind || m.kind === "identity")
       .map((m) => ({ name: m.mention || m.name, status: m.status, identityId: m.identityId }));
-  }, [atMentions, entityBindings, labContext?.context?.roles]);
+  }, [atMentions, entityBindings, nodeFlowContext?.context?.roles]);
 
   const derivedSubjects = useMemo(() => {
     if (data.subjects && data.subjects.length) return data.subjects.map(s => ({ name: s.id || "subject", status: 'manual', images: s.images?.length || 0 }));

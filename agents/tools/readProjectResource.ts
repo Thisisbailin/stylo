@@ -1,10 +1,19 @@
+import { resolveBuiltinSkill } from "../runtime/skills";
 import { getEpisodeScript } from "../../node-workspace/components/qalam/toolActions";
 import { getSceneScript } from "../../node-workspace/components/qalam/toolActions";
 import type { ProjectRoleIdentity } from "../../types";
 import { SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import {
+  findNodeFlowNode,
+  getNodeFlowLinksForNode,
+  toNodeFlowLinkRecord,
+  toNodeFlowMapView,
+  toNodeFlowNodeRecord,
+} from "../../node-workspace/nodeflow/model";
 
 export const READ_PROJECT_RESOURCE_TYPES = [
+  "skill_package",
   "episode_script",
   "episode_storyboard",
   "scene_script",
@@ -13,6 +22,9 @@ export const READ_PROJECT_RESOURCE_TYPES = [
   "character_profile",
   "scene_profile",
   "guide_document",
+  "workflow_overview",
+  "workflow_node",
+  "workflow_connection",
 ] as const;
 
 const readProjectResourceParameters = {
@@ -37,11 +49,23 @@ const readProjectResourceParameters = {
     },
     item_id: {
       type: "string",
-      description: "Understanding item id for character_profile or scene_profile.",
+      description: "Item id for skill_package, character_profile, scene_profile, guide_document, or workflow_connection.",
     },
     name: {
       type: "string",
-      description: "Understanding item name for character_profile or scene_profile.",
+      description: "Item name for skill_package, character_profile, scene_profile, or guide_document.",
+    },
+    node_id: {
+      type: "string",
+      description: "Workflow node id for workflow_node.",
+    },
+    node_ref: {
+      type: "string",
+      description: "Workflow node ref for workflow_node.",
+    },
+    edge_id: {
+      type: "string",
+      description: "Workflow edge id for workflow_connection.",
     },
     max_chars: {
       type: "integer",
@@ -80,6 +104,9 @@ const parseArgs = (input: unknown) => {
   const sceneIndex = toPositiveInteger(raw.scene_index ?? raw.sceneIndex);
   const itemId = normalizeString(raw.item_id ?? raw.itemId);
   const name = normalizeString(raw.name);
+  const nodeId = normalizeString(raw.node_id ?? raw.nodeId);
+  const nodeRef = normalizeString(raw.node_ref ?? raw.nodeRef);
+  const linkId = normalizeString(raw.edge_id ?? raw.linkId);
   const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
 
   if (!resourceType) {
@@ -100,8 +127,16 @@ const parseArgs = (input: unknown) => {
     throw new Error("scene_script 需要 scene_id，或同时提供 episode_id 和 scene_index。");
   }
 
-  if ((resourceType === "character_profile" || resourceType === "scene_profile" || resourceType === "guide_document") && !itemId && !name) {
+  if ((resourceType === "skill_package" || resourceType === "character_profile" || resourceType === "scene_profile" || resourceType === "guide_document") && !itemId && !name) {
     throw new Error(`${resourceType} 需要 item_id 或 name。`);
+  }
+
+  if (resourceType === "workflow_node" && !nodeId && !nodeRef) {
+    throw new Error("workflow_node 需要 node_id 或 node_ref。");
+  }
+
+  if (resourceType === "workflow_connection" && !linkId && !itemId) {
+    throw new Error("workflow_connection 需要 edge_id 或 item_id。");
   }
 
   return {
@@ -111,6 +146,9 @@ const parseArgs = (input: unknown) => {
     sceneIndex,
     itemId,
     name,
+    nodeId,
+    nodeRef,
+    linkId,
     maxChars,
   };
 };
@@ -118,6 +156,17 @@ const parseArgs = (input: unknown) => {
 const clipText = (value: string, maxChars?: number) => {
   if (!maxChars || value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}...`;
+};
+
+const clipStructuredValue = (value: unknown, maxChars?: number): unknown => {
+  if (typeof value === "string") return clipText(value, maxChars);
+  if (Array.isArray(value)) return value.slice(0, 40).map((item) => clipStructuredValue(item, maxChars));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).slice(0, 40).map(([key, item]) => [key, clipStructuredValue(item, maxChars)])
+    );
+  }
+  return value;
 };
 
 const normalizeMatchValue = (value?: string) => value?.trim().toLowerCase().replace(/^@/, "") || "";
@@ -140,11 +189,34 @@ const matchesRole = (role: ProjectRoleIdentity, itemId?: string, name?: string) 
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete script, storyboard, or understanding resource from the current project. Supports episode script, episode storyboard, scene script, project summary, episode summary, character profile, and scene profile.",
+    "Read a concrete resource from the current project. Supports skill packages, scripts, storyboards, understanding assets, guides, workflow overview, workflow nodes, and workflow connections.",
   parameters: readProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const data = bridge.getProjectData();
+    const workflow = bridge.getNodeFlowSnapshot();
+
+    if (args.resourceType === "skill_package") {
+      return resolveBuiltinSkill(args.itemId || args.name || "").then((skill) =>
+        skill
+          ? {
+              resource_type: "skill_package",
+              found: true,
+              item_id: skill.id,
+              title: skill.title,
+              description: skill.description,
+              version: skill.version || "",
+              content: clipText(skill.guidanceMarkdown.trim(), args.maxChars),
+              tags: skill.tags || [],
+            }
+          : {
+              resource_type: "skill_package",
+              found: false,
+              item_id: args.itemId || null,
+              name: args.name || null,
+            }
+      );
+    }
 
     if (args.resourceType === "episode_script") {
       const result = getEpisodeScript(data, {
@@ -327,6 +399,119 @@ export const readProjectResourceToolDef = {
           };
     }
 
+    if (args.resourceType === "workflow_overview") {
+      const map = toNodeFlowMapView(workflow);
+      return {
+        resource_type: "workflow_overview",
+        found: true,
+        name: map.name,
+        revision: map.revision,
+        node_count: map.nodes.length,
+        link_count: map.links.length,
+        edge_count: map.links.length,
+        viewport: map.viewport,
+        active_view: map.activeView,
+        map: {
+          revision: map.revision,
+          node_count: map.nodes.length,
+          link_count: map.links.length,
+        },
+        nodes: map.nodes.slice(0, 50).map((node) => ({
+          node_id: node.id,
+          node_ref: node.ref,
+          node_type: node.kind,
+          node_kind: node.kind,
+          title: node.title || node.id,
+        })),
+      };
+    }
+
+    if (args.resourceType === "workflow_node") {
+      const resolvedNodeRef = normalizeString(args.nodeRef);
+      const node = findNodeFlowNode(workflow, {
+        nodeId: args.nodeId,
+        nodeRef: resolvedNodeRef,
+      });
+      if (!node) {
+        return {
+          resource_type: "workflow_node",
+          found: false,
+          node_id: args.nodeId || null,
+          node_ref: resolvedNodeRef || null,
+        };
+      }
+      const nodeRecord = toNodeFlowNodeRecord(node);
+      const links = getNodeFlowLinksForNode(workflow, node.id);
+      return {
+        resource_type: "workflow_node",
+        found: true,
+        node_id: nodeRecord.id,
+        node_ref: nodeRecord.ref,
+        node_type: nodeRecord.kind,
+        node_kind: nodeRecord.kind,
+        title: nodeRecord.title || nodeRecord.id,
+        position: { x: nodeRecord.x, y: nodeRecord.y },
+        parent_id: nodeRecord.parentId || null,
+        node: {
+          ...nodeRecord,
+          body: clipStructuredValue(nodeRecord.body, args.maxChars),
+          meta: clipStructuredValue(nodeRecord.meta, args.maxChars),
+        },
+        data_summary: clipStructuredValue(nodeRecord.body, args.maxChars),
+        links: links.map((link) => ({
+          link_id: link.id,
+          edge_id: link.id,
+          direction: link.direction,
+          from_node_id: link.fromNodeId,
+          to_node_id: link.toNodeId,
+          from_port: link.fromPort,
+          to_port: link.toPort,
+          source_node_id: link.fromNodeId,
+          target_node_id: link.toNodeId,
+          source_handle: link.fromPort,
+          target_handle: link.toPort,
+          paused: link.paused,
+        })),
+        related_edges: links.map((link) => ({
+          edge_id: link.id,
+          direction: link.direction,
+          source_node_id: link.fromNodeId,
+          target_node_id: link.toNodeId,
+          source_handle: link.fromPort,
+          target_handle: link.toPort,
+          paused: link.paused,
+        })),
+      };
+    }
+
+    if (args.resourceType === "workflow_connection") {
+      const edge = workflow.links.find((item) => item.id === (args.linkId || args.itemId));
+      if (!edge) {
+        return {
+          resource_type: "workflow_connection",
+          found: false,
+          edge_id: args.linkId || args.itemId || null,
+        };
+      }
+      const link = toNodeFlowLinkRecord(edge);
+      return {
+        resource_type: "workflow_connection",
+        found: true,
+        edge_id: link.id,
+        link_id: link.id,
+        source_node_id: link.fromNodeId,
+        target_node_id: link.toNodeId,
+        from_node_id: link.fromNodeId,
+        to_node_id: link.toNodeId,
+        source_handle: link.fromPort,
+        target_handle: link.toPort,
+        from_port: link.fromPort,
+        to_port: link.toPort,
+        paused: link.paused,
+        link,
+      };
+    }
+
     const item = (data.context?.roles || []).find(
       (role) => role.kind === "scene" && matchesRole(role, args.itemId, args.name)
     );
@@ -352,6 +537,8 @@ export const readProjectResourceToolDef = {
     switch (output?.resource_type) {
       case "episode_script":
         return output?.found ? `已读取 ${output?.label || `第 ${output?.episode_id} 集`} 正文` : `未找到第 ${output?.episode_id ?? "?"} 集`;
+      case "skill_package":
+        return output?.found ? `已读取内部 skill 包 ${output?.title || output?.item_id || ""}`.trim() : "未找到目标内部 skill 包";
       case "episode_storyboard":
         return output?.found
           ? `已读取 ${output?.label || `第 ${output?.episode_id} 集`} 分镜表（${output?.shot_count ?? 0} 条）`
@@ -368,6 +555,12 @@ export const readProjectResourceToolDef = {
         return output?.found ? `已读取场景档案 ${output?.name || ""}`.trim() : "未找到目标场景档案";
       case "guide_document":
         return output?.found ? `已读取理解指南 ${output?.title || ""}`.trim() : "未找到目标理解指南";
+      case "workflow_overview":
+        return `已读取工作流总览，共 ${output?.node_count ?? 0} 个节点 / ${output?.edge_count ?? 0} 条连线`;
+      case "workflow_node":
+        return output?.found ? `已读取节点 ${output?.title || output?.node_id || ""}`.trim() : "未找到目标工作流节点";
+      case "workflow_connection":
+        return output?.found ? `已读取连线 ${output?.edge_id || ""}`.trim() : "未找到目标工作流连线";
       default:
         return "已读取项目资源";
     }

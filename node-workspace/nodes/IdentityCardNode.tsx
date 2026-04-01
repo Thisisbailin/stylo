@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { IdentityCardNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { buildProjectIdentities, resolveLegacyIdentity, type ProjectIdentity } from "../../utils/identityCards";
 import { applyRolePortraits } from "../../utils/projectRoles";
 
@@ -52,14 +52,14 @@ const buildIdentitySerial = (identityId: string) => {
 };
 
 export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, labContext, mutateProjectRole } = useWorkflowStore();
+  const { updateNodeData, nodeFlowContext, mutateProjectRole } = useNodeFlowStore();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isUploadingPortrait, setIsUploadingPortrait] = useState(false);
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
 
   const identities = useMemo(
-    () => buildProjectIdentities(labContext.context, labContext.designAssets || []),
-    [labContext.context, labContext.designAssets]
+    () => buildProjectIdentities(nodeFlowContext.context, nodeFlowContext.designAssets || []),
+    [nodeFlowContext.context, nodeFlowContext.designAssets]
   );
 
   const activeIdentity = useMemo(

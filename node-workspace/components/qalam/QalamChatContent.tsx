@@ -433,7 +433,7 @@ const renderToolOutput = (tool: ToolPayload) => {
   if (Array.isArray(payload.default_input_handles) && payload.default_input_handles.length > 0) {
     simpleFields.push({ label: "默认首端端口", value: payload.default_input_handles.join(", ") });
   }
-  if (typeof payload.edgeId === "string") simpleFields.push({ label: "连线 ID", value: payload.edgeId });
+  if (typeof payload.linkId === "string") simpleFields.push({ label: "连线 ID", value: payload.linkId });
   if (typeof payload.sourceNodeId === "string") simpleFields.push({ label: "尾端节点", value: payload.sourceNodeId });
   if (typeof payload.targetNodeId === "string") simpleFields.push({ label: "首端节点", value: payload.targetNodeId });
   if (typeof payload.sourceRef === "string") simpleFields.push({ label: "尾端引用", value: payload.sourceRef });

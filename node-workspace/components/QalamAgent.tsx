@@ -4,7 +4,6 @@ import {
   ArrowUp,
   CaretUp,
   CircleNotch,
-  GlobeHemisphereWest,
   Lightbulb,
   Paperclip,
   Question,
@@ -16,17 +15,17 @@ import {
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
-import type { WorkflowFile } from "../types";
+import type { NodeFlowFile } from "../types";
 import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ChatMessage, Message } from "./qalam/types";
-import { useWorkflowStore } from "../store/workflowStore";
-import type { QalamAgentBridge, WorkflowBuilderHandle, WorkflowNodeLookupInput } from "../../agents/bridge/qalamBridge";
-import { createNodeWorkflowWithBridge } from "../../agents/bridge/workflowBuilder";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import type { QalamAgentBridge, NodeFlowHandle, NodeFlowNodeLookupInput } from "../../agents/bridge/qalamBridge";
+import { createNodeFlowMapWithBridge } from "../../agents/bridge/nodeFlowBuilder";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
-import { getWorkflowNodeRef, normalizeNodeRef, setWorkflowNodeRef } from "../../agents/runtime/workflowRefs";
+import { getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../../agents/runtime/nodeFlowRefs";
 import { getNodeHandles, isValidConnection } from "../utils/handles";
 import type { QalamAgentRuntime } from "../../agents/runtime/types";
 
@@ -35,7 +34,6 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   onOpenStats?: () => void;
-  onToggleAgentSettings?: () => void;
   settingsOpen?: boolean;
   openRequest?: number;
   submitRequest?: { id: number; text: string } | null;
@@ -77,25 +75,25 @@ const WORK_HINT_KEYWORDS = [
 
 const toSearch = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
-const edgeIdFromConnection = (sourceNodeId: string, targetNodeId: string, sourceHandle: string, targetHandle: string) =>
-  `edge-${sourceNodeId}-${targetNodeId}-${sourceHandle || "default"}-${targetHandle || "default"}`;
+const linkIdFromConnection = (sourceNodeId: string, targetNodeId: string, sourceHandle: string, targetHandle: string) =>
+  `link-${sourceNodeId}-${targetNodeId}-${sourceHandle || "default"}-${targetHandle || "default"}`;
 
-const getWorkflowSnapshot = () => useWorkflowStore.getState();
+const getNodeFlowSnapshot = () => useNodeFlowStore.getState();
 
-const lookupWorkflowNodeSnapshot = (input: WorkflowNodeLookupInput) => {
-  const snapshot = getWorkflowSnapshot();
+const lookupNodeFlowNodeSnapshot = (input: NodeFlowNodeLookupInput) => {
+  const snapshot = getNodeFlowSnapshot();
   const resolvedRef = normalizeNodeRef(input.nodeRef);
   const node = resolvedRef
-    ? snapshot.nodes.find((item) => getWorkflowNodeRef(item) === resolvedRef)
+    ? snapshot.nodes.find((item) => getNodeFlowRef(item) === resolvedRef)
     : snapshot.nodes.find((item) => item.id === input.nodeId);
   if (!node) return null;
   const handles = getNodeHandles(node.type);
   return {
     nodeId: node.id,
-    nodeRef: getWorkflowNodeRef(node),
+    nodeRef: getNodeFlowRef(node),
     nodeType: node.type,
-    inputHandles: handles.inputs as WorkflowBuilderHandle[],
-    outputHandles: handles.outputs as WorkflowBuilderHandle[],
+    inputHandles: handles.inputs as NodeFlowHandle[],
+    outputHandles: handles.outputs as NodeFlowHandle[],
   };
 };
 
@@ -262,7 +260,6 @@ export const QalamAgent: React.FC<Props> = ({
   setProjectData,
   getAuthToken,
   onOpenStats,
-  onToggleAgentSettings,
   settingsOpen = false,
   openRequest = 0,
   submitRequest = null,
@@ -271,20 +268,21 @@ export const QalamAgent: React.FC<Props> = ({
   renderCollapsedTrigger = true,
 }) => {
   const { config } = useConfig("qalam_config_v1");
-  const addNode = useWorkflowStore((state) => state.addNode);
-  const updateNodeStyle = useWorkflowStore((state) => state.updateNodeStyle);
-  const onConnect = useWorkflowStore((state) => state.onConnect);
-  const toggleEdgePause = useWorkflowStore((state) => state.toggleEdgePause);
-  const removeNode = useWorkflowStore((state) => state.removeNode);
-  const removeEdge = useWorkflowStore((state) => state.removeEdge);
-  const loadWorkflow = useWorkflowStore((state) => state.loadWorkflow);
-  const nodes = useWorkflowStore((state) => state.nodes);
-  const edges = useWorkflowStore((state) => state.edges);
-  const edgeStyle = useWorkflowStore((state) => state.edgeStyle);
-  const globalAssetHistory = useWorkflowStore((state) => state.globalAssetHistory);
-  const labContext = useWorkflowStore((state) => state.labContext);
-  const activeView = useWorkflowStore((state) => state.activeView);
-  const viewport = useWorkflowStore((state) => state.viewport);
+  const addNode = useNodeFlowStore((state) => state.addNode);
+  const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
+  const connectNodes = useNodeFlowStore((state) => state.connectNodes);
+  const toggleLinkPause = useNodeFlowStore((state) => state.toggleLinkPause);
+  const removeNode = useNodeFlowStore((state) => state.removeNode);
+  const removeLink = useNodeFlowStore((state) => state.removeLink);
+  const importNodeFlow = useNodeFlowStore((state) => state.importNodeFlow);
+  const nodes = useNodeFlowStore((state) => state.nodes);
+  const links = useNodeFlowStore((state) => state.links);
+  const revision = useNodeFlowStore((state) => state.revision);
+  const linkStyle = useNodeFlowStore((state) => state.linkStyle);
+  const globalAssetHistory = useNodeFlowStore((state) => state.globalAssetHistory);
+  const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
+  const activeView = useNodeFlowStore((state) => state.activeView);
+  const viewport = useNodeFlowStore((state) => state.viewport);
   const [collapsed, setCollapsed] = useState(true);
   const [mood, setMood] = useState<"default" | "thinking" | "loading" | "playful" | "question">("default");
   const [input, setInput] = useState("");
@@ -367,9 +365,21 @@ export const QalamAgent: React.FC<Props> = ({
   const bridge = useMemo<QalamAgentBridge>(
     () => ({
       getProjectData: () => projectData,
+      getNodeFlowSnapshot: () => ({
+        version: 2,
+        revision,
+        name: projectData.fileName || "Qalam NodeFlow",
+        nodes,
+        links,
+        linkStyle,
+        globalAssetHistory,
+        nodeFlowContext,
+        viewport: viewport || undefined,
+        activeView,
+      }),
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addTextNode: ({ title, text, x, y, parentId }) => {
-        const snapshot = getWorkflowSnapshot();
+        const snapshot = getNodeFlowSnapshot();
         const hasXY = typeof x === "number" && typeof y === "number";
         const activeViewport = snapshot.viewport || viewport;
         const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
@@ -381,8 +391,8 @@ export const QalamAgent: React.FC<Props> = ({
         const nodeId = addNode("text", position, parentId, { title, text });
         return { id: nodeId, title };
       },
-      createWorkflowNode: ({ type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
-        const snapshot = getWorkflowSnapshot();
+      createNodeFlowNode: ({ type, nodeRef, title, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId, x, y, parentId }) => {
+        const snapshot = getNodeFlowSnapshot();
         const hasXY = typeof x === "number" && typeof y === "number";
         const activeViewport = snapshot.viewport || viewport;
         const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
@@ -392,7 +402,7 @@ export const QalamAgent: React.FC<Props> = ({
           ? { x: x as number, y: y as number }
           : { x: Math.round(baseX + offset), y: Math.round(baseY + offset) };
         if (!["text", "imageGen", "scriptBoard", "storyboardBoard", "identityCard"].includes(type)) {
-          throw new Error("createWorkflowNode 当前仅支持 text、imageGen、scriptBoard、storyboardBoard、identityCard。");
+          throw new Error("createNodeFlowNode 当前仅支持 text、imageGen、scriptBoard、storyboardBoard、identityCard。");
         }
         const resolvedTitle =
           (title || "").trim() ||
@@ -434,10 +444,10 @@ export const QalamAgent: React.FC<Props> = ({
                       entityId: (entityId || "").trim() || undefined,
                     };
         if (type === "text" && !String((extraData as any).text || "").trim()) {
-          throw new Error("createWorkflowNode 创建文本节点时缺少 text。");
+          throw new Error("createNodeFlowNode 创建文本节点时缺少 text。");
         }
         const resolvedNodeRef = normalizeNodeRef(nodeRef);
-        const nodeId = addNode(type, position, parentId, setWorkflowNodeRef(extraData, resolvedNodeRef));
+        const nodeId = addNode(type, position, parentId, setNodeFlowRef(extraData, resolvedNodeRef));
         const nodeHandles = getNodeHandles(type);
         return {
           nodeId,
@@ -447,22 +457,22 @@ export const QalamAgent: React.FC<Props> = ({
           nodeType: type,
           node_type: type,
           title: resolvedTitle,
-          defaultOutputHandle: (nodeHandles.outputs[0] as WorkflowBuilderHandle | undefined) ?? null,
-          default_output_handle: (nodeHandles.outputs[0] as WorkflowBuilderHandle | undefined) ?? null,
-          defaultInputHandles: nodeHandles.inputs as WorkflowBuilderHandle[],
-          default_input_handles: nodeHandles.inputs as WorkflowBuilderHandle[],
+          defaultOutputHandle: (nodeHandles.outputs[0] as NodeFlowHandle | undefined) ?? null,
+          default_output_handle: (nodeHandles.outputs[0] as NodeFlowHandle | undefined) ?? null,
+          defaultInputHandles: nodeHandles.inputs as NodeFlowHandle[],
+          default_input_handles: nodeHandles.inputs as NodeFlowHandle[],
         };
       },
-      getWorkflowNode: ({ nodeId, nodeRef }) =>
-        lookupWorkflowNodeSnapshot({
+      getNodeFlowNode: ({ nodeId, nodeRef }) =>
+        lookupNodeFlowNodeSnapshot({
           nodeId,
           nodeRef,
         }),
-      connectWorkflowNodes: ({ sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
-        const sourceNode = lookupWorkflowNodeSnapshot({ nodeId: sourceNodeId, nodeRef: sourceRef });
-        const targetNode = lookupWorkflowNodeSnapshot({ nodeId: targetNodeId, nodeRef: targetRef });
+      connectNodeFlowNodes: ({ sourceNodeId, targetNodeId, sourceRef, targetRef, sourceHandle, targetHandle }) => {
+        const sourceNode = lookupNodeFlowNodeSnapshot({ nodeId: sourceNodeId, nodeRef: sourceRef });
+        const targetNode = lookupNodeFlowNodeSnapshot({ nodeId: targetNodeId, nodeRef: targetRef });
         if (!sourceNode || !targetNode) {
-          throw new Error("connectWorkflowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 workflow_node。");
+          throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 workflow_node。");
         }
         const sourceHandles = sourceNode.outputHandles;
         const targetHandles = targetNode.inputHandles;
@@ -474,24 +484,31 @@ export const QalamAgent: React.FC<Props> = ({
         const resolvedTargetHandle = targetHandle || preferred?.targetHandle;
         if (!resolvedSourceHandle || !resolvedTargetHandle) {
           throw new Error(
-            `connectWorkflowNodes 无法自动推断 ${sourceNode.nodeType} -> ${targetNode.nodeType} 的连接端口。请显式提供 source_handle 和 target_handle。`
+            `connectNodeFlowNodes 无法自动推断 ${sourceNode.nodeType} -> ${targetNode.nodeType} 的连接端口。请显式提供 source_handle 和 target_handle。`
           );
         }
         if (!sourceHandles.includes(resolvedSourceHandle) || !targetHandles.includes(resolvedTargetHandle)) {
-          throw new Error("connectWorkflowNodes 收到无效的 handle。");
+          throw new Error("connectNodeFlowNodes 收到无效的 handle。");
         }
         if (!isValidConnection({ sourceHandle: resolvedSourceHandle, targetHandle: resolvedTargetHandle })) {
-          throw new Error("connectWorkflowNodes 收到不合法的连线类型。");
+          throw new Error("connectNodeFlowNodes 收到不合法的连线类型。");
         }
-        onConnect({
+        connectNodes({
           source: sourceNode.nodeId,
           target: targetNode.nodeId,
           sourceHandle: resolvedSourceHandle,
           targetHandle: resolvedTargetHandle,
         });
+        const resolvedLinkId = linkIdFromConnection(
+          sourceNode.nodeId,
+          targetNode.nodeId,
+          resolvedSourceHandle,
+          resolvedTargetHandle
+        );
         return {
-          edgeId: edgeIdFromConnection(sourceNode.nodeId, targetNode.nodeId, resolvedSourceHandle, resolvedTargetHandle),
-          edge_id: edgeIdFromConnection(sourceNode.nodeId, targetNode.nodeId, resolvedSourceHandle, resolvedTargetHandle),
+          linkId: resolvedLinkId,
+          link_id: resolvedLinkId,
+          edge_id: resolvedLinkId,
           sourceNodeId: sourceNode.nodeId,
           source_node_id: sourceNode.nodeId,
           targetNodeId: targetNode.nodeId,
@@ -500,17 +517,17 @@ export const QalamAgent: React.FC<Props> = ({
           source_ref: sourceNode.nodeRef || undefined,
           targetRef: targetNode.nodeRef || undefined,
           target_ref: targetNode.nodeRef || undefined,
-          sourceHandle: resolvedSourceHandle as WorkflowBuilderHandle,
-          source_handle: resolvedSourceHandle as WorkflowBuilderHandle,
-          targetHandle: resolvedTargetHandle as WorkflowBuilderHandle,
-          target_handle: resolvedTargetHandle as WorkflowBuilderHandle,
+          sourceHandle: resolvedSourceHandle as NodeFlowHandle,
+          source_handle: resolvedSourceHandle as NodeFlowHandle,
+          targetHandle: resolvedTargetHandle as NodeFlowHandle,
+          target_handle: resolvedTargetHandle as NodeFlowHandle,
         };
       },
-      createNodeWorkflow: (input) => {
+      createNodeFlowMap: (input) => {
         const baseX = viewport ? (-viewport.x + 120) / viewport.zoom : 120;
         const baseY = viewport ? (-viewport.y + 120) / viewport.zoom : 120;
         const offset = (nodes.length % 5) * 24;
-        return createNodeWorkflowWithBridge(
+        return createNodeFlowMapWithBridge(
           {
             ...input,
             originX: input.originX ?? Math.round(baseX + offset),
@@ -519,17 +536,17 @@ export const QalamAgent: React.FC<Props> = ({
           {
             addNode,
             updateNodeStyle,
-            onConnect,
-            toggleEdgePause,
+            connectNodes,
+            toggleLinkPause,
             removeNode,
-            removeEdge,
+            removeLink,
           }
         );
       },
       getViewport: () => viewport,
       getNodeCount: () => nodes.length,
     }),
-    [addNode, nodes.length, onConnect, projectData, removeEdge, removeNode, setProjectData, toggleEdgePause, updateNodeStyle, viewport]
+    [activeView, addNode, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -550,18 +567,19 @@ export const QalamAgent: React.FC<Props> = ({
         }),
         getProjectDataSnapshot: () => projectData,
         getAuthToken,
-        getWorkflowSnapshot: () =>
+        getNodeFlowSnapshot: () =>
           ({
-            version: 1,
-            name: projectData.fileName || "Qalam Workflow",
+            version: 2,
+            revision,
+            name: projectData.fileName || "Qalam NodeFlow",
             nodes,
-            edges,
-            edgeStyle,
+            links,
+            linkStyle,
             globalAssetHistory,
-            labContext,
+            nodeFlowContext,
             viewport: viewport || undefined,
             activeView: activeView ?? null,
-          }) satisfies WorkflowFile,
+          }) satisfies NodeFlowFile,
       }),
     [
       activeView,
@@ -572,11 +590,12 @@ export const QalamAgent: React.FC<Props> = ({
       config.textConfig?.model,
       config.textConfig?.provider,
       config.textConfig?.qalamTools,
-      edgeStyle,
-      edges,
+      linkStyle,
+      links,
+      revision,
       getAuthToken,
       globalAssetHistory,
-      labContext,
+      nodeFlowContext,
       nodes,
       projectData,
       viewport,
@@ -826,8 +845,8 @@ export const QalamAgent: React.FC<Props> = ({
       if (runResult.updatedProjectData) {
         setProjectData(runResult.updatedProjectData);
       }
-      if (runResult.updatedWorkflow) {
-        loadWorkflow(runResult.updatedWorkflow);
+      if (runResult.updatedNodeFlow) {
+        importNodeFlow(runResult.updatedNodeFlow);
       }
     } catch (err: any) {
       if (err?.qalamAlreadyDisplayed) {
@@ -861,7 +880,7 @@ export const QalamAgent: React.FC<Props> = ({
       setIsSending(false);
       setMood("thinking");
     }
-  }, [isSending, loadWorkflow, mentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [isSending, importNodeFlow, mentionTags, runAgentMessage, setMessages, setProjectData]);
 
   const sendMessage = useCallback(async () => {
     if (!canSend) return;
@@ -896,8 +915,8 @@ export const QalamAgent: React.FC<Props> = ({
   const moodState = moodVisual();
   const isSplit = layoutMode === "split";
   const panelClassName = isSplit
-    ? "pointer-events-auto qalam-surface flex flex-col overflow-hidden qalam-panel border-r border-[var(--app-border)] rounded-none"
-    : "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] flex flex-col overflow-hidden qalam-panel";
+    ? "pointer-events-auto qalam-surface overflow-hidden qalam-panel border-r border-[var(--app-border)] rounded-none"
+    : "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] overflow-hidden qalam-panel";
   const panelStyle: React.CSSProperties | undefined = isSplit
     ? {
         position: "fixed",
@@ -1004,27 +1023,21 @@ export const QalamAgent: React.FC<Props> = ({
           }}
         />
       )}
-      <div className="qalam-header-shell relative z-20 flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">Qalam</div>
           <button
             type="button"
             onClick={onOpenStats}
-            className="rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
-            title="查看 Dashboard"
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
+            title="打开 Agent Setting"
           >
-            {formatNumber(tokenUsage)}
+            <span className="text-[var(--app-text-primary)]">Agent Setting</span>
+            <span>{formatNumber(tokenUsage)}</span>
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleAgentSettings}
-            className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-            title="服务商设置"
-          >
-            <GlobeHemisphereWest size={14} className="mx-auto" weight="regular" />
-          </button>
           <button
             onClick={handleSplitToggle}
             className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
@@ -1042,7 +1055,7 @@ export const QalamAgent: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex min-h-0 overflow-hidden">
         <QalamChatContent messages={messages} isSending={isSending} />
       </div>
 
@@ -1159,6 +1172,7 @@ export const QalamAgent: React.FC<Props> = ({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

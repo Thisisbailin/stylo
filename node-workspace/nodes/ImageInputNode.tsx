@@ -1,7 +1,7 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { ImageInputNodeData } from "../types";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AtSign, ImagePlus, Upload } from "lucide-react";
 import {
   buildMentionIndex,
@@ -139,7 +139,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const pendingSelectionRef = useRef<number | null>(null);
   const skipNextCursorUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
-  const { updateNodeData, updateNodeStyle, getNodeById, labContext } = useWorkflowStore();
+  const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext } = useNodeFlowStore();
 
   const [labelDraft, setLabelDraft] = useState(data.label || "");
   const [cursorPos, setCursorPos] = useState(labelDraft.length);
@@ -152,7 +152,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const nodeTitle = data.title && data.title !== "Visual Input" ? data.title : "image";
 
   const mentionTargets = useMemo(() => {
-    const roles = labContext?.context?.roles || [];
+    const roles = nodeFlowContext?.context?.roles || [];
     const targets = buildMentionTargets(roles);
     return {
       persons: targets.persons,
@@ -160,7 +160,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       identities: targets.identities,
       all: targets.all,
     };
-  }, [labContext?.context?.roles]);
+  }, [nodeFlowContext?.context?.roles]);
 
   const mentionIndex = useMemo(() => {
     return buildMentionIndex(mentionTargets.all);

@@ -40,8 +40,8 @@ const capabilityBlocks = [
   },
   {
     eyebrow: "Operate",
-    title: "生成 NodeLab 图",
-    description: "把理解继续落成节点与连线，形成最小可操作的 NodeLab 工作区。",
+    title: "生成 NodeFlow 图",
+    description: "把理解继续落成节点与连线，形成最小可操作的 NodeFlow 工作区。",
     tools: ["operate_project_resource"],
     Icon: TreeStructure,
   },
@@ -154,7 +154,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                 一支会读项目、会写知识、会搭工作流的 Agent 之笔。
               </h1>
               <p className="mt-4 max-w-[58ch] text-[14px] leading-7 text-zinc-700 dark:text-zinc-300">
-                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再沉淀长期事实，最后把理解继续变成可执行的 NodeLab 图。
+                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再沉淀长期事实，最后把理解继续变成可执行的 NodeFlow 图。
               </p>
             </div>
 
@@ -234,7 +234,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                     prompts={[
                       "读取第 3 集，找出人物关系最紧张的场景，并给出证据。",
                       "给主角新增一张“受伤形态”定妆照，并写回角色库。",
-                      "根据当前分镜意图，生成一个 text -> imageGen 的 NodeLab 工作流。",
+                      "根据当前分镜意图，生成一个 text -> imageGen 的 NodeFlow 工作流。",
                       "搜索项目知识层，找出最适合做预告片的场景和对应角色定妆照。",
                     ]}
                   />
@@ -287,7 +287,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                 <div className="landing-reveal rounded-[1.75rem] border border-black/10 bg-white/58 p-4 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "220ms" }}>
                   <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Flow</div>
                   <div className="mt-3 space-y-2">
-                    {["Info 进入", "Landing 浏览", "立即体验", "NodeLab 继续工作"].map((item, index) => (
+                    {["Info 进入", "Landing 浏览", "立即体验", "NodeFlow 继续工作"].map((item, index) => (
                       <div key={item} className="flex items-center gap-3 text-[12px] text-zinc-700 dark:text-zinc-300">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 bg-black/[0.03] text-[10px] dark:border-white/10 dark:bg-white/[0.04]">
                           0{index + 1}
