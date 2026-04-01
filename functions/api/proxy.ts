@@ -3,7 +3,7 @@ const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-proxy-url",
-    "Access-Control-Expose-Headers": "x-qalam-proxy-target,x-qalam-proxy-nanobanana,x-qalam-proxy-key-source,x-qalam-proxy-auth-header,x-qalam-proxy-key-query",
+    "Access-Control-Expose-Headers": "x-qalam-proxy-target,x-qalam-proxy-nanobanana,x-qalam-proxy-vidu,x-qalam-proxy-key-source,x-qalam-proxy-auth-header,x-qalam-proxy-key-query",
 };
 
 const resolveNanoBananaApiKey = (env: Record<string, unknown>) => {
@@ -26,6 +26,21 @@ const isNanoBananaTarget = (url: URL) =>
         url.pathname.includes("/api/async/detail")
     );
 
+const resolveViduApiKey = (env: Record<string, unknown>) => {
+    const candidates = [
+        { name: "VIDU_API_KEY", value: env.VIDU_API_KEY },
+        { name: "VITE_VIDU_API_KEY", value: env.VITE_VIDU_API_KEY },
+    ];
+    const hit = candidates.find((item) => typeof item.value === "string" && item.value.trim().length > 0);
+    return {
+        key: typeof hit?.value === "string" ? hit.value.trim() : "",
+        source: hit?.name || "missing",
+    };
+};
+
+const isViduTarget = (url: URL) =>
+    url.hostname === "api.vidu.com" && url.pathname.startsWith("/ent/v2/");
+
 export const onRequest = async ({ request, env }) => {
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
@@ -47,6 +62,7 @@ export const onRequest = async ({ request, env }) => {
         const debugHeaders: Record<string, string> = {
             "x-qalam-proxy-target": targetUrl.pathname,
             "x-qalam-proxy-nanobanana": "false",
+            "x-qalam-proxy-vidu": "false",
             "x-qalam-proxy-key-source": "n/a",
             "x-qalam-proxy-auth-header": headers.get("Authorization") ? "forwarded" : "none",
             "x-qalam-proxy-key-query": targetUrl.searchParams.get("key") ? "forwarded" : "none",
@@ -82,6 +98,25 @@ export const onRequest = async ({ request, env }) => {
             if (!targetUrl.searchParams.get("key")) {
                 targetUrl.searchParams.set("key", apiKey);
                 debugHeaders["x-qalam-proxy-key-query"] = "injected";
+            }
+        }
+
+        if (isViduTarget(targetUrl)) {
+            const { key: apiKey, source } = resolveViduApiKey((env || {}) as Record<string, unknown>);
+            debugHeaders["x-qalam-proxy-vidu"] = "true";
+            debugHeaders["x-qalam-proxy-key-source"] = source;
+            if (!apiKey) {
+                return new Response("Proxy Error: Missing VIDU_API_KEY in Cloudflare environment.", {
+                    status: 500,
+                    headers: {
+                        ...corsHeaders,
+                        ...debugHeaders,
+                    },
+                });
+            }
+            if (!headers.get("Authorization")) {
+                headers.set("Authorization", `Token ${apiKey}`);
+                debugHeaders["x-qalam-proxy-auth-header"] = "injected";
             }
         }
 

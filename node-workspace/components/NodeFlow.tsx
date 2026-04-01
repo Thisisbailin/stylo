@@ -1074,6 +1074,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
             onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
             onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
+            onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
             onAddWanVideoGen={() => handleAddNode("wanVideoGen", { x: 520, y: 120 })}
             onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
             onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}

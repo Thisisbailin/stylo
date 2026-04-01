@@ -21,6 +21,7 @@ export const ConnectionDropMenu: React.FC<Props> = ({ position, onCreate, onClos
     { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles },
     { label: "WAN Img", hint: "Wan 2.6 image", type: "wanImageGen", Icon: Sparkles },
     { label: "Sora Video", hint: "Generate Sora clips", type: "soraVideoGen", Icon: Video },
+    { label: "Vidu Video", hint: "Reference to video", type: "viduVideoGen", Icon: Video },
     { label: "WAN Vid", hint: "Wan 2.6 video", type: "wanVideoGen", Icon: Video },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference video", type: "wanReferenceVideoGen", Icon: Video },
     { label: "Seedance", hint: "Multimodal reference video", type: "seedanceVideoGen", Icon: Video },

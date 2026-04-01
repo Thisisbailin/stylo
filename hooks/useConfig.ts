@@ -37,7 +37,14 @@ export const useConfig = (key: string) => {
       const safeMulti = normalizedMultiProvider === "nanobanana"
         ? { ...rawMulti, provider: "nanobanana", apiKey: "" }
         : rawMulti;
-      const safeVidu = rememberApiKeys ? (parsed.viduConfig || INITIAL_VIDU_CONFIG) : { ...(parsed.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
+      const rawVidu = rememberApiKeys
+        ? (parsed.viduConfig || INITIAL_VIDU_CONFIG)
+        : { ...(parsed.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
+      const safeVidu = {
+        ...INITIAL_VIDU_CONFIG,
+        ...(rawVidu || {}),
+        baseUrl: rawVidu?.baseUrl?.trim() ? rawVidu.baseUrl : INITIAL_VIDU_CONFIG.baseUrl,
+      };
       return {
         syncApiKeys,
         rememberApiKeys,
@@ -46,7 +53,7 @@ export const useConfig = (key: string) => {
         multimodalConfig: safeMulti?.provider
           ? { ...INITIAL_MULTIMODAL_CONFIG, ...safeMulti }
           : { ...INITIAL_MULTIMODAL_CONFIG },
-        viduConfig: { ...INITIAL_VIDU_CONFIG, ...safeVidu },
+        viduConfig: safeVidu,
         videoProvider: parsed.videoProvider || "default",
       } as AppConfig;
     },

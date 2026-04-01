@@ -36,6 +36,7 @@ import {
   SEEDANCE_FAST_MODEL,
   SORA_DEFAULT_BASE_URL,
   SORA_DEFAULT_MODEL,
+  VIDU_DEFAULT_BASE_URL,
 } from "../../constants";
 import {
   AGENT_ACTIVITY_STORAGE_UPDATED_EVENT,
@@ -1715,13 +1716,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-2">
               <div className="text-sm font-semibold text-[var(--app-text-primary)]">Vidu</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                Base URL: {INITIAL_VIDU_CONFIG.baseUrl}
+                Base URL: {VIDU_DEFAULT_BASE_URL}
               </div>
               <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 text-[12px] text-[var(--app-text-secondary)]">
                 固定模型：<span className="text-[var(--app-text-primary)] font-semibold">{INITIAL_VIDU_CONFIG.defaultModel}</span>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用环境变量 VIDU_API_KEY / VITE_VIDU_API_KEY。
+                API Key 由 Cloudflare 环境变量 `VIDU_API_KEY` 注入，前端节点无需手填。
               </div>
               <button
                 type="button"

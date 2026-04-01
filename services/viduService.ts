@@ -7,8 +7,10 @@ import {
   ViduTaskResult,
   ViduTaskState,
 } from "../types";
+import { wrapWithProxy } from "../utils/api";
+import { VIDU_DEFAULT_BASE_URL } from "../constants";
 
-const DEFAULT_BASE_URL = "";
+const DEFAULT_BASE_URL = VIDU_DEFAULT_BASE_URL;
 const DEFAULT_REFERENCE_MODEL = "viduq2";
 
 const normalizeBaseUrl = (baseUrl?: string) =>
@@ -46,23 +48,23 @@ const resolveConfig = (config?: ViduServiceConfig) => {
   if (!baseUrl) {
     throw new Error("Missing Vidu API base URL. Set VIDU_BASE_URL or pass it via config.");
   }
-  if (!apiKey) {
-    throw new Error("Missing Vidu API key. Set VIDU_API_KEY or pass it via config.");
-  }
-
   return { baseUrl, apiKey, defaultModel };
+};
+
+const buildHeaders = (apiKey?: string, includeContentType = false) => {
+  const headers: Record<string, string> = {};
+  if (includeContentType) headers["Content-Type"] = "application/json";
+  if (apiKey) headers.Authorization = `Token ${apiKey}`;
+  return headers;
 };
 
 const postJson = async <T>(path: string, body: Record<string, unknown>, config?: ViduServiceConfig): Promise<T> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;
 
-  const response = await fetch(url, {
+  const response = await fetch(wrapWithProxy(url), {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildHeaders(apiKey, true),
     body: JSON.stringify(body),
   });
 
@@ -81,11 +83,9 @@ const postJson = async <T>(path: string, body: Record<string, unknown>, config?:
 export const fetchViduModels = async (config?: ViduServiceConfig): Promise<string[]> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/models`;
-  const response = await fetch(url, {
+  const response = await fetch(wrapWithProxy(url), {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: buildHeaders(apiKey),
   });
   if (!response.ok) {
     throw new Error(`Failed to fetch Vidu models: ${response.status}`);
@@ -188,11 +188,9 @@ export const fetchTaskResult = async (taskId: string, config?: ViduServiceConfig
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/creations`;
 
-  const response = await fetch(url, {
+  const response = await fetch(wrapWithProxy(url), {
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: buildHeaders(apiKey),
   });
 
   const text = await response.text();
@@ -222,12 +220,9 @@ export const cancelTask = async (taskId: string, config?: ViduServiceConfig): Pr
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/cancel`;
 
-  const response = await fetch(url, {
+  const response = await fetch(wrapWithProxy(url), {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildHeaders(apiKey, true),
     body: JSON.stringify({ id: taskId }),
   });
 
