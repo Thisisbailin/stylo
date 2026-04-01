@@ -45,7 +45,7 @@ export const buildToolSummary = (name: string, args: any) => {
     return `资源写入：${args?.resource_type || "resource"}`;
   }
   if (name === "operate_project_resource") {
-    return `工作流操作：${args?.resource_type || "workflow"}`;
+    return `图操作：${args?.resource_type || "graph"}`;
   }
   return "工具调用";
 };

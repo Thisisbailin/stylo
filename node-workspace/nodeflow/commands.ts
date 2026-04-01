@@ -24,6 +24,7 @@ type AllocateNodeId = (nodeType: NodeType) => string;
 
 const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
   group: { width: 1100, height: 900 },
+  knowledge: { width: 360, height: 260 },
   scriptBoard: { width: 920 },
   storyboardBoard: { width: 1080 },
   identityCard: { width: 760 },
