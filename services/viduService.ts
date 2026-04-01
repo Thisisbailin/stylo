@@ -1,9 +1,8 @@
 import {
-  ViduReferenceVideoAudioParams,
-  ViduReferenceVideoVisualParams,
+  ViduReferenceVideoSubjectParams,
+  ViduReferenceVideoNonSubjectParams,
   ViduServiceConfig,
   ViduReferenceRequest,
-  ViduReferenceMode,
   ViduTaskResult,
   ViduTaskState,
 } from "../types";
@@ -11,7 +10,7 @@ import { wrapWithProxy } from "../utils/api";
 import { VIDU_DEFAULT_BASE_URL } from "../constants";
 
 const DEFAULT_BASE_URL = VIDU_DEFAULT_BASE_URL;
-const DEFAULT_REFERENCE_MODEL = "viduq2";
+const DEFAULT_REFERENCE_MODEL = "viduq3";
 
 const normalizeBaseUrl = (baseUrl?: string) =>
   (baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
@@ -110,31 +109,46 @@ export const fetchViduModels = async (config?: ViduServiceConfig): Promise<strin
   return Array.isArray(list) ? list.map((m: any) => (typeof m === "string" ? m : m.id || "")).filter(Boolean) : [];
 };
 
-// --- Reference to Video: audio+video output ---
-export const createReferenceVideoWithAudio = async (
-  params: ViduReferenceVideoAudioParams,
+const createSubjectReferenceVideo = async (
+  params: ViduReferenceVideoSubjectParams,
   config?: ViduServiceConfig
 ) => {
   const { defaultModel } = resolveConfig(config);
 
   ensureArrayHasValues(params.subjects, "subjects");
-  params.subjects.forEach((s, idx) => ensureArrayHasValues(s.images, `subjects[${idx}].images`));
+  params.subjects.forEach((s, idx) => {
+    const hasImages = Array.isArray(s.images) && s.images.length > 0;
+    const hasVideos = Array.isArray(s.videos) && s.videos.length > 0;
+    const hasServerId = typeof s.serverId === "string" && s.serverId.trim().length > 0;
+    if (!hasImages && !hasVideos && !hasServerId) {
+      throw new Error(`Vidu subject missing source: subjects[${idx}] requires images, videos, or serverId.`);
+    }
+  });
 
   const payload = {
     model: params.model || defaultModel,
     subjects: params.subjects.map((s) => ({
-      id: s.id,
-      images: s.images,
-      voice_id: s.voiceId || "",
+      name: s.name,
+      ...(Array.isArray(s.images) && s.images.length > 0 ? { images: s.images } : {}),
+      ...(Array.isArray(s.videos) && s.videos.length > 0 ? { videos: s.videos } : {}),
+      ...(s.voiceId ? { voice_id: s.voiceId } : {}),
+      ...(s.serverId ? { server_id: s.serverId } : {}),
     })),
     prompt: params.prompt,
-    duration: params.duration ?? 8,
+    duration: params.duration ?? 5,
     audio: params.audio ?? true,
+    ...(params.autoSubjects !== undefined ? { auto_subjects: params.autoSubjects } : {}),
+    ...(params.seed !== undefined ? { seed: params.seed } : {}),
+    ...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
+    ...(params.resolution ? { resolution: params.resolution } : {}),
+    ...(params.offPeak !== undefined ? { off_peak: params.offPeak } : {}),
+    ...(params.watermark !== undefined ? { watermark: params.watermark } : {}),
+    ...(params.wmPosition !== undefined ? { wm_position: params.wmPosition } : {}),
+    ...(params.wmUrl ? { wm_url: params.wmUrl } : {}),
+    ...(params.metaData ? { meta_data: params.metaData } : {}),
+    ...(params.callbackUrl ? { callback_url: params.callbackUrl } : {}),
+    ...(params.payload ? { payload: params.payload } : {}),
   };
-
-  if (params.offPeak !== undefined) {
-    (payload as any).off_peak = params.offPeak;
-  }
 
   const data = await postJson<{ task_id?: string; id?: string; state?: string }>(
     "reference2video",
@@ -148,9 +162,8 @@ export const createReferenceVideoWithAudio = async (
   return { taskId, state: mapState(data.state) };
 };
 
-// --- Reference to Video: video-only output ---
-export const createReferenceVideoVisual = async (
-  params: ViduReferenceVideoVisualParams,
+const createNonSubjectReferenceVideo = async (
+  params: ViduReferenceVideoNonSubjectParams,
   config?: ViduServiceConfig
 ) => {
   const { defaultModel } = resolveConfig(config);
@@ -160,14 +173,22 @@ export const createReferenceVideoVisual = async (
   const payload = {
     model: params.model || defaultModel,
     images: params.images,
+    ...(Array.isArray(params.videos) && params.videos.length > 0 ? { videos: params.videos } : {}),
+    ...(Array.isArray(params.sounds) && params.sounds.length > 0 ? { sounds: params.sounds } : {}),
     prompt: params.prompt,
+    ...(params.bgm !== undefined ? { bgm: params.bgm } : {}),
     duration: params.duration ?? 5,
-    aspect_ratio: params.aspectRatio,
-    resolution: params.resolution,
-    movement_amplitude: params.movementAmplitude ?? "auto",
-    seed: params.seed ?? 0,
-    off_peak: params.offPeak ?? false,
-    audio: params.audio ?? false,
+    ...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
+    ...(params.resolution ? { resolution: params.resolution } : {}),
+    ...(params.seed !== undefined ? { seed: params.seed } : {}),
+    ...(params.offPeak !== undefined ? { off_peak: params.offPeak } : {}),
+    ...(params.audio !== undefined ? { audio: params.audio } : {}),
+    ...(params.watermark !== undefined ? { watermark: params.watermark } : {}),
+    ...(params.wmPosition !== undefined ? { wm_position: params.wmPosition } : {}),
+    ...(params.wmUrl ? { wm_url: params.wmUrl } : {}),
+    ...(params.metaData ? { meta_data: params.metaData } : {}),
+    ...(params.callbackUrl ? { callback_url: params.callbackUrl } : {}),
+    ...(params.payload ? { payload: params.payload } : {}),
   };
 
   const data = await postJson<{ task_id?: string; id?: string; state?: string }>(
@@ -187,15 +208,15 @@ export const createReferenceVideo = async (
   request: ViduReferenceRequest,
   config?: ViduServiceConfig
 ) => {
-  if (request.mode === "audioVideo") {
-    if (!request.audioParams) throw new Error("audioParams required for audioVideo mode");
-    return createReferenceVideoWithAudio(request.audioParams, config);
+  if (request.mode === "subject" || request.mode === "audioVideo") {
+    if (!request.subjectParams) throw new Error("subjectParams required for subject mode");
+    return createSubjectReferenceVideo(request.subjectParams, config);
   }
-  if (request.mode === "videoOnly") {
-    if (!request.visualParams) throw new Error("visualParams required for videoOnly mode");
-    return createReferenceVideoVisual(request.visualParams, config);
+  if (request.mode === "nonSubject" || request.mode === "videoOnly") {
+    if (!request.nonSubjectParams) throw new Error("nonSubjectParams required for nonSubject mode");
+    return createNonSubjectReferenceVideo(request.nonSubjectParams, config);
   }
-  throw new Error(`Unknown reference mode: ${request.mode as string}`);
+  throw new Error(`Unknown reference mode: ${String(request.mode)}`);
 };
 
 // --- Task polling ---

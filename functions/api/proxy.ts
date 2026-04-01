@@ -47,7 +47,7 @@ const resolveViduApiKey = (env: Record<string, unknown>) => {
 };
 
 const isViduTarget = (url: URL) =>
-    url.hostname === "api.vidu.com" && url.pathname.startsWith("/ent/v2/");
+    (url.hostname === "api.vidu.cn" || url.hostname === "api.vidu.com") && url.pathname.startsWith("/ent/v2/");
 
 export const onRequest = async ({ request, env }) => {
     // Handle CORS preflight

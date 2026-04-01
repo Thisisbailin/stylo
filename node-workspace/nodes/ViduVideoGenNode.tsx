@@ -3,12 +3,18 @@ import { BaseNode } from "./BaseNode";
 import { ViduVideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import { Settings2, RefreshCw, AlertCircle, Film, Sparkles, ShieldCheck, Download } from "lucide-react";
+import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles } from "lucide-react";
 
 type Props = {
   id: string;
   data: ViduVideoGenNodeData;
   selected?: boolean;
+};
+
+const normalizeMode = (mode?: string) => {
+  if (mode === "audioVideo") return "subject";
+  if (mode === "videoOnly") return "nonSubject";
+  return mode === "nonSubject" ? "nonSubject" : "subject";
 };
 
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
@@ -20,6 +26,10 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
   const isLoading = data.status === "loading";
+  const model = data.model || "viduq3";
+  const requestedMode = normalizeMode(data.mode);
+  const effectiveMode = model === "viduq3-mix" ? "nonSubject" : requestedMode;
+
   const resolvedIdentityMentions = useMemo(() => {
     const roles = nodeFlowContext?.context?.roles || [];
     const results: Array<{ name: string; status: "match" | "missing"; identityId?: string }> = [];
@@ -41,18 +51,27 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   }, [atMentions, entityBindings, nodeFlowContext?.context?.roles]);
 
   const derivedSubjects = useMemo(() => {
-    if (data.subjects && data.subjects.length) return data.subjects.map(s => ({ name: s.id || "subject", status: 'manual', images: s.images?.length || 0 }));
+    if (data.subjects && data.subjects.length) {
+      return data.subjects.map((subject) => ({
+        name: subject.name,
+        status: "manual" as const,
+        images: subject.images?.length || 0,
+        videos: subject.videos?.length || 0,
+      }));
+    }
     if (data.useCharacters !== false && resolvedIdentityMentions.length) {
-      return resolvedIdentityMentions.map((m, idx) => ({
-        name: m.name,
-        status: m.status,
-        images: (imageRefs || []).filter((r) => (m.identityId && r.identityId ? r.identityId === m.identityId : !!r.identityTag && r.identityTag.toLowerCase() === m.name.toLowerCase())).length
-          || (connectedImages.length ? Math.ceil(connectedImages.length / resolvedIdentityMentions.length) : 0),
-        order: idx + 1,
+      return resolvedIdentityMentions.map((mention) => ({
+        name: mention.name,
+        status: mention.status,
+        images:
+          (imageRefs || []).filter((ref) =>
+            mention.identityId && ref.identityId ? ref.identityId === mention.identityId : !!ref.identityTag && ref.identityTag.toLowerCase() === mention.name.toLowerCase()
+          ).length || 0,
+        videos: 0,
       }));
     }
     return [];
-  }, [data.subjects, data.useCharacters, resolvedIdentityMentions, connectedImages.length, imageRefs]);
+  }, [data.subjects, data.useCharacters, resolvedIdentityMentions, imageRefs]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -63,25 +82,35 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     const timer = setInterval(() => {
       const elapsed = Date.now() - start;
       const eased = 1 - Math.exp(-elapsed / 14000);
-      const next = Math.min(95, Math.round(eased * 100));
-      setProgress(next);
+      setProgress(Math.min(95, Math.round(eased * 100)));
     }, 500);
     return () => clearInterval(timer);
   }, [isLoading]);
 
+  useEffect(() => {
+    if (model === "viduq3-mix" && requestedMode === "subject") {
+      updateNodeData(id, { mode: "nonSubject" });
+    }
+  }, [id, model, requestedMode, updateNodeData]);
+
   const warnings = useMemo(() => {
     const msgs: string[] = [];
-    if (data.mode !== "videoOnly") {
-      if (!derivedSubjects.length) msgs.push("未检测到主体引用：请在提示词中添加 @身份证 或手动配置 subjects。");
-      derivedSubjects.forEach((s) => {
-        if ((s.images || 0) === 0) msgs.push(`主体 @${s.name} 缺少参考图，将影响生成质量。`);
-        if (s.status === "missing") msgs.push(`主体 @${s.name} 未匹配身份证，请检查名称或创建身份。`);
-      });
-    } else if (data.mode === "videoOnly" && connectedImages.length === 0) {
-      msgs.push("纯视频模式至少需要一张参考图。");
+    if (model === "viduq3-mix") {
+      msgs.push("viduq3-mix 暂不支持主体调用与主体库能力，已自动切换到非主体调用。");
+    }
+    if (effectiveMode === "subject") {
+      if (!derivedSubjects.length) msgs.push("Q3 主体调用需要主体来源。请连接身份图，或切换到非主体调用。");
+    } else if (connectedImages.length === 0) {
+      msgs.push("Q3 非主体调用至少需要 1 张参考图。");
+    }
+    if (data.offPeak && model === "viduq3-mix") {
+      msgs.push("viduq3-mix 不支持错峰模式。");
+    }
+    if (data.bgm && (model === "viduq3" || model === "viduq3-mix")) {
+      msgs.push("Q3 系列模型当前不支持 BGM 参数。");
     }
     return msgs;
-  }, [data.mode, derivedSubjects, connectedImages.length]);
+  }, [connectedImages.length, data.bgm, data.offPeak, derivedSubjects.length, effectiveMode, model]);
 
   const handleGenerate = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -103,7 +132,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
 
   return (
     <BaseNode
-      title={data.title || "Vidu Reference2Video"}
+      title={data.title || "Vidu Q3 Reference Video"}
       onTitleChange={(title) => updateNodeData(id, { title })}
       inputs={["image", "text"]}
       selected={selected}
@@ -123,12 +152,11 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
         ) : (
           <div
             onClick={handleGenerate}
-            className={`node-surface node-surface--dashed w-full aspect-video rounded-[20px] flex flex-col items-center justify-center transition-all duration-500 ${data.status === 'loading'
-              ? 'border-amber-500/40 bg-amber-500/[0.02]'
-              : 'hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]'
-              }`}
+            className={`node-surface node-surface--dashed w-full aspect-video rounded-[20px] flex flex-col items-center justify-center transition-all duration-500 ${
+              isLoading ? "border-amber-500/40 bg-amber-500/[0.02]" : "hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
+            }`}
           >
-            {data.status === 'loading' ? (
+            {isLoading ? (
               <div className="flex flex-col items-center gap-3">
                 <RefreshCw size={24} className="text-[var(--node-accent)] animate-spin" />
                 <span className="text-[10px] opacity-50 uppercase tracking-[0.2em] font-black">Generating...</span>
@@ -146,7 +174,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                 </div>
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black transition-all duration-500 text-white">GENERATE</span>
-                  <span className="text-[8px] opacity-20 uppercase tracking-[0.1em] font-bold transition-all duration-500">Vidu reference2video</span>
+                  <span className="text-[8px] opacity-20 uppercase tracking-[0.1em] font-bold transition-all duration-500">Vidu CN Q3 reference2video</span>
                 </div>
               </>
             )}
@@ -174,7 +202,6 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
               <button
                 onClick={handleGenerate}
                 className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-white bg-emerald-500/80 hover:bg-emerald-500 transition"
-                title="Regenerate"
               >
                 <RefreshCw size={12} />
                 重试
@@ -189,12 +216,12 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className={`h-1.5 w-1.5 rounded-full ${data.status === 'complete' ? 'bg-emerald-500 shadow-[0_0_8px_var(--accent-green)]' : data.status === 'loading' ? 'bg-amber-500 animate-pulse' : 'bg-[var(--node-text-secondary)] opacity-20'}`} />
+            <div className={`h-1.5 w-1.5 rounded-full ${data.status === "complete" ? "bg-emerald-500 shadow-[0_0_8px_var(--accent-green)]" : isLoading ? "bg-amber-500 animate-pulse" : "bg-[var(--node-text-secondary)] opacity-20"}`} />
             <span className="text-[9px] font-black uppercase tracking-widest text-[var(--node-text-secondary)]">{data.status}</span>
           </div>
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className={`p-1 rounded-full node-control hover:bg-white/10 transition-colors ${showAdvanced ? 'text-[var(--node-accent)] bg-white/5' : 'text-[var(--node-text-secondary)]'}`}
+            className={`p-1 rounded-full node-control hover:bg-white/10 transition-colors ${showAdvanced ? "text-[var(--node-accent)] bg-white/5" : "text-[var(--node-text-secondary)]"}`}
           >
             <Settings2 size={12} />
           </button>
@@ -203,22 +230,21 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
         <div className="grid grid-cols-2 gap-1.5">
           <select
             className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
-            value={data.mode || "audioVideo"}
-            onChange={(e) => updateNodeData(id, { mode: e.target.value as any })}
+            value={model}
+            onChange={(e) => updateNodeData(id, { model: e.target.value })}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <option value="audioVideo">音视频直出</option>
-            <option value="videoOnly">纯视频直出</option>
+            <option value="viduq3">viduq3</option>
+            <option value="viduq3-mix">viduq3-mix</option>
           </select>
           <select
             className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
-            value={data.resolution || "1080p"}
-            onChange={(e) => updateNodeData(id, { resolution: e.target.value })}
+            value={requestedMode}
+            onChange={(e) => updateNodeData(id, { mode: e.target.value as any })}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <option value="1080p">1080p</option>
-            <option value="720p">720p</option>
-            <option value="540p">540p</option>
+            <option value="subject">主体调用</option>
+            <option value="nonSubject">非主体调用</option>
           </select>
         </div>
 
@@ -229,35 +255,65 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
             onChange={(e) => updateNodeData(id, { aspectRatio: e.target.value })}
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <option value="auto">auto</option>
             <option value="16:9">16:9</option>
             <option value="9:16">9:16</option>
+            <option value="1:1">1:1</option>
             <option value="4:3">4:3</option>
             <option value="3:4">3:4</option>
           </select>
-
           <select
             className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
-            value={data.duration?.toString() || "10"}
+            value={data.resolution || "720p"}
+            onChange={(e) => updateNodeData(id, { resolution: e.target.value })}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <option value="540p">540p</option>
+            <option value="720p">720p</option>
+            <option value="1080p">1080p</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          <select
+            className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
+            value={String(data.duration || 5)}
             onChange={(e) => updateNodeData(id, { duration: parseInt(e.target.value, 10) })}
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <option value="3">3s</option>
             <option value="5">5s</option>
             <option value="8">8s</option>
             <option value="10">10s</option>
+            <option value="12">12s</option>
+            <option value="16">16s</option>
           </select>
+          <div className="node-control node-control--tight w-full px-2 text-[var(--node-text-secondary)] text-[9px] font-bold text-center uppercase tracking-wide truncate">
+            {effectiveMode === "subject" ? "Subject Prompt" : "Image Prompt"}
+          </div>
         </div>
 
         {showAdvanced && (
           <div className="node-panel space-y-3 p-3 animate-in fade-in slide-in-from-top-1">
             <div className="flex items-center gap-2 text-[9px] text-[var(--node-text-secondary)]">
               <Sparkles size={12} className="text-amber-300" />
-              固定模型：viduq2-pro · 动效 {data.movementAmplitude || "auto"} · 错峰 {data.offPeak !== false ? "On" : "Off"}
+              国内区 Q3 参考生视频 · 当前模型 {model} · 实际模式 {effectiveMode === "subject" ? "主体调用" : "非主体调用"}
             </div>
+
             <div className="grid grid-cols-2 gap-2 text-[9px] text-[var(--node-text-secondary)]">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={data.offPeak !== false}
+                  checked={data.audioEnabled !== false}
+                  onChange={(e) => updateNodeData(id, { audioEnabled: e.target.checked })}
+                  className="accent-[var(--node-accent)]"
+                />
+                音视频直出
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={data.offPeak === true}
                   onChange={(e) => updateNodeData(id, { offPeak: e.target.checked })}
                   className="accent-[var(--node-accent)]"
                 />
@@ -266,11 +322,11 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={data.mode === "audioVideo"}
-                  onChange={(e) => updateNodeData(id, { mode: e.target.checked ? "audioVideo" : "videoOnly" })}
+                  checked={data.watermark === true}
+                  onChange={(e) => updateNodeData(id, { watermark: e.target.checked })}
                   className="accent-[var(--node-accent)]"
                 />
-                音视频直出
+                水印
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -279,45 +335,50 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                   onChange={(e) => updateNodeData(id, { useCharacters: e.target.checked })}
                   className="accent-[var(--node-accent)]"
                 />
-                使用身份定妆照主体
+                使用身份主体
               </label>
             </div>
-            <div className="node-control node-control--tight w-full text-[9px] font-medium px-2 text-[var(--node-text-primary)] outline-none appearance-none cursor-pointer transition-colors">
+
+            <div className="node-control node-control--tight w-full text-[9px] font-medium px-2 text-[var(--node-text-primary)] outline-none transition-colors">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={12} className="text-emerald-300" />
-                主体参考：{data.subjects?.length || 0} 组 · {connectedImages.length} 参考图连接
+                <Layers size={12} className="text-emerald-300" />
+                主体候选：{derivedSubjects.length} 组 · 连接参考图 {connectedImages.length} 张
               </div>
             </div>
-            {data.mode !== "videoOnly" && data.useCharacters !== false && (
+
+            {effectiveMode === "subject" && (
               <div className="space-y-1">
                 <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
-                  解析到的主体（@引用）
+                  Prompt 占位规则
                 </div>
-                {derivedSubjects.length === 0 ? (
-                  <div className="text-[10px] text-amber-200">未检测到 @ 身份引用，建议在提示词中插入 @角色名 或 @角色名_槽位名。</div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {derivedSubjects.map((s, idx) => (
-                      <span
-                        key={`${s.name}-${idx}`}
-                        className={`px-2 py-1 rounded-full text-[10px] border ${
-                          s.status === 'match'
-                            ? 'bg-sky-500/15 border-sky-500/40 text-sky-100'
-                            : 'bg-amber-500/15 border-amber-500/40 text-amber-100'
-                        }`}
-                      >
-                        @{s.name} · 图 {s.images}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="text-[10px] leading-5 text-[var(--node-text-secondary)]">
+                  Q3 主体调用会把提示词中的 `@角色名` 自动改写成 `[@1] / [@2]` 这类主体槽位。
+                </div>
               </div>
             )}
+
+            {derivedSubjects.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {derivedSubjects.map((subject, idx) => (
+                  <span
+                    key={`${subject.name}-${idx}`}
+                    className={`px-2 py-1 rounded-full text-[10px] border ${
+                      subject.status === "match" || subject.status === "manual"
+                        ? "bg-sky-500/15 border-sky-500/40 text-sky-100"
+                        : "bg-amber-500/15 border-amber-500/40 text-amber-100"
+                    }`}
+                  >
+                    @{subject.name} · 图 {subject.images}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {warnings.length > 0 && (
               <div className="space-y-1">
                 <div className="text-[8px] font-black uppercase tracking-widest text-amber-300">Warnings</div>
                 <ul className="text-[10px] text-amber-200 list-disc list-inside space-y-0.5">
-                  {warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                  {warnings.map((warning, idx) => <li key={idx}>{warning}</li>)}
                 </ul>
               </div>
             )}

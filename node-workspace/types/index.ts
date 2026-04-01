@@ -226,13 +226,16 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   error: string | null;
   mode: ViduReferenceMode;
   useCharacters?: boolean;
-  subjects?: { id?: string; images: string[]; voiceId?: string }[];
+  autoSubjects?: boolean;
+  subjects?: { name: string; images?: string[]; videos?: string[]; voiceId?: string; serverId?: string }[];
   voiceId?: string;
   aspectRatio?: string;
   resolution?: string;
   duration?: number;
-  movementAmplitude?: string;
+  audioEnabled?: boolean;
+  bgm?: boolean;
   offPeak?: boolean;
+  watermark?: boolean;
   model?: string;
   seed?: number;
 }

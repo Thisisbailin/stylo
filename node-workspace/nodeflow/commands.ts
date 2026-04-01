@@ -1,8 +1,20 @@
-import type { XYPosition } from "@xyflow/react";
+import type { Connection, EdgeChange, NodeChange, XYPosition } from "@xyflow/react";
 import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
+import type { NodeFlowCanvasLink, NodeFlowCanvasNode } from "./reactflow";
 import { buildNodeFlowLinkId } from "./links";
-import { appendNodeToNodeFlow, appendNodesAndLinksToNodeFlow, type NodeFlowMutableState } from "./mutations";
+import {
+  appendNodeToNodeFlow,
+  appendNodesAndLinksToNodeFlow,
+  connectNodesInNodeFlow,
+  removeLinkFromNodeFlow,
+  removeNodeFromNodeFlow,
+  toggleNodeFlowLinkPauseInState,
+  type NodeFlowMutableState,
+} from "./mutations";
 import { createDefaultNodeFlowNodeData } from "./defaults";
+import { applyNodeFlowNodeChanges } from "./reactflow";
+import { applyNodeFlowLinkChanges } from "./links";
+import { normalizeNodeFlowGroupBindings } from "./state";
 
 type CommandState = NodeFlowMutableState & {
   activeView?: string | null;
@@ -135,3 +147,78 @@ export const appendExternalNodesAndLinksCommand = ({
 }) => ({
   state: appendNodesAndLinksToNodeFlow(state, nodes, links),
 });
+
+export const connectNodeFlowNodesCommand = ({
+  state,
+  connection,
+}: {
+  state: NodeFlowMutableState;
+  connection: Connection;
+}) => ({
+  state: connectNodesInNodeFlow(state, connection),
+});
+
+export const removeNodeFlowLinkCommand = ({
+  state,
+  linkId,
+}: {
+  state: NodeFlowMutableState;
+  linkId: string;
+}) => ({
+  state: removeLinkFromNodeFlow(state, linkId),
+});
+
+export const toggleNodeFlowLinkPauseCommand = ({
+  state,
+  linkId,
+}: {
+  state: NodeFlowMutableState;
+  linkId: string;
+}) => ({
+  state: toggleNodeFlowLinkPauseInState(state, linkId),
+});
+
+export const removeNodeFlowNodeCommand = ({
+  state,
+  nodeId,
+}: {
+  state: NodeFlowMutableState;
+  nodeId: string;
+}) => ({
+  state: removeNodeFromNodeFlow(state, nodeId),
+});
+
+export const applyNodeFlowCanvasNodeChangesCommand = ({
+  state,
+  changes,
+}: {
+  state: NodeFlowMutableState;
+  changes: NodeChange<NodeFlowCanvasNode>[];
+}) => {
+  const nextNodes = applyNodeFlowNodeChanges(changes, state.nodes);
+  return {
+    state: {
+      ...state,
+      revision: state.revision + 1,
+      nodes: normalizeNodeFlowGroupBindings(nextNodes, state.links),
+    },
+  };
+};
+
+export const applyNodeFlowCanvasLinkChangesCommand = ({
+  state,
+  changes,
+}: {
+  state: NodeFlowMutableState;
+  changes: EdgeChange<NodeFlowCanvasLink>[];
+}) => {
+  const nextLinks = applyNodeFlowLinkChanges(changes, state.links);
+  return {
+    state: {
+      ...state,
+      revision: state.revision + 1,
+      links: nextLinks,
+      nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
+    },
+  };
+};

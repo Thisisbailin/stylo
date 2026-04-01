@@ -20,25 +20,21 @@ import {
 } from "../types";
 import type { ProjectRoleIdentity } from "../../types";
 import {
-  applyNodeFlowLinkChanges,
-} from "../nodeflow/links";
-import { applyNodeFlowNodeChanges, type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/reactflow";
-import {
-  normalizeNodeFlowGroupBindings,
-} from "../nodeflow/state";
-import {
-  connectNodesInNodeFlow,
   patchNodeFlowNodeData,
   patchNodeFlowNodeStyle,
-  removeLinkFromNodeFlow,
-  removeNodeFromNodeFlow,
-  toggleNodeFlowLinkPauseInState,
 } from "../nodeflow/mutations";
 import {
+  applyNodeFlowCanvasLinkChangesCommand,
+  applyNodeFlowCanvasNodeChangesCommand,
   appendExternalNodesAndLinksCommand,
+  connectNodeFlowNodesCommand,
   createNodeFlowNodeCommand,
   pasteClipboardIntoNodeFlow,
+  removeNodeFlowLinkCommand,
+  removeNodeFlowNodeCommand,
+  toggleNodeFlowLinkPauseCommand,
 } from "../nodeflow/commands";
+import { type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/reactflow";
 import { loadNodeFlowTemplates, persistNodeFlowTemplates } from "../nodeflow/templates";
 import {
   applyTemplateToNodeFlow,
@@ -58,6 +54,12 @@ import {
   createEmptyNodeFlowContextSnapshot,
   createIdleNodeFlowExecutionState,
 } from "../nodeflow/sessionState";
+import {
+  appendGlobalAssetHistoryItem,
+  clearGlobalAssetHistoryEntries,
+  createEmptyNodeFlowAssetState,
+  removeGlobalAssetHistoryEntry,
+} from "../nodeflow/assets";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -173,7 +175,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   linkStyle: "curved" as LinkStyle,
   clipboard: null,
   ...createIdleNodeFlowExecutionState(),
-  globalAssetHistory: [],
+  ...createEmptyNodeFlowAssetState(),
   ...createEmptyNodeFlowCanvasState(),
   groupTemplates: loadNodeFlowTemplates(),
   globalStyleGuide: undefined,
@@ -225,41 +227,28 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   removeNode: (nodeId, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);
-    set((state) => removeNodeFromNodeFlow(state, nodeId));
+    set((state) => removeNodeFlowNodeCommand({ state, nodeId }).state);
   },
 
   onNodesChange: (changes) =>
-    set((state) => {
-      const nextNodes = applyNodeFlowNodeChanges(changes, state.nodes);
-      return {
-        revision: state.revision + 1,
-        nodes: normalizeNodeFlowGroupBindings(nextNodes, state.links),
-      };
-    }),
+    set((state) => applyNodeFlowCanvasNodeChangesCommand({ state, changes }).state),
 
   onLinksChange: (changes) =>
-    set((state) => {
-      const nextLinks = applyNodeFlowLinkChanges(changes, state.links);
-      return {
-        revision: state.revision + 1,
-        links: nextLinks,
-        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
-      };
-    }),
+    set((state) => applyNodeFlowCanvasLinkChangesCommand({ state, changes }).state),
 
   connectNodes: (connection, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);
-    set((state) => connectNodesInNodeFlow(state, connection));
+    set((state) => connectNodeFlowNodesCommand({ state, connection }).state);
   },
 
   removeLink: (linkId, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);
-    set((state) => removeLinkFromNodeFlow(state, linkId));
+    set((state) => removeNodeFlowLinkCommand({ state, linkId }).state);
   },
 
   toggleLinkPause: (linkId, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);
-    set((state) => toggleNodeFlowLinkPauseInState(state, linkId));
+    set((state) => toggleNodeFlowLinkPauseCommand({ state, linkId }).state);
   },
 
   copySelectedNodes: () => {
@@ -412,24 +401,11 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   setPausedNode: (nodeId) => set({ pausedAtNodeId: nodeId }),
 
   addToGlobalHistory: (item) => {
-    const newItem = { ...item, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: Date.now() };
-    set((state) => {
-      if (item.sourceId) {
-        const existingIndex = state.globalAssetHistory.findIndex((entry) => entry.sourceId === item.sourceId && entry.type === item.type);
-        if (existingIndex !== -1) {
-          const updated = [...state.globalAssetHistory];
-          updated[existingIndex] = { ...updated[existingIndex], ...newItem, id: updated[existingIndex].id };
-          return { globalAssetHistory: updated };
-        }
-      }
-      return { globalAssetHistory: [newItem, ...state.globalAssetHistory] };
-    });
+    set((state) => appendGlobalAssetHistoryItem(state, item));
   },
-  removeGlobalHistoryItem: (id) => set((state) => ({ globalAssetHistory: state.globalAssetHistory.filter((item) => item.id !== id) })),
+  removeGlobalHistoryItem: (id) => set((state) => removeGlobalAssetHistoryEntry(state, id)),
   clearGlobalHistory: (type) =>
-    set((state) => ({
-      globalAssetHistory: type ? state.globalAssetHistory.filter((item) => item.type !== type) : [],
-    })),
+    set((state) => clearGlobalAssetHistoryEntries(state, type)),
 
   addNodesAndLinks: (newNodes, newLinks, options) => {
     assertExpectedRevision(get().revision, options?.expectedRevision);

@@ -3,11 +3,7 @@ import {
   At,
   ArrowUp,
   CircleNotch,
-  Lightbulb,
   Paperclip,
-  Question,
-  Robot,
-  Sparkle,
   X,
 } from "@phosphor-icons/react";
 import { useConfig } from "../../hooks/useConfig";
@@ -227,6 +223,7 @@ export const QalamAgent: React.FC<Props> = ({
   onDockFrameChange,
   renderCollapsedTrigger = true,
 }) => {
+  const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
@@ -245,7 +242,7 @@ export const QalamAgent: React.FC<Props> = ({
   const viewport = useNodeFlowStore((state) => state.viewport);
   const [collapsed, setCollapsed] = useState(true);
   const [isRevealing, setIsRevealing] = useState(false);
-  const [mood, setMood] = useState<"default" | "thinking" | "loading" | "playful" | "question">("default");
+  const [panelPhase, setPanelPhase] = useState<"collapsed" | "opening" | "open" | "closing">("collapsed");
   const [input, setInput] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -319,6 +316,7 @@ export const QalamAgent: React.FC<Props> = ({
     typeof window !== "undefined" ? window.innerWidth : 1200
   );
   const handledSubmitRequestRef = useRef<number>(0);
+  const phaseTimerRef = useRef<number | null>(null);
   const bridge = useMemo<QalamAgentBridge>(
     () => createQalamAgentBridge({
       getProjectData: () => projectData,
@@ -535,16 +533,51 @@ export const QalamAgent: React.FC<Props> = ({
     onCollapsedChange?.(collapsed);
   }, [collapsed, onCollapsedChange]);
 
+  useEffect(() => {
+    return () => {
+      if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
+    };
+  }, []);
+
   const triggerReveal = useCallback(() => {
     setIsRevealing(true);
     setTimeout(() => setIsRevealing(false), 900);
   }, []);
 
+  const openPanel = useCallback(
+    (focusComposer = true) => {
+      if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
+      setCollapsed(false);
+      setPanelPhase((prev) => (prev === "open" ? "open" : "opening"));
+      triggerReveal();
+      phaseTimerRef.current = window.setTimeout(() => {
+        setPanelPhase("open");
+        phaseTimerRef.current = null;
+      }, PANEL_ANIMATION_MS);
+      if (focusComposer) {
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+          resizeInput(inputRef.current);
+        });
+      }
+    },
+    [resizeInput, triggerReveal]
+  );
+
+  const closePanel = useCallback(() => {
+    if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
+    setPanelPhase("closing");
+    phaseTimerRef.current = window.setTimeout(() => {
+      setCollapsed(true);
+      setPanelPhase("collapsed");
+      phaseTimerRef.current = null;
+    }, PANEL_ANIMATION_MS);
+  }, []);
+
   useEffect(() => {
     if (!settingsOpen) return;
-    setCollapsed(false);
-    triggerReveal();
-  }, [settingsOpen, triggerReveal]);
+    openPanel(false);
+  }, [openPanel, settingsOpen]);
 
   useEffect(() => {
     resizeInput(inputRef.current);
@@ -560,7 +593,6 @@ export const QalamAgent: React.FC<Props> = ({
   const submitText = useCallback(async (rawText: string) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
-    setMood("loading");
     setMessages((prev) => {
       const nextOrder = prev.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
       const userMsg: Message = { role: "user", text: cleanedInput, kind: "chat", order: nextOrder };
@@ -616,7 +648,6 @@ export const QalamAgent: React.FC<Props> = ({
       });
     } finally {
       setIsSending(false);
-      setMood("thinking");
     }
   }, [isSending, importNodeFlow, mentionTags, runAgentMessage, setMessages, setProjectData]);
 
@@ -635,29 +666,16 @@ export const QalamAgent: React.FC<Props> = ({
     void sendMessage();
   }, [cancelAgentRun, isSending, sendMessage]);
 
-  const moodVisual = () => {
-    if (isSending || mood === "loading") {
-      return { icon: <CircleNotch size={16} className="animate-spin text-sky-300" weight="bold" />, bg: "bg-sky-500/20", ring: "ring-sky-300/30" };
-    }
-    switch (mood) {
-      case "thinking":
-        return { icon: <Lightbulb size={16} className="text-amber-300" weight="regular" />, bg: "bg-amber-500/15", ring: "ring-amber-300/30" };
-      case "playful":
-        return { icon: <Sparkle size={16} className="text-sky-300" weight="regular" />, bg: "bg-sky-500/15", ring: "ring-sky-300/30" };
-      case "question":
-        return { icon: <Question size={16} className="text-stone-300" weight="regular" />, bg: "bg-stone-500/10", ring: "ring-stone-300/30" };
-      default:
-        return { icon: <Robot size={16} className="text-emerald-300" weight="regular" />, bg: "bg-emerald-500/15", ring: "ring-emerald-300/30" };
-    }
-  };
-  const panelClassName = "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] overflow-hidden qalam-panel";
+  const panelClassName = "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
+  const dockInset = 16;
+  const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
-    top: 16,
-    bottom: 16,
-    left: 16,
-    width: Math.min(420, Math.max(320, viewportWidth - 32)),
-    maxWidth: "calc(100vw - 32px)",
+    top: dockInset,
+    bottom: dockInset,
+    left: dockInset,
+    width: Math.min(420, Math.max(320, viewportWidth - dockInset * 2)),
+    maxWidth: `calc(100vw - ${dockInset * 2}px)`,
     zIndex: 80,
   };
 
@@ -675,76 +693,59 @@ export const QalamAgent: React.FC<Props> = ({
   }, [projectData]);
 
   const formatNumber = (n: number) => n.toLocaleString();
+  const wordmarkTone = isSending ? "text-[#eef8f2]" : "text-[var(--app-text-primary)]";
   const qalamMark = (
-    <div className="relative inline-flex h-11 items-center gap-3 rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] pl-3.5 pr-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_36px_-28px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+    <div className="relative inline-flex h-10 items-center">
       <span
-        className={`pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_16%_50%,rgba(122,183,160,0.22),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(255,255,255,0.12),transparent_38%)] transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-35"}`}
+        className={`pointer-events-none absolute -inset-x-3 -inset-y-2 rounded-[14px] bg-[radial-gradient(circle_at_20%_50%,rgba(122,183,160,0.18),transparent_30%),radial-gradient(circle_at_75%_25%,rgba(255,255,255,0.1),transparent_42%)] transition-all duration-700 ${isRevealing ? "scale-100 opacity-100" : "scale-95 opacity-35"}`}
       />
-      <span
-        className={`relative flex h-7 w-7 items-center justify-center rounded-full border border-white/8 bg-[rgba(122,183,160,0.08)] text-[var(--app-accent-strong)] ${isRevealing ? "animate-pulse" : ""}`}
-      >
-        <Sparkle size={14} weight="fill" />
-      </span>
-      <span className="relative text-[22px] font-semibold tracking-[-0.05em] text-[var(--app-text-primary)]">Qalam</span>
+      <span className={`relative text-[30px] font-semibold tracking-[-0.065em] transition-colors duration-300 ${wordmarkTone}`}>Qalam</span>
     </div>
   );
-  useEffect(() => {
-    if (isSending) return;
-    const order: Array<typeof mood> = ["default", "thinking", "playful", "question"];
-    const timer = setInterval(() => {
-      setMood((prev) => {
-        const next = order[(order.indexOf(prev) + 1) % order.length];
-        return next;
-      });
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [isSending]);
 
   useEffect(() => {
     if (!openRequest) return;
-    setCollapsed(false);
-    triggerReveal();
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      resizeInput(inputRef.current);
-    });
-  }, [openRequest, resizeInput, triggerReveal]);
+    openPanel(true);
+  }, [openPanel, openRequest]);
 
   useEffect(() => {
     if (!submitRequest?.id || !submitRequest.text.trim()) return;
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
-    setCollapsed(false);
-    triggerReveal();
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      resizeInput(inputRef.current);
-    });
+    openPanel(true);
     void submitText(submitRequest.text);
-  }, [submitRequest, submitText, resizeInput, triggerReveal]);
+  }, [openPanel, submitRequest, submitText]);
 
-  if (collapsed) {
+  if (panelPhase === "collapsed") {
     if (!renderCollapsedTrigger) return null;
     return (
       <button
-        onClick={() => {
-          setCollapsed(false);
-          triggerReveal();
-        }}
-        className="fixed left-4 top-4 z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
+        onClick={() => openPanel(true)}
+        className="fixed z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
         aria-label="Open Qalam"
-        style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
+        style={{ left: dockInset + titleOrigin.x, top: dockInset + titleOrigin.y }}
       >
-        {qalamMark}
+        <span
+          style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
+          className="block"
+        >
+          {qalamMark}
+        </span>
       </button>
     );
   }
+
+  const collapsedClipPath = `inset(${titleOrigin.y}px calc(100% - ${titleOrigin.x + titleOrigin.width}px) calc(100% - ${titleOrigin.y + titleOrigin.height}px) ${titleOrigin.x}px round ${titleOrigin.radius}px)`;
 
   return (
     <div
       className={panelClassName}
       style={{
         ...panelStyle,
+        clipPath: panelPhase === "open" ? "inset(0 0 0 0 round 30px)" : collapsedClipPath,
+        borderRadius: panelPhase === "open" ? 30 : titleOrigin.radius,
+        transition: `clip-path ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), border-radius ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+        pointerEvents: panelPhase === "closing" ? "none" : "auto",
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
@@ -752,13 +753,13 @@ export const QalamAgent: React.FC<Props> = ({
         className={`pointer-events-none absolute left-0 top-0 h-36 w-56 bg-[radial-gradient(circle_at_top_left,rgba(122,183,160,0.22),transparent_62%)] blur-2xl transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-55"}`}
       />
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
-        <div className="qalam-header-shell relative z-20 shrink-0 flex items-start justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
+        <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
             {qalamMark}
             <button
               type="button"
               onClick={onOpenStats}
-              className="mt-0.5 inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
               title="打开 Agent Setting"
             >
               <span className="text-[var(--app-text-primary)]">Agent Setting</span>
@@ -767,8 +768,8 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCollapsed(true)}
-              className="mt-0.5 h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+              onClick={closePanel}
+              className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
               title="Close"
             >
               <X size={14} className="mx-auto" weight="bold" />

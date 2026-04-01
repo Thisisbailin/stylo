@@ -306,39 +306,59 @@ export interface ViduTaskResult {
 }
 
 export interface ViduSubject {
-  id?: string;
-  images: string[];
+  name: string;
+  images?: string[];
+  videos?: string[];
   voiceId?: string;
+  serverId?: string;
 }
 
-export interface ViduReferenceVideoAudioParams {
+export interface ViduReferenceVideoSubjectParams {
   model?: string;
   subjects: ViduSubject[];
   prompt: string;
+  autoSubjects?: boolean;
   duration?: number;
+  seed?: number;
+  aspectRatio?: string;
+  resolution?: string;
   audio?: boolean;
   offPeak?: boolean;
+  watermark?: boolean;
+  wmPosition?: number;
+  wmUrl?: string;
+  metaData?: string;
+  callbackUrl?: string;
+  payload?: string;
 }
 
-export interface ViduReferenceVideoVisualParams {
+export interface ViduReferenceVideoNonSubjectParams {
   model?: string;
   images: string[];
+  videos?: string[];
+  sounds?: string[];
   prompt: string;
+  bgm?: boolean;
   duration?: number;
   aspectRatio?: string;
   resolution?: string;
-  movementAmplitude?: string;
   seed?: number;
   offPeak?: boolean;
   audio?: boolean;
+  watermark?: boolean;
+  wmPosition?: number;
+  wmUrl?: string;
+  metaData?: string;
+  callbackUrl?: string;
+  payload?: string;
 }
 
-export type ViduReferenceMode = 'audioVideo' | 'videoOnly';
+export type ViduReferenceMode = 'subject' | 'nonSubject' | 'audioVideo' | 'videoOnly';
 
 export interface ViduReferenceRequest {
   mode: ViduReferenceMode;
-  audioParams?: ViduReferenceVideoAudioParams;
-  visualParams?: ViduReferenceVideoVisualParams;
+  subjectParams?: ViduReferenceVideoSubjectParams;
+  nonSubjectParams?: ViduReferenceVideoNonSubjectParams;
 }
 
 export interface ViduVideoGenNodeData extends BaseNodeData {
@@ -349,12 +369,16 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   error: string | null;
   mode: ViduReferenceMode;
   subjects?: ViduSubject[];
+  useCharacters?: boolean;
+  autoSubjects?: boolean;
   voiceId?: string;
   aspectRatio?: string;
   resolution?: string;
   duration?: number;
-  movementAmplitude?: string;
+  audioEnabled?: boolean;
+  bgm?: boolean;
   offPeak?: boolean;
+  watermark?: boolean;
   model?: string;
   seed?: number;
 }

@@ -142,13 +142,17 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         videoUrl: undefined,
         status: "idle",
         error: null,
-        mode: "audioVideo",
+        mode: "subject",
         useCharacters: true,
+        autoSubjects: false,
         aspectRatio: "16:9",
-        resolution: "1080p",
-        duration: 10,
-        movementAmplitude: "auto",
-        offPeak: true,
+        resolution: "720p",
+        duration: 5,
+        audioEnabled: true,
+        offPeak: false,
+        watermark: false,
+        bgm: false,
+        model: "viduq3",
       } as ViduVideoGenNodeData;
     case "seedanceVideoGen":
       return {

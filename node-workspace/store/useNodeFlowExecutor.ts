@@ -786,14 +786,19 @@ export const useNodeFlowExecutor = () => {
       ...(config.viduConfig || INITIAL_VIDU_CONFIG),
       baseUrl: config.viduConfig?.baseUrl || INITIAL_VIDU_CONFIG.baseUrl,
       apiKey: "",
-      defaultModel: config.viduConfig?.defaultModel || INITIAL_VIDU_CONFIG.defaultModel || "viduq2-pro",
+      defaultModel: config.viduConfig?.defaultModel || INITIAL_VIDU_CONFIG.defaultModel || "viduq3",
     };
-    const fixedModel = viduConfig.defaultModel;
-
-    const mode = data.mode || "audioVideo";
+    const model = data.model || viduConfig.defaultModel || "viduq3";
+    const requestedMode =
+      data.mode === "audioVideo"
+        ? "subject"
+        : data.mode === "videoOnly"
+          ? "nonSubject"
+          : (data.mode || "subject");
+    const normalizedMode = model === "viduq3-mix" ? "nonSubject" : requestedMode;
     const useCharacters = data.useCharacters !== false;
+    const audioEnabled = data.audioEnabled !== false;
 
-    const nodeFlowContext = store.nodeFlowContext;
     const resolvedIdentities = resolveBoundIdentities(entityBindings, atMentions as MentionData[] | undefined);
     const mentions = resolvedIdentities.length ? resolvedIdentities.map((item) => item.mention) : parseAtMentions(prompt);
     const resolvedIdentityByMention = new Map(resolvedIdentities.map((item) => [item.mention.toLowerCase(), item]));
@@ -823,106 +828,109 @@ export const useNodeFlowExecutor = () => {
       "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-1.png",
       "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-2.png",
     ];
+    const manualSubjects = Array.isArray(data.subjects)
+      ? data.subjects
+          .filter((item: any) => item && typeof item.name === "string" && item.name.trim())
+          .map((item: any) => ({
+            name: item.name.trim(),
+            images: Array.isArray(item.images) ? item.images.filter(Boolean).slice(0, 3) : [],
+            videos: Array.isArray(item.videos) ? item.videos.filter(Boolean).slice(0, 1) : [],
+            voiceId: item.voiceId || data.voiceId,
+            serverId: item.serverId,
+          }))
+      : [];
 
-    const resolvedSubjects =
-      useCharacters && mentions.length > 0
-        ? (() => {
-          const buckets = chunkImagesForSubjects(mentions.length);
-          return mentions.map((m, idx) => {
-            const hit = resolvedIdentityByMention.get(m.toLowerCase());
-            const mapped = identityImageMap.get(hit?.identityId || m.toLowerCase()) || [];
+    const subjectPromptResult = useCharacters && mentions.length > 0
+      ? mentions.reduce(
+          (acc, mention, idx) => {
+            const slotName = String(idx + 1);
+            const hit = resolvedIdentityByMention.get(mention.toLowerCase());
+            const mappedImages = identityImageMap.get(hit?.identityId || mention.toLowerCase()) || [];
+            const bucketFallback = chunkImagesForSubjects(mentions.length)[idx] || [];
+            const subjectImages = (mappedImages.length ? mappedImages : bucketFallback).filter(Boolean).slice(0, 3);
+            const nextPrompt = acc.prompt
+              .replace(new RegExp(`\\[@${escapeRegex(mention)}\\]`, "g"), `[@${slotName}]`)
+              .replace(new RegExp(`@${escapeRegex(mention)}`, "g"), `[@${slotName}]`);
             return {
-              id: hit?.identityId || m,
-              images: (mapped.length ? mapped : buckets[idx]) || [],
-              voiceId: data.voiceId || "professional_host",
-            };
-          });
-        })()
-        : (data.subjects && data.subjects.length > 0)
-          ? data.subjects
-          : (() => {
-            const fallbackBuckets = chunkImagesForSubjects(3);
-            const result: { id?: string; images: string[]; voiceId?: string }[] = [];
-            for (let i = 0; i < fallbackBuckets.length; i++) {
-              result.push({
-                id: `subject${i + 1}`,
-                images: fallbackBuckets[i],
-                voiceId: data.voiceId || "professional_host",
-              });
-            }
-            return result.length
-              ? result
-              : [
+              prompt: nextPrompt,
+              subjects: [
+                ...acc.subjects,
                 {
-                  id: "subject1",
-                  images: [
-                    "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/image2video.png",
-                    "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-1.png",
-                    "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-2.png",
-                  ],
-                  voiceId: data.voiceId || "professional_host",
+                  name: slotName,
+                  images: subjectImages,
+                  voiceId: data.voiceId,
                 },
-              ];
-          })();
+              ],
+            };
+          },
+          { prompt, subjects: [] as Array<{ name: string; images?: string[]; videos?: string[]; voiceId?: string; serverId?: string }> }
+        )
+      : { prompt, subjects: [] as Array<{ name: string; images?: string[]; videos?: string[]; voiceId?: string; serverId?: string }> };
 
-    // Guarantee each subject has at least one image (Vidu API rejects empty arrays)
-    const hydratedSubjects = resolvedSubjects.map((s, idx) => {
-      const imgs = (s.images || []).filter(Boolean);
-      if (imgs.length) return s;
+    const subjectCandidates =
+      subjectPromptResult.subjects.length > 0 ? subjectPromptResult.subjects : manualSubjects;
+
+    const hydratedSubjects = subjectCandidates.map((subject, idx) => {
+      const subjectImages = Array.isArray(subject.images) ? subject.images.filter(Boolean).slice(0, 3) : [];
+      const subjectVideos = Array.isArray(subject.videos) ? subject.videos.filter(Boolean).slice(0, 1) : [];
+      if (subjectImages.length > 0 || subjectVideos.length > 0 || subject.serverId) return subject;
       const pool = images.length ? images : defaultSubjectImages;
       const fallbackImg = pool[idx % pool.length];
-      return { ...s, images: fallbackImg ? [fallbackImg] : defaultSubjectImages };
+      return { ...subject, images: fallbackImg ? [fallbackImg] : defaultSubjectImages.slice(0, 1) };
     });
 
-    const visualImages = images.length
-      ? images
-      : [
-        "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-1.png",
-        "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-2.png",
-        "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-3.png",
-      ];
+    const nonSubjectImages = images.filter(Boolean).slice(0, 7);
 
-    if (mode === "videoOnly" && visualImages.length === 0) {
-      store.updateNodeData(nodeId, { status: "error", error: "需要至少一张参考图" });
+    if (normalizedMode === "subject" && hydratedSubjects.length === 0) {
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: "Q3 主体调用需要至少 1 个主体。请连接身份图片，或切换到非主体调用。",
+      });
       return;
     }
 
-    const promptForVidu =
-      useCharacters && mentions.length > 0
-        ? mentions.reduce((acc, name, idx) => {
-          const reg = new RegExp(`@${escapeRegex(name)}`, "g");
-          return acc.replace(reg, `@${idx + 1}`);
-        }, prompt)
-        : prompt;
+    if (normalizedMode === "nonSubject" && nonSubjectImages.length === 0) {
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: "Q3 非主体调用至少需要 1 张参考图。",
+      });
+      return;
+    }
 
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
-      const request = mode === "audioVideo"
+      const request = normalizedMode === "subject"
         ? {
-          mode: "audioVideo" as const,
-          audioParams: {
-            model: fixedModel,
+          mode: "subject" as const,
+          subjectParams: {
+            model,
+            autoSubjects: data.autoSubjects === true,
             subjects: hydratedSubjects,
-            prompt: promptForVidu,
-            duration: data.duration ?? 10,
-            audio: true,
-            offPeak: data.offPeak !== false,
+            prompt: subjectPromptResult.prompt,
+            duration: data.duration ?? 5,
+            audio: audioEnabled,
+            seed: data.seed ?? 0,
+            aspectRatio: data.aspectRatio || "16:9",
+            resolution: data.resolution || "720p",
+            offPeak: model === "viduq3" && data.offPeak === true,
+            watermark: data.watermark === true,
           },
         }
         : {
-          mode: "videoOnly" as const,
-          visualParams: {
-            model: fixedModel,
-            images: visualImages,
-            prompt: promptForVidu,
-            duration: data.duration ?? 10,
+          mode: "nonSubject" as const,
+          nonSubjectParams: {
+            model,
+            images: nonSubjectImages,
+            prompt,
+            bgm: false,
+            duration: data.duration ?? 5,
             aspectRatio: data.aspectRatio || "16:9",
-            resolution: data.resolution || "1080p",
-            movementAmplitude: data.movementAmplitude || "auto",
+            resolution: data.resolution || "720p",
             seed: data.seed ?? 0,
-            offPeak: data.offPeak !== false,
-            audio: false,
+            offPeak: model === "viduq3" && audioEnabled ? data.offPeak === true : false,
+            audio: audioEnabled,
+            watermark: data.watermark === true,
           },
         };
 
