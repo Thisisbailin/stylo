@@ -66,6 +66,50 @@ const readProxyDebugHeaders = (response: Response) => ({
   keyQuery: response.headers.get("x-qalam-proxy-key-query") || "n/a",
 });
 
+export const fetchViduCredits = async (config?: ViduServiceConfig) => {
+  const { baseUrl, apiKey } = resolveConfig(config);
+  const url = `${baseUrl}/credits?show_detail`;
+
+  const response = await fetch(wrapWithProxy(url), {
+    method: "GET",
+    headers: buildHeaders(apiKey),
+  });
+
+  const text = await response.text();
+  console.log("[Vidu] Credits proxy debug:", {
+    url,
+    ...readProxyDebugHeaders(response),
+  });
+  console.log("[Vidu] Credits raw response:", text);
+
+  if (!response.ok) {
+    throw new Error(`Vidu credits failed (${response.status}): ${text}`);
+  }
+
+  try {
+    return JSON.parse(text) as {
+      remains?: Array<{
+        type?: string;
+        credit_remain?: number;
+        concurrency_limit?: number;
+        current_concurrency?: number;
+        queue_count?: number;
+      }>;
+      packages?: Array<{
+        id?: string | number;
+        name?: string;
+        type?: string;
+        concurrency?: number;
+        credit_amount?: number;
+        credit_remain?: number;
+        valid_to?: string;
+      }>;
+    };
+  } catch (err) {
+    throw new Error(`Failed to parse Vidu credits response: ${text}`);
+  }
+};
+
 const postJson = async <T>(path: string, body: Record<string, unknown>, config?: ViduServiceConfig): Promise<T> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;

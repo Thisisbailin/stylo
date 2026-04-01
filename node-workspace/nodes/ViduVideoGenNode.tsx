@@ -4,6 +4,8 @@ import { ViduVideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles } from "lucide-react";
+import * as ViduService from "../../services/viduService";
+import { INITIAL_VIDU_CONFIG } from "../../constants";
 
 type Props = {
   id: string;
@@ -20,6 +22,7 @@ const normalizeMode = (mode?: string) => {
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
   const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
+  const appConfig = useNodeFlowStore((state) => state.appConfig);
   const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -128,6 +131,52 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  };
+
+  const handleProbeCredits = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateNodeData(id, {
+      authProbeStatus: "loading",
+      authProbeSummary: "正在查询积分接口…",
+      authProbeDetail: null,
+    });
+    try {
+      const credits = await ViduService.fetchViduCredits({
+        ...(appConfig?.viduConfig || INITIAL_VIDU_CONFIG),
+        apiKey: "",
+      });
+      const remain = Array.isArray(credits.remains) ? credits.remains[0] : undefined;
+      const pkg = Array.isArray(credits.packages) ? credits.packages[0] : undefined;
+      const summary = remain
+        ? `鉴权成功 · 剩余积分 ${remain.credit_remain ?? "-"} · 并发 ${remain.current_concurrency ?? 0}/${remain.concurrency_limit ?? "-"}`
+        : `鉴权成功 · 已返回 ${Array.isArray(credits.packages) ? credits.packages.length : 0} 个积分包`;
+      const detail = JSON.stringify(
+        {
+          remains: credits.remains || [],
+          packages: (credits.packages || []).map((item) => ({
+            name: item.name,
+            type: item.type,
+            credit_remain: item.credit_remain,
+            concurrency: item.concurrency,
+            valid_to: item.valid_to,
+          })),
+          activeModel: model,
+        },
+        null,
+        2
+      );
+      updateNodeData(id, {
+        authProbeStatus: "complete",
+        authProbeSummary: summary,
+        authProbeDetail: detail,
+      });
+    } catch (err: any) {
+      updateNodeData(id, {
+        authProbeStatus: "error",
+        authProbeSummary: "查询积分接口失败",
+        authProbeDetail: err?.message || "Unknown Vidu credits probe error.",
+      });
+    }
   };
 
   return (
@@ -393,6 +442,42 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
             </span>
           </div>
         )}
+
+        <div className="node-panel space-y-2 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+              查询积分接口
+            </div>
+            <button
+              type="button"
+              onClick={handleProbeCredits}
+              className="inline-flex items-center justify-center px-3 py-1.5 rounded-full text-[9px] font-semibold uppercase tracking-widest text-[var(--node-text-secondary)] bg-white/5 hover:bg-white/10 transition"
+            >
+              {data.authProbeStatus === "loading" ? "Checking..." : "Run Probe"}
+            </button>
+          </div>
+          <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
+            按国内区官方文档调用 `GET /ent/v2/credits?show_detail`，用于做最小鉴权测试。
+          </div>
+          {data.authProbeSummary && (
+            <div
+              className={`rounded-[16px] border px-3 py-2 text-[10px] leading-5 ${
+                data.authProbeStatus === "complete"
+                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                  : data.authProbeStatus === "error"
+                    ? "border-red-400/30 bg-red-500/10 text-red-100"
+                    : "border-white/10 bg-white/5 text-[var(--node-text-secondary)]"
+              }`}
+            >
+              {data.authProbeSummary}
+            </div>
+          )}
+          {data.authProbeDetail && (
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-[16px] border border-[var(--node-border)] bg-black/20 p-3 text-[9px] leading-5 text-[var(--node-text-secondary)]">
+              {data.authProbeDetail}
+            </pre>
+          )}
+        </div>
       </div>
     </BaseNode>
   );

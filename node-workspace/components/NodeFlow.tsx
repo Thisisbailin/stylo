@@ -20,6 +20,7 @@ import { EditableEdge } from "../edges/EditableEdge";
 import {
   AudioInputNode,
   ImageInputNode, AnnotationNode, TextNode,
+  KnowledgeNode,
   ScriptBoardNode,
   StoryboardBoardNode,
   IdentityCardNode,
@@ -47,7 +48,7 @@ import { AnnotationModal } from "./AnnotationModal";
 import { ProjectData } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
-import { ArrowUp } from "@phosphor-icons/react";
+import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
 
@@ -55,6 +56,7 @@ const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
   audioInput: AudioInputNode,
   annotation: AnnotationNode,
+  knowledge: KnowledgeNode,
   text: TextNode,
   scriptBoard: ScriptBoardNode,
   storyboardBoard: StoryboardBoardNode,
@@ -430,8 +432,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
+  const [isQalamSending, setIsQalamSending] = useState(false);
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
   const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
+  const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
   const [composerInput, setComposerInput] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const openAgentSettingsPanel = useCallback(
@@ -1039,8 +1043,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             settingsOpen={showAgentSettings}
             openRequest={qalamOpenRequest}
             submitRequest={qalamSubmitRequest}
+            cancelRequest={qalamCancelRequest}
             onCollapsedChange={setIsQalamCollapsed}
             onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
+            onSendingChange={setIsQalamSending}
             renderCollapsedTrigger
           />
           <div
@@ -1140,6 +1146,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                 type="button"
                 onClick={() => {
                   const text = composerInput.trim();
+                  if (isQalamSending && !text) {
+                    setQalamCancelRequest((prev) => prev + 1);
+                    return;
+                  }
                   if (!text) {
                     setQalamOpenRequest((prev) => prev + 1);
                     return;
@@ -1148,14 +1158,20 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                   setQalamSubmitRequest({ id: Date.now(), text });
                 }}
                 className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
-                  composerInput.trim()
+                  isQalamSending
+                    ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
+                    : composerInput.trim()
                     ? "bg-[var(--app-accent-strong)] hover:brightness-105"
                     : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
                 }`}
-                title={composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
-                aria-label={composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
+                title={isQalamSending ? "Stop Qalam" : composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
+                aria-label={isQalamSending ? "Stop Qalam" : composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
               >
-                <ArrowUp size={16} weight="bold" />
+                {isQalamSending ? (
+                  <CircleNotch size={16} weight="bold" className="animate-spin" />
+                ) : (
+                  <ArrowUp size={16} weight="bold" />
+                )}
               </button>
             </div>
           </div>

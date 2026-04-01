@@ -1,18 +1,18 @@
-import type { ProjectData, ProjectRoleIdentity } from "../../types";
-import { resolveBuiltinSkill } from "../runtime/skills";
-import { listBuiltinSkills } from "../runtime/skills";
+import { listBuiltinSkills, resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { buildNodeFlowSearchText, toNodeFlowLinkRecord, toNodeFlowNodeRecord } from "../../node-workspace/nodeflow/model";
+import {
+  buildGraphNodesFromWorkflow,
+  buildProjectedSourceNodes,
+  buildProjectGraphMaps,
+  buildProjectGraphSearchText,
+} from "../../node-workspace/nodeflow/projectGraph";
 
 export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "skills",
-  "script",
-  "storyboard",
-  "understanding",
-  "characters",
-  "scenes",
-  "guides",
-  "workflow",
+  "source",
+  "graph",
+  "links",
+  "maps",
 ] as const;
 
 const searchProjectResourceParameters = {
@@ -20,7 +20,7 @@ const searchProjectResourceParameters = {
   properties: {
     query: {
       type: "string",
-      description: "Search query in Chinese or any exact term to locate project resources.",
+      description: "Search query in Chinese or any exact term to locate graph resources.",
     },
     resource_scopes: {
       type: "array",
@@ -28,11 +28,7 @@ const searchProjectResourceParameters = {
         type: "string",
         enum: [...SEARCH_PROJECT_RESOURCE_SCOPES],
       },
-      description: "Optional scopes to search. Defaults to all supported scopes, including storyboard rows.",
-    },
-    episode_id: {
-      type: "integer",
-      description: "Optional episode number to narrow script search.",
+      description: "Optional scopes to search. Defaults to all supported scopes.",
     },
     max_matches: {
       type: "integer",
@@ -96,86 +92,10 @@ const parseArgs = (input: unknown) => {
 
   return {
     query,
-    scopes: normalizedScopes.length
-      ? normalizedScopes
-      : ([...SEARCH_PROJECT_RESOURCE_SCOPES] as Scope[]),
-    episodeId: toPositiveInteger(raw.episode_id ?? raw.episodeId),
-    maxMatches: Math.max(1, Math.min(20, toPositiveInteger(raw.max_matches ?? raw.maxMatches) || 8)),
+    scopes: normalizedScopes.length ? normalizedScopes : ([...SEARCH_PROJECT_RESOURCE_SCOPES] as Scope[]),
+    maxMatches: Math.max(1, Math.min(30, toPositiveInteger(raw.max_matches ?? raw.maxMatches) || 8)),
     maxChars: Math.max(120, Math.min(1200, toPositiveInteger(raw.max_chars ?? raw.maxChars) || 320)),
   };
-};
-
-const pushCharacterMatches = (matches: any[], roles: ProjectRoleIdentity[], query: string, maxMatches: number, radius: number) => {
-  for (const role of roles.filter((role) => role.kind === "person")) {
-    if (matches.length >= maxMatches) break;
-    const haystack = [role.name, role.summary, role.description, role.episodeUsage, ...(role.tags || [])]
-      .filter(Boolean)
-      .join(" ");
-    if (haystack && includesQuery(haystack, query)) {
-      matches.push({
-        scope: "character",
-        itemId: role.id,
-        characterName: role.name,
-        snippet: buildSnippet(haystack, query, radius),
-      });
-    }
-  }
-};
-
-const pushSceneMatches = (matches: any[], roles: ProjectRoleIdentity[], query: string, maxMatches: number, radius: number) => {
-  for (const role of roles.filter((role) => role.kind === "scene")) {
-    if (matches.length >= maxMatches) break;
-    const haystack = [role.name, role.description, role.visualTags, role.episodeUsage]
-      .filter(Boolean)
-      .join(" ");
-    if (haystack && includesQuery(haystack, query)) {
-      matches.push({
-        scope: "scene_profile",
-        itemId: role.id,
-        locationName: role.name,
-        snippet: buildSnippet(haystack, query, radius),
-      });
-    }
-  }
-};
-
-const pushStoryboardMatches = (matches: any[], data: ProjectData, args: ReturnType<typeof parseArgs>, radius: number) => {
-  const targetEpisodes = args.episodeId
-    ? (data.episodes || []).filter((episode) => episode.id === args.episodeId)
-    : data.episodes || [];
-  for (const episode of targetEpisodes) {
-    if (matches.length >= args.maxMatches) break;
-    for (const shot of episode.shots || []) {
-      if (matches.length >= args.maxMatches) break;
-      const haystack = [
-        shot.id,
-        shot.duration,
-        shot.shotType,
-        shot.focalLength,
-        shot.movement,
-        shot.composition,
-        shot.blocking,
-        shot.dialogue,
-        shot.sound,
-        shot.lightingVfx,
-        shot.editingNotes,
-        shot.notes,
-        shot.soraPrompt,
-        shot.storyboardPrompt,
-      ]
-        .filter(Boolean)
-        .join(" ");
-      if (haystack && includesQuery(haystack, args.query)) {
-        matches.push({
-          scope: "episode_storyboard",
-          episodeId: episode.id,
-          episodeTitle: episode.title,
-          shotId: shot.id,
-          snippet: buildSnippet(haystack, args.query, radius),
-        });
-      }
-    }
-  }
 };
 
 const pushSkillMatches = async (matches: any[], query: string, maxMatches: number, radius: number) => {
@@ -183,18 +103,13 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
   for (const manifest of manifests) {
     if (matches.length >= maxMatches) break;
     const resolved = await resolveBuiltinSkill(manifest.id);
-    const haystack = [
-      manifest.title,
-      manifest.description,
-      ...(manifest.tags || []),
-      resolved?.guidanceMarkdown || "",
-    ]
+    const haystack = [manifest.title, manifest.description, ...(manifest.tags || []), resolved?.guidanceMarkdown || ""]
       .filter(Boolean)
       .join(" ");
     if (haystack && includesQuery(haystack, query)) {
       matches.push({
         scope: "skill_package",
-        itemId: manifest.id,
+        item_id: manifest.id,
         title: manifest.title,
         snippet: buildSnippet(haystack, query, radius),
       });
@@ -202,167 +117,100 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
   }
 };
 
-const pushWorkflowMatches = (matches: any[], bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>, radius: number) => {
-  const workflow = bridge.getNodeFlowSnapshot();
-  for (const node of workflow.nodes) {
-    if (matches.length >= args.maxMatches) break;
-    const nodeRecord = toNodeFlowNodeRecord(node);
-    const haystack = buildNodeFlowSearchText(node);
-    if (haystack && includesQuery(haystack, args.query)) {
-      matches.push({
-        scope: "workflow_node",
-        nodeId: nodeRecord.id,
-        nodeRef: nodeRecord.ref,
-        nodeType: nodeRecord.kind,
-        nodeKind: nodeRecord.kind,
-        title: nodeRecord.title || nodeRecord.id,
-        snippet: buildSnippet(haystack, args.query, radius),
-      });
+export const searchProjectResourceToolDef = {
+  name: "search_project_resource",
+  description:
+    "Search projected source nodes, graph nodes, graph links, maps, and skill packages when the exact locator is unknown.",
+  parameters: searchProjectResourceParameters,
+  execute: async (input: unknown, bridge: QalamAgentBridge) => {
+    const args = parseArgs(input);
+    const projectData = bridge.getProjectData();
+    const workflow = bridge.getNodeFlowSnapshot();
+    const matches: any[] = [];
+    const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
+
+    if (args.scopes.includes("skills")) {
+      await pushSkillMatches(matches, args.query, args.maxMatches, radius);
     }
-  }
-  for (const edge of workflow.links) {
-    if (matches.length >= args.maxMatches) break;
-    const link = toNodeFlowLinkRecord(edge);
-    const haystack = [
-      link.id,
-      link.fromNodeId,
-      link.toNodeId,
-      link.fromPort,
-      link.toPort,
-      link.paused ? "pause paused 暂停" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    if (haystack && includesQuery(haystack, args.query)) {
-      matches.push({
-        scope: "workflow_connection",
-        linkId: link.id,
-        snippet: buildSnippet(haystack, args.query, radius),
-      });
-    }
-  }
-};
 
-const searchProject = async (data: ProjectData, bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
-  const matches: any[] = [];
-  const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
-  const targetEpisodes = args.episodeId
-    ? (data.episodes || []).filter((episode) => episode.id === args.episodeId)
-    : data.episodes || [];
-
-  if (args.scopes.includes("skills")) {
-    await pushSkillMatches(matches, args.query, args.maxMatches, radius);
-  }
-
-  if (args.scopes.includes("script")) {
-    for (const episode of targetEpisodes) {
-      if (matches.length >= args.maxMatches) break;
-      const episodeContent = episode.content || "";
-      if (episodeContent && includesQuery(episodeContent, args.query)) {
-        matches.push({
-          scope: "episode_script",
-          episodeId: episode.id,
-          episodeTitle: episode.title,
-          snippet: buildSnippet(episodeContent, args.query, radius),
-        });
-      }
-      for (const scene of episode.scenes || []) {
+    if (args.scopes.includes("source")) {
+      for (const node of buildProjectedSourceNodes(projectData)) {
         if (matches.length >= args.maxMatches) break;
-        const haystack = [scene.title, scene.content, scene.location, scene.timeOfDay].filter(Boolean).join(" ");
+        const haystack = buildProjectGraphSearchText(node);
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "scene_script",
-            episodeId: episode.id,
-            episodeTitle: episode.title,
-            sceneId: scene.id,
-            sceneTitle: scene.title,
+            scope: "source_node",
+            ref: node.ref,
+            title: node.title,
+            node_type: node.type,
             snippet: buildSnippet(haystack, args.query, radius),
           });
         }
       }
     }
-  }
 
-  if (matches.length < args.maxMatches && args.scopes.includes("storyboard")) {
-    pushStoryboardMatches(matches, data, args, radius);
-  }
-
-  if (matches.length < args.maxMatches && args.scopes.includes("understanding")) {
-    const projectSummary = data.context?.projectSummary || "";
-    if (projectSummary && includesQuery(projectSummary, args.query)) {
-      matches.push({
-        scope: "project_summary",
-        snippet: buildSnippet(projectSummary, args.query, radius),
-      });
-    }
-    for (const summary of data.context?.episodeSummaries || []) {
-      if (matches.length >= args.maxMatches) break;
-      if (summary.summary && includesQuery(summary.summary, args.query)) {
-        matches.push({
-          scope: "episode_summary",
-          episodeId: summary.episodeId,
-          snippet: buildSnippet(summary.summary, args.query, radius),
-        });
+    if (args.scopes.includes("graph")) {
+      for (const node of buildGraphNodesFromWorkflow(workflow)) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = buildProjectGraphSearchText(node);
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "graph_node",
+            node_id: node.nodeId,
+            node_ref: node.ref,
+            plane: node.plane,
+            node_type: node.type,
+            title: node.title,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
       }
     }
-  }
 
-  if (matches.length < args.maxMatches && args.scopes.includes("characters")) {
-    pushCharacterMatches(matches, data.context?.roles || [], args.query, args.maxMatches, radius);
-  }
-
-  if (matches.length < args.maxMatches && args.scopes.includes("scenes")) {
-    pushSceneMatches(matches, data.context?.roles || [], args.query, args.maxMatches, radius);
-  }
-
-  if (matches.length < args.maxMatches && args.scopes.includes("guides")) {
-    const guides = [
-      { itemId: "globalStyleGuide", title: "Style Guide", text: data.globalStyleGuide || "" },
-      { itemId: "shotGuide", title: "Shot Guide", text: data.shotGuide || "" },
-      { itemId: "soraGuide", title: "Sora Guide", text: data.soraGuide || "" },
-      { itemId: "storyboardGuide", title: "Storyboard Guide", text: data.storyboardGuide || "" },
-      { itemId: "dramaGuide", title: "Drama Guide", text: data.dramaGuide || "" },
-    ];
-    for (const guide of guides) {
-      if (matches.length >= args.maxMatches) break;
-      const haystack = [guide.title, guide.text].filter(Boolean).join(" ");
-      if (haystack && includesQuery(haystack, args.query)) {
-        matches.push({
-          scope: "guide_document",
-          itemId: guide.itemId,
-          guideTitle: guide.title,
-          snippet: buildSnippet(haystack, args.query, radius),
-        });
+    if (args.scopes.includes("links")) {
+      for (const link of workflow.links) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = [
+          link.id,
+          link.source,
+          link.target,
+          link.sourceHandle,
+          link.targetHandle,
+          link.data?.hasPause ? "pause paused 暂停" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "graph_link",
+            link_id: link.id,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
       }
     }
-  }
 
-  if (matches.length < args.maxMatches && args.scopes.includes("workflow")) {
-    pushWorkflowMatches(matches, bridge, args, radius);
-  }
+    if (args.scopes.includes("maps")) {
+      for (const map of buildProjectGraphMaps(workflow)) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = [map.mapId, map.name, map.view || ""].filter(Boolean).join(" ");
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "map",
+            map_id: map.mapId,
+            name: map.name,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
+      }
+    }
 
-  return matches;
-};
-
-export const searchProjectResourceToolDef = {
-  name: "search_project_resource",
-  description:
-    "Search project resources when the exact locator is unknown. Supports skills, scripts, storyboards, understanding assets, guides, and workflow scopes.",
-  parameters: searchProjectResourceParameters,
-  execute: async (input: unknown, bridge: QalamAgentBridge) => {
-    const args = parseArgs(input);
-    const data = bridge.getProjectData();
-    const matches = await searchProject(data, bridge, args);
     return {
       resource_type: "search_project_resource",
       query: args.query,
-      scopes: args.scopes,
-      total: matches.length,
-      data: {
-        matches,
-      },
-      warnings: matches.length ? [] : ["no_matches"],
+      total_matches: matches.length,
+      matches,
     };
   },
-  summarize: (output: any) => `项目搜索完成，命中 ${output?.total ?? 0} 条`,
+  summarize: (output: any) => `搜索到 ${output?.matches?.length || 0} 条资源匹配`,
 };

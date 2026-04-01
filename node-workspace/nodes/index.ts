@@ -1,6 +1,7 @@
 export { ImageInputNode } from "./ImageInputNode";
 export { AudioInputNode } from "./AudioInputNode";
 export { AnnotationNode } from "./AnnotationNode";
+export { KnowledgeNode } from "./KnowledgeNode";
 export * from "./TextNode";
 export * from "./ScriptBoardNode";
 export * from "./StoryboardBoardNode";

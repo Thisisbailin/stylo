@@ -1,4 +1,5 @@
 import type {
+  KnowledgeNodeData,
   NodeFlowLink,
   NodeFlowFile,
   NodeFlowNode,
@@ -9,6 +10,8 @@ export type NodeFlowNodeRecord = {
   id: string;
   ref: string;
   kind: string;
+  plane: "source" | "semantic" | "design" | "execution";
+  assetType: string;
   title?: string;
   body: Record<string, unknown>;
   meta: Record<string, unknown>;
@@ -44,8 +47,19 @@ const trimString = (value: unknown) => {
 };
 
 const getNodeData = (node: NodeFlowNode) => (node.data || {}) as Record<string, unknown>;
+const getKnowledgeNodeData = (node: NodeFlowNode) => getNodeData(node) as KnowledgeNodeData;
 
 export const getNodeFlowNodeRef = (node: NodeFlowNode) => trimString(getNodeData(node).qalamNodeRef) || node.id;
+
+export const getNodeFlowNodePlane = (node: NodeFlowNode): NodeFlowNodeRecord["plane"] => {
+  if (node.type !== "knowledge") return "execution";
+  return getKnowledgeNodeData(node).plane || "semantic";
+};
+
+export const getNodeFlowNodeAssetType = (node: NodeFlowNode) => {
+  if (node.type !== "knowledge") return `execution.${node.type}`;
+  return trimString(getKnowledgeNodeData(node).assetType) || `semantic.${node.type}`;
+};
 
 export const getNodeFlowNodeTitle = (node: NodeFlowNode) => {
   const data = getNodeData(node);
@@ -62,6 +76,14 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
 
   switch (node.type) {
+    case "knowledge":
+      return {
+        content: trimString(data.content) || "",
+        summary: trimString(data.summary) || null,
+        tags: Array.isArray(data.tags) ? data.tags.slice(0, 12) : [],
+        sourceRefs: Array.isArray(data.sourceRefs) ? data.sourceRefs.slice(0, 12) : [],
+        fields: data.fields ?? {},
+      };
     case "text":
       return {
         text: trimString(data.text) || "",
@@ -160,6 +182,8 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
 const summarizeNodeMeta = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
   return {
+    plane: getNodeFlowNodePlane(node),
+    assetType: getNodeFlowNodeAssetType(node),
     selected: Boolean(node.selected),
     width: typeof node.style?.width === "number" ? node.style.width : node.style?.width ?? null,
     height: typeof node.style?.height === "number" ? node.style.height : node.style?.height ?? null,
@@ -173,6 +197,8 @@ export const toNodeFlowNodeRecord = (node: NodeFlowNode): NodeFlowNodeRecord => 
     id: node.id,
     ref: getNodeFlowNodeRef(node),
     kind: node.type,
+    plane: getNodeFlowNodePlane(node),
+    assetType: getNodeFlowNodeAssetType(node),
     title: getNodeFlowNodeTitle(node),
     body: summarizeNodeBody(node),
     meta: summarizeNodeMeta(node),
@@ -231,6 +257,8 @@ export const buildNodeFlowSearchText = (node: NodeFlowNode) => {
     record.id,
     record.ref,
     record.kind,
+    record.plane,
+    record.assetType,
     record.title,
     JSON.stringify(record.body),
   ]

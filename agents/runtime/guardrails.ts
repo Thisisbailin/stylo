@@ -7,7 +7,6 @@ import {
   type ToolInputGuardrailDefinition,
   type ToolOutputGuardrailDefinition,
 } from "@openai/agents";
-import { sanitizeShotList } from "../../utils/shotSchema";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
 export type QalamGuardrailContext = {
@@ -41,28 +40,6 @@ const parseToolArguments = (value: unknown) => {
   } catch {
     return {};
   }
-};
-
-const toArray = (value: unknown): unknown[] => {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const extractStoryboardRows = (args: Record<string, unknown>) => {
-  const directRows = toArray(args.shots ?? args.rows);
-  if (directRows.length > 0) return directRows;
-  const sceneBlocks = toArray(args.scene_blocks ?? args.sceneBlocks);
-  if (sceneBlocks.length === 0) return [];
-  return sceneBlocks.flatMap((block) => {
-    if (!block || typeof block !== "object") return [];
-    return toArray((block as Record<string, unknown>).shots ?? (block as Record<string, unknown>).rows);
-  });
 };
 
 export const createQalamInputGuardrails = (): InputGuardrail[] => [
@@ -158,13 +135,12 @@ export const createQalamToolInputGuardrails = (
         run: async ({ toolCall }) => {
           const args = parseToolArguments((toolCall as any).arguments);
           const resourceType = typeof args.resource_type === "string" ? args.resource_type.trim() : "";
-          const episodeId = Number(args.episode_id ?? args.episodeId);
-          const shots = extractStoryboardRows(args);
+          const plane = typeof args.plane === "string" ? args.plane.trim() : "";
 
-          if (!["project_summary", "episode_summary", "character_profile", "scene_profile", "episode_storyboard"].includes(resourceType)) {
+          if (resourceType !== "graph_node") {
             return ToolGuardrailFunctionOutputFactory.rejectContent(
-              "edit_project_resource 仅支持 project_summary、episode_summary、character_profile、scene_profile、episode_storyboard。",
-              { resourceType }
+              "edit_project_resource 当前仅支持 graph_node。",
+              { resourceType, plane }
             );
           }
 
@@ -172,27 +148,14 @@ export const createQalamToolInputGuardrails = (
             return ToolGuardrailFunctionOutputFactory.rejectContent("edit_project_resource 需要 resource_type。");
           }
 
-          if (resourceType === "episode_storyboard") {
-            if (!shots.length) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "分镜表写入至少需要 1 条 rows/shots 数据。请直接复用 read_project_resource 返回的 rows。",
-                { resourceType, episodeId }
-              );
-            }
-            const { issues } = sanitizeShotList(shots, {
-              mode: "project",
-              requireStructuredId: true,
-              allowGeneratedIds: false,
-            });
-            if (issues.length > 0) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent(
-                `分镜表结构不合法：${issues[0]?.message || "存在格式错误"}`,
-                { resourceType, episodeId, issueCount: issues.length }
-              );
-            }
+          if (plane && !["semantic", "design"].includes(plane)) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent(
+              "graph_node 仅允许写入 semantic 或 design plane。",
+              { resourceType, plane }
+            );
           }
 
-          return ToolGuardrailFunctionOutputFactory.allow({ resourceType });
+          return ToolGuardrailFunctionOutputFactory.allow({ resourceType, plane: plane || undefined });
         },
       }),
     ];
@@ -208,14 +171,20 @@ export const createQalamToolInputGuardrails = (
             typeof (args.resource_type ?? args.resourceType) === "string"
               ? String(args.resource_type ?? args.resourceType).trim()
               : "";
+          const normalizedResourceType =
+            resourceType === "workflow_node"
+              ? "execution_node"
+              : resourceType === "workflow_connection"
+                ? "graph_link"
+                : resourceType;
 
-          if (resourceType === "workflow_node") {
+          if (normalizedResourceType === "execution_node") {
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
             const episodeId = Number(args.episode_id ?? args.episodeId);
 
             if (!["text", "script_board", "storyboard_board", "character_card", "script", "storyboard", "character"].includes(nodeKind)) {
               return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "workflow_node 当前只支持 text、script_board、storyboard_board、character_card。",
+                "execution_node 当前只支持 text、script_board、storyboard_board、character_card。",
                 { nodeKind }
               );
             }
@@ -224,15 +193,15 @@ export const createQalamToolInputGuardrails = (
                 episodeId,
               });
             }
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType, nodeKind });
+            return ToolGuardrailFunctionOutputFactory.allow({ resourceType: normalizedResourceType, nodeKind });
           }
 
-          if (resourceType === "workflow_connection") {
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType });
+          if (normalizedResourceType === "graph_link") {
+            return ToolGuardrailFunctionOutputFactory.allow({ resourceType: normalizedResourceType });
           }
 
           return ToolGuardrailFunctionOutputFactory.rejectContent(
-            "operate_project_resource 仅支持 workflow_node 和 workflow_connection。",
+            "operate_project_resource 仅支持 execution_node 和 graph_link。",
             { resourceType }
           );
         },
@@ -269,7 +238,7 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
         run: async ({ output }) => {
           const result = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
           const resourceType = typeof result?.resource_type === "string" ? result.resource_type : "";
-          if (resourceType === "workflow_node") {
+          if (resourceType === "execution_node") {
             const nodeId = typeof result?.node_id === "string" ? result.node_id : "";
             const nodeRef = typeof result?.node_ref === "string" ? result.node_ref : "";
             if (!nodeId || !nodeRef) {
@@ -280,8 +249,13 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
             }
             return ToolGuardrailFunctionOutputFactory.allow({ resourceType, nodeId, nodeRef });
           }
-          if (resourceType === "workflow_connection") {
-            const linkId = typeof result?.edge_id === "string" ? result.edge_id : "";
+          if (resourceType === "graph_link") {
+            const linkId =
+              typeof result?.link_id === "string"
+                ? result.link_id
+                : typeof result?.edge_id === "string"
+                  ? result.edge_id
+                  : "";
             const sourceNodeId = typeof result?.source_node_id === "string" ? result.source_node_id : "";
             const targetNodeId = typeof result?.target_node_id === "string" ? result.target_node_id : "";
             if (!linkId || !sourceNodeId || !targetNodeId) {

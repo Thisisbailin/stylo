@@ -1,5 +1,12 @@
 import type { ProjectData } from "../../types";
-import type { NodeType, NodeFlowFile, NodeFlowViewport } from "../../node-workspace/types";
+import type {
+  NodeAssetConfidence,
+  NodeAssetPlane,
+  NodeAssetStatus,
+  NodeType,
+  NodeFlowFile,
+  NodeFlowViewport,
+} from "../../node-workspace/types";
 
 export type CreateTextNodeInput = {
   title: string;
@@ -16,9 +23,18 @@ export type CreateTextNodeResult = {
 
 export type CreateNodeFlowNodeInput = {
   expectedRevision?: number;
-  type: Extract<NodeType, "text" | "imageGen" | "scriptBoard" | "storyboardBoard" | "identityCard">;
+  type: Extract<NodeType, "knowledge" | "text" | "imageGen" | "scriptBoard" | "storyboardBoard" | "identityCard">;
   nodeRef?: string;
   title?: string;
+  content?: string;
+  plane?: NodeAssetPlane;
+  assetType?: string;
+  tags?: string[];
+  sourceRefs?: string[];
+  status?: NodeAssetStatus;
+  confidence?: NodeAssetConfidence;
+  locked?: boolean;
+  fields?: Record<string, unknown>;
   text?: string;
   aspectRatio?: string;
   episodeId?: number;
@@ -128,6 +144,7 @@ export interface QalamAgentBridge {
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;
+  updateNodeFlowNodeData(nodeId: string, data: Record<string, unknown>): void;
   connectNodeFlowNodes(input: ConnectNodeFlowNodesInput): ConnectNodeFlowNodesResult;
   getNodeFlowNode(input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null;
   createNodeFlowMap(input: CreateNodeFlowMapInput): CreateNodeFlowMapResult;

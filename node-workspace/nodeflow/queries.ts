@@ -6,6 +6,7 @@ import type {
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
+  KnowledgeNodeData,
   NodeFlowContextSnapshot,
   NodeFlowLink,
   NodeFlowNode,
@@ -172,7 +173,10 @@ export const buildConnectedInputs = ({
         if (src) audios.push(src);
       }
       if (effectiveHandle === "text") {
-        if (sourceNode.type === "text") {
+        if (sourceNode.type === "knowledge") {
+          const value = (sourceNode.data as KnowledgeNodeData).content;
+          if (value && value.trim()) texts.push(value.trim());
+        } else if (sourceNode.type === "text") {
           const value = (sourceNode.data as TextNodeData).text;
           if (value && value.trim()) texts.push(value.trim());
           const ats = (sourceNode.data as TextNodeData).atMentions;

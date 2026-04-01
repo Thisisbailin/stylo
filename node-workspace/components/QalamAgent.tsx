@@ -25,8 +25,10 @@ type Props = {
   settingsOpen?: boolean;
   openRequest?: number;
   submitRequest?: { id: number; text: string } | null;
+  cancelRequest?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
   onDockFrameChange?: (frame: { dockWidth: number; isSplit: boolean; collapsed: boolean }) => void;
+  onSendingChange?: (sending: boolean) => void;
   renderCollapsedTrigger?: boolean;
 };
 
@@ -215,13 +217,16 @@ export const QalamAgent: React.FC<Props> = ({
   settingsOpen = false,
   openRequest = 0,
   submitRequest = null,
+  cancelRequest = 0,
   onCollapsedChange,
   onDockFrameChange,
+  onSendingChange,
   renderCollapsedTrigger = true,
 }) => {
   const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
   const addNode = useNodeFlowStore((state) => state.addNode);
+  const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
   const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
   const connectNodes = useNodeFlowStore((state) => state.connectNodes);
   const toggleLinkPause = useNodeFlowStore((state) => state.toggleLinkPause);
@@ -239,9 +244,6 @@ export const QalamAgent: React.FC<Props> = ({
   const [collapsed, setCollapsed] = useState(true);
   const [isRevealing, setIsRevealing] = useState(false);
   const [panelPhase, setPanelPhase] = useState<"collapsed" | "opening" | "open" | "closing">("collapsed");
-  const [input, setInput] = useState("");
-  const [cursorPos, setCursorPos] = useState(0);
-  const [isInputFocused, setIsInputFocused] = useState(false);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: "qalam_conversations_v1",
     initialValue: { activeId: "", items: [] },
@@ -307,7 +309,6 @@ export const QalamAgent: React.FC<Props> = ({
     [setConversationState, clampMessages]
   );
   const [isSending, setIsSending] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [viewportWidth, setViewportWidth] = useState(
     typeof window !== "undefined" ? window.innerWidth : 1200
   );
@@ -330,13 +331,14 @@ export const QalamAgent: React.FC<Props> = ({
       }),
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
+      updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
       updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
       connectNodes,
       removeNode,
       removeLink,
       toggleLinkPause,
     }),
-    [activeView, addNode, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
+    [activeView, addNode, updateNodeData, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -442,42 +444,18 @@ export const QalamAgent: React.FC<Props> = ({
     });
     return map;
   }, [mentionTargets]);
-  const mentionState = useMemo(() => {
-    const pos = Math.min(cursorPos, input.length);
-    const textBefore = input.slice(0, pos);
-    const match = textBefore.match(/@([\w\u4e00-\u9fa5\-\/]*)$/);
-    if (!match) return null;
-    return {
-      query: match[1] || "",
-      start: textBefore.lastIndexOf("@"),
-      end: pos,
-    };
-  }, [input, cursorPos]);
-  const filteredMentions = useMemo(() => {
-    if (!mentionState) return mentionTargets;
-    const query = toSearch(mentionState.query.trim());
-    if (!query) return mentionTargets;
-    return mentionTargets.filter((item) => item.search.includes(query));
-  }, [mentionState, mentionTargets]);
-  const showMentionPicker = isInputFocused && !!mentionState;
-  const mentionTags = useMemo(() => {
-    const names = parseMentions(input);
-    return names
-      .map((name) => mentionIndex.get(toSearch(name)) || null)
-      .filter(Boolean) as Array<{ kind: "character" | "location"; name: string; label: string; id?: string }>;
-  }, [input, mentionIndex]);
-  const currentModelLabel = useMemo(() => {
-    const raw = resolveAgentRuntimeModel(config.textConfig);
-    return raw || "model";
-  }, [config.textConfig]);
-  const canSend = input.trim().length > 0 && !isSending;
-  const resizeInput = useCallback((el?: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = "0px";
-    const nextHeight = Math.min(Math.max(el.scrollHeight, 30), 132);
-    el.style.height = `${nextHeight}px`;
-    el.style.overflowY = el.scrollHeight > 132 ? "auto" : "hidden";
-  }, []);
+  const resolveMentionTags = useCallback(
+    (text: string) =>
+      parseMentions(text)
+        .map((name) => mentionIndex.get(toSearch(name)) || null)
+        .filter(Boolean)
+        .map((tag) => ({
+          kind: tag.kind,
+          name: tag.name,
+          id: tag.id,
+        })),
+    [mentionIndex]
+  );
   const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useQalamAgent({
     runtime,
     sessionId: activeConversation?.id || conversationState.activeId || "qalam-default",
@@ -522,12 +500,12 @@ export const QalamAgent: React.FC<Props> = ({
   }, [conversationState.activeId, conversationState.items, setConversationState]);
 
   useEffect(() => {
-    setInput("");
-  }, [activeConversation?.id]);
-
-  useEffect(() => {
     onCollapsedChange?.(collapsed);
   }, [collapsed, onCollapsedChange]);
+
+  useEffect(() => {
+    onSendingChange?.(isSending);
+  }, [isSending, onSendingChange]);
 
   useEffect(() => {
     return () => {
@@ -540,25 +518,16 @@ export const QalamAgent: React.FC<Props> = ({
     setTimeout(() => setIsRevealing(false), 900);
   }, []);
 
-  const openPanel = useCallback(
-    (focusComposer = true) => {
-      if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
-      setCollapsed(false);
-      setPanelPhase((prev) => (prev === "open" ? "open" : "opening"));
-      triggerReveal();
-      phaseTimerRef.current = window.setTimeout(() => {
-        setPanelPhase("open");
-        phaseTimerRef.current = null;
-      }, PANEL_ANIMATION_MS);
-      if (focusComposer) {
-        requestAnimationFrame(() => {
-          inputRef.current?.focus();
-          resizeInput(inputRef.current);
-        });
-      }
-    },
-    [resizeInput, triggerReveal]
-  );
+  const openPanel = useCallback(() => {
+    if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
+    setCollapsed(false);
+    setPanelPhase((prev) => (prev === "open" ? "open" : "opening"));
+    triggerReveal();
+    phaseTimerRef.current = window.setTimeout(() => {
+      setPanelPhase("open");
+      phaseTimerRef.current = null;
+    }, PANEL_ANIMATION_MS);
+  }, [triggerReveal]);
 
   const closePanel = useCallback(() => {
     if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
@@ -572,12 +541,13 @@ export const QalamAgent: React.FC<Props> = ({
 
   useEffect(() => {
     if (!settingsOpen) return;
-    openPanel(false);
+    openPanel();
   }, [openPanel, settingsOpen]);
 
   useEffect(() => {
-    resizeInput(inputRef.current);
-  }, [input, resizeInput]);
+    if (!cancelRequest || !isSending) return;
+    cancelAgentRun();
+  }, [cancelAgentRun, cancelRequest, isSending]);
 
   useEffect(() => {
     onDockFrameChange?.({
@@ -594,18 +564,13 @@ export const QalamAgent: React.FC<Props> = ({
       const userMsg: Message = { role: "user", text: cleanedInput, kind: "chat", order: nextOrder };
       return [...prev, userMsg];
     });
-    setInput("");
     setIsSending(true);
     try {
       const runResult = await runAgentMessage({
         userText: cleanedInput,
         enabledSkillIds: [],
         uiContext: {
-          mentionTags: mentionTags.map((tag) => ({
-            kind: tag.kind,
-            name: tag.name,
-            id: tag.id,
-          })),
+          mentionTags: resolveMentionTags(cleanedInput),
         },
       });
       if (runResult.updatedProjectData) {
@@ -645,24 +610,9 @@ export const QalamAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [isSending, importNodeFlow, mentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setMessages, setProjectData]);
 
-  const sendMessage = useCallback(async () => {
-    if (!canSend) return;
-    const nextInput = input;
-    setInput("");
-    await submitText(nextInput);
-  }, [canSend, input, submitText]);
-
-  const handleComposerAction = useCallback(() => {
-    if (isSending) {
-      cancelAgentRun();
-      return;
-    }
-    void sendMessage();
-  }, [cancelAgentRun, isSending, sendMessage]);
-
-  const panelClassName = "pointer-events-auto qalam-surface qalam-panel-cloud w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
+  const panelClassName = "pointer-events-auto qalam-panel-cloud w-[420px] max-w-[95vw] overflow-hidden qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const panelStyle: React.CSSProperties | undefined = {
@@ -701,14 +651,14 @@ export const QalamAgent: React.FC<Props> = ({
 
   useEffect(() => {
     if (!openRequest) return;
-    openPanel(true);
+    openPanel();
   }, [openPanel, openRequest]);
 
   useEffect(() => {
     if (!submitRequest?.id || !submitRequest.text.trim()) return;
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
-    openPanel(true);
+    openPanel();
     void submitText(submitRequest.text);
   }, [openPanel, submitRequest, submitText]);
 
@@ -716,7 +666,7 @@ export const QalamAgent: React.FC<Props> = ({
     if (!renderCollapsedTrigger) return null;
     return (
       <button
-        onClick={() => openPanel(true)}
+        onClick={openPanel}
         className="fixed z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
         aria-label="Open Qalam"
         style={{ left: dockInset + titleOrigin.x, top: dockInset + titleOrigin.y }}

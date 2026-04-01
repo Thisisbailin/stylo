@@ -224,9 +224,10 @@ type AssetLinkRecord = {
   id: string;
 
   fromNodeId: string;
+  fromPort?: string | null;
   toNodeId: string;
-
-  type: string;
+  toPort?: string | null;
+  paused?: boolean;
 
   createdAt: number;
   updatedAt: number;
@@ -243,6 +244,7 @@ type AssetLinkRecord = {
 - 任意 payload
 - 独立摘要
 - 高度复杂的边 schema
+- 强语义 `rel/type` 体系
 
 原因：
 
@@ -250,6 +252,7 @@ type AssetLinkRecord = {
 - 厚 link 会迅速把图结构变成难维护的半图谱系统
 - Agent 使用 link 时最重要的是关系类型稳定，而不是边上再挂很多内容
 - 性能上，轻 link 更适合大量连接和快速邻域遍历
+- 当前 NodeFlow 实际代码已经使用非常轻的 `source / target / sourceHandle / targetHandle / hasPause` 结构，这更像正确起点，而不是需要被推翻的过渡实现
 
 ### 5.1.1 Link Minimalism
 
@@ -283,7 +286,7 @@ Link 应始终遵守一个原则：
 
 例如：
 
-- `Stephen -[related_to]-> Buck`
+- `Stephen -> Buck`
   适合作为轻量 link
 
 但如果需要表达：
@@ -295,63 +298,31 @@ Link 应始终遵守一个原则：
 
 就应创建一个 `semantic.relationship` node，再由 link 连接它和两端对象。
 
-### 5.2 Link 的关系类型
+### 5.2 为什么当前阶段不把 `rel` 做成基础字段
 
-第一阶段仅建议保留少量高价值关系：
+在纯抽象层面，`a -[rel]-> b` 很优雅。
 
-- `contains`
-- `references`
-- `appears_in`
-- `supports`
-- `interprets`
-- `causes`
-- `contrasts`
-- `constrains`
-- `derives_to`
-- `supersedes`
+但结合当前 NodeFlow 实际代码，第一阶段更稳的方案是：
 
-不要在早期引入大量细碎近义关系。
+- 保留现有 link 的轻结构
+- 继续让执行连接主要依赖 `source/target + port`
+- 把语义性更强的关系建模为 node
 
-关系类型应当满足：
+原因是：
 
-- 含义稳定
-- 跨 plane 可复用
-- 足够抽象
-- 足够少
+- 现有执行流、ReactFlow 适配、命令层、查询层都已经围绕当前 link 结构稳定工作
+- 如果过早给所有 link 注入 `rel`，会把“执行连接”和“语义关系”混入同一层心智负担
+- 文学地图真正需要表达的复杂关系，绝大多数都更适合作为 node，而不是 link 类型枚举
 
-### 5.2.1 Link 的最小语义槽
+因此，本架构当前建议是：
 
-Link 不应完全无语义。
+- `link v1` 保持极简
+- `semantic richness` 主要放在 node
+- 如果未来局部检索与 Agent 导航实践证明确实需要，再谨慎引入一个可选 `rel`
 
-如果 link 只表示“连接着”，Agent 很难区分：
+也就是说：
 
-- 包含
-- 支持
-- 派生
-- 约束
-
-因此 link 需要保留一个最小语义槽。
-
-建议把原来的 `type` 收敛理解为：
-
-```ts
-type AssetLinkRecord = {
-  id: string;
-  fromNodeId: string;
-  toNodeId: string;
-  rel: string;
-  createdAt: number;
-  updatedAt: number;
-};
-```
-
-这里的 `rel` 就是 link 的全部语义核心。
-
-也就是：
-
-`a -[rel]-> b`
-
-这已经足够表达文学地图和创作资产图中的绝大多数稳定关系。
+不是不能有 `rel`，而是**不应把它作为第一阶段的基础前提**。
 
 ### 5.3 Link 与执行线的关系
 
@@ -366,37 +337,17 @@ type AssetLinkRecord = {
 
 两者都可以共享 `link` 这一底层抽象，但不应混淆其用途。
 
-一个建议做法是通过 `rel` 和 port 共同区分：
+当前更合理的统一方式是：
 
-- `semantic.supports`
-- `execution.flows_to`
-
-建议统一结构为：
-
-```ts
-type AssetLinkRecord = {
-  id: string;
-  fromNodeId: string;
-  toNodeId: string;
-  rel: string;
-  fromPort?: string | null;
-  toPort?: string | null;
-  createdAt: number;
-  updatedAt: number;
-};
-```
-
-规则如下：
-
-- 在 `source / semantic / design` 中，通常只使用 `rel`
-- 在 `execution` 中，`rel` 可以收敛为少量执行关系，例如 `execution.flows_to`
-- 具体输入输出口通过 `fromPort / toPort` 表达
+- `execution` 继续沿用现有 `fromPort / toPort / paused`
+- `semantic` 与 `design` 先用极简 link + 关系 node 表达复杂语义
 
 这样既能保持：
 
 - 底层抽象统一
-- 语义层极简
-- 执行层不丢失现有 NodeFlow 的端口能力
+- 与现有 NodeFlow 兼容
+- 语义层不被过早的 link taxonomy 绑死
+- 执行层不丢失现有端口能力
 
 ### 5.4 Link 的性能原则
 
@@ -412,7 +363,7 @@ Link 的强性能不来自“减少关系”，而来自：
 - `outgoing[fromNodeId]`
 - `incoming[toNodeId]`
 - `neighbors[nodeId]`
-- `byRel[rel]`
+- `byPort[fromPort/toPort]`
 
 因此本架构坚持：
 

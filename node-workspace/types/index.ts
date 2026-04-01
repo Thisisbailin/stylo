@@ -7,6 +7,7 @@ export type NodeType =
   | "imageInput"
   | "audioInput"
   | "annotation"
+  | "knowledge"
   | "text"
   | "scriptBoard"
   | "storyboardBoard"
@@ -23,6 +24,9 @@ export type NodeType =
   | "shot";
 
 export type NodeStatus = "idle" | "loading" | "complete" | "error";
+export type NodeAssetPlane = "source" | "semantic" | "design";
+export type NodeAssetStatus = "draft" | "working" | "approved" | "superseded" | "archived";
+export type NodeAssetConfidence = "low" | "medium" | "high";
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
@@ -145,6 +149,21 @@ export interface TextNodeData extends BaseNodeData {
   entityBindings?: EntityBinding[];
 }
 
+export interface KnowledgeNodeData extends BaseNodeData {
+  title: string;
+  plane: NodeAssetPlane;
+  assetType: string;
+  content: string;
+  summary?: string;
+  tags?: string[];
+  sourceRefs?: string[];
+  status?: NodeAssetStatus;
+  confidence?: NodeAssetConfidence;
+  locked?: boolean;
+  fields?: Record<string, unknown>;
+  view?: string;
+}
+
 export interface ScriptBoardNodeData extends BaseNodeData {
   title: string;
   episodeId?: number;
@@ -224,6 +243,9 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   videoUrl?: string;
   status: 'idle' | 'loading' | 'complete' | 'error';
   error: string | null;
+  authProbeStatus?: 'idle' | 'loading' | 'complete' | 'error';
+  authProbeSummary?: string | null;
+  authProbeDetail?: string | null;
   mode: ViduReferenceMode;
   useCharacters?: boolean;
   autoSubjects?: boolean;
@@ -296,6 +318,7 @@ export type NodeFlowNodeData =
   | ImageInputNodeData
   | AudioInputNodeData
   | AnnotationNodeData
+  | KnowledgeNodeData
   | TextNodeData
   | ScriptBoardNodeData
   | StoryboardBoardNodeData

@@ -1,8 +1,12 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import type { NodeFlowHandle } from "../bridge/qalamBridge";
+import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
 
-export const OPERATE_PROJECT_RESOURCE_TYPES = ["workflow_node", "workflow_connection"] as const;
+export const OPERATE_PROJECT_RESOURCE_TYPES = ["execution_node", "graph_link"] as const;
 export const OPERATE_WORKFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
+const OPERATE_PROJECT_RESOURCE_PARAMETER_TYPES = [
+  ...OPERATE_PROJECT_RESOURCE_TYPES,
+  "workflow_node",
+  "workflow_connection",
+] as const;
 
 const slugifyRefToken = (value: string, fallback: string) =>
   value
@@ -18,16 +22,16 @@ const operateProjectResourceParameters = {
   properties: {
     resource_type: {
       type: "string",
-      enum: [...OPERATE_PROJECT_RESOURCE_TYPES],
-      description: "Which workflow resource to operate on.",
+      enum: [...OPERATE_PROJECT_RESOURCE_PARAMETER_TYPES],
+      description: "Which graph/execution resource to operate on.",
     },
     node_kind: {
       type: "string",
-      description: "Node kind to create when resource_type=workflow_node. Supports text, script_board, storyboard_board, character_card, plus common aliases like script, storyboard, character.",
+      description: "Execution node kind to create when resource_type=execution_node. Supports text, script_board, storyboard_board, character_card, plus common aliases like script, storyboard, character.",
     },
     node_ref: {
       type: "string",
-      description: "Optional semantic reference for the node. If omitted, the tool will derive one.",
+      description: "Optional semantic reference for the created execution node.",
     },
     title: {
       type: "string",
@@ -47,27 +51,27 @@ const operateProjectResourceParameters = {
     },
     source_ref: {
       type: "string",
-      description: "Source node ref for workflow_connection.",
+      description: "Source node ref for graph_link.",
     },
     target_ref: {
       type: "string",
-      description: "Target node ref for workflow_connection.",
+      description: "Target node ref for graph_link.",
     },
     source_node_id: {
       type: "string",
-      description: "Fallback source node id for workflow_connection.",
+      description: "Fallback source node id for graph_link.",
     },
     target_node_id: {
       type: "string",
-      description: "Fallback target node id for workflow_connection.",
+      description: "Fallback target node id for graph_link.",
     },
     source_handle: {
       type: "string",
-      description: "Optional explicit source handle for workflow_connection.",
+      description: "Optional explicit source handle for graph_link.",
     },
     target_handle: {
       type: "string",
-      description: "Optional explicit target handle for workflow_connection.",
+      description: "Optional explicit target handle for graph_link.",
     },
   },
   additionalProperties: false,
@@ -75,13 +79,13 @@ const operateProjectResourceParameters = {
   oneOf: [
     {
       properties: {
-        resource_type: { const: "workflow_node" },
+        resource_type: { enum: ["execution_node", "workflow_node"] },
       },
       required: ["resource_type", "node_kind"],
     },
     {
       properties: {
-        resource_type: { const: "workflow_connection" },
+        resource_type: { enum: ["graph_link", "workflow_connection"] },
       },
       required: ["resource_type"],
       anyOf: [
@@ -107,7 +111,7 @@ const toPositiveInteger = (value: unknown) => {
 
 type ParsedArgs =
   | {
-      resourceType: "workflow_node";
+      resourceType: "execution_node";
       nodeKind: "text" | "script_board" | "storyboard_board" | "character_card";
       nodeRef?: string;
       title?: string;
@@ -116,7 +120,7 @@ type ParsedArgs =
       characterId?: string;
     }
   | {
-      resourceType: "workflow_connection";
+      resourceType: "graph_link";
       sourceRef?: string;
       targetRef?: string;
       sourceNodeId?: string;
@@ -130,9 +134,15 @@ const parseArgs = (input: unknown): ParsedArgs => {
     throw new Error("operate_project_resource 需要对象参数。");
   }
   const raw = input as Record<string, unknown>;
-  const resourceType = normalizeString(raw.resource_type ?? raw.resourceType);
+  const rawResourceType = normalizeString(raw.resource_type ?? raw.resourceType);
+  const resourceType =
+    rawResourceType === "workflow_node"
+      ? "execution_node"
+      : rawResourceType === "workflow_connection"
+        ? "graph_link"
+        : rawResourceType;
 
-  if (resourceType === "workflow_node") {
+  if (resourceType === "execution_node") {
     const rawNodeKind = normalizeString(raw.node_kind ?? raw.nodeKind);
     const nodeKind =
       rawNodeKind === "script" ? "script_board" :
@@ -149,7 +159,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       undefined;
 
     if (!(OPERATE_WORKFLOW_NODE_KINDS as readonly string[]).includes(nodeKind)) {
-      throw new Error("workflow_node 当前仅支持 text、script_board、storyboard_board、character_card。");
+      throw new Error("execution_node 当前仅支持 text、script_board、storyboard_board、character_card。");
     }
     if (nodeKind === "text" && !text) {
       throw new Error("创建 text 节点时需要 text。");
@@ -162,7 +172,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
     }
 
     return {
-      resourceType: "workflow_node",
+      resourceType: "execution_node",
       nodeKind: nodeKind as "text" | "script_board" | "storyboard_board" | "character_card",
       nodeRef,
       title,
@@ -172,7 +182,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  if (resourceType === "workflow_connection") {
+  if (resourceType === "graph_link") {
     const sourceRef = normalizeString(raw.source_ref ?? raw.sourceRef) || undefined;
     const targetRef = normalizeString(raw.target_ref ?? raw.targetRef) || undefined;
     const sourceNodeId = normalizeString(raw.source_node_id ?? raw.sourceNodeId) || undefined;
@@ -181,14 +191,14 @@ const parseArgs = (input: unknown): ParsedArgs => {
     const targetHandle = normalizeString(raw.target_handle ?? raw.targetHandle) || undefined;
 
     if ((!sourceRef && !sourceNodeId) || (!targetRef && !targetNodeId)) {
-      throw new Error("workflow_connection 需要为两端分别提供 ref 或 node_id。");
+      throw new Error("graph_link 需要为两端分别提供 ref 或 node_id。");
     }
     if ((sourceRef || sourceNodeId) === (targetRef || targetNodeId)) {
-      throw new Error("workflow_connection 不能连接同一个节点到自己。");
+      throw new Error("graph_link 不能连接同一个节点到自己。");
     }
 
     return {
-      resourceType: "workflow_connection",
+      resourceType: "graph_link",
       sourceRef,
       targetRef,
       sourceNodeId,
@@ -198,17 +208,17 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  throw new Error("operate_project_resource 仅支持 workflow_node 或 workflow_connection。");
+  throw new Error("operate_project_resource 仅支持 execution_node 或 graph_link。");
 };
 
-const resolveNodeType = (nodeKind: Extract<ParsedArgs, { resourceType: "workflow_node" }>["nodeKind"]) => {
+const resolveNodeType = (nodeKind: Extract<ParsedArgs, { resourceType: "execution_node" }>["nodeKind"]) => {
   if (nodeKind === "script_board") return "scriptBoard" as const;
   if (nodeKind === "storyboard_board") return "storyboardBoard" as const;
   if (nodeKind === "character_card") return "identityCard" as const;
   return "text" as const;
 };
 
-const defaultTitle = (args: Extract<ParsedArgs, { resourceType: "workflow_node" }>) => {
+const defaultTitle = (args: Extract<ParsedArgs, { resourceType: "execution_node" }>) => {
   if (args.title) return args.title;
   if (args.nodeKind === "script_board") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本";
   if (args.nodeKind === "storyboard_board") return args.episodeId ? `第 ${args.episodeId} 集分镜表` : "分镜表";
@@ -216,7 +226,7 @@ const defaultTitle = (args: Extract<ParsedArgs, { resourceType: "workflow_node" 
   return args.text?.slice(0, 24) || "文本";
 };
 
-const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "workflow_node" }>) => {
+const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "execution_node" }>) => {
   if (args.nodeRef) return args.nodeRef;
   if (args.nodeKind === "script_board") return `ep${args.episodeId || "x"}_script_board`;
   if (args.nodeKind === "storyboard_board") return `ep${args.episodeId || "x"}_storyboard_board`;
@@ -227,12 +237,12 @@ const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "workflow_node
 export const operateProjectResourceToolDef = {
   name: "operate_project_resource",
   description:
-    "Operate workflow resources in NodeFlow. Supports creating a workflow_node (text, script_board, storyboard_board, character_card) or a workflow_connection between existing nodes.",
+    "Operate execution resources in NodeFlow or create graph links between existing nodes.",
   parameters: operateProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
-    if (args.resourceType === "workflow_node") {
+    if (args.resourceType === "execution_node") {
       const nodeType = resolveNodeType(args.nodeKind);
       const expectedRevision = bridge.getNodeFlowSnapshot().revision;
       const created = bridge.createNodeFlowNode({
@@ -246,7 +256,7 @@ export const operateProjectResourceToolDef = {
         entityId: args.nodeKind === "character_card" ? args.characterId : undefined,
       });
       return {
-        resource_type: "workflow_node",
+        resource_type: "execution_node",
         node_kind: args.nodeKind,
         node_id: created.nodeId,
         node_ref: created.nodeRef || defaultNodeRef(args),
@@ -266,9 +276,8 @@ export const operateProjectResourceToolDef = {
       targetHandle: args.targetHandle as NodeFlowHandle | undefined,
     });
     return {
-      resource_type: "workflow_connection",
+      resource_type: "graph_link",
       link_id: connected.linkId,
-      edge_id: connected.linkId,
       source_node_id: connected.sourceNodeId,
       target_node_id: connected.targetNodeId,
       source_ref: connected.sourceRef,
@@ -278,9 +287,7 @@ export const operateProjectResourceToolDef = {
     };
   },
   summarize: (output: any) => {
-    if (output?.resource_type === "workflow_node") {
-      return `已创建 ${output?.node_kind || output?.node_type || "节点"}（ref:${output?.node_ref || "n/a"}）`;
-    }
-    return `已连接 ${output?.source_ref || output?.source_node_id || "源节点"} -> ${output?.target_ref || output?.target_node_id || "目标节点"}`;
+    if (output?.resource_type === "execution_node") return `创建执行节点 ${output.title || output.node_ref || output.node_id}`;
+    return `创建 graph 连线 ${output?.link_id || ""}`.trim();
   },
 };

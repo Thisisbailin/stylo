@@ -25,6 +25,7 @@ type NodeFlowBridgeDeps = {
   getNodeFlowSnapshot: () => NodeFlowFile;
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
+  updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
   updateNodeStyle: (nodeId: string, style: Record<string, unknown>) => void;
   connectNodes: (connection: Connection) => void;
   removeNode: (nodeId: string) => void;
@@ -33,6 +34,7 @@ type NodeFlowBridgeDeps = {
 };
 
 const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
+  "knowledge",
   "text",
   "imageGen",
   "scriptBoard",
@@ -60,7 +62,9 @@ const getNodeFlowPlacement = (
 
 const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string) =>
   (title || "").trim() ||
-  (type === "text"
+  (type === "knowledge"
+    ? "Knowledge Asset"
+    : type === "text"
     ? "文本节点"
     : type === "imageGen"
       ? "Img Gen"
@@ -74,7 +78,21 @@ const buildNodeExtraData = (
   input: CreateNodeFlowNodeInput,
   resolvedTitle: string
 ): Partial<NodeFlowNodeData> => {
-  const { type, text, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId } = input;
+  const { type, text, content, plane, assetType, tags, sourceRefs, status, confidence, locked, fields, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId } = input;
+  if (type === "knowledge") {
+    return {
+      title: resolvedTitle,
+      plane: plane || "semantic",
+      assetType: (assetType || "semantic.note").trim() || "semantic.note",
+      content: (content || "").trim(),
+      tags: Array.isArray(tags) ? tags.filter(Boolean) : [],
+      sourceRefs: Array.isArray(sourceRefs) ? sourceRefs.filter(Boolean) : [],
+      status: status || "draft",
+      confidence: confidence || "medium",
+      locked: Boolean(locked),
+      fields: fields || {},
+    } as Partial<NodeFlowNodeData>;
+  }
   if (type === "text") {
     const trimmedText = (text || "").trim();
     if (!trimmedText) {
@@ -166,7 +184,7 @@ const createNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
-    throw new Error("createNodeFlowNode 当前仅支持 text、imageGen、scriptBoard、storyboardBoard、identityCard。");
+    throw new Error("createNodeFlowNode 当前仅支持 knowledge、text、imageGen、scriptBoard、storyboardBoard、identityCard。");
   }
   const position = getNodeFlowPlacement(snapshot, input.x, input.y);
   const resolvedTitle = resolveNodeTitle(input.type, input.title);
@@ -297,6 +315,7 @@ export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBrid
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),
+  updateNodeFlowNodeData: (nodeId, data) => deps.updateNodeData(nodeId, data as Partial<NodeFlowNodeData>),
   connectNodeFlowNodes: (input) => connectNodeFlowNodes(deps, input),
   getNodeFlowNode: (input) => lookupNodeFlowNodeInSnapshot(deps.getNodeFlowSnapshot(), input),
   createNodeFlowMap: (input) => createNodeFlowMap(deps, input),

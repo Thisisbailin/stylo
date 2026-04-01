@@ -215,24 +215,55 @@
 }
 
 .qalam-panel-cloud {
-  background:
-    radial-gradient(circle at top left, rgba(122, 183, 160, 0.16), transparent 28%),
-    radial-gradient(circle at 58% 12%, rgba(255, 255, 255, 0.1), transparent 34%),
-    linear-gradient(180deg, rgba(14, 18, 16, 0.74) 0%, rgba(14, 18, 16, 0.46) 28%, rgba(14, 18, 16, 0.16) 62%, rgba(14, 18, 16, 0) 100%);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 32px 64px -48px rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(30px) saturate(120%);
-  -webkit-backdrop-filter: blur(30px) saturate(120%);
-  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.94) 38%, rgba(0, 0, 0, 0.72) 66%, rgba(0, 0, 0, 0.12) 90%, transparent 100%);
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.94) 38%, rgba(0, 0, 0, 0.72) 66%, rgba(0, 0, 0, 0.12) 90%, transparent 100%);
+  position: relative;
+  isolation: isolate;
+  color: var(--app-text-primary);
+  background: rgba(10, 12, 12, 0.01);
+  border: none;
+  box-shadow: none;
+  backdrop-filter: blur(26px) saturate(120%);
+  -webkit-backdrop-filter: blur(26px) saturate(120%);
+  -webkit-mask-image:
+    radial-gradient(135% 120% at 16% 10%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.76) 58%, rgba(0, 0, 0, 0.28) 82%, transparent 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 32%, rgba(0, 0, 0, 0.74) 62%, rgba(0, 0, 0, 0.2) 88%, transparent 100%);
+  mask-image:
+    radial-gradient(135% 120% at 16% 10%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 28%, rgba(0, 0, 0, 0.76) 58%, rgba(0, 0, 0, 0.28) 82%, transparent 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 32%, rgba(0, 0, 0, 0.74) 62%, rgba(0, 0, 0, 0.2) 88%, transparent 100%);
 }
 
 .qalam-panel-cloud::before {
+  content: "";
+  position: absolute;
+  inset: -28px -24px -92px -22px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 54px;
   background:
-    radial-gradient(circle at 18% 14%, rgba(122, 183, 160, 0.22), transparent 32%),
-    radial-gradient(circle at 82% 20%, rgba(255, 255, 255, 0.06), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
-  opacity: 0.95;
+    radial-gradient(circle at 18% 10%, rgba(122, 183, 160, 0.2), transparent 24%),
+    radial-gradient(circle at 68% 12%, rgba(255, 255, 255, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(12, 16, 15, 0.78) 0%, rgba(12, 16, 15, 0.48) 28%, rgba(12, 16, 15, 0.22) 58%, rgba(12, 16, 15, 0.08) 76%, transparent 100%);
+  filter: blur(18px);
+  opacity: 0.92;
+}
+
+.qalam-panel-cloud::after {
+  content: "";
+  position: absolute;
+  inset: -8px -10px -48px -10px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 44px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(122, 183, 160, 0.14), transparent 22%),
+    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.06), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0.008) 18%, rgba(255, 255, 255, 0) 48%);
+  filter: blur(34px);
+  opacity: 0.78;
+}
+
+.qalam-panel-cloud > * {
+  position: relative;
+  z-index: 1;
 }
 
 :root.qalam-split .node-flow-canvas {

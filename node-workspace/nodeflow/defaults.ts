@@ -5,6 +5,7 @@ import type {
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
+  KnowledgeNodeData,
   NodeFlowNodeData,
   NodeType,
   ScriptBoardNodeData,
@@ -39,6 +40,19 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         annotations: [],
         outputImage: null,
       } as AnnotationNodeData;
+    case "knowledge":
+      return {
+        title: "Knowledge",
+        plane: "semantic",
+        assetType: "semantic.note",
+        content: "",
+        tags: [],
+        sourceRefs: [],
+        status: "draft",
+        confidence: "medium",
+        locked: false,
+        fields: {},
+      } as KnowledgeNodeData;
     case "text":
       return {
         title: "",
@@ -142,6 +156,9 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         videoUrl: undefined,
         status: "idle",
         error: null,
+        authProbeStatus: "idle",
+        authProbeSummary: null,
+        authProbeDetail: null,
         mode: "subject",
         useCharacters: true,
         autoSubjects: false,
