@@ -444,6 +444,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const {
     nodes,
     links,
+    revision,
     addNode,
     addNodesAndLinks,
     updateNodeData,
@@ -481,10 +482,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
-      connectNodes(connection);
+      connectNodes(connection, { expectedRevision: revision });
       setIsConnecting(false);
     },
-    [connectNodes]
+    [connectNodes, revision]
   );
 
   const handleConnectStart = useCallback(() => {
@@ -623,8 +624,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   );
 
   const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
-    return addNode(type, position);
-  }, [addNode]);
+    return addNode(type, position, undefined, undefined, { expectedRevision: revision });
+  }, [addNode, revision]);
 
   const handleDropCreate = (type: NodeType) => {
     if (!connectionDrop) return;
@@ -646,20 +647,22 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       }
       if (connectionDrop.connectionType === "source") {
         const resolvedTargetHandle = newNodeHandles.inputs.includes("multi") ? "multi" : connectionDrop.handleType;
+        const latestRevision = useNodeFlowStore.getState().revision;
         connectNodes({
           source: connectionDrop.sourceNodeId!,
           sourceHandle: connectionDrop.sourceHandleId!,
           target: newId,
           targetHandle: resolvedTargetHandle,
-        });
+        }, { expectedRevision: latestRevision });
       } else {
         const resolvedSourceHandle = newNodeHandles.outputs.includes("multi") ? "multi" : connectionDrop.handleType;
+        const latestRevision = useNodeFlowStore.getState().revision;
         connectNodes({
           source: newId,
           sourceHandle: resolvedSourceHandle,
           target: connectionDrop.sourceNodeId!,
           targetHandle: connectionDrop.sourceHandleId!,
-        });
+        }, { expectedRevision: latestRevision });
       }
     }
     setConnectionDrop(null);
@@ -707,14 +710,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     (templateId: string) => {
       const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
       const flowPos = screenToFlowPosition(center);
-      const result = applyGroupTemplate(templateId, flowPos);
+      const result = applyGroupTemplate(templateId, flowPos, { expectedRevision: revision });
       if (!result.ok) {
         showToast(result.error || "加载模板失败", "error");
         return;
       }
       showToast("模板已加载", "success");
     },
-    [applyGroupTemplate, screenToFlowPosition, showToast]
+    [applyGroupTemplate, revision, screenToFlowPosition, showToast]
   );
 
   const handleDeleteTemplate = useCallback(
@@ -1038,7 +1041,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             submitRequest={qalamSubmitRequest}
             onCollapsedChange={setIsQalamCollapsed}
             onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
-            renderCollapsedTrigger={false}
+            renderCollapsedTrigger
           />
           <div
             className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${

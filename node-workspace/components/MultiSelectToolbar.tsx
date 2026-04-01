@@ -5,7 +5,7 @@ import { Copy, ClipboardType, Trash2, BoxSelect } from "lucide-react";
 import { useToast } from "./Toast";
 
 export const MultiSelectToolbar: React.FC = () => {
-  const { nodes, removeNode, clearClipboard, copySelectedNodes, pasteNodes, createGroupFromSelection } = useNodeFlowStore();
+  const { nodes, revision, removeNode, clearClipboard, copySelectedNodes, pasteNodes, createGroupFromSelection } = useNodeFlowStore();
   const { getNodes, flowToScreenPosition } = useReactFlow();
   const { show: showToast } = useToast();
 
@@ -57,7 +57,7 @@ export const MultiSelectToolbar: React.FC = () => {
             showToast("至少选择两个节点才能分组", "warning");
             return;
           }
-          const result = createGroupFromSelection();
+          const result = createGroupFromSelection({ expectedRevision: revision });
           if (!result.ok) {
             showToast(result.error || "分组失败", "error");
           } else {
@@ -81,7 +81,7 @@ export const MultiSelectToolbar: React.FC = () => {
       </button>
 
       <button
-        onClick={() => pasteNodes()}
+        onClick={() => pasteNodes(undefined, { expectedRevision: revision })}
         className="h-8 px-3 flex items-center gap-2 hover:bg-[var(--app-panel-muted)] rounded-full transition-all group"
         title="Paste"
       >
@@ -91,7 +91,9 @@ export const MultiSelectToolbar: React.FC = () => {
 
       <button
         onClick={() => {
-          selectedNodes.forEach((n) => removeNode(n.id));
+          selectedNodes.forEach((n) =>
+            removeNode(n.id, { expectedRevision: useNodeFlowStore.getState().revision })
+          );
           clearClipboard();
         }}
         className="h-8 px-3 flex items-center gap-2 hover:bg-red-500/20 text-red-500 rounded-full transition-all group"

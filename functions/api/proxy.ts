@@ -3,7 +3,15 @@ const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-proxy-url",
-    "Access-Control-Expose-Headers": "x-qalam-proxy-target,x-qalam-proxy-nanobanana,x-qalam-proxy-vidu,x-qalam-proxy-key-source,x-qalam-proxy-auth-header,x-qalam-proxy-key-query",
+    "Access-Control-Expose-Headers": "x-qalam-proxy-target,x-qalam-proxy-nanobanana,x-qalam-proxy-vidu,x-qalam-proxy-key-source,x-qalam-proxy-key-fingerprint,x-qalam-proxy-auth-header,x-qalam-proxy-key-query",
+};
+
+const toKeyFingerprint = (value?: string) => {
+    if (!value) return "missing";
+    const trimmed = value.trim();
+    if (!trimmed) return "empty";
+    if (trimmed.length <= 8) return `${trimmed[0] || ""}***(${trimmed.length})`;
+    return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}(${trimmed.length})`;
 };
 
 const resolveNanoBananaApiKey = (env: Record<string, unknown>) => {
@@ -58,11 +66,12 @@ export const onRequest = async ({ request, env }) => {
     const method = request.method;
     const headers = new Headers(request.headers);
     const targetUrl = new URL(proxyUrl);
-    const debugHeaders: Record<string, string> = {
+        const debugHeaders: Record<string, string> = {
             "x-qalam-proxy-target": targetUrl.pathname,
             "x-qalam-proxy-nanobanana": "false",
             "x-qalam-proxy-vidu": "false",
             "x-qalam-proxy-key-source": "n/a",
+            "x-qalam-proxy-key-fingerprint": "n/a",
             "x-qalam-proxy-auth-header": headers.get("Authorization") ? "forwarded" : "none",
             "x-qalam-proxy-key-query": targetUrl.searchParams.get("key") ? "forwarded" : "none",
     };
@@ -83,6 +92,7 @@ export const onRequest = async ({ request, env }) => {
             const { key: apiKey, source } = resolveNanoBananaApiKey((env || {}) as Record<string, unknown>);
             debugHeaders["x-qalam-proxy-nanobanana"] = "true";
             debugHeaders["x-qalam-proxy-key-source"] = source;
+            debugHeaders["x-qalam-proxy-key-fingerprint"] = toKeyFingerprint(apiKey);
             if (!apiKey) {
                 return new Response("Proxy Error: Missing NANOBANANA_API_KEY in Cloudflare environment.", {
                     status: 500,
@@ -106,6 +116,7 @@ export const onRequest = async ({ request, env }) => {
             const { key: apiKey, source } = resolveViduApiKey((env || {}) as Record<string, unknown>);
             debugHeaders["x-qalam-proxy-vidu"] = "true";
             debugHeaders["x-qalam-proxy-key-source"] = source;
+            debugHeaders["x-qalam-proxy-key-fingerprint"] = toKeyFingerprint(apiKey);
             if (!apiKey) {
                 return new Response("Proxy Error: Missing VIDU_API_KEY in Cloudflare environment.", {
                     status: 500,

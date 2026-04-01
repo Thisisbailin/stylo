@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   At,
   ArrowUp,
-  CaretUp,
   CircleNotch,
   Lightbulb,
   Paperclip,
@@ -245,6 +244,7 @@ export const QalamAgent: React.FC<Props> = ({
   const activeView = useNodeFlowStore((state) => state.activeView);
   const viewport = useNodeFlowStore((state) => state.viewport);
   const [collapsed, setCollapsed] = useState(true);
+  const [isRevealing, setIsRevealing] = useState(false);
   const [mood, setMood] = useState<"default" | "thinking" | "loading" | "playful" | "question">("default");
   const [input, setInput] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
@@ -535,10 +535,16 @@ export const QalamAgent: React.FC<Props> = ({
     onCollapsedChange?.(collapsed);
   }, [collapsed, onCollapsedChange]);
 
+  const triggerReveal = useCallback(() => {
+    setIsRevealing(true);
+    setTimeout(() => setIsRevealing(false), 900);
+  }, []);
+
   useEffect(() => {
     if (!settingsOpen) return;
     setCollapsed(false);
-  }, [settingsOpen]);
+    triggerReveal();
+  }, [settingsOpen, triggerReveal]);
 
   useEffect(() => {
     resizeInput(inputRef.current);
@@ -644,7 +650,6 @@ export const QalamAgent: React.FC<Props> = ({
         return { icon: <Robot size={16} className="text-emerald-300" weight="regular" />, bg: "bg-emerald-500/15", ring: "ring-emerald-300/30" };
     }
   };
-  const moodState = moodVisual();
   const panelClassName = "pointer-events-auto qalam-surface w-[420px] max-w-[95vw] rounded-[30px] overflow-hidden qalam-panel";
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
@@ -670,6 +675,19 @@ export const QalamAgent: React.FC<Props> = ({
   }, [projectData]);
 
   const formatNumber = (n: number) => n.toLocaleString();
+  const qalamMark = (
+    <div className="relative inline-flex h-11 items-center gap-3 rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] pl-3.5 pr-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_18px_36px_-28px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+      <span
+        className={`pointer-events-none absolute inset-0 rounded-[18px] bg-[radial-gradient(circle_at_16%_50%,rgba(122,183,160,0.22),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(255,255,255,0.12),transparent_38%)] transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-35"}`}
+      />
+      <span
+        className={`relative flex h-7 w-7 items-center justify-center rounded-full border border-white/8 bg-[rgba(122,183,160,0.08)] text-[var(--app-accent-strong)] ${isRevealing ? "animate-pulse" : ""}`}
+      >
+        <Sparkle size={14} weight="fill" />
+      </span>
+      <span className="relative text-[22px] font-semibold tracking-[-0.05em] text-[var(--app-text-primary)]">Qalam</span>
+    </div>
+  );
   useEffect(() => {
     if (isSending) return;
     const order: Array<typeof mood> = ["default", "thinking", "playful", "question"];
@@ -685,37 +703,39 @@ export const QalamAgent: React.FC<Props> = ({
   useEffect(() => {
     if (!openRequest) return;
     setCollapsed(false);
+    triggerReveal();
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       resizeInput(inputRef.current);
     });
-  }, [openRequest, resizeInput]);
+  }, [openRequest, resizeInput, triggerReveal]);
 
   useEffect(() => {
     if (!submitRequest?.id || !submitRequest.text.trim()) return;
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
     setCollapsed(false);
+    triggerReveal();
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       resizeInput(inputRef.current);
     });
     void submitText(submitRequest.text);
-  }, [submitRequest, submitText, resizeInput]);
+  }, [submitRequest, submitText, resizeInput, triggerReveal]);
 
   if (collapsed) {
     if (!renderCollapsedTrigger) return null;
     return (
       <button
-        onClick={() => setCollapsed(false)}
-        className="qalam-surface flex h-11 items-center gap-2 rounded-full px-3.5 transition-all duration-300 ease-out"
+        onClick={() => {
+          setCollapsed(false);
+          triggerReveal();
+        }}
+        className="fixed left-4 top-4 z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
+        aria-label="Open Qalam"
         style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
       >
-        <span className={`flex items-center justify-center h-7 w-7 rounded-full ${moodState.bg} transition-all duration-300 ease-out`}>
-          {moodState.icon}
-        </span>
-        <span className="text-xs font-semibold tracking-[0.01em]">Qalam</span>
-        <CaretUp size={14} className="text-[var(--app-text-secondary)]" weight="bold" />
+        {qalamMark}
       </button>
     );
   }
@@ -728,14 +748,17 @@ export const QalamAgent: React.FC<Props> = ({
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
+      <div
+        className={`pointer-events-none absolute left-0 top-0 h-36 w-56 bg-[radial-gradient(circle_at_top_left,rgba(122,183,160,0.22),transparent_62%)] blur-2xl transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-55"}`}
+      />
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
-        <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">Qalam</div>
+        <div className="qalam-header-shell relative z-20 shrink-0 flex items-start justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {qalamMark}
             <button
               type="button"
               onClick={onOpenStats}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
+              className="mt-0.5 inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
               title="打开 Agent Setting"
             >
               <span className="text-[var(--app-text-primary)]">Agent Setting</span>
@@ -745,7 +768,7 @@ export const QalamAgent: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCollapsed(true)}
-              className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+              className="mt-0.5 h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
               title="Close"
             >
               <X size={14} className="mx-auto" weight="bold" />

@@ -45,7 +45,7 @@ const ValueStack: React.FC<{ primary?: string; secondary?: string; tertiary?: st
 );
 
 export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
-  const { updateNodeData, nodeFlowContext, addNodesAndLinks, nodes } = useNodeFlowStore();
+  const { updateNodeData, nodeFlowContext, addNodesAndLinks, nodes, revision } = useNodeFlowStore();
   const { setViewport } = useReactFlow();
   const episodes = nodeFlowContext.episodes || [];
 
@@ -133,10 +133,10 @@ export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ 
     if (!episode) return;
     const origin = getSuggestedCanvasOrigin(nodes);
     const nodeFlowMap = buildEpisodeShotNodeFlow({ episode, origin });
-    addNodesAndLinks(nodeFlowMap.nodes, nodeFlowMap.links);
+    addNodesAndLinks(nodeFlowMap.nodes, nodeFlowMap.links, { expectedRevision: revision });
     updateNodeData(id, { nodeFlowLoadedAt: Date.now() });
     setViewport({ x: -origin.x + 80, y: -origin.y + 80, zoom: 0.7 }, { duration: 800 });
-  }, [addNodesAndLinks, episode, id, nodes, setViewport, updateNodeData]);
+  }, [addNodesAndLinks, episode, id, nodes, revision, setViewport, updateNodeData]);
 
   return (
     <BaseNode title={data.title || "分镜表面板节点"} outputs={["text"]} selected={selected}>

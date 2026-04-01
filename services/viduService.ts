@@ -62,6 +62,7 @@ const readProxyDebugHeaders = (response: Response) => ({
   target: response.headers.get("x-qalam-proxy-target") || "n/a",
   vidu: response.headers.get("x-qalam-proxy-vidu") || "n/a",
   keySource: response.headers.get("x-qalam-proxy-key-source") || "n/a",
+  keyFingerprint: response.headers.get("x-qalam-proxy-key-fingerprint") || "n/a",
   authHeader: response.headers.get("x-qalam-proxy-auth-header") || "n/a",
   keyQuery: response.headers.get("x-qalam-proxy-key-query") || "n/a",
 });

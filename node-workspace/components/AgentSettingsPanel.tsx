@@ -377,7 +377,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 }) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
   const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
-  const { applyViduReferenceDemo } = useNodeFlowStore();
+  const { applyViduReferenceDemo, revision } = useNodeFlowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
@@ -1726,7 +1726,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               </div>
               <button
                 type="button"
-                onClick={() => applyViduReferenceDemo()}
+                onClick={() => applyViduReferenceDemo(undefined, { expectedRevision: revision })}
                 className="inline-flex items-center justify-center px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-[var(--app-text-secondary)] bg-white/5 hover:bg-white/10 transition"
               >
                 载入 Vidu 参考演示
