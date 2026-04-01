@@ -147,7 +147,7 @@ export const buildViduReferenceDemoState = ({
     type: "group",
     position: offset,
     data: {
-      title: "Vidu 参考生视频演示",
+      title: "Vidu 演示",
       description: "音视频直出默认启用，1080p，错峰开启，示例含 3 主体与场景参考。",
       view: activeView || undefined,
     } as GroupNodeData,
@@ -207,7 +207,7 @@ export const buildViduReferenceDemoState = ({
     parentId: groupId,
     extent: "parent",
     data: {
-      title: "Vidu 参考生视频",
+      title: "Vidu",
       mode: "subject",
       aspectRatio: "16:9",
       resolution: "720p",
@@ -220,6 +220,7 @@ export const buildViduReferenceDemoState = ({
       subjects: [],
       status: "idle",
       error: null,
+      lastCreditsCost: null,
       authProbeStatus: "idle",
       authProbeSummary: null,
       authProbeDetail: null,

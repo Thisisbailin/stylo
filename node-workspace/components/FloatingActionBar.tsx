@@ -283,7 +283,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "Nano Banana", hint: "Nano Banana Pro image", meta: "Generation", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
-    { label: "Vidu Vid", hint: "Vidu reference-to-video", meta: "Motion", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
+    { label: "Vidu", hint: "Vidu reference-to-video", meta: "Motion", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "WAN Vid", hint: "Wan 2.6 video workflow", meta: "Motion", onClick: onAddWanVideoGen, Icon: Video, tone: "text-violet-300", surface: "bg-violet-500/12" },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },

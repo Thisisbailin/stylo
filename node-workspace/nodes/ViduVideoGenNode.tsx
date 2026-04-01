@@ -19,6 +19,29 @@ const normalizeMode = (mode?: string) => {
   return mode === "nonSubject" ? "nonSubject" : "subject";
 };
 
+const estimateCredits = (model: string, resolution: string, duration: number, offPeak: boolean) => {
+  const normalizedModel = (model || "").toLowerCase();
+  const normalizedResolution = (resolution || "").toLowerCase();
+  const pricing: Record<string, Record<string, number>> = {
+    viduq3: {
+      "540p": 10,
+      "720p": 20,
+      "1080p": 25,
+    },
+    "viduq3-mix": {
+      "720p": 25,
+      "1080p": 30,
+    },
+  };
+  const rate = pricing[normalizedModel]?.[normalizedResolution];
+  if (!rate || !Number.isFinite(duration)) return null;
+  return {
+    rate,
+    total: rate * duration,
+    offPeak,
+  };
+};
+
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
   const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
@@ -32,6 +55,10 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const model = data.model || "viduq3";
   const requestedMode = normalizeMode(data.mode);
   const effectiveMode = model === "viduq3-mix" ? "nonSubject" : requestedMode;
+  const creditsEstimate = useMemo(
+    () => estimateCredits(model, data.resolution || "720p", data.duration || 5, data.offPeak === true),
+    [data.duration, data.offPeak, data.resolution, model]
+  );
 
   const resolvedIdentityMentions = useMemo(() => {
     const roles = nodeFlowContext?.context?.roles || [];
@@ -145,15 +172,26 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
         ...(appConfig?.viduConfig || INITIAL_VIDU_CONFIG),
         apiKey: "",
       });
-      const remain = Array.isArray(credits.remains) ? credits.remains[0] : undefined;
-      const pkg = Array.isArray(credits.packages) ? credits.packages[0] : undefined;
-      const summary = remain
-        ? `鉴权成功 · 剩余积分 ${remain.credit_remain ?? "-"} · 并发 ${remain.current_concurrency ?? 0}/${remain.concurrency_limit ?? "-"}`
-        : `鉴权成功 · 已返回 ${Array.isArray(credits.packages) ? credits.packages.length : 0} 个积分包`;
+      const remains = Array.isArray(credits.remains) ? credits.remains : [];
+      const packages = Array.isArray(credits.packages) ? credits.packages : [];
+      const totalCreditsFromPackages = packages.reduce((sum, item) => sum + (Number(item.credit_remain) || 0), 0);
+      const totalCreditsFromRemains = remains.reduce((sum, item) => sum + (Number(item.credit_remain) || 0), 0);
+      const totalCredits = totalCreditsFromPackages > 0 ? totalCreditsFromPackages : totalCreditsFromRemains;
+      const currentConcurrency = remains.reduce((sum, item) => sum + (Number(item.current_concurrency) || 0), 0);
+      const concurrencyLimit = remains.reduce((sum, item) => sum + (Number(item.concurrency_limit) || 0), 0);
+      const queueCount = remains.reduce((sum, item) => sum + (Number(item.queue_count) || 0), 0);
+      const summary =
+        totalCredits > 0 || concurrencyLimit > 0
+          ? `鉴权成功 · 总积分 ${totalCredits || 0} · 并发 ${currentConcurrency}/${concurrencyLimit || 0} · 排队 ${queueCount}`
+          : `鉴权成功 · 已返回 ${packages.length} 个积分包`;
       const detail = JSON.stringify(
         {
-          remains: credits.remains || [],
-          packages: (credits.packages || []).map((item) => ({
+          totalCredits,
+          currentConcurrency,
+          concurrencyLimit,
+          queueCount,
+          remains,
+          packages: packages.map((item) => ({
             name: item.name,
             type: item.type,
             credit_remain: item.credit_remain,
@@ -181,7 +219,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
 
   return (
     <BaseNode
-      title={data.title || "Vidu Q3 Reference Video"}
+      title={data.title || "Vidu"}
       onTitleChange={(title) => updateNodeData(id, { title })}
       inputs={["image", "text"]}
       selected={selected}
@@ -223,7 +261,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                 </div>
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black transition-all duration-500 text-white">GENERATE</span>
-                  <span className="text-[8px] opacity-20 uppercase tracking-[0.1em] font-bold transition-all duration-500">Vidu CN Q3 reference2video</span>
+                  <span className="text-[8px] opacity-20 uppercase tracking-[0.1em] font-bold transition-all duration-500">Vidu reference2video</span>
                 </div>
               </>
             )}
@@ -261,6 +299,32 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
 
         <div className="text-[10px] uppercase tracking-[0.2em] font-black text-[var(--node-text-secondary)]/70">
           {connectedImages.length} refs · {connectedText ? "Text in" : "Prompt needed"}
+        </div>
+
+        <div className="node-panel space-y-2 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+              预计消耗积分
+            </div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-[var(--node-text-secondary)]">
+              {creditsEstimate ? `${creditsEstimate.total}` : "N/A"}
+            </div>
+          </div>
+          <div className="text-[10px] leading-5 text-[var(--node-text-secondary)]">
+            {creditsEstimate
+              ? `${model} · ${data.resolution || "720p"} · ${data.duration || 5}s = ${creditsEstimate.rate}/秒，共 ${creditsEstimate.total} 积分`
+              : "当前只按 Q3 文档中的 viduq3 / viduq3-mix 定价表估算。"}
+          </div>
+          {creditsEstimate?.offPeak && (
+            <div className="text-[9px] text-amber-200">
+              错峰模式价格更低，但官方 Q3 PDF 未给出精确折扣，这里显示的是标准档估算。
+            </div>
+          )}
+          {typeof data.lastCreditsCost === "number" && (
+            <div className="rounded-[14px] border border-emerald-400/20 bg-emerald-500/8 px-3 py-2 text-[10px] text-emerald-100">
+              上次提交返回积分：{data.lastCreditsCost}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -346,7 +410,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
           <div className="node-panel space-y-3 p-3 animate-in fade-in slide-in-from-top-1">
             <div className="flex items-center gap-2 text-[9px] text-[var(--node-text-secondary)]">
               <Sparkles size={12} className="text-amber-300" />
-              国内区 Q3 参考生视频 · 当前模型 {model} · 实际模式 {effectiveMode === "subject" ? "主体调用" : "非主体调用"}
+              Vidu · 国内区 Q3 参考生视频 · 当前模型 {model} · 实际模式 {effectiveMode === "subject" ? "主体调用" : "非主体调用"}
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-[9px] text-[var(--node-text-secondary)]">
@@ -446,18 +510,18 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
         <div className="node-panel space-y-2 p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
-              查询积分接口
+              查询剩余积分 / 并发
             </div>
             <button
               type="button"
               onClick={handleProbeCredits}
               className="inline-flex items-center justify-center px-3 py-1.5 rounded-full text-[9px] font-semibold uppercase tracking-widest text-[var(--node-text-secondary)] bg-white/5 hover:bg-white/10 transition"
             >
-              {data.authProbeStatus === "loading" ? "Checking..." : "Run Probe"}
+              {data.authProbeStatus === "loading" ? "查询中..." : "查询额度"}
             </button>
           </div>
           <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
-            按国内区官方文档调用 `GET /ent/v2/credits?show_detail`，用于做最小鉴权测试。
+            按国内区官方文档调用 `GET /ent/v2/credits?show_detail`，查看当前总积分与并发额度。
           </div>
           {data.authProbeSummary && (
             <div

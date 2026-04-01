@@ -156,6 +156,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         videoUrl: undefined,
         status: "idle",
         error: null,
+        lastCreditsCost: null,
         authProbeStatus: "idle",
         authProbeSummary: null,
         authProbeDetail: null,

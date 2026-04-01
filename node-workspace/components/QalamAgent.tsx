@@ -708,8 +708,8 @@ export const QalamAgent: React.FC<Props> = ({
       <div
         className={`pointer-events-none absolute left-0 top-0 h-36 w-56 bg-[radial-gradient(circle_at_top_left,rgba(122,183,160,0.22),transparent_62%)] blur-2xl transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-55"}`}
       />
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-        <div className="qalam-header-shell relative z-20 shrink-0 flex items-center justify-between gap-3 px-4 py-3">
+      <div className="relative h-full min-h-0">
+        <div className="qalam-header-shell absolute left-4 right-4 top-[10px] z-20 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {qalamMark}
             <button
@@ -732,7 +732,7 @@ export const QalamAgent: React.FC<Props> = ({
             </button>
           </div>
         </div>
-        <div className="flex min-h-0 overflow-hidden">
+        <div className="flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[72px]">
           <QalamChatContent messages={messages} isSending={isSending} />
         </div>
       </div>

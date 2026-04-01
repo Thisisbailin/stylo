@@ -934,9 +934,15 @@ export const useNodeFlowExecutor = () => {
           },
         };
 
-      const { taskId } = await ViduService.createReferenceVideo(request as any, viduConfig);
+      const { taskId, credits } = await ViduService.createReferenceVideo(request as any, viduConfig);
 
-      store.updateNodeData(nodeId, { status: "loading", videoId: taskId, videoUrl: undefined, error: null });
+      store.updateNodeData(nodeId, {
+        status: "loading",
+        videoId: taskId,
+        videoUrl: undefined,
+        error: null,
+        lastCreditsCost: typeof credits === "number" ? credits : data.lastCreditsCost ?? null,
+      });
 
       const maxAttempts = 60;
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {

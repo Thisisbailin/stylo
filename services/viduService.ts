@@ -197,7 +197,7 @@ const createSubjectReferenceVideo = async (
     ...(params.payload ? { payload: params.payload } : {}),
   };
 
-  const data = await postJson<{ task_id?: string; id?: string; state?: string }>(
+  const data = await postJson<{ task_id?: string; id?: string; state?: string; credits?: number }>(
     "reference2video",
     payload,
     config
@@ -206,7 +206,7 @@ const createSubjectReferenceVideo = async (
   const taskId = data.task_id || data.id;
   if (!taskId) throw new Error("Vidu did not return a task_id.");
 
-  return { taskId, state: mapState(data.state) };
+  return { taskId, state: mapState(data.state), credits: data.credits };
 };
 
 const createNonSubjectReferenceVideo = async (
@@ -238,7 +238,7 @@ const createNonSubjectReferenceVideo = async (
     ...(params.payload ? { payload: params.payload } : {}),
   };
 
-  const data = await postJson<{ task_id?: string; id?: string; state?: string }>(
+  const data = await postJson<{ task_id?: string; id?: string; state?: string; credits?: number }>(
     "reference2video",
     payload,
     config
@@ -247,7 +247,7 @@ const createNonSubjectReferenceVideo = async (
   const taskId = data.task_id || data.id;
   if (!taskId) throw new Error("Vidu did not return a task_id.");
 
-  return { taskId, state: mapState(data.state) };
+  return { taskId, state: mapState(data.state), credits: data.credits };
 };
 
 // Unified reference2video selector
