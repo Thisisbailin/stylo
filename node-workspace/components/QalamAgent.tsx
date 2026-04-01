@@ -810,6 +810,9 @@ export const QalamAgent: React.FC<Props> = ({
         loadWorkflow(runResult.updatedWorkflow);
       }
     } catch (err: any) {
+      if (err?.qalamAlreadyDisplayed) {
+        return;
+      }
       const message = String(err?.message || err || "");
       const isAborted =
         err?.name === "AbortError" ||

@@ -20,6 +20,10 @@ type Options = {
   setMessages: (updater: Message[] | ((prev: Message[]) => Message[])) => void;
 };
 
+type DisplayAwareError = Error & {
+  qalamAlreadyDisplayed?: boolean;
+};
+
 const upsertToolStatus = (messages: Message[], callId: string, status: "running" | "success" | "error", summary?: string) =>
   messages.map((message) => {
     if (message.kind !== "tool" || message.tool.callId !== callId) return message;
@@ -129,6 +133,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
   const streamedMessageSeenRef = useRef<Record<string, boolean>>({});
   const toolFailureCountsRef = useRef<Record<string, Record<string, number>>>({});
   const runAbortMessageRef = useRef<Record<string, string | undefined>>({});
+  const displayedRunFailureRef = useRef<Record<string, string>>({});
   const revealTimersRef = useRef<Record<string, number[]>>({});
 
   const createStatusId = useCallback((runId: string, kind: StatusKind) => {
@@ -560,6 +565,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         delete streamedMessageSeenRef.current[event.runId];
         delete toolFailureCountsRef.current[event.runId];
         delete runAbortMessageRef.current[event.runId];
+        delete displayedRunFailureRef.current[event.runId];
         return;
       }
 
@@ -570,6 +576,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         const forcedAbortMessage = runAbortMessageRef.current[event.runId];
         const finalError = forcedAbortMessage || event.error;
         const aborted = !forcedAbortMessage && isAbortLikeError(event.error);
+        displayedRunFailureRef.current[event.runId] = finalError;
         clearRevealTimers(event.runId);
         setMessages((prev) => {
           let withStatus = finalizeDanglingToolCalls(prev, event.runId, finalError);
@@ -627,6 +634,11 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         browserAgentDebug("useQalamAgent runtime result", result);
         return result;
       } catch (error: any) {
+        const activeRunId = activeRunIdRef.current;
+        const displayedError = activeRunId ? displayedRunFailureRef.current[activeRunId] : undefined;
+        if (displayedError && String(error?.message || error || "") === displayedError) {
+          (error as DisplayAwareError).qalamAlreadyDisplayed = true;
+        }
         browserAgentDebugError("useQalamAgent runtime error", error);
         throw error;
       } finally {

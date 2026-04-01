@@ -106,13 +106,19 @@ export const createHttpQalamAgentRuntime = ({
 
     let finalResult: QalamRunResult | null = null;
     let streamedError: string | null = null;
+    let lastEventType: string | null = null;
+    let lastMessageCompletedText = "";
     await decodeStreamChunks(response.body, (rawPacket) => {
       browserAgentDebug("httpClient raw packet", rawPacket);
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
         browserAgentDebug("httpClient event", packet.event);
+        lastEventType = packet.event.type;
         if (packet.event.type === "run_completed") {
           finalResult = packet.event.result;
+        }
+        if (packet.event.type === "message_completed") {
+          lastMessageCompletedText = packet.event.text || "";
         }
         if (packet.event.type === "run_failed") {
           streamedError = packet.event.error;
@@ -132,12 +138,35 @@ export const createHttpQalamAgentRuntime = ({
     });
 
     if (!finalResult) {
+      if (lastMessageCompletedText.trim()) {
+        finalResult = {
+          finalText: lastMessageCompletedText,
+          sessionId: input.sessionId,
+          outputItems: [{ kind: "text", text: lastMessageCompletedText }],
+          toolCalls: [],
+        };
+        browserAgentDebug("httpClient synthesized result from message_completed", {
+          sessionId: input.sessionId,
+          lastEventType,
+        });
+      }
+    }
+
+    if (!finalResult) {
       if (streamedError) {
         browserAgentDebugError("httpClient streamed error without result", streamedError);
         throw new Error(streamedError);
       }
-      browserAgentDebugError("httpClient missing final result");
-      throw new Error("远端 Agent 没有返回最终结果。");
+      browserAgentDebugError("httpClient missing final result", {
+        sessionId: input.sessionId,
+        lastEventType,
+        hadMessageCompletedText: Boolean(lastMessageCompletedText.trim()),
+      });
+      throw new Error(
+        lastEventType
+          ? `远端 Agent 在 ${lastEventType} 阶段后异常结束，未返回最终结果。`
+          : "远端 Agent 没有返回最终结果。"
+      );
     }
     browserAgentDebug("httpClient completed", {
       finalText: finalResult.finalText,

@@ -516,10 +516,12 @@ const emitEvent = (controller: ReadableStreamDefaultController<Uint8Array>, even
     controller.enqueue(
       new TextEncoder().encode(serializeAgentStreamPacket({ kind: "event", event }))
     );
+    return true;
   } catch (error: any) {
     if (!String(error?.message || error).includes("Unable to enqueue")) {
       throw error;
     }
+    return false;
   }
 };
 
@@ -528,10 +530,12 @@ const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, res
     controller.enqueue(
       new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))
     );
+    return true;
   } catch (error: any) {
     if (!String(error?.message || error).includes("Unable to enqueue")) {
       throw error;
     }
+    return false;
   }
 };
 
@@ -540,10 +544,12 @@ const emitError = (controller: ReadableStreamDefaultController<Uint8Array>, erro
     controller.enqueue(
       new TextEncoder().encode(serializeAgentStreamPacket({ kind: "error", error }))
     );
+    return true;
   } catch (errorLike: any) {
     if (!String(errorLike?.message || errorLike).includes("Unable to enqueue")) {
       throw errorLike;
     }
+    return false;
   }
 };
 
@@ -556,7 +562,7 @@ const emitTrace = (
   detail?: string,
   payload?: string
 ) => {
-  emitEvent(controller, {
+  return emitEvent(controller, {
     type: "trace",
     runId,
     entry: {
@@ -605,11 +611,28 @@ export const onRequestPost = async (context: any) => {
       ensureQalamTraceProcessor();
       const tracingEnabled = true;
       const traceId = `edge-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Qalam Edge Agent";
       const groupId = sessionKey;
       const bridgeState = createEdgeBridgeState(body.projectData, body.workflow);
       const skillLoader = new StaticSkillLoader();
+      const requestAbortSignal = context.request.signal;
+      const emitWrapperTrace = (
+        stage: "runtime" | "session" | "model" | "tool" | "result",
+        status: "info" | "running" | "success" | "error",
+        title: string,
+        detail?: string,
+        payload?: string
+      ) => emitTrace(controller, wrapperRunId, stage, status, title, detail, payload);
+      const onAbort = () => {
+        debugLog(debugEnabled, traceId, "request aborted", {
+          reason: String((requestAbortSignal as any)?.reason || ""),
+        });
+        emitWrapperTrace("runtime", "error", "Request aborted", String((requestAbortSignal as any)?.reason || ""));
+      };
+      requestAbortSignal?.addEventListener("abort", onAbort, { once: true });
       try {
+        emitWrapperTrace("runtime", "running", "Edge request accepted", `session=${body.run.sessionId}`);
         debugLog(debugEnabled, traceId, "request received", {
           provider,
           runtime: body.runtime,
@@ -638,6 +661,17 @@ export const onRequestPost = async (context: any) => {
           explicitSkillIds,
           implicitSkillIds,
         });
+        emitWrapperTrace(
+          "runtime",
+          "info",
+          "Edge runtime prepared",
+          `${provider} · ${effectiveModel}`,
+          JSON.stringify({
+            explicitSkillIds,
+            implicitSkillIds,
+            enabledSkills: enabledSkills.map((skill) => skill.id),
+          })
+        );
         const session = new QalamResponsesCompactionSession({
           underlyingSession: new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner),
           model: effectiveModel,
@@ -645,6 +679,8 @@ export const onRequestPost = async (context: any) => {
           baseUrl: resolvedBaseUrl,
         });
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
+        emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
+        emitWrapperTrace("runtime", "running", "Delegating to agent core");
         const runResult = await runQalamAgentCore({
           input: body.run,
           config: {
@@ -695,13 +731,19 @@ export const onRequestPost = async (context: any) => {
           },
           recoverFallbackOnAnyError: true,
         });
-        emitResult(controller, runResult);
+        emitWrapperTrace("result", "success", "Agent core returned", `text=${runResult.finalText.length} chars · tools=${runResult.toolCalls.length}`);
+        const emitted = emitResult(controller, runResult);
+        debugLog(debugEnabled, traceId, "emit result packet", { emitted });
+        emitWrapperTrace("result", emitted ? "success" : "error", emitted ? "Final result packet emitted" : "Final result packet dropped");
       } catch (error: any) {
         const message = error?.message || "Cloudflare Agent runtime 执行失败";
         debugLog(debugEnabled, traceId, "run error", message);
-        emitError(controller, message);
+        emitWrapperTrace("result", "error", "Wrapper catch", message);
+        const emitted = emitError(controller, message);
+        debugLog(debugEnabled, traceId, "emit error packet", { emitted, message });
       } finally {
         try {
+          emitWrapperTrace("runtime", "info", "Persisting trace records");
           await forceFlushAgentTracing();
           await persistBufferedTrace(context.env || {}, {
             traceId,
@@ -721,15 +763,20 @@ export const onRequestPost = async (context: any) => {
               runtimeMode: "edge_full",
             },
           });
+          emitWrapperTrace("runtime", "success", "Trace records persisted");
         } catch (traceError: any) {
           debugLog(debugEnabled, traceId, "trace persistence error", traceError?.message || String(traceError));
+          emitWrapperTrace("runtime", "error", "Trace persistence error", traceError?.message || String(traceError));
         }
         try {
+          emitWrapperTrace("runtime", "info", "Closing SSE stream");
           controller.close();
         } catch (error: any) {
           if (!String(error?.message || error).includes("Controller is already closed")) {
             throw error;
           }
+        } finally {
+          requestAbortSignal?.removeEventListener("abort", onAbort);
         }
       }
     },

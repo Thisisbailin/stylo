@@ -124,7 +124,6 @@ type ToolKey = "project-data" | "asset-library" | "workflow-builder";
 type ToolItem = {
   key: ToolKey;
   capability: string;
-  label: string;
   title: string;
   description: string;
   tools: string[];
@@ -132,7 +131,6 @@ type ToolItem = {
   boundary: string;
   artifact: string;
   note: string;
-  status: "ready";
   Icon: React.ComponentType<{ size?: number; className?: string }>;
 };
 
@@ -141,44 +139,38 @@ type MultiProviderKey = "openrouter" | "qwen" | "nanobanana";
 const TOOL_ITEMS: ToolItem[] = [
   {
     key: "project-data",
-    capability: "查阅",
-    label: "Inspect",
-    title: "项目数据查询",
+    capability: "read",
+    title: "read",
     description: "Agent 通过统一的资源目录、读取与搜索接口查阅剧本、分镜、项目摘要、角色与场景资料，为回答和后续动作取证。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     surfaces: ["episode script", "episode storyboard", "project summary", "character profile", "scene profile"],
     boundary: "只读，不允许直接修改项目状态。",
     artifact: "返回证据、摘要和结构化片段，作为理解与操作的前置输入。",
-    note: "对应第一类能力：查阅。",
-    status: "ready",
+    note: "负责读取项目资料与证据。",
     Icon: Eye,
   },
   {
     key: "asset-library",
-    capability: "理解",
-    label: "Understand",
-    title: "项目资源写回",
+    capability: "edit",
+    title: "edit",
     description: "Agent 通过统一编辑接口写回项目摘要、分集摘要、角色档案、场景档案与整集分镜表，不再暴露多套专用写入工具。",
     tools: ["edit_project_resource"],
     surfaces: ["project summary", "episode summary", "character profile", "scene profile", "episode storyboard"],
     boundary: "只允许通过结构化 resource write 写入，不允许绕过 schema 直接改项目状态。",
     artifact: "形成可持续迭代的长期事实层，供后续查阅、分镜和 workflow 创建继续使用。",
-    note: "对应第二类能力：理解。",
-    status: "ready",
+    note: "负责把结构化理解写回项目资产。",
     Icon: Layers,
   },
   {
     key: "workflow-builder",
-    capability: "操作",
-    label: "Operate",
-    title: "节点工作流构建",
+    capability: "operate",
+    title: "operate",
     description: "Agent 通过统一操作接口创建文本节点、剧本面板、分镜表板、角色卡片，并连接这些节点形成最小工作流骨架。",
     tools: ["operate_project_resource"],
     surfaces: ["text node", "script board", "storyboard board", "character card", "workflow connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
     artifact: "输出可继续编辑和执行的 workflow scaffold，承接“查阅”和“编辑”的结果。",
-    note: "对应第三类能力：操作。",
-    status: "ready",
+    note: "负责把事实与资产变成可执行节点流。",
     Icon: Code2,
   },
 ];
@@ -507,15 +499,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
     return messages.filter((message) => message.role === historyFilter);
   }, [historyFilter, selectedCloudSession?.messages]);
   const ActiveToolIcon = activeToolItem.Icon;
-  const toolEnabledCount = useMemo(
-    () =>
-      [
-        qalamToolSettings.projectData.enabled,
-        qalamToolSettings.characterLocation.enabled,
-        qalamToolSettings.workflowBuilder.enabled,
-      ].filter(Boolean).length,
-    [qalamToolSettings]
-  );
   useEffect(() => {
     const onUpdated = () => setRuntimeMetaVersion((value) => value + 1);
     if (typeof window === "undefined") return;
@@ -1003,21 +986,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                 <div className="text-[11px] uppercase tracking-widest app-text-muted">Tools</div>
-                <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">单一 Agent 能力面板</div>
-                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                        按“查阅 / 理解 / 操作”三类能力组织，而不是按旧架构零散堆工具。
-                      </div>
-                    </div>
-                    <div className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">
-                      {toolEnabledCount}/3 已启用
-                    </div>
-                  </div>
-                </div>
                 <div className="flex flex-col gap-2">
-                  {TOOL_ITEMS.map(({ key, capability, title, description, Icon, status, tools }) => {
+                  {TOOL_ITEMS.map(({ key, title, Icon, tools }) => {
                     const active = activeTool === key;
                     return (
                       <button
@@ -1033,28 +1003,57 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                             : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
                         }`}
                       >
-                        <span className="flex items-start gap-3 text-left">
-                          <span className={`mt-0.5 h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                        <span className="flex items-center gap-3 text-left">
+                          <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
                             <Icon size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
                           </span>
-                          <span className="min-w-0">
-                            <span className="flex items-center gap-2">
-                              <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">{capability}</span>
-                              <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                                {tools.length} tools
-                              </span>
-                            </span>
-                            <span className="mt-1 block text-[12px] font-semibold text-[var(--app-text-primary)]">{title}</span>
-                            <span className="mt-1 block text-[11px] leading-relaxed text-[var(--app-text-secondary)] line-clamp-2">{description}</span>
-                          </span>
+                          <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{title}</span>
                         </span>
-                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${status === "ready" ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300" : "text-[var(--app-text-muted)]"}`}>
-                          已接入
+                        <span className="shrink-0 rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                          {tools.length} tools
                         </span>
                       </button>
                     );
                   })}
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] uppercase tracking-widest app-text-muted">Skills</div>
+                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                    {activeAgentSkillIds.length}/{availableAgentSkills.length || 0}
+                  </span>
+                </div>
+                {availableAgentSkills.length ? (
+                  <div className="flex flex-col gap-2">
+                    {availableAgentSkills.map((skill) => {
+                      const active = activeAgentSkillIds.includes(skill.id);
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          onClick={() => toggleAgentSkill(skill.id)}
+                          className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-[12px] border transition ${
+                            active
+                              ? "border-emerald-400/40 bg-emerald-500/10 text-[var(--app-text-primary)]"
+                              : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                          }`}
+                        >
+                          <span className="flex items-center gap-3 text-left">
+                            <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-emerald-400/30 bg-emerald-500/10" : "border-[var(--app-border)] bg-transparent"}`}>
+                              <Sparkles size={14} className={active ? "text-emerald-300" : "text-[var(--app-text-secondary)]"} />
+                            </span>
+                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
+                          </span>
+                          <span className={`h-2.5 w-2.5 rounded-full ${active ? "bg-emerald-300 shadow-[0_0_0_4px_rgba(52,211,153,0.12)]" : "bg-[var(--app-border-strong)]"}`} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
+                )}
               </div>
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
@@ -1164,58 +1163,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({ isOpen, onClose }) => {
                         <div>Effective provider: <span className="text-[var(--app-text-primary)]">{activeAgentProvider}</span></div>
                         <div>Effective model: <span className="text-[var(--app-text-primary)]">{activeAgentModel || "unset"}</span></div>
                         <div className="truncate">Effective baseUrl: <span className="text-[var(--app-text-primary)]">{activeAgentBaseUrl || "unset"}</span></div>
-                      </div>
-                      <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">Agent Skills</div>
-                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              Skill 会向统一 Agent Core 注入额外 system overlay，用于强化特定任务风格，不会创建第二个 agent。
-                            </div>
-                          </div>
-                          <span className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                            {activeAgentSkillIds.length}/{availableAgentSkills.length || 0} 已启用
-                          </span>
-                        </div>
-                        {availableAgentSkills.length ? (
-                          <div className="grid grid-cols-1 gap-2">
-                            {availableAgentSkills.map((skill) => {
-                              const active = activeAgentSkillIds.includes(skill.id);
-                              return (
-                                <button
-                                  key={skill.id}
-                                  type="button"
-                                  onClick={() => toggleAgentSkill(skill.id)}
-                                  className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
-                                    active
-                                      ? "border-emerald-400/40 bg-emerald-500/10"
-                                      : "border-[var(--app-border)] bg-[var(--app-panel-muted)] hover:border-[var(--app-border-strong)]"
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</div>
-                                      <div className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                                        {skill.description}
-                                      </div>
-                                    </div>
-                                    <span
-                                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                                        active
-                                          ? "border border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
-                                          : "border border-[var(--app-border)] text-[var(--app-text-secondary)]"
-                                      }`}
-                                    >
-                                      {active ? "Enabled" : "Disabled"}
-                                    </span>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
-                        )}
                       </div>
                     </div>
                   )}
