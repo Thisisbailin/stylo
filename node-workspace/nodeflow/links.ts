@@ -1,5 +1,10 @@
-import { addEdge, applyEdgeChanges, Connection, EdgeChange } from "@xyflow/react";
+import type { Connection, EdgeChange } from "@xyflow/react";
 import type { NodeFlowLink } from "../types";
+import {
+  type NodeFlowCanvasLink,
+  applyNodeFlowLinkChanges as applyCanvasLinkChanges,
+  createNodeFlowCanvasLink,
+} from "./reactflow";
 
 export const buildNodeFlowLinkId = (
   sourceNodeId: string,
@@ -9,16 +14,14 @@ export const buildNodeFlowLinkId = (
 ) =>
   `link-${sourceNodeId}-${targetNodeId}-${sourceHandle || "default"}-${targetHandle || "default"}`;
 
-export const applyNodeFlowLinkChanges = (
-  changes: EdgeChange<NodeFlowLink>[],
-  links: NodeFlowLink[]
-) => applyEdgeChanges(changes, links);
+export const applyNodeFlowLinkChanges = (changes: EdgeChange<NodeFlowCanvasLink>[], links: NodeFlowLink[]) =>
+  applyCanvasLinkChanges(changes, links);
 
 export const createNodeFlowLink = (
   connection: Connection,
   links: NodeFlowLink[]
 ) =>
-  addEdge(
+  createNodeFlowCanvasLink(
     {
       ...connection,
       id: buildNodeFlowLinkId(

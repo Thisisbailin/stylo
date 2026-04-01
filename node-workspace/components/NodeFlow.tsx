@@ -49,6 +49,7 @@ import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
 import { ArrowUp } from "@phosphor-icons/react";
 import { getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
+import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
 
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
@@ -764,8 +765,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     setIsLocked((prev) => !prev);
   }, []);
 
-  const displayNodes = nodes;
-  const displayEdges = links;
+  const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
+  const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
   const selectedGroup = getSelectedGroup();
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
@@ -1025,7 +1026,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         isDarkMode={isDarkMode}
         requestedPanel={agentSettingsPanel}
       />
-      <div className="fixed bottom-4 left-4 z-30 pointer-events-none">
+      <div className="fixed bottom-4 left-4 z-[80] pointer-events-none">
         <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
           <QalamAgent
             projectData={projectData}

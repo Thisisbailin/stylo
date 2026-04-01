@@ -1,0 +1,194 @@
+import type {
+  AnnotationNodeData,
+  AudioInputNodeData,
+  GroupNodeData,
+  IdentityCardNodeData,
+  ImageGenNodeData,
+  ImageInputNodeData,
+  NodeFlowNodeData,
+  NodeType,
+  ScriptBoardNodeData,
+  SeedanceVideoGenNodeData,
+  ShotNodeData,
+  StoryboardBoardNodeData,
+  TextNodeData,
+  ViduVideoGenNodeData,
+  VideoGenNodeData,
+} from "../types";
+
+export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData => {
+  switch (type) {
+    case "imageInput":
+      return {
+        image: null,
+        filename: null,
+        dimensions: null,
+        label: "",
+      } as ImageInputNodeData;
+    case "audioInput":
+      return {
+        audio: null,
+        filename: null,
+        mimeType: null,
+        durationMs: null,
+        label: "",
+      } as AudioInputNodeData;
+    case "annotation":
+      return {
+        sourceImage: null,
+        annotations: [],
+        outputImage: null,
+      } as AnnotationNodeData;
+    case "text":
+      return {
+        title: "",
+        text: "",
+      } as TextNodeData;
+    case "scriptBoard":
+      return {
+        title: "剧本面板",
+      } as ScriptBoardNodeData;
+    case "storyboardBoard":
+      return {
+        title: "分镜表面板",
+        displayMode: "table",
+        columnWidths: [96, 280, 170, 220, 220, 200, 180, 180, 280, 280],
+        rowHeights: {},
+      } as StoryboardBoardNodeData;
+    case "identityCard":
+      return {
+        title: "角色 / 场景身份卡片",
+        avatarOverrides: {},
+      } as IdentityCardNodeData;
+    case "imageGen":
+      return {
+        inputImages: [],
+        outputImage: null,
+        status: "idle",
+        error: null,
+        aspectRatio: "1:1",
+      } as ImageGenNodeData;
+    case "nanoBananaImageGen":
+      return {
+        inputImages: [],
+        outputImage: null,
+        versionHistory: [],
+        status: "idle",
+        error: null,
+        aspectRatio: "1:1",
+        model: "nano banana pro",
+      } as ImageGenNodeData;
+    case "wanImageGen":
+      return {
+        inputImages: [],
+        outputImage: null,
+        status: "idle",
+        error: null,
+        aspectRatio: "1:1",
+        model: "wan2.6-image",
+        enableInterleave: false,
+        watermark: false,
+        outputCount: 1,
+      } as ImageGenNodeData;
+    case "soraVideoGen":
+      return {
+        inputImages: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        aspectRatio: "16:9",
+      } as VideoGenNodeData;
+    case "wanVideoGen":
+      return {
+        inputImages: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        aspectRatio: "16:9",
+        duration: "10s",
+        model: "wan2.6-i2v",
+        quality: "standard",
+        resolution: "720P",
+        shotType: "multi",
+        watermark: false,
+        audioEnabled: false,
+        audioUrl: "",
+      } as VideoGenNodeData;
+    case "wanReferenceVideoGen":
+      return {
+        inputImages: [],
+        referenceImages: [],
+        referenceVideos: [],
+        projectReferenceTargets: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        aspectRatio: "16:9",
+        duration: "5s",
+        model: "wan2.6-r2v",
+        quality: "standard",
+        resolution: "720P",
+        shotType: "single",
+        watermark: false,
+        audioEnabled: true,
+      } as VideoGenNodeData;
+    case "viduVideoGen":
+      return {
+        inputImages: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        mode: "audioVideo",
+        useCharacters: true,
+        aspectRatio: "16:9",
+        resolution: "1080p",
+        duration: 10,
+        movementAmplitude: "auto",
+        offPeak: true,
+      } as ViduVideoGenNodeData;
+    case "seedanceVideoGen":
+      return {
+        inputImages: [],
+        referenceVideos: [],
+        referenceAudios: [],
+        videoId: undefined,
+        videoUrl: undefined,
+        status: "idle",
+        error: null,
+        model: "doubao-seedance-2-0-260128",
+        mode: "multimodalReference",
+        resolution: "720p",
+        ratio: "adaptive",
+        duration: 5,
+        generateAudio: true,
+        watermark: false,
+      } as SeedanceVideoGenNodeData;
+    case "group":
+      return {
+        title: "Node Group",
+        isExpanded: true,
+      } as GroupNodeData;
+    case "shot":
+      return {
+        shotId: "S-1",
+        duration: "3s",
+        shotType: "Medium Shot",
+        focalLength: "",
+        movement: "Static",
+        composition: "",
+        blocking: "",
+        dialogue: "",
+        sound: "",
+        lightingVfx: "",
+        editingNotes: "",
+        notes: "",
+        soraPrompt: "",
+        storyboardPrompt: "",
+        viewMode: "card",
+      } as ShotNodeData;
+  }
+};

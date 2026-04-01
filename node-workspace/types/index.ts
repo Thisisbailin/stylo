@@ -1,4 +1,4 @@
-import { Node, Edge } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import { DesignAssetItem, Episode, ProjectContext, SeedanceModel, ViduReferenceMode } from "../../types";
 
 export type HandleType = "image" | "text" | "audio" | "multi";
@@ -304,13 +304,45 @@ export type NodeFlowNodeData =
   | GroupNodeData
   | ShotNodeData;
 
-export type NodeFlowNode = Node<NodeFlowNodeData, NodeType>;
+export type NodeFlowPosition = {
+  x: number;
+  y: number;
+};
+
+export type NodeFlowMeasured = {
+  width?: number;
+  height?: number;
+};
+
+export type NodeFlowNodeStyle = CSSProperties;
+
+export interface NodeFlowNode {
+  id: string;
+  type: NodeType;
+  position: NodeFlowPosition;
+  data: NodeFlowNodeData;
+  parentId?: string;
+  extent?: "parent";
+  style?: NodeFlowNodeStyle;
+  measured?: NodeFlowMeasured;
+  selected?: boolean;
+}
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
 }
 
-export type NodeFlowLink = Edge<NodeFlowLinkData>;
+export interface NodeFlowLink {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  data?: NodeFlowLinkData;
+  selected?: boolean;
+  type?: string;
+  markerEnd?: string;
+}
 
 export type GlobalAssetType = "image" | "video" | "audio";
 

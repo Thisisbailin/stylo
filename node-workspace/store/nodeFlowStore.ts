@@ -3,7 +3,6 @@ import {
   Connection,
   EdgeChange,
   NodeChange,
-  applyNodeChanges,
   XYPosition,
 } from "@xyflow/react";
 import {
@@ -28,6 +27,7 @@ import {
   NodeFlowContextSnapshot,
   NodeFlowViewport,
   NodeFlowTemplate,
+  NodeFlowNodeStyle,
 } from "../types";
 import type { Episode, ProjectRoleIdentity, Scene } from "../../types";
 import { buildProjectIdentities, resolveLegacyIdentity } from "../../utils/identityCards";
@@ -39,6 +39,14 @@ import {
   removeNodeFlowLink,
   toggleNodeFlowLinkPause,
 } from "../nodeflow/links";
+import { applyNodeFlowNodeChanges, type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/reactflow";
+import {
+  getNodeFlowAbsolutePosition,
+  getNodeFlowNodeDimensions,
+  normalizeNodeFlowData,
+  normalizeNodeFlowGroupBindings,
+} from "../nodeflow/state";
+import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -81,338 +89,6 @@ const persistTemplates = (templates: NodeFlowTemplate[]) => {
   } catch {
     // Ignore persistence failures.
   }
-};
-
-const getNodeDimensions = (node: NodeFlowNode) => {
-  const styleWidth = typeof node.style?.width === "number" ? node.style.width : undefined;
-  const styleHeight = typeof node.style?.height === "number" ? node.style.height : undefined;
-  const measuredWidth = typeof node.measured?.width === "number" ? node.measured.width : undefined;
-  const measuredHeight = typeof node.measured?.height === "number" ? node.measured.height : undefined;
-  return {
-    width: measuredWidth ?? styleWidth ?? 280,
-    height: measuredHeight ?? styleHeight ?? 200,
-  };
-};
-
-const getAbsolutePosition = (node: NodeFlowNode, nodeMap: Map<string, NodeFlowNode>) => {
-  let x = node.position.x;
-  let y = node.position.y;
-  let parentId = node.parentId;
-  while (parentId) {
-    const parent = nodeMap.get(parentId);
-    if (!parent) break;
-    x += parent.position.x;
-    y += parent.position.y;
-    parentId = parent.parentId;
-  }
-  return { x, y };
-};
-
-const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
-  audioInput: 280,
-  seedanceVideoGen: 640,
-};
-
-const sanitizeNodeStyle = (type: NodeType, style?: NodeFlowNode["style"]) => {
-  if (!style) return style;
-  const nextStyle = { ...style };
-  const legacyHeight = LEGACY_AUTO_HEIGHTS[type];
-  if (
-    legacyHeight !== undefined &&
-    (nextStyle.height === legacyHeight ||
-      nextStyle.height === `${legacyHeight}` ||
-      nextStyle.height === `${legacyHeight}px`)
-  ) {
-    delete nextStyle.height;
-  }
-  return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
-};
-
-const normalizeNode = (node: NodeFlowNode): NodeFlowNode => {
-  const base = createDefaultNodeData(node.type as NodeType);
-  const data = base ? { ...base, ...(node.data || {}) } : (node.data || {});
-  const position = node.position || { x: 0, y: 0 };
-  return {
-    ...node,
-    position,
-    selected: false,
-    data,
-    style: sanitizeNodeStyle(node.type as NodeType, node.style),
-  };
-};
-
-const normalizeLink = (link: NodeFlowLink, index: number): NodeFlowLink => {
-  const id =
-    link.id ||
-    `link-${link.source}-${link.target}-${link.sourceHandle || "default"}-${link.targetHandle || "default"}-${index}`;
-  return { ...link, id, selected: false };
-};
-
-const normalizeNodeFlowData = (nodeFlow: NodeFlowFile) => {
-  const nodes = Array.isArray(nodeFlow.nodes) ? nodeFlow.nodes.map(normalizeNode) : [];
-  const nodeIds = new Set(nodes.map((n) => n.id));
-  const links = Array.isArray(nodeFlow.links)
-    ? nodeFlow.links
-        .map(normalizeLink)
-        .filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target))
-    : [];
-  return { nodes, links };
-};
-
-const normalizeGroupBindings = (nodes: NodeFlowNode[], links: NodeFlowLink[]) => {
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const adjacency = new Map<string, Set<string>>();
-  links.forEach((edge) => {
-    if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
-    if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
-    adjacency.get(edge.source)!.add(edge.target);
-    adjacency.get(edge.target)!.add(edge.source);
-  });
-
-  const groupOrder = new Map<string, number>();
-  nodes.forEach((node, index) => {
-    if (node.type === "group") groupOrder.set(node.id, index);
-  });
-  const groupIdSet = new Set(Array.from(groupOrder.keys()));
-
-  let changed = false;
-  let nextNodes = nodes.slice();
-
-  const updateNode = (nodeId: string, updates: Partial<NodeFlowNode>) => {
-    const index = nextNodes.findIndex((node) => node.id === nodeId);
-    if (index === -1) return;
-    const updated = { ...nextNodes[index], ...updates };
-    nextNodes[index] = updated;
-    nodeMap.set(nodeId, updated);
-    changed = true;
-  };
-
-  const pickPrimaryGroup = (groupIds: Set<string>) => {
-    const selectedGroups = Array.from(groupIds).filter((id) => nodeMap.get(id)?.selected);
-    if (selectedGroups.length > 0) {
-      return selectedGroups.reduce((winner, id) => {
-        const winnerOrder = groupOrder.get(winner) ?? -1;
-        const currentOrder = groupOrder.get(id) ?? -1;
-        return currentOrder > winnerOrder ? id : winner;
-      }, selectedGroups[0]);
-    }
-
-    let winner: string | null = null;
-    let bestOrder = -1;
-    groupIds.forEach((id) => {
-      const order = groupOrder.get(id) ?? -1;
-      if (order > bestOrder) {
-        bestOrder = order;
-        winner = id;
-      }
-    });
-    return winner;
-  };
-
-  const visited = new Set<string>();
-  const mergedGroupIds = new Set<string>();
-  const nonGroupNodes = nodes.filter((node) => node.type !== "group");
-
-  nonGroupNodes.forEach((node) => {
-    if (visited.has(node.id)) return;
-    const queue = [node.id];
-    visited.add(node.id);
-    const componentIds: string[] = [];
-    const componentGroupIds = new Set<string>();
-
-    while (queue.length) {
-      const currentId = queue.shift()!;
-      componentIds.push(currentId);
-      const currentNode = nodeMap.get(currentId);
-      if (currentNode?.parentId && groupIdSet.has(currentNode.parentId)) {
-        componentGroupIds.add(currentNode.parentId);
-      }
-      const neighbors = adjacency.get(currentId);
-      if (!neighbors) continue;
-      neighbors.forEach((neighborId) => {
-        if (visited.has(neighborId)) return;
-        const neighbor = nodeMap.get(neighborId);
-        if (!neighbor || neighbor.type === "group") return;
-        visited.add(neighborId);
-        queue.push(neighborId);
-      });
-    }
-
-    if (componentGroupIds.size === 0) return;
-    const primaryGroupId = pickPrimaryGroup(componentGroupIds);
-    if (!primaryGroupId) return;
-    const primaryGroup = nodeMap.get(primaryGroupId);
-    if (!primaryGroup) return;
-
-    const needsMerge = componentIds.some((id) => {
-      const target = nodeMap.get(id);
-      return !target || target.parentId !== primaryGroupId;
-    });
-
-    if (needsMerge) {
-      const primaryChildren = nextNodes
-        .filter((child) => child.parentId === primaryGroupId && child.type !== "group")
-        .map((child) => child.id);
-      const affectedIds = new Set([...primaryChildren, ...componentIds]);
-      const absPositions = new Map<string, XYPosition>();
-
-      affectedIds.forEach((id) => {
-        const target = nodeMap.get(id);
-        if (!target) return;
-        absPositions.set(id, getAbsolutePosition(target, nodeMap));
-      });
-
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      componentIds.forEach((id) => {
-        const target = nodeMap.get(id);
-        if (!target) return;
-        const abs = absPositions.get(id) ?? getAbsolutePosition(target, nodeMap);
-        const size = getNodeDimensions(target);
-        minX = Math.min(minX, abs.x);
-        minY = Math.min(minY, abs.y);
-        maxX = Math.max(maxX, abs.x + size.width);
-        maxY = Math.max(maxY, abs.y + size.height);
-      });
-
-      const paddingX = 80;
-      const paddingY = 100;
-      const componentBounds = {
-        x: minX - paddingX,
-        y: minY - paddingY,
-        width: maxX - minX + paddingX * 2,
-        height: maxY - minY + paddingY * 2,
-      };
-      const groupAbs = getAbsolutePosition(primaryGroup, nodeMap);
-      const groupSize = getNodeDimensions(primaryGroup);
-      const groupBounds = {
-        x: groupAbs.x,
-        y: groupAbs.y,
-        width: groupSize.width,
-        height: groupSize.height,
-      };
-      const nextX = Math.min(groupBounds.x, componentBounds.x);
-      const nextY = Math.min(groupBounds.y, componentBounds.y);
-      const nextMaxX = Math.max(groupBounds.x + groupBounds.width, componentBounds.x + componentBounds.width);
-      const nextMaxY = Math.max(groupBounds.y + groupBounds.height, componentBounds.y + componentBounds.height);
-      const nextBounds = {
-        x: nextX,
-        y: nextY,
-        width: nextMaxX - nextX,
-        height: nextMaxY - nextY,
-      };
-      const nextGroupPosition = { x: nextBounds.x, y: nextBounds.y };
-
-      if (
-        nextBounds.x !== groupBounds.x ||
-        nextBounds.y !== groupBounds.y ||
-        nextBounds.width !== groupBounds.width ||
-        nextBounds.height !== groupBounds.height
-      ) {
-        updateNode(primaryGroupId, {
-          position: nextGroupPosition,
-          style: { ...(primaryGroup.style || {}), width: nextBounds.width, height: nextBounds.height },
-        });
-      }
-
-      componentIds.forEach((id) => {
-        const target = nodeMap.get(id);
-        if (!target || target.parentId === primaryGroupId) return;
-        updateNode(id, { parentId: primaryGroupId });
-      });
-
-      affectedIds.forEach((id) => {
-        const abs = absPositions.get(id);
-        if (!abs) return;
-        updateNode(id, { position: { x: abs.x - nextGroupPosition.x, y: abs.y - nextGroupPosition.y } });
-      });
-
-      componentGroupIds.forEach((groupId) => {
-        if (groupId !== primaryGroupId) mergedGroupIds.add(groupId);
-      });
-    }
-  });
-
-  const groupNodes = nextNodes.filter((node) => node.type === "group");
-  groupNodes.forEach((groupNode) => {
-    const groupId = groupNode.id;
-    const groupChildren = nextNodes.filter((node) => node.parentId === groupId && node.type !== "group");
-    const childSet = new Set(groupChildren.map((node) => node.id));
-    if (childSet.size === 0) return;
-
-    const groupAbs = getAbsolutePosition(groupNode, nodeMap);
-    const groupSize = getNodeDimensions(groupNode);
-    const groupBounds = {
-      x: groupAbs.x,
-      y: groupAbs.y,
-      width: groupSize.width,
-      height: groupSize.height,
-    };
-    const margin = 40;
-
-    childSet.forEach((nodeId) => {
-      const node = nodeMap.get(nodeId);
-      if (!node || node.parentId !== groupId) return;
-      const neighbors = adjacency.get(nodeId);
-      const hasGroupLink = neighbors ? Array.from(neighbors).some((id) => childSet.has(id)) : false;
-      const desiredExtent = hasGroupLink ? "parent" : undefined;
-      if (node.extent !== desiredExtent) {
-        updateNode(nodeId, { extent: desiredExtent });
-      }
-
-      if (hasGroupLink) return;
-      const abs = getAbsolutePosition(node, nodeMap);
-      const size = getNodeDimensions(node);
-      const outside =
-        abs.x + size.width < groupBounds.x - margin ||
-        abs.x > groupBounds.x + groupBounds.width + margin ||
-        abs.y + size.height < groupBounds.y - margin ||
-        abs.y > groupBounds.y + groupBounds.height + margin;
-      if (outside) {
-        updateNode(nodeId, {
-          parentId: undefined,
-          extent: undefined,
-          position: abs,
-        });
-      }
-    });
-  });
-
-  if (mergedGroupIds.size > 0) {
-    const childCount = new Map<string, number>();
-    nextNodes.forEach((node) => {
-      if (node.parentId) {
-        childCount.set(node.parentId, (childCount.get(node.parentId) ?? 0) + 1);
-      }
-    });
-    const removableIds = new Set<string>();
-    mergedGroupIds.forEach((id) => {
-      if ((childCount.get(id) ?? 0) === 0) removableIds.add(id);
-    });
-    if (removableIds.size > 0) {
-      nextNodes = nextNodes.filter((node) => !(node.type === "group" && removableIds.has(node.id)));
-      changed = true;
-    }
-  }
-
-  const orderedNodes = nextNodes.slice().sort((a, b) => {
-    const aGroup = a.type === "group";
-    const bGroup = b.type === "group";
-    if (aGroup !== bGroup) return aGroup ? -1 : 1;
-    return 0;
-  });
-
-  const orderChanged =
-    orderedNodes.length !== nodes.length ||
-    orderedNodes.some((node, index) => nodes[index]?.id !== node.id);
-
-  if (changed || orderChanged) {
-    return orderedNodes;
-  }
-
-  return nodes;
 };
 
 const truncateText = (value: string, limit: number) => {
@@ -518,12 +194,12 @@ interface NodeFlowStore {
   // Node operations
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
-  updateNodeStyle: (nodeId: string, style: Partial<NodeFlowNode["style"]>) => void;
+  updateNodeStyle: (nodeId: string, style: Partial<NodeFlowNodeStyle>) => void;
   removeNode: (nodeId: string) => void;
-  onNodesChange: (changes: NodeChange<NodeFlowNode>[]) => void;
+  onNodesChange: (changes: NodeChange<NodeFlowCanvasNode>[]) => void;
 
   // Link operations
-  onLinksChange: (changes: EdgeChange<NodeFlowLink>[]) => void;
+  onLinksChange: (changes: EdgeChange<NodeFlowCanvasLink>[]) => void;
   connectNodes: (connection: Connection) => void;
   removeLink: (linkId: string) => void;
   toggleLinkPause: (linkId: string) => void;
@@ -590,183 +266,6 @@ interface NodeFlowStore {
   ) => void;
   mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
 }
-
-const createDefaultNodeData = (type: NodeType): NodeFlowNodeData => {
-  switch (type) {
-    case "imageInput":
-      return {
-        image: null,
-        filename: null,
-        dimensions: null,
-        label: "",
-      } as ImageInputNodeData;
-    case "audioInput":
-      return {
-        audio: null,
-        filename: null,
-        mimeType: null,
-        durationMs: null,
-        label: "",
-      } as AudioInputNodeData;
-    case "annotation":
-      return {
-        sourceImage: null,
-        annotations: [],
-        outputImage: null,
-      } as AnnotationNodeData;
-    case "text":
-      return {
-        title: "",
-        text: "",
-      } as TextNodeData;
-    case "scriptBoard":
-      return {
-        title: "剧本面板",
-      } as ScriptBoardNodeData;
-    case "storyboardBoard":
-      return {
-        title: "分镜表面板",
-        displayMode: "table",
-        columnWidths: [96, 280, 170, 220, 220, 200, 180, 180, 280, 280],
-        rowHeights: {},
-      } as StoryboardBoardNodeData;
-    case "identityCard":
-      return {
-        title: "角色 / 场景身份卡片",
-        avatarOverrides: {},
-      } as IdentityCardNodeData;
-    case "imageGen":
-      return {
-        inputImages: [],
-        outputImage: null,
-        status: "idle",
-        error: null,
-        aspectRatio: "1:1",
-      } as ImageGenNodeData;
-    case "nanoBananaImageGen":
-      return {
-        inputImages: [],
-        outputImage: null,
-        versionHistory: [],
-        status: "idle",
-        error: null,
-        aspectRatio: "1:1",
-        model: "nano banana pro",
-      } as ImageGenNodeData;
-    case "wanImageGen":
-      return {
-        inputImages: [],
-        outputImage: null,
-        status: "idle",
-        error: null,
-        aspectRatio: "1:1",
-        model: "wan2.6-image",
-        enableInterleave: false,
-        watermark: false,
-        outputCount: 1,
-      } as ImageGenNodeData;
-    case "soraVideoGen":
-      return {
-        inputImages: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-      } as VideoGenNodeData;
-    case "wanVideoGen":
-      return {
-        inputImages: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-        duration: "10s",
-        model: "wan2.6-i2v",
-        quality: "standard",
-        resolution: "720P",
-        shotType: "multi",
-        watermark: false,
-        audioEnabled: false,
-        audioUrl: "",
-      } as VideoGenNodeData;
-    case "wanReferenceVideoGen":
-      return {
-        inputImages: [],
-        referenceImages: [],
-        referenceVideos: [],
-        projectReferenceTargets: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-        duration: "5s",
-        model: "wan2.6-r2v",
-        quality: "standard",
-        resolution: "720P",
-        shotType: "single",
-        watermark: false,
-        audioEnabled: true,
-      } as VideoGenNodeData;
-    case "viduVideoGen":
-      return {
-        inputImages: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        mode: "audioVideo",
-        useCharacters: true,
-        aspectRatio: "16:9",
-        resolution: "1080p",
-        duration: 10,
-        movementAmplitude: "auto",
-        offPeak: true,
-      } as any;
-    case "seedanceVideoGen":
-      return {
-        inputImages: [],
-        referenceVideos: [],
-        referenceAudios: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        model: "doubao-seedance-2-0-260128",
-        mode: "multimodalReference",
-        resolution: "720p",
-        ratio: "adaptive",
-        duration: 5,
-        generateAudio: true,
-        watermark: false,
-      } as any;
-    case "group":
-      return {
-        title: "Node Group",
-        isExpanded: true,
-      } as GroupNodeData;
-    case "shot":
-      return {
-        shotId: "S-1",
-        duration: "3s",
-        shotType: "Medium Shot",
-        focalLength: "",
-        movement: "Static",
-        composition: "",
-        blocking: "",
-        dialogue: "",
-        sound: "",
-        lightingVfx: "",
-        editingNotes: "",
-        notes: "",
-        soraPrompt: "",
-        storyboardPrompt: "",
-        viewMode: "card",
-      } as ShotNodeData;
-  }
-};
 
 let nodeIdCounter = 0;
 const bumpNodeFlowRevision = (revision: number) => revision + 1;
@@ -858,7 +357,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       position,
       parentId: effectiveParentId,
       extent: effectiveParentId ? 'parent' : undefined,
-      data: { ...createDefaultNodeData(type), ...effectiveExtraData } as NodeFlowNodeData,
+      data: { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
     set((state) => ({
@@ -900,10 +399,10 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   onNodesChange: (changes) =>
     set((state) => {
-      const nextNodes = applyNodeChanges(changes, state.nodes);
+      const nextNodes = applyNodeFlowNodeChanges(changes, state.nodes);
       return {
         revision: bumpNodeFlowRevision(state.revision),
-        nodes: normalizeGroupBindings(nextNodes, state.links),
+        nodes: normalizeNodeFlowGroupBindings(nextNodes, state.links),
       };
     }),
 
@@ -913,7 +412,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       return {
         revision: bumpNodeFlowRevision(state.revision),
         links: nextLinks,
-        nodes: normalizeGroupBindings(state.nodes, nextLinks),
+        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
       };
     }),
 
@@ -923,7 +422,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       return {
         revision: bumpNodeFlowRevision(state.revision),
         links: nextLinks,
-        nodes: normalizeGroupBindings(state.nodes, nextLinks),
+        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
       };
     });
   },
@@ -934,7 +433,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       return {
         revision: bumpNodeFlowRevision(state.revision),
         links: nextLinks,
-        nodes: normalizeGroupBindings(state.nodes, nextLinks),
+        nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
       };
     }),
 
@@ -1465,8 +964,8 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     const nodeMap = new Map(nodes.map((node) => [node.id, node]));
     const bounds = selectedNodes.reduce(
       (acc, node) => {
-        const abs = getAbsolutePosition(node, nodeMap);
-        const size = getNodeDimensions(node);
+        const abs = getNodeFlowAbsolutePosition(node, nodeMap);
+        const size = getNodeFlowNodeDimensions(node);
         return {
           minX: Math.min(acc.minX, abs.x),
           minY: Math.min(acc.minY, abs.y),
@@ -1500,7 +999,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       if (!selectedIds.has(node.id)) {
         return { ...node, selected: false };
       }
-      const abs = getAbsolutePosition(node, nodeMap);
+      const abs = getNodeFlowAbsolutePosition(node, nodeMap);
       return {
         ...node,
         parentId: groupId,
@@ -1510,7 +1009,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       };
     });
 
-    const mergedNodes = normalizeGroupBindings([...nextNodes, groupNode], links);
+    const mergedNodes = normalizeNodeFlowGroupBindings([...nextNodes, groupNode], links);
     set((state) => ({
       revision: bumpNodeFlowRevision(state.revision),
       nodes: mergedNodes,

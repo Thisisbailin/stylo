@@ -114,10 +114,9 @@ export const onRequest = async ({ request, env }) => {
                     },
                 });
             }
-            if (!headers.get("Authorization")) {
-                headers.set("Authorization", `Token ${apiKey}`);
-                debugHeaders["x-qalam-proxy-auth-header"] = "injected";
-            }
+            const hadAuthHeader = !!headers.get("Authorization");
+            headers.set("Authorization", `Token ${apiKey}`);
+            debugHeaders["x-qalam-proxy-auth-header"] = hadAuthHeader ? "overridden" : "injected";
         }
 
         const body = method !== "GET" && method !== "HEAD" ? await request.arrayBuffer() : null;

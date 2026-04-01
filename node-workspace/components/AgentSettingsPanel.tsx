@@ -976,7 +976,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed right-4 top-4 bottom-4 z-[75] min-w-0 overflow-hidden rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
+      className="fixed right-4 top-4 bottom-4 z-[80] min-w-0 overflow-hidden rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
       style={{
         width: `min(max(560px, calc(100vw - ${Math.max(468, dockLeft + 48)}px)), calc(100vw - 32px))`,
         maxWidth: "calc(100vw - 32px)",

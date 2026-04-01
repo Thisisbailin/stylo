@@ -58,6 +58,14 @@ const buildHeaders = (apiKey?: string, includeContentType = false) => {
   return headers;
 };
 
+const readProxyDebugHeaders = (response: Response) => ({
+  target: response.headers.get("x-qalam-proxy-target") || "n/a",
+  vidu: response.headers.get("x-qalam-proxy-vidu") || "n/a",
+  keySource: response.headers.get("x-qalam-proxy-key-source") || "n/a",
+  authHeader: response.headers.get("x-qalam-proxy-auth-header") || "n/a",
+  keyQuery: response.headers.get("x-qalam-proxy-key-query") || "n/a",
+});
+
 const postJson = async <T>(path: string, body: Record<string, unknown>, config?: ViduServiceConfig): Promise<T> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;
@@ -69,6 +77,12 @@ const postJson = async <T>(path: string, body: Record<string, unknown>, config?:
   });
 
   const text = await response.text();
+  console.log("[Vidu] Submit proxy debug:", {
+    path,
+    url,
+    ...readProxyDebugHeaders(response),
+  });
+  console.log("[Vidu] Submit raw response:", text);
   if (!response.ok) {
     throw new Error(`Vidu request failed (${response.status}): ${text}`);
   }
@@ -188,12 +202,19 @@ export const fetchTaskResult = async (taskId: string, config?: ViduServiceConfig
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/creations`;
 
+  console.log("[Vidu] Polling:", url);
   const response = await fetch(wrapWithProxy(url), {
     method: "GET",
     headers: buildHeaders(apiKey),
   });
 
   const text = await response.text();
+  console.log("[Vidu] Poll proxy debug:", {
+    taskId,
+    url,
+    ...readProxyDebugHeaders(response),
+  });
+  console.log("[Vidu] Poll raw response:", text);
   if (!response.ok) {
     throw new Error(`Failed to fetch Vidu task (${response.status}): ${text}`);
   }

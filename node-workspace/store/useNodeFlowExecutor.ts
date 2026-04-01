@@ -785,7 +785,7 @@ export const useNodeFlowExecutor = () => {
     const viduConfig = {
       ...(config.viduConfig || INITIAL_VIDU_CONFIG),
       baseUrl: config.viduConfig?.baseUrl || INITIAL_VIDU_CONFIG.baseUrl,
-      apiKey: config.viduConfig?.apiKey || "",
+      apiKey: "",
       defaultModel: config.viduConfig?.defaultModel || INITIAL_VIDU_CONFIG.defaultModel || "viduq2-pro",
     };
     const fixedModel = viduConfig.defaultModel;

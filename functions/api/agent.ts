@@ -27,6 +27,7 @@ import {
   removeNodeFlowLink,
   toggleNodeFlowLinkPause,
 } from "../../node-workspace/nodeflow/links";
+import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -79,145 +80,6 @@ const resolvePreferredConnectionHandles = (sourceType: string, targetType: strin
     return { sourceHandle: "audio" as const, targetHandle: "audio" as const };
   }
   return null;
-};
-
-const createNodeFlowDefaultNodeData = (type: NodeType): NodeFlowNodeData => {
-  switch (type) {
-    case "text":
-      return { title: "", text: "" } as NodeFlowNodeData;
-    case "scriptBoard":
-      return { title: "剧本面板" } as NodeFlowNodeData;
-    case "storyboardBoard":
-      return {
-        title: "分镜表面板",
-        displayMode: "table",
-        columnWidths: [96, 280, 170, 220, 220, 200, 180, 180, 280, 280],
-        rowHeights: {},
-      } as NodeFlowNodeData;
-    case "identityCard":
-      return {
-        title: "角色 / 场景身份卡片",
-        avatarOverrides: {},
-      } as NodeFlowNodeData;
-    case "imageGen":
-      return {
-        inputImages: [],
-        outputImage: null,
-        status: "idle",
-        error: null,
-        aspectRatio: "1:1",
-      } as NodeFlowNodeData;
-    case "wanImageGen":
-      return {
-        inputImages: [],
-        outputImage: null,
-        status: "idle",
-        error: null,
-        aspectRatio: "1:1",
-        model: "wan2.6-image",
-        enableInterleave: false,
-        watermark: false,
-        outputCount: 1,
-      } as NodeFlowNodeData;
-    case "soraVideoGen":
-      return {
-        inputImages: [],
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-      } as NodeFlowNodeData;
-    case "wanVideoGen":
-      return {
-        inputImages: [],
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-        duration: "10s",
-        model: "wan2.6-i2v",
-        quality: "standard",
-        resolution: "720P",
-        shotType: "multi",
-        watermark: false,
-        audioEnabled: false,
-        audioUrl: "",
-      } as NodeFlowNodeData;
-    case "wanReferenceVideoGen":
-      return {
-        inputImages: [],
-        referenceImages: [],
-        referenceVideos: [],
-        projectReferenceTargets: [],
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-        duration: "5s",
-        model: "wan2.6-r2v",
-        quality: "standard",
-        resolution: "720P",
-        shotType: "single",
-        watermark: false,
-        audioEnabled: true,
-      } as NodeFlowNodeData;
-    case "viduVideoGen":
-      return {
-        inputImages: [],
-        status: "idle",
-        error: null,
-        mode: "audioVideo",
-        useCharacters: true,
-        aspectRatio: "16:9",
-        resolution: "1080p",
-        duration: 10,
-        movementAmplitude: "auto",
-        offPeak: true,
-      } as NodeFlowNodeData;
-    case "seedanceVideoGen":
-      return {
-        inputImages: [],
-        referenceVideos: [],
-        referenceAudios: [],
-        status: "idle",
-        error: null,
-        model: "doubao-seedance-2-0-260128",
-        mode: "multimodalReference",
-        resolution: "720p",
-        ratio: "adaptive",
-        duration: 5,
-        generateAudio: true,
-        watermark: false,
-      } as NodeFlowNodeData;
-    case "annotation":
-      return {
-        sourceImage: null,
-        annotations: [],
-        outputImage: null,
-      } as NodeFlowNodeData;
-    case "shot":
-      return {
-        shotId: "S-1",
-        duration: "3s",
-        shotType: "Medium Shot",
-        focalLength: "",
-        movement: "Static",
-        composition: "",
-        blocking: "",
-        dialogue: "",
-        sound: "",
-        lightingVfx: "",
-        editingNotes: "",
-        notes: "",
-        soraPrompt: "",
-        storyboardPrompt: "",
-        viewMode: "card",
-      } as NodeFlowNodeData;
-    case "group":
-      return {
-        title: "Node Group",
-        isExpanded: true,
-      } as NodeFlowNodeData;
-    default:
-      return {} as NodeFlowNodeData;
-  }
 };
 
 const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlowFile) => {
@@ -276,7 +138,7 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
       position,
       parentId,
       extent: parentId ? "parent" : undefined,
-      data: { ...createNodeFlowDefaultNodeData(type), ...(extraData || {}) } as NodeFlowNodeData,
+      data: { ...createDefaultNodeFlowNodeData(type), ...(extraData || {}) } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
     currentNodeFlow = {
