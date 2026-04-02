@@ -69,6 +69,80 @@ const parseAtMentions = (text: string): string[] => {
 
 const escapeRegex = (str: string) => str.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getViduStateLabel = (state?: string) => {
+  const normalized = (state || "").toLowerCase();
+  if (normalized.includes("success") || normalized.includes("succeed") || normalized.includes("complete")) return "生成完成";
+  if (normalized.includes("fail") || normalized.includes("error")) return "生成失败";
+  if (normalized.includes("cancel")) return "已取消";
+  if (normalized.includes("queue") || normalized.includes("schedule") || normalized.includes("pending") || normalized.includes("wait")) return "排队中";
+  if (normalized.includes("create") || normalized.includes("submit")) return "已提交";
+  if (normalized.includes("process") || normalized.includes("run") || normalized.includes("generat")) return "生成中";
+  return "处理中";
+};
+
+const VIDU_PROCESSING_TIMEOUT_MS = 30 * 60 * 1000;
+const VIDU_PROCESSING_PROGRESS_ESTIMATE_MS = 10 * 60 * 1000;
+
+const getViduPollDelayMs = (state?: string) => {
+  const normalized = (state || "").toLowerCase();
+  if (normalized.includes("success") || normalized.includes("fail") || normalized.includes("cancel")) return 0;
+  if (normalized.includes("process") || normalized.includes("run") || normalized.includes("generat")) return 4500;
+  if (normalized.includes("queue") || normalized.includes("schedule") || normalized.includes("pending") || normalized.includes("wait")) return 3500;
+  return 3000;
+};
+
+const getViduProgressSnapshot = (options: {
+  state?: string;
+  processingElapsedMs: number;
+}) => {
+  const label = getViduStateLabel(options.state);
+  const normalized = (options.state || "").toLowerCase();
+
+  if (normalized.includes("success") || normalized.includes("succeed") || normalized.includes("complete")) {
+    return {
+      progressPercent: 100,
+      progressLabel: "生成完成",
+      progressHint: "Vidu 已返回最终视频结果。",
+      taskState: options.state || "success",
+    };
+  }
+
+  if (normalized.includes("fail") || normalized.includes("error")) {
+    return {
+      progressPercent: 100,
+      progressLabel: "生成失败",
+      progressHint: "Vidu 已返回失败状态。",
+      taskState: options.state || "failed",
+    };
+  }
+
+  if (normalized.includes("queue") || normalized.includes("schedule") || normalized.includes("pending") || normalized.includes("wait") || normalized.includes("create") || normalized.includes("submit")) {
+    return {
+      progressPercent: null,
+      progressLabel: "排队中...",
+      progressHint: "当前阶段没有可用的官方百分比进度；错峰模式会在算力空闲后开始生成，排队时间不计入超时。",
+      taskState: options.state || "scheduled",
+    };
+  }
+
+  const workRatio = Math.max(0, Math.min(1, options.processingElapsedMs / VIDU_PROCESSING_PROGRESS_ESTIMATE_MS));
+  return {
+    progressPercent: Math.max(4, Math.min(95, Math.round(4 + workRatio * 91))),
+    progressLabel: label,
+    progressHint: "当前接口只返回任务状态，不返回精确百分比；这里按 10 分钟生成时长做阶段性估算。",
+    taskState: options.state || "processing",
+  };
+};
+
+const formatDurationMs = (ms: number) => {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+};
+
 const uploadReferenceFile = async (source: string, options?: { bucket?: string; prefix?: string }) => {
   const response = await fetch(source);
   const blob = await response.blob();
@@ -537,7 +611,16 @@ export const useNodeFlowExecutor = () => {
       return;
     }
 
-    store.updateNodeData(nodeId, { status: "loading", error: null });
+    store.updateNodeData(nodeId, {
+      status: "loading",
+      error: null,
+      progressPercent: null,
+      progressLabel: null,
+      progressHint: null,
+      taskState: null,
+      taskSubmittedAt: Date.now(),
+      processingStartedAt: null,
+    });
     try {
       const aspectRatio = data.aspectRatio || "1:1";
       const modelOverride = isNanoBananaNode
@@ -936,32 +1019,98 @@ export const useNodeFlowExecutor = () => {
 
       const { taskId, credits } = await ViduService.createReferenceVideo(request as any, viduConfig);
 
+      const taskSubmittedAt = Date.now();
+      let processingStartedAt: number | null = null;
+
       store.updateNodeData(nodeId, {
         status: "loading",
         videoId: taskId,
         videoUrl: undefined,
         error: null,
+        progressPercent: null,
+        progressLabel: null,
+        progressHint: null,
+        taskState: null,
+        taskSubmittedAt,
+        processingStartedAt: null,
         lastCreditsCost: typeof credits === "number" ? credits : data.lastCreditsCost ?? null,
       });
 
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      while (true) {
         const result = await ViduService.fetchTaskResult(taskId, viduConfig);
-        if (result.state === "success") {
-          const url = result.creations?.[0]?.url || result.creations?.[0]?.watermarked_url;
-          store.updateNodeData(nodeId, { status: "complete", videoUrl: url, error: null });
-          return;
+        const rawState = result.rawState || result.state;
+        const normalizedRawState = rawState.toLowerCase();
+        if (!processingStartedAt && (normalizedRawState.includes("process") || normalizedRawState.includes("run") || normalizedRawState.includes("generat"))) {
+          processingStartedAt = Date.now();
         }
-        if (result.state === "failed") {
-          store.updateNodeData(nodeId, { status: "error", error: result.err_code || "Vidu 生成失败" });
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-      }
+        const snapshot = getViduProgressSnapshot({
+          state: rawState,
+          processingElapsedMs: processingStartedAt ? Date.now() - processingStartedAt : 0,
+        });
+        const hasCreation = (result.creations || []).some((item) => Boolean(item?.url || item?.watermarked_url));
 
-      store.updateNodeData(nodeId, { status: "error", error: "Vidu 生成超时" });
+        if (result.state === "success" || hasCreation) {
+          const url = result.creations?.[0]?.url || result.creations?.[0]?.watermarked_url;
+          store.updateNodeData(nodeId, {
+            status: "complete",
+            videoUrl: url,
+            error: null,
+            progressPercent: 100,
+            progressLabel: "生成完成",
+            progressHint: "Vidu 已返回最终视频结果。",
+            taskState: rawState,
+            processingStartedAt,
+          });
+          return;
+        }
+        if (result.state === "failed" || result.state === "canceled") {
+          store.updateNodeData(nodeId, {
+            status: "error",
+            error: result.err_code || (result.state === "canceled" ? "Vidu 任务已取消" : "Vidu 生成失败"),
+            progressPercent: snapshot.progressPercent,
+            progressLabel: snapshot.progressLabel,
+            progressHint: snapshot.progressHint,
+            taskState: rawState,
+            processingStartedAt,
+          });
+          return;
+        }
+
+        store.updateNodeData(nodeId, {
+          status: "loading",
+          error: null,
+          progressPercent: snapshot.progressPercent,
+          progressLabel: snapshot.progressLabel,
+          progressHint: snapshot.progressHint,
+          taskState: rawState,
+          taskSubmittedAt,
+          processingStartedAt,
+        });
+
+        if (processingStartedAt && Date.now() - processingStartedAt >= VIDU_PROCESSING_TIMEOUT_MS) {
+          const processingWaitedMs = Date.now() - processingStartedAt;
+          store.updateNodeData(nodeId, {
+            status: "error",
+            error: `Vidu 生成超时：进入生成中后已等待 ${formatDurationMs(processingWaitedMs)}。排队阶段不计入超时。`,
+            progressPercent: 95,
+            progressLabel: "生成中",
+            progressHint: `本次任务在生成阶段已等待 ${formatDurationMs(processingWaitedMs)}，当前固定超时上限为 30 分钟。`,
+            taskState: rawState,
+            taskSubmittedAt,
+            processingStartedAt,
+          });
+          return;
+        }
+
+        await wait(getViduPollDelayMs(rawState));
+      }
     } catch (e: any) {
-      store.updateNodeData(nodeId, { status: "error", error: e.message || "Vidu 提交失败" });
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: e.message || "Vidu 提交失败",
+        progressLabel: "请求失败",
+        progressHint: "提交或轮询时发生错误。",
+      });
     }
   }, [config, store]);
 

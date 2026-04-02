@@ -299,6 +299,7 @@ export interface ViduCreationItem {
 export interface ViduTaskResult {
   id: string;
   state: ViduTaskState;
+  rawState?: string;
   err_code?: string;
   credits?: number;
   payload?: string;
@@ -367,6 +368,12 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   videoUrl?: string;
   status: 'idle' | 'loading' | 'complete' | 'error';
   error: string | null;
+  progressPercent?: number | null;
+  progressLabel?: string | null;
+  progressHint?: string | null;
+  taskState?: string | null;
+  taskSubmittedAt?: number | null;
+  processingStartedAt?: number | null;
   mode: ViduReferenceMode;
   subjects?: ViduSubject[];
   useCharacters?: boolean;

@@ -243,6 +243,12 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   videoUrl?: string;
   status: 'idle' | 'loading' | 'complete' | 'error';
   error: string | null;
+  progressPercent?: number | null;
+  progressLabel?: string | null;
+  progressHint?: string | null;
+  taskState?: string | null;
+  taskSubmittedAt?: number | null;
+  processingStartedAt?: number | null;
   lastCreditsCost?: number | null;
   authProbeStatus?: 'idle' | 'loading' | 'complete' | 'error';
   authProbeSummary?: string | null;

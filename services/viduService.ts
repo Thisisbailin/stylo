@@ -21,11 +21,12 @@ const normalizeBaseUrl = (baseUrl?: string) =>
 const mapState = (state?: string): ViduTaskState => {
   if (!state) return "processing";
   const normalized = state.toLowerCase();
-  if (normalized.includes("fail")) return "failed";
-  if (normalized.includes("success")) return "success";
+  if (normalized.includes("fail") || normalized.includes("error")) return "failed";
+  if (normalized.includes("success") || normalized.includes("succeed") || normalized.includes("complete") || normalized.includes("done")) return "success";
   if (normalized.includes("cancel")) return "canceled";
-  if (normalized.includes("queue") || normalized.includes("schedule")) return "scheduled";
-  if (normalized.includes("create")) return "created";
+  if (normalized.includes("queue") || normalized.includes("schedule") || normalized.includes("pending") || normalized.includes("wait")) return "scheduled";
+  if (normalized.includes("create") || normalized.includes("submit")) return "created";
+  if (normalized.includes("process") || normalized.includes("run") || normalized.includes("generat")) return "processing";
   return "processing";
 };
 
@@ -298,6 +299,7 @@ export const fetchTaskResult = async (taskId: string, config?: ViduServiceConfig
   return {
     id: data.id || taskId,
     state: mapState(data.state),
+    rawState: typeof data.state === "string" ? data.state : undefined,
     err_code: data.err_code,
     credits: data.credits,
     payload: data.payload,

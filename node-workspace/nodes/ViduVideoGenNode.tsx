@@ -48,10 +48,23 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const appConfig = useNodeFlowStore((state) => state.appConfig);
   const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
-  const [progress, setProgress] = useState(0);
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
   const isLoading = data.status === "loading";
+  const normalizedTaskState = (data.taskState || "").toLowerCase();
+  const isQueueing =
+    isLoading &&
+    (!!normalizedTaskState &&
+      (normalizedTaskState.includes("queue") ||
+        normalizedTaskState.includes("schedule") ||
+        normalizedTaskState.includes("pending") ||
+        normalizedTaskState.includes("wait"))) ||
+    (isLoading && !data.progressLabel);
+  const isProcessing =
+    isLoading &&
+    !!normalizedTaskState &&
+    (normalizedTaskState.includes("process") || normalizedTaskState.includes("run") || normalizedTaskState.includes("generat"));
+  const progress = isProcessing ? Math.max(0, Math.min(100, Number(data.progressPercent) || 0)) : 0;
   const model = data.model || "viduq3";
   const requestedMode = normalizeMode(data.mode);
   const effectiveMode = model === "viduq3-mix" ? "nonSubject" : requestedMode;
@@ -102,20 +115,6 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     }
     return [];
   }, [data.subjects, data.useCharacters, resolvedIdentityMentions, imageRefs]);
-
-  useEffect(() => {
-    if (!isLoading) {
-      setProgress(0);
-      return;
-    }
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const eased = 1 - Math.exp(-elapsed / 14000);
-      setProgress(Math.min(95, Math.round(eased * 100)));
-    }, 500);
-    return () => clearInterval(timer);
-  }, [isLoading]);
 
   useEffect(() => {
     if (model === "viduq3-mix" && requestedMode === "subject") {
@@ -246,13 +245,22 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
             {isLoading ? (
               <div className="flex flex-col items-center gap-3">
                 <RefreshCw size={24} className="text-[var(--node-accent)] animate-spin" />
-                <span className="text-[10px] opacity-50 uppercase tracking-[0.2em] font-black">Generating...</span>
-                <div className="w-full max-w-[180px] space-y-2">
-                  <div className="h-1 rounded-full bg-white/10 overflow-hidden">
-                    <div className="h-full bg-amber-400 transition-all" style={{ width: `${progress}%` }} />
+                <span className="text-[10px] opacity-50 uppercase tracking-[0.2em] font-black">
+                  {isQueueing ? "排队中..." : data.progressLabel || "Generating..."}
+                </span>
+                {isProcessing && (
+                  <div className="w-full max-w-[180px] space-y-2">
+                    <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full bg-amber-400 transition-all" style={{ width: `${progress}%` }} />
+                    </div>
+                    <div className="text-[9px] font-semibold text-amber-300/80 text-center">{progress}%</div>
                   </div>
-                  <div className="text-[9px] font-semibold text-amber-300/80 text-center">{progress}%</div>
-                </div>
+                )}
+                {(isQueueing || data.progressHint) && (
+                  <div className="max-w-[220px] text-center text-[9px] leading-4 text-[var(--node-text-secondary)]">
+                    {isQueueing ? "等待 Vidu 分配算力后开始生成，排队阶段不计入超时。" : data.progressHint}
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -300,6 +308,46 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
         <div className="text-[10px] uppercase tracking-[0.2em] font-black text-[var(--node-text-secondary)]/70">
           {connectedImages.length} refs · {connectedText ? "Text in" : "Prompt needed"}
         </div>
+
+        {isProcessing && (
+          <div className="node-panel space-y-2 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+                任务进度
+              </div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-amber-200">
+                {data.taskState || "processing"}
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full bg-amber-400 transition-all duration-500" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[10px] text-[var(--node-text-secondary)]">
+              <span>{data.progressLabel || "处理中"}</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
+              {data.progressHint || "当前接口只返回任务状态，不返回精确百分比；这里按排队/处理中阶段估算。"}
+            </div>
+          </div>
+        )}
+
+        {isQueueing && (
+          <div className="node-panel space-y-2 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+                任务状态
+              </div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-amber-200">
+                {data.taskState || "scheduled"}
+              </div>
+            </div>
+            <div className="text-[10px] text-amber-100">排队中...</div>
+            <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
+              当前没有官方百分比进度。错峰模式下会先排队，待算力空闲后再开始生成；排队阶段不计入超时。
+            </div>
+          </div>
+        )}
 
         <div className="node-panel space-y-2 p-3">
           <div className="flex items-center justify-between gap-3">

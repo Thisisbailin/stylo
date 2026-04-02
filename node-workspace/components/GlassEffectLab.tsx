@@ -143,19 +143,19 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const fieldMask = useMemo(() => {
     const maskWidth = width;
     const maskHeight = height;
-    const innerWidth = Math.max(16, width - fadeInsetX * 2);
-    const innerHeight = Math.max(16, height - fadeInsetY * 2);
-    const edgeBlur = Math.max(2, fade);
-    const path = buildSuperellipsePath(innerWidth, innerHeight, curve, fadeInsetX, fadeInsetY);
+    const erodeX = Math.max(0, fadeInsetX * 0.5);
+    const erodeY = Math.max(0, fadeInsetY * 0.5);
+    const edgeBlur = Math.max(0.1, fade);
+    const path = buildSuperellipsePath(width, height, curve);
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${maskWidth}" height="${maskHeight}" viewBox="0 0 ${maskWidth} ${maskHeight}">
         <defs>
-          <filter id="melt" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="${edgeBlur}" result="blur"/>
-            <feMerge>
-              <feMergeNode in="blur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
+          <filter id="melt" x="0" y="0" width="${maskWidth}" height="${maskHeight}" filterUnits="userSpaceOnUse">
+            <feMorphology in="SourceGraphic" operator="erode" radius="${erodeX} ${erodeY}" result="eroded"/>
+            <feGaussianBlur in="eroded" stdDeviation="${edgeBlur}" edgeMode="none" result="soft"/>
+            <feComponentTransfer in="soft" result="alpha">
+              <feFuncA type="gamma" amplitude="1" exponent="1.12" offset="0"/>
+            </feComponentTransfer>
           </filter>
         </defs>
         <path d="${path}" fill="white" filter="url(#melt)"/>
