@@ -345,6 +345,7 @@ export const normalizeProjectData = (data: any): ProjectData => {
 
   base.episodes = Array.isArray(data?.episodes) ? data.episodes.map(normalizeEpisode) : [];
   base.designAssets = remapDesignAssets(base.designAssets as DesignAssetItem[], context);
+  base.nodeFlow = data?.nodeFlow && typeof data.nodeFlow === "object" ? data.nodeFlow : null;
   base.shotGuide = data?.shotGuide || INITIAL_PROJECT_DATA.shotGuide;
   base.soraGuide = data?.soraGuide || INITIAL_PROJECT_DATA.soraGuide;
   base.storyboardGuide = data?.storyboardGuide || INITIAL_PROJECT_DATA.storyboardGuide;

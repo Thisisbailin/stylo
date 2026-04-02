@@ -6,7 +6,6 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { NANOBANANA_IDENTITY_PROMPT, NANOBANANA_PRO_MODEL } from "../../constants";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
-import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -15,8 +14,7 @@ type Props = {
 
 export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, nodeFlowContext, getConnectedInputs } = useNodeFlowStore();
-  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
-  const { runImageGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
+  const { runImageGen } = useNodeFlowExecutor();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -124,15 +122,6 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
       selected={selected}
     >
       <div className="space-y-4 flex-1 flex flex-col">
-        {approval ? (
-          <NodeExecutionApprovalPanel
-            proposal={approval}
-            busy={isLoading}
-            onApprove={() => approveExecution(id)}
-            onDismiss={() => dismissExecutionApproval(id)}
-          />
-        ) : null}
-
         {data.outputImage && isHistoryOpen && galleryImages.length > 1 && (
           <div className="absolute bottom-[calc(100%+14px)] left-0 right-0 z-30">
             <div className="rounded-[26px] border border-[var(--node-border)] bg-[rgba(10,14,12,0.96)] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl">

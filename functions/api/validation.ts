@@ -23,6 +23,7 @@ const PROJECT_PATCH_KEYS = new Set([
   "dramaGuide",
   "globalStyleGuide",
   "designAssets",
+  "nodeFlow",
   "stats"
 ]);
 
@@ -88,6 +89,9 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
     }
     if (meta.designAssets !== undefined && !Array.isArray(meta.designAssets)) {
       return { ok: false, error: "delta.meta.designAssets is not an array" };
+    }
+    if (meta.nodeFlow !== undefined && !isRecord(meta.nodeFlow)) {
+      return { ok: false, error: "delta.meta.nodeFlow is not an object" };
     }
     if (meta.context !== undefined) {
       if (!isRecord(meta.context)) return { ok: false, error: "delta.meta.context is not an object" };

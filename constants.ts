@@ -11,6 +11,7 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     roles: []
   },
   designAssets: [],
+  nodeFlow: null,
   shotGuide: '',
   soraGuide: '',
   storyboardGuide: '',

@@ -49,10 +49,28 @@ export type StatusPayload = {
   isThinking?: boolean;
 };
 export type StatusMessage = { role: "assistant"; kind: "status"; order?: number; statusCard: StatusPayload };
+export type ApprovalChoice = "approve_once" | "approve_always" | "reject_once";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing";
+export type ApprovalPayload = {
+  id: string;
+  nodeId: string;
+  nodeRef?: string;
+  nodeTitle: string;
+  action: "image_generation" | "video_generation";
+  providerLabel: string;
+  modelLabel: string;
+  promptPreview?: string | null;
+  inputSummary?: string[];
+  status: ApprovalStatus;
+  createdAt: number;
+  updatedAt: number;
+};
+export type ApprovalMessage = { role: "assistant"; kind: "approval"; order?: number; approval: ApprovalPayload };
 
-export type Message = ChatMessage | ToolMessage | StatusMessage;
+export type Message = ChatMessage | ToolMessage | StatusMessage | ApprovalMessage;
 
 export const isToolMessage = (message: Message): message is ToolMessage =>
   message.kind === "tool" || message.kind === "tool_result";
 
 export const isStatusMessage = (message: Message): message is StatusMessage => message.kind === "status";
+export const isApprovalMessage = (message: Message): message is ApprovalMessage => message.kind === "approval";

@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Globe } from "lucide-react";
+import { Check, CheckCheck, Globe, X } from "lucide-react";
 import { Brain, CaretRight, Wrench } from "@phosphor-icons/react";
-import type { ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
-import { isStatusMessage, isToolMessage } from "./types";
+import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
+import { isApprovalMessage, isStatusMessage, isToolMessage } from "./types";
 
 type Props = {
   messages: Message[];
   isSending: boolean;
+  onApprovalChoice?: (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => void;
   className?: string;
   style?: React.CSSProperties;
   revealMode?: "scroll" | "latest";
+  latestBlockMaxHeight?: number;
 };
 
 const toolStatusLabel: Record<ToolStatus, string> = {
@@ -1031,15 +1033,94 @@ const renderAssistantPanel = (message: ChatMessage) => {
   );
 };
 
+const renderApprovalPanel = (
+  message: ApprovalMessage,
+  onApprovalChoice?: (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => void
+) => {
+  const { approval } = message;
+  const pending = approval.status === "pending";
+  const statusLabel =
+    approval.status === "approved"
+      ? "已批准"
+      : approval.status === "rejected"
+        ? "已拒绝"
+        : approval.status === "executing"
+          ? "执行中"
+          : "待确认";
+  return (
+    <div className="w-full space-y-3 rounded-[18px] border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80">询问</div>
+          <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
+            {approval.action === "video_generation" ? "是否批准启动视频生成任务？" : "是否批准启动图片生成任务？"}
+          </div>
+        </div>
+        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200/80">{statusLabel}</div>
+      </div>
+      <div className="space-y-1 text-[12px] text-[var(--app-text-secondary)]">
+        <div><span className="text-[var(--app-text-muted)]">节点：</span>{approval.nodeTitle}</div>
+        <div><span className="text-[var(--app-text-muted)]">模型：</span>{approval.providerLabel} · {approval.modelLabel}</div>
+        {approval.promptPreview ? (
+          <div className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2 text-[var(--app-text-primary)]">
+            {approval.promptPreview}
+          </div>
+        ) : null}
+        {approval.inputSummary?.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {approval.inputSummary.map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-[var(--app-text-primary)]"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {pending ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onApprovalChoice?.(approval, "approve_once")}
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/85 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white"
+          >
+            <Check size={12} />
+            同意一次
+          </button>
+          <button
+            type="button"
+            onClick={() => onApprovalChoice?.(approval, "approve_always")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-sky-200"
+          >
+            <CheckCheck size={12} />
+            以后都同意
+          </button>
+          <button
+            type="button"
+            onClick={() => onApprovalChoice?.(approval, "reject_once")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--app-text-secondary)]"
+          >
+            <X size={12} />
+            拒绝本次
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 export const QalamChatContent: React.FC<Props> = ({
   messages,
   isSending,
+  onApprovalChoice,
   className = "",
   style,
   revealMode = "scroll",
+  latestBlockMaxHeight,
 }) => {
   const messagesRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const currentItemRef = useRef<HTMLDivElement | null>(null);
   const previousItemCountRef = useRef(0);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
@@ -1048,6 +1129,7 @@ export const QalamChatContent: React.FC<Props> = ({
     const items: Array<
       | { kind: "status"; key: string; order: number; message: StatusMessage }
       | { kind: "tool"; key: string; order: number; thread: ToolThread }
+      | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
       | { kind: "chat"; key: string; order: number; message: ChatMessage }
     > = [];
 
@@ -1098,6 +1180,11 @@ export const QalamChatContent: React.FC<Props> = ({
         continue;
       }
 
+      if (isApprovalMessage(message)) {
+        items.push({ kind: "approval", key: message.approval.id || `${message.approval.nodeId}-${i}`, order: message.order || i, message });
+        continue;
+      }
+
       items.push({ kind: "chat", key: `chat-${i}`, order: message.order || i, message });
     }
 
@@ -1117,7 +1204,7 @@ export const QalamChatContent: React.FC<Props> = ({
 
   const latestRevealItem = useMemo(() => {
     if (!displayMessages.length) return null;
-    return [...displayMessages].reverse().find((item) => item.kind === "status" || item.kind === "tool") || displayMessages[displayMessages.length - 1];
+    return [...displayMessages].reverse().find((item) => item.kind === "status" || item.kind === "tool" || item.kind === "approval") || displayMessages[displayMessages.length - 1];
   }, [displayMessages]);
 
   useEffect(() => {
@@ -1150,79 +1237,81 @@ export const QalamChatContent: React.FC<Props> = ({
 
   useEffect(() => {
     if (revealMode !== "latest") return;
-    const node = messagesRef.current;
-    const currentNode = currentItemRef.current;
-    if (!node || !currentNode || !isPinnedToCurrent) return;
-
-    const nextCount = displayMessages.length;
-    const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
-    previousItemCountRef.current = nextCount;
-
-    requestAnimationFrame(() => {
-      const targetTop = Math.max(0, currentNode.offsetTop - 18);
-      node.scrollTo({ top: targetTop, behavior });
-    });
-  }, [displayMessages.length, isPinnedToCurrent, isSending, revealMode]);
-
-  useEffect(() => {
-    if (revealMode !== "latest") return;
-    if (!messagesRef.current) return;
-    const node = messagesRef.current;
-    const handleScroll = () => {
-      const currentNode = currentItemRef.current;
-      if (!currentNode) return;
-      const targetTop = Math.max(0, currentNode.offsetTop - 18);
-      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
-    };
-    node.addEventListener("scroll", handleScroll, { passive: true });
-    return () => node.removeEventListener("scroll", handleScroll);
+    previousItemCountRef.current = displayMessages.length;
   }, [displayMessages.length, revealMode]);
+
+  const renderMessageItem = (
+    item:
+      | { kind: "status"; key: string; order: number; message: StatusMessage }
+      | { kind: "tool"; key: string; order: number; thread: ToolThread }
+      | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
+      | { kind: "chat"; key: string; order: number; message: ChatMessage },
+    expanded: boolean,
+    attachRef: boolean
+  ) => {
+    const isUser = item.kind === "chat" && item.message.role === "user";
+    const isAssistantPanel = item.kind === "chat" && !isUser;
+    const workedDuration =
+      isAssistantPanel && item.message.meta?.runId
+        ? runDurationMap.get(item.message.meta.runId)
+        : undefined;
+
+    return (
+      <div
+        key={item.key}
+        ref={attachRef ? currentItemRef : null}
+        className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
+      >
+        {item.kind === "status" ? (
+          renderStatusLine(item.message, { expanded })
+        ) : item.kind === "tool" ? (
+          renderToolThread(item.thread, { expanded })
+        ) : item.kind === "approval" ? (
+          renderApprovalPanel(item.message, onApprovalChoice)
+        ) : isUser ? (
+          <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
+            {item.message.text}
+          </div>
+        ) : (
+          <div className="w-full space-y-3">
+            {workedDuration ? (
+              <div className="flex items-center gap-4 px-1 text-[11px] text-[var(--app-text-muted)]">
+                <div className="h-px flex-1 bg-[var(--app-border)]" />
+                <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
+                <div className="h-px flex-1 bg-[var(--app-border)]" />
+              </div>
+            ) : null}
+            {renderAssistantPanel(item.message)}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 overflow-y-auto px-4 py-4 ${className}`}
+      className={`qalam-scrollbar min-h-0 ${revealMode === "latest" ? "overflow-visible px-0 py-0" : "overflow-y-auto px-4 py-4"} ${className}`}
       style={style}
     >
-      <div ref={contentRef} className="space-y-3">
-        {displayMessages.map((item) => {
-          const isUser = item.kind === "chat" && item.message.role === "user";
-          const isAssistantPanel = item.kind === "chat" && !isUser;
-          const workedDuration =
-            isAssistantPanel && item.message.meta?.runId
-              ? runDurationMap.get(item.message.meta.runId)
-              : undefined;
-          const isCurrent = revealMode === "latest" ? item === latestRevealItem : item === displayMessages[displayMessages.length - 1];
-          return (
-            <div
-              key={item.key}
-              ref={isCurrent ? currentItemRef : null}
-              className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
-            >
-              {item.kind === "status" ? (
-                renderStatusLine(item.message, { expanded: revealMode === "latest" && item === latestRevealItem })
-              ) : item.kind === "tool" ? (
-                renderToolThread(item.thread, { expanded: revealMode === "latest" && item === latestRevealItem })
-              ) : isUser ? (
-                <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
-                  {item.message.text}
-                </div>
-              ) : (
-                <div className="w-full space-y-3">
-                  {workedDuration ? (
-                    <div className="flex items-center gap-4 px-1 text-[11px] text-[var(--app-text-muted)]">
-                      <div className="h-px flex-1 bg-[var(--app-border)]" />
-                      <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
-                      <div className="h-px flex-1 bg-[var(--app-border)]" />
-                    </div>
-                  ) : null}
-                  {renderAssistantPanel(item.message)}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {revealMode === "latest" ? (
+        latestRevealItem ? (
+          <div
+            className="qalam-scrollbar overflow-y-auto px-4 py-4"
+            style={{
+              maxHeight: latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : undefined,
+            }}
+          >
+            {renderMessageItem(latestRevealItem, true, true)}
+          </div>
+        ) : null
+      ) : (
+        <div className="space-y-3">
+          {displayMessages.map((item) =>
+            renderMessageItem(item, false, item === displayMessages[displayMessages.length - 1])
+          )}
+        </div>
+      )}
     </div>
   );
 };

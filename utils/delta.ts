@@ -14,6 +14,7 @@ export type ProjectMetaDelta = {
   dramaGuide: string;
   globalStyleGuide: string;
   designAssets: ProjectData["designAssets"];
+  nodeFlow: ProjectData["nodeFlow"];
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
@@ -57,6 +58,7 @@ const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   dramaGuide: data.dramaGuide,
   globalStyleGuide: data.globalStyleGuide,
   designAssets: data.designAssets,
+  nodeFlow: data.nodeFlow,
   context: {
     projectSummary: data.context.projectSummary,
     episodeSummaries: data.context.episodeSummaries,

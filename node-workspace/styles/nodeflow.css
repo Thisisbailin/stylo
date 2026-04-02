@@ -1322,7 +1322,8 @@ body.qalam-resizing * {
 
 .qalam-wordmark--active {
   color: transparent;
-  background-image:
+  background-image: var(
+    --qalam-wordmark-gradient,
     linear-gradient(
       110deg,
       rgba(252, 251, 248, 0.99) 0%,
@@ -1333,27 +1334,28 @@ body.qalam-resizing * {
       rgba(229, 234, 250, 0.98) 74%,
       rgba(225, 242, 251, 0.98) 88%,
       rgba(252, 251, 248, 0.99) 100%
-    );
+    )
+  );
   background-size: 240% 100%;
   background-position: 0% 50%;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 0 14px rgba(244, 240, 255, 0.12));
+  filter: drop-shadow(0 0 14px var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)));
   animation: qalam-wordmark-shift 8.4s linear infinite;
 }
 
 @keyframes qalam-wordmark-shift {
   0% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px rgba(244, 240, 255, 0.08));
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 72%, transparent));
   }
   50% {
     background-position: 100% 50%;
-    filter: drop-shadow(0 0 16px rgba(228, 238, 255, 0.14));
+    filter: drop-shadow(0 0 16px var(--qalam-wordmark-glow, rgba(228, 238, 255, 0.14)));
   }
   100% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px rgba(244, 240, 255, 0.08));
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 72%, transparent));
   }
 }
 

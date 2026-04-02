@@ -432,22 +432,46 @@ const App: React.FC = () => {
   const workflowLinkStyle = useNodeFlowStore(state => state.linkStyle);
   const workflowGlobalAssetHistory = useNodeFlowStore(state => state.globalAssetHistory);
   const workflowActiveView = useNodeFlowStore(state => state.activeView);
-  const workflowNodeFlowContext = useNodeFlowStore(state => state.nodeFlowContext);
   const workflowViewport = useNodeFlowStore(state => state.viewport);
   const importNodeFlow = useNodeFlowStore(state => state.importNodeFlow);
   const clearNodeFlow = useNodeFlowStore(state => state.clearNodeFlow);
   const hasHydratedNodeFlowRef = useRef(false);
+  const isApplyingProjectNodeFlowRef = useRef(false);
+  const lastNodeFlowSerializedRef = useRef<string | null>(null);
 
   useEffect(() => {
     setAppConfigStore(config);
   }, [config, setAppConfigStore]);
 
   useEffect(() => {
+    const remoteNodeFlow = projectData.nodeFlow;
+    if (remoteNodeFlow && Array.isArray(remoteNodeFlow.nodes) && Array.isArray(remoteNodeFlow.links)) {
+      try {
+        const serialized = JSON.stringify(remoteNodeFlow);
+        if (serialized === lastNodeFlowSerializedRef.current) {
+          hasHydratedNodeFlowRef.current = true;
+          return;
+        }
+        isApplyingProjectNodeFlowRef.current = true;
+        hasHydratedNodeFlowRef.current = true;
+        lastNodeFlowSerializedRef.current = serialized;
+        importNodeFlow(remoteNodeFlow as NodeFlowFile);
+        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, serialized);
+        window.setTimeout(() => {
+          isApplyingProjectNodeFlowRef.current = false;
+        }, 0);
+        return;
+      } catch (e) {
+        console.warn("Failed to restore NodeFlow from project data", e);
+      }
+    }
+
     if (hasHydratedNodeFlowRef.current) return;
     hasHydratedNodeFlowRef.current = true;
     try {
       const raw = window.localStorage.getItem(NODEFLOW_STORAGE_KEY);
       if (!raw) return;
+      lastNodeFlowSerializedRef.current = raw;
       const parsed = JSON.parse(raw) as NodeFlowFile;
       if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.links)) {
         importNodeFlow(parsed);
@@ -455,7 +479,7 @@ const App: React.FC = () => {
     } catch (e) {
       console.warn("Failed to restore NodeFlow from local storage", e);
     }
-  }, [importNodeFlow]);
+  }, [importNodeFlow, projectData.nodeFlow]);
 
   useEffect(() => {
     if (!hasHydratedNodeFlowRef.current) return;
@@ -468,11 +492,25 @@ const App: React.FC = () => {
           graphLinks: workflowGraphLinks,
           linkStyle: workflowLinkStyle,
           globalAssetHistory: workflowGlobalAssetHistory,
-          nodeFlowContext: workflowNodeFlowContext,
           viewport: workflowViewport,
           activeView: workflowActiveView,
         });
-        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, JSON.stringify(snapshot));
+        const serialized = JSON.stringify(snapshot);
+        lastNodeFlowSerializedRef.current = serialized;
+        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, serialized);
+        if (isApplyingProjectNodeFlowRef.current) return;
+        setProjectData((prev) => {
+          try {
+            const prevSerialized = prev.nodeFlow ? JSON.stringify(prev.nodeFlow) : null;
+            if (prevSerialized === serialized) return prev;
+          } catch {
+            // Fall through and overwrite with the latest snapshot.
+          }
+          return {
+            ...prev,
+            nodeFlow: snapshot,
+          };
+        });
       } catch (e) {
         console.warn("Failed to persist NodeFlow locally", e);
       }
@@ -485,9 +523,9 @@ const App: React.FC = () => {
     workflowGraphLinks,
     workflowLinkStyle,
     workflowGlobalAssetHistory,
-    workflowNodeFlowContext,
     workflowViewport,
     workflowActiveView,
+    setProjectData,
   ]);
 
   // Sync global theme classes for both Tailwind dark styles and CSS variable themes

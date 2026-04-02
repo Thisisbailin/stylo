@@ -1,4 +1,6 @@
 
+import type { NodeFlowFile } from "./node-workspace/types";
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
@@ -210,6 +212,7 @@ export interface ProjectData {
   episodes: Episode[];
   context: ProjectContext;
   designAssets: DesignAssetItem[];
+  nodeFlow?: NodeFlowFile | null;
   contextUsage?: TokenUsage; // Total usage (Phase 1 + Easter Eggs)
   phase1Usage: Phase1Usage; // Detailed breakdown of Phase 1
 

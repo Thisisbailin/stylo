@@ -6,7 +6,6 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles, ArrowRightLeft } from "lucide-react";
 import * as ViduService from "../../services/viduService";
 import { INITIAL_VIDU_CONFIG } from "../../constants";
-import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -45,10 +44,9 @@ const estimateCredits = (model: string, resolution: string, duration: number, of
 
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs, convertNodeToVideoInput } = useNodeFlowStore();
-  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
   const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
   const appConfig = useNodeFlowStore((state) => state.appConfig);
-  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
@@ -322,15 +320,6 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
             )}
           </div>
         )}
-
-        {approval ? (
-          <NodeExecutionApprovalPanel
-            proposal={approval}
-            busy={isLoading}
-            onApprove={() => approveExecution(id)}
-            onDismiss={() => dismissExecutionApproval(id)}
-          />
-        ) : null}
 
         <div className="text-[10px] uppercase tracking-[0.2em] font-black text-[var(--node-text-secondary)]/70">
           {connectedImages.length} refs · {connectedText ? "Text in" : "Prompt needed"}

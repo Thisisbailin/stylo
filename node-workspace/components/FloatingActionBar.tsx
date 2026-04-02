@@ -184,8 +184,6 @@ export const FloatingActionBar: React.FC<Props> = ({
     "text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]";
   const sectionCardClass =
     "rounded-[26px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4";
-  const popoverHeaderClass =
-    "rounded-[26px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-4 py-4";
   const utilityButtonClass =
     "group flex min-h-[60px] items-center gap-3 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px";
   const docButtonClass =
@@ -345,26 +343,6 @@ export const FloatingActionBar: React.FC<Props> = ({
 
   const ioActions: { label: string; desc: string; Icon: any; onClick?: () => void; color: string }[] = [];
 
-  const renderPopoverHeader = (
-    title: string,
-    description: string,
-    Icon: React.ComponentType<{ size?: number; className?: string }>,
-    toneClass: string
-  ) => (
-    <div className={popoverHeaderClass}>
-      <div className="flex items-start gap-3">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${toneClass}`}>
-          <Icon size={18} />
-        </div>
-        <div className="min-w-0">
-          <div className={sectionEyebrowClass}>{title}</div>
-          <div className="mt-2 text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{title}</div>
-          <div className="mt-1 text-[12px] leading-5 text-[var(--app-text-secondary)]">{description}</div>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderAgentSettingModules = () => (
     <div className="space-y-2">
       <div className="flex items-center justify-between px-1">
@@ -396,36 +374,30 @@ export const FloatingActionBar: React.FC<Props> = ({
   );
 
   const renderIoPanel = () => (
-    <div className={`${sectionCardClass} space-y-3`}>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className={sectionEyebrowClass}>IO</div>
-            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">导入源文件、理解指南与导出都归入项目层。</div>
-          </div>
-          <div className="flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
-            <button
-              type="button"
-              onClick={() => setIoPane("project")}
-              className={`${compactTabClass} ${ioPane === "project" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-            >
-              Files
-            </button>
-            <button
-              type="button"
-              onClick={() => setIoPane("guides")}
-              className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-            >
-              Understanding
-            </button>
-            <button
-              type="button"
-              onClick={() => setIoPane("export")}
-              className={`${compactTabClass} ${ioPane === "export" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-            >
-              Export
-            </button>
-          </div>
+    <div className="space-y-3">
+      <div className="flex items-center justify-start">
+        <div className="flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
+          <button
+            type="button"
+            onClick={() => setIoPane("project")}
+            className={`${compactTabClass} ${ioPane === "project" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+          >
+            Files
+          </button>
+          <button
+            type="button"
+            onClick={() => setIoPane("guides")}
+            className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+          >
+            Understanding
+          </button>
+          <button
+            type="button"
+            onClick={() => setIoPane("export")}
+            className={`${compactTabClass} ${ioPane === "export" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
+          >
+            Export
+          </button>
         </div>
       </div>
 
@@ -709,12 +681,10 @@ export const FloatingActionBar: React.FC<Props> = ({
           ? createPortal(
             <div
               ref={templatePanelRef}
-              className={`fixed z-[59] animate-in fade-in slide-in-from-bottom-2 duration-200 ${panelClass}`}
+              className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
               style={{ ...panelStyle, ...templatePopoverStyle }}
             >
               <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
-              {renderPopoverHeader("Project", "项目层只保留 IO 与模板，输入输出和复用资产都从这里进入。", SquareStack, "bg-blue-500/10 text-blue-200")}
-
               {renderIoPanel()}
 
               <div className={`${sectionCardClass} space-y-3`}>
@@ -802,10 +772,10 @@ export const FloatingActionBar: React.FC<Props> = ({
         {typeof document !== "undefined" && showPalette
           ? createPortal(
             <div
-              ref={palettePanelRef}
-              className={`fixed z-[59] animate-in fade-in slide-in-from-bottom-2 duration-300 ${panelClass}`}
-              style={{ ...panelStyle, ...palettePopoverStyle }}
-            >
+            ref={palettePanelRef}
+            className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
+            style={{ ...panelStyle, ...palettePopoverStyle }}
+          >
               <div className="p-4 space-y-4">
               <div className="px-1">
                 <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
@@ -887,14 +857,12 @@ export const FloatingActionBar: React.FC<Props> = ({
         {typeof document !== "undefined" && showFileMenu
           ? createPortal(
             <div
-              ref={fileMenuPanelRef}
-              className={`fixed z-[59] animate-in fade-in zoom-in-95 duration-200 overflow-hidden ${panelClass}`}
-              style={{ ...panelStyle, ...fileMenuPopoverStyle }}
-            >
-              <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
-              {renderPopoverHeader("Account", "聚焦账户状态、头像、主题与 agent 工作台入口。", User, "bg-emerald-500/10 text-emerald-300")}
-
-              <div className={`${sectionCardClass} space-y-3`}>
+            ref={fileMenuPanelRef}
+            className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden ${panelClass}`}
+            style={{ ...panelStyle, ...fileMenuPopoverStyle }}
+          >
+            <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
+              <div className="space-y-3">
                 {!accountLoaded ? (
                   <div className="flex items-center gap-3 animate-pulse">
                     <div className="h-14 w-14 rounded-[18px] bg-[var(--app-panel-soft)]" />

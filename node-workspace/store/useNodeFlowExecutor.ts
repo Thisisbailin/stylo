@@ -25,7 +25,6 @@ import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
-import { buildNodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 
 type MentionData = {
   name: string;
@@ -1532,36 +1531,12 @@ export const useNodeFlowExecutor = () => {
   }, [config?.videoConfig, runSeedanceVideoGen, runViduVideoGen, store]);
 
   const runImageGen = useCallback(async (nodeId: string) => {
-    const node = store.getNodeById(nodeId);
-    if (!node) return;
-    const connectedInputs = store.getConnectedInputs(nodeId);
-    store.requestExecutionApproval(
-      buildNodeFlowExecutionApprovalProposal({
-        node,
-        connectedInputs,
-        runtimeDefaults: {
-          imageProviderLabel: config?.multimodalConfig?.provider || "Image",
-          imageModelLabel: config?.multimodalConfig?.model || "global default",
-        },
-      })
-    );
-  }, [config, store]);
+    await executeImageGen(nodeId);
+  }, [executeImageGen]);
 
   const runVideoGen = useCallback(async (nodeId: string) => {
-    const node = store.getNodeById(nodeId);
-    if (!node) return;
-    const connectedInputs = store.getConnectedInputs(nodeId);
-    store.requestExecutionApproval(
-      buildNodeFlowExecutionApprovalProposal({
-        node,
-        connectedInputs,
-        runtimeDefaults: {
-          videoProviderLabel: config?.videoConfig?.baseUrl ? "Video" : "Video",
-          videoModelLabel: config?.videoConfig?.model || "global default",
-        },
-      })
-    );
-  }, [config, store]);
+    await executeVideoGen(nodeId);
+  }, [executeVideoGen]);
 
   const approveExecution = useCallback(async (nodeId: string) => {
     const proposal = store.pendingExecutionApprovals[nodeId];

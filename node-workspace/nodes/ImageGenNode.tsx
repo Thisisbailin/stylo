@@ -5,7 +5,6 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Sparkles, RefreshCw, AlertCircle, Settings2, X, Download } from "lucide-react";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
-import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -14,8 +13,7 @@ type Props = {
 
 export const ImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, availableImageModels, nodeFlowContext, appConfig } = useNodeFlowStore();
-  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
-  const { runImageGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
+  const { runImageGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -159,15 +157,6 @@ export const ImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, dat
             )}
           </div>
         )}
-
-        {approval ? (
-          <NodeExecutionApprovalPanel
-            proposal={approval}
-            busy={isLoading}
-            onApprove={() => approveExecution(id)}
-            onDismiss={() => dismissExecutionApproval(id)}
-          />
-        ) : null}
 
         {/* Controls Header */}
         <div className="flex flex-col gap-2">

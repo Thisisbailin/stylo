@@ -19,7 +19,6 @@ import {
   SEEDANCE_FAST_MODEL,
 } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
-import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -31,8 +30,7 @@ const clampDuration = (value: number) => Math.max(4, Math.min(15, Math.round(val
 
 export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
-  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
-  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingVideoRefs, setIsUploadingVideoRefs] = useState(false);
   const refVideoInputRef = useRef<HTMLInputElement>(null);
@@ -237,15 +235,6 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
             )}
           </div>
         )}
-
-        {approval ? (
-          <NodeExecutionApprovalPanel
-            proposal={approval}
-            busy={isLoading}
-            onApprove={() => approveExecution(id)}
-            onDismiss={() => dismissExecutionApproval(id)}
-          />
-        ) : null}
 
         <div className="node-panel space-y-3 p-3 nodrag">
           <div className="space-y-1">

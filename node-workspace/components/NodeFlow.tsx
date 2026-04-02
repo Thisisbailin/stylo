@@ -382,6 +382,39 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
   },
 };
 
+const QALAM_WORDMARK_STYLE: Record<ThemeKey, { gradient: string; glow: string }> = {
+  dark: {
+    gradient:
+      "linear-gradient(110deg, rgba(252, 251, 248, 0.99) 0%, rgba(233, 246, 244, 0.98) 14%, rgba(246, 244, 227, 0.98) 28%, rgba(250, 236, 220, 0.97) 42%, rgba(242, 229, 247, 0.98) 58%, rgba(229, 234, 250, 0.98) 74%, rgba(225, 242, 251, 0.98) 88%, rgba(252, 251, 248, 0.99) 100%)",
+    glow: "rgba(244, 240, 255, 0.14)",
+  },
+  light: {
+    gradient:
+      "linear-gradient(110deg, rgba(20, 35, 58, 0.92) 0%, rgba(50, 118, 255, 0.96) 36%, rgba(117, 168, 255, 0.92) 68%, rgba(20, 35, 58, 0.92) 100%)",
+    glow: "rgba(50, 118, 255, 0.2)",
+  },
+  sand: {
+    gradient:
+      "linear-gradient(110deg, rgba(95, 52, 0, 0.94) 0%, rgba(230, 150, 12, 0.98) 34%, rgba(255, 208, 98, 0.95) 68%, rgba(95, 52, 0, 0.94) 100%)",
+    glow: "rgba(230, 150, 12, 0.24)",
+  },
+  creative: {
+    gradient:
+      "linear-gradient(110deg, rgba(11, 65, 36, 0.94) 0%, rgba(18, 196, 102, 0.98) 34%, rgba(112, 238, 171, 0.94) 68%, rgba(11, 65, 36, 0.94) 100%)",
+    glow: "rgba(18, 196, 102, 0.22)",
+  },
+  calm: {
+    gradient:
+      "linear-gradient(110deg, rgba(10, 54, 97, 0.94) 0%, rgba(34, 149, 255, 0.98) 34%, rgba(134, 206, 255, 0.94) 68%, rgba(10, 54, 97, 0.94) 100%)",
+    glow: "rgba(34, 149, 255, 0.22)",
+  },
+  lively: {
+    gradient:
+      "linear-gradient(110deg, rgba(95, 16, 52, 0.94) 0%, rgba(255, 96, 156, 0.98) 34%, rgba(255, 174, 210, 0.94) 68%, rgba(95, 16, 52, 0.94) 100%)",
+    glow: "rgba(255, 96, 156, 0.24)",
+  },
+};
+
 const boostAlpha = (color: string, multiplier: number) => {
   const match = color.match(/rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/i);
   if (!match) return color;
@@ -389,6 +422,8 @@ const boostAlpha = (color: string, multiplier: number) => {
   const nextAlpha = Math.min(1, Number.parseFloat(a) * multiplier);
   return `rgba(${r}, ${g}, ${b}, ${nextAlpha})`;
 };
+
+const toSvgDataUri = (svg: string) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 
 const getPatternDefinitions = (
   theme: ThemePreset,
@@ -411,11 +446,16 @@ const getPatternDefinitions = (
       `${22 * scale}px ${22 * scale}px, ${22 * scale}px ${22 * scale}px, ${110 * scale}px ${110 * scale}px, ${110 * scale}px ${110 * scale}px`,
   },
   cross: {
-    image:
-      `linear-gradient(90deg, transparent calc(50% - 6px), ${primary} calc(50% - 6px), ${primary} calc(50% + 6px), transparent calc(50% + 6px)), linear-gradient(transparent calc(50% - 6px), ${primary} calc(50% - 6px), ${primary} calc(50% + 6px), transparent calc(50% + 6px)), radial-gradient(circle at center, ${secondary} 1.2px, transparent 1.2px)`,
+    image: toSvgDataUri(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" fill="none">
+        <path d="M22 16.5V27.5" stroke="${primary}" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M16.5 22H27.5" stroke="${primary}" stroke-width="1.2" stroke-linecap="round"/>
+        <circle cx="22" cy="22" r="1.05" fill="${secondary}"/>
+      </svg>
+    `),
     size: (scale) =>
-      `${34 * scale}px ${34 * scale}px, ${34 * scale}px ${34 * scale}px, ${34 * scale}px ${34 * scale}px`,
-    position: "0 0, 0 0, 0 0",
+      `${44 * scale}px ${44 * scale}px`,
+    position: "0 0",
   },
   lines: {
     image:
@@ -455,6 +495,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const showPeripheralWidgets = false;
+  const [isAssetsDockHovered, setIsAssetsDockHovered] = useState(false);
+  const [isAssetsPanelCollapsed, setIsAssetsPanelCollapsed] = useState(true);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
   const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
@@ -463,8 +505,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
   const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
+  const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
+  const [dismissedAutoQalamFirst, setDismissedAutoQalamFirst] = useState(false);
   const [composerInput, setComposerInput] = useState("");
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const qalamFirstBreakpoint = 920;
+  const isAutoQalamFirst = windowWidth <= qalamFirstBreakpoint;
+  const isQalamFirstMode = isAutoQalamFirst ? !dismissedAutoQalamFirst : isQalamFirstManual;
   const openAgentSettingsPanel = useCallback(
     (panel: "provider" | "tools" | "skills" | "dashboard" | "history" = "provider") => {
       setAgentSettingsPanel(panel);
@@ -511,6 +559,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
+  const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -524,6 +573,29 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleConnectStart = useCallback(() => {
     setIsConnecting(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const wasAutoQalamFirstRef = useRef(isAutoQalamFirst);
+  useEffect(() => {
+    if (isAutoQalamFirst && !wasAutoQalamFirstRef.current) {
+      setDismissedAutoQalamFirst(false);
+    }
+    wasAutoQalamFirstRef.current = isAutoQalamFirst;
+  }, [isAutoQalamFirst]);
+
+  const toggleQalamFirstMode = useCallback(() => {
+    if (isAutoQalamFirst) {
+      setDismissedAutoQalamFirst((prev) => !prev);
+      return;
+    }
+    setIsQalamFirstManual((prev) => !prev);
+  }, [isAutoQalamFirst]);
 
   /* New: Sync global style guide to store so executors can use it */
   useEffect(() => {
@@ -808,10 +880,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   );
 
   const runAll = async () => {
-    let queued = 0;
+    let started = 0;
     for (const n of nodes) {
       if (n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen") {
-        queued += 1;
+        started += 1;
         await runImageGen(n.id);
       }
       if (
@@ -821,11 +893,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         n.type === "viduVideoGen" ||
         n.type === "seedanceVideoGen"
       ) {
-        queued += 1;
+        started += 1;
         await runVideoGen(n.id);
       }
     }
-    alert(queued > 0 ? `已创建 ${queued} 个待审批生成任务。` : "当前没有可执行的生成节点。");
+    alert(started > 0 ? `已启动 ${started} 个生成节点。` : "当前没有可执行的生成节点。");
   };
 
   const getTemplateOrigin = useCallback(() => {
@@ -881,6 +953,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
+    const qalamWordmarkStyle = QALAM_WORDMARK_STYLE[bgTheme];
     const mapping: Record<string, string> = {
       "bg-base": activeTheme.bg,
       "bg-panel": activeTheme.panel,
@@ -933,12 +1006,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       "group-border-strong": activeTheme.groupBorderStrong,
       "group-highlight": activeTheme.groupHighlight,
       "group-shadow": activeTheme.groupShadow,
+      "qalam-wordmark-gradient": qalamWordmarkStyle.gradient,
+      "qalam-wordmark-glow": qalamWordmarkStyle.glow,
     };
     Object.entries(mapping).forEach(([key, value]) => {
       root.style.setProperty(`--${key}`, value);
     });
     root.style.colorScheme = activeTheme.scheme;
-  }, [activeTheme]);
+  }, [activeTheme, bgTheme]);
 
   const backgroundStyle = useMemo(() => {
     const base = activeTheme.bg;
@@ -1132,10 +1207,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
             onSendingChange={setIsQalamSending}
             renderCollapsedTrigger
+            agentFirstMode={isQalamFirstMode}
           />
           <div
             className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              showPeripheralWidgets ? "opacity-100" : "pointer-events-none opacity-0"
+              showPeripheralWidgets && !isQalamFirstMode ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           >
             <ViewportControls
@@ -1154,11 +1230,15 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         </div>
       </div>
       <div
-        className="fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar"
+        className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
+          isQalamFirstMode ? "px-4" : ""
+        }`}
       >
-        <div className="flex w-[min(560px,calc(100vw-48px))] flex-col items-center gap-2">
+        <div className={`flex flex-col items-center gap-2 ${isQalamFirstMode ? "w-[min(1120px,calc(100vw-32px))]" : "w-[min(560px,calc(100vw-48px))]"}`}>
           <div
-            className="pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] opacity-100 translate-y-0"
+            className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isQalamFirstMode ? "pointer-events-none hidden opacity-0" : "opacity-100 translate-y-0"
+            }`}
           >
             <FloatingActionBar
               onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
@@ -1207,7 +1287,13 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onAssetLoad={onAssetLoad}
               accountInfo={accountInfo}
               onToggleWorkflow={onToggleWorkflow}
-              onOpenQalam={() => setQalamOpenRequest((prev) => prev + 1)}
+              onOpenQalam={() => {
+                if (isAutoQalamFirst) {
+                  setDismissedAutoQalamFirst(false);
+                  return;
+                }
+                setIsQalamFirstManual(true);
+              }}
               variant="embedded"
             />
           </div>
@@ -1236,7 +1322,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                     return;
                   }
                   if (!text) {
-                    setQalamOpenRequest((prev) => prev + 1);
+                    toggleQalamFirstMode();
                     return;
                   }
                   setComposerInput("");
@@ -1249,8 +1335,24 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                     ? "bg-[var(--app-accent-strong)] hover:brightness-105"
                     : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
                 }`}
-                title={isQalamSending ? "Stop Qalam" : composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
-                aria-label={isQalamSending ? "Stop Qalam" : composerInput.trim() ? "Send to Qalam" : isQalamCollapsed ? "Open Qalam" : "Focus Qalam"}
+                title={
+                  isQalamSending
+                    ? "Stop Qalam"
+                    : composerInput.trim()
+                    ? "Send to Qalam"
+                    : isQalamFirstMode
+                    ? "Close Qalam First"
+                    : "Open Qalam First"
+                }
+                aria-label={
+                  isQalamSending
+                    ? "Stop Qalam"
+                    : composerInput.trim()
+                    ? "Send to Qalam"
+                    : isQalamFirstMode
+                    ? "Close Qalam First"
+                    : "Open Qalam First"
+                }
               >
                 {isQalamSending ? (
                   <CircleNotch size={16} weight="bold" className="animate-spin" />
@@ -1262,10 +1364,32 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           </div>
         </div>
       </div>
-      <div className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${showPeripheralWidgets ? "opacity-100" : "opacity-0"}`}>
-        <div className={`pointer-events-auto qalam-bottom-assets ${showPeripheralWidgets ? "" : "pointer-events-none"}`}>
+      <div
+        className="fixed bottom-0 right-0 z-[29] h-44 w-44 pointer-events-auto"
+        onMouseEnter={() => setIsAssetsDockHovered(true)}
+        onMouseLeave={() => {
+          if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
+        }}
+      />
+      <div
+        className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${
+          showAssetsDock ? "opacity-100" : "opacity-0"
+        }`}
+        onMouseEnter={() => setIsAssetsDockHovered(true)}
+        onMouseLeave={() => {
+          if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
+        }}
+      >
+        <div className={`pointer-events-auto qalam-bottom-assets ${showAssetsDock ? "" : "pointer-events-none"}`}>
           <div className="relative flex h-12 items-center">
-            <AssetsPanel floating={false} inlineAnchor />
+            <AssetsPanel
+              floating={false}
+              inlineAnchor
+              onCollapsedChange={(collapsed) => {
+                setIsAssetsPanelCollapsed(collapsed);
+                setIsAssetsDockHovered(!collapsed);
+              }}
+            />
           </div>
         </div>
       </div>

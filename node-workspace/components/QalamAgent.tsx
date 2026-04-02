@@ -7,13 +7,15 @@ import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField } from "./GlassDiffusionField";
 import { QalamChatContent } from "./qalam/QalamChatContent";
-import type { ChatMessage, Message } from "./qalam/types";
+import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
 import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import type { QalamAgentRuntime } from "../../agents/runtime/types";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
+import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 
 type Props = {
   projectData: ProjectData;
@@ -28,6 +30,7 @@ type Props = {
   onDockFrameChange?: (frame: { dockWidth: number; isSplit: boolean; collapsed: boolean }) => void;
   onSendingChange?: (sending: boolean) => void;
   renderCollapsedTrigger?: boolean;
+  agentFirstMode?: boolean;
 };
 
 const WORK_HINT_KEYWORDS = [
@@ -188,6 +191,64 @@ type ConversationState = {
   items: ConversationRecord[];
 };
 
+type ApprovalPreferenceState = Partial<Record<"image_generation" | "video_generation", true>>;
+
+const buildApprovalPayload = (
+  proposal: NodeFlowExecutionApprovalProposal,
+  status: ApprovalMessage["approval"]["status"]
+): ApprovalMessage["approval"] => ({
+  id: proposal.id,
+  nodeId: proposal.nodeId,
+  nodeRef: proposal.nodeRef,
+  nodeTitle: proposal.nodeTitle,
+  action: proposal.action,
+  providerLabel: proposal.providerLabel,
+  modelLabel: proposal.modelLabel,
+  promptPreview: proposal.promptPreview,
+  inputSummary: proposal.inputSummary,
+  status,
+  createdAt: proposal.createdAt,
+  updatedAt: Date.now(),
+});
+
+const upsertApprovalMessage = (
+  messages: Message[],
+  approval: ApprovalMessage["approval"]
+) => {
+  const index = messages.findIndex(
+    (message) => message.kind === "approval" && message.approval.nodeId === approval.nodeId
+  );
+  const next: ApprovalMessage = {
+    role: "assistant",
+    kind: "approval",
+    order: index >= 0 ? messages[index].order : messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1,
+    approval,
+  };
+  if (index >= 0) {
+    const clone = [...messages];
+    clone[index] = next;
+    return clone;
+  }
+  return [...messages, next];
+};
+
+const patchApprovalMessage = (
+  messages: Message[],
+  nodeId: string,
+  patch: Partial<ApprovalMessage["approval"]>
+) =>
+  messages.map((message) => {
+    if (message.kind !== "approval" || message.approval.nodeId !== nodeId) return message;
+    return {
+      ...message,
+      approval: {
+        ...message.approval,
+        ...patch,
+        updatedAt: Date.now(),
+      },
+    };
+  });
+
 const buildConversationTitle = (messages: Message[]) => {
   const firstUser = messages.find((m) => m.role === "user" && (m as ChatMessage).text?.trim()) as ChatMessage | undefined;
   if (!firstUser) return "新对话";
@@ -220,6 +281,7 @@ export const QalamAgent: React.FC<Props> = ({
   onDockFrameChange,
   onSendingChange,
   renderCollapsedTrigger = true,
+  agentFirstMode = false,
 }) => {
   const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
@@ -235,6 +297,7 @@ export const QalamAgent: React.FC<Props> = ({
   const requestExecutionApproval = useNodeFlowStore((state) => state.requestExecutionApproval);
   const clearExecutionApproval = useNodeFlowStore((state) => state.clearExecutionApproval);
   const setExecutionApprovals = useNodeFlowStore((state) => state.setExecutionApprovals);
+  const pendingExecutionApprovals = useNodeFlowStore((state) => state.pendingExecutionApprovals);
   const nodes = useNodeFlowStore((state) => state.nodes);
   const links = useNodeFlowStore((state) => state.links);
   const graphLinks = useNodeFlowStore((state) => state.graphLinks);
@@ -266,6 +329,20 @@ export const QalamAgent: React.FC<Props> = ({
       }
     },
   });
+  const [approvalPreferences, setApprovalPreferences] = usePersistedState<ApprovalPreferenceState>({
+    key: "qalam_execution_approval_prefs_v1",
+    initialValue: {},
+    serialize: (value) => JSON.stringify(value),
+    deserialize: (value) => {
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    },
+  });
+  const { approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
   const clampMessages = useCallback((items: Message[]) => items.slice(-120), []);
   const activeConversation = useMemo(() => {
     if (!conversationState.items.length) return null;
@@ -320,7 +397,9 @@ export const QalamAgent: React.FC<Props> = ({
   const handledSubmitRequestRef = useRef<number>(0);
   const phaseTimerRef = useRef<number | null>(null);
   const messagePanelRef = useRef<HTMLDivElement | null>(null);
+  const approvalSyncRef = useRef<string[]>([]);
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
+  const effectiveCollapsed = agentFirstMode ? false : collapsed;
   const bridge = useMemo<QalamAgentBridge>(
     () => createQalamAgentBridge({
       getProjectData: () => projectData,
@@ -530,12 +609,26 @@ export const QalamAgent: React.FC<Props> = ({
   }, [conversationState.activeId, conversationState.items, setConversationState]);
 
   useEffect(() => {
-    onCollapsedChange?.(collapsed);
-  }, [collapsed, onCollapsedChange]);
+    onCollapsedChange?.(effectiveCollapsed);
+  }, [effectiveCollapsed, onCollapsedChange]);
 
   useEffect(() => {
     onSendingChange?.(isSending);
   }, [isSending, onSendingChange]);
+
+  useEffect(() => {
+    if (phaseTimerRef.current) {
+      window.clearTimeout(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
+    if (agentFirstMode) {
+      setCollapsed(false);
+      setPanelPhase("open");
+      return;
+    }
+    setCollapsed(true);
+    setPanelPhase("collapsed");
+  }, [agentFirstMode]);
 
   useEffect(() => {
     return () => {
@@ -583,9 +676,55 @@ export const QalamAgent: React.FC<Props> = ({
     onDockFrameChange?.({
       dockWidth: 0,
       isSplit: false,
-      collapsed,
+      collapsed: effectiveCollapsed,
     });
-  }, [collapsed, onDockFrameChange]);
+  }, [effectiveCollapsed, onDockFrameChange]);
+
+  useEffect(() => {
+    const proposals = Object.values(pendingExecutionApprovals).sort((a, b) => a.createdAt - b.createdAt);
+    const previousNodeIds = new Set(approvalSyncRef.current);
+    const newProposals = proposals.filter((proposal) => !previousNodeIds.has(proposal.nodeId));
+    approvalSyncRef.current = proposals.map((proposal) => proposal.nodeId);
+
+    if (!proposals.length) return;
+
+    setMessages((prev) => {
+      let next = prev;
+      proposals.forEach((proposal) => {
+        const existing = next.find(
+          (message): message is ApprovalMessage =>
+            message.kind === "approval" && message.approval.nodeId === proposal.nodeId
+        );
+        const isSameProposal = existing?.approval.id === proposal.id;
+        const status =
+          isSameProposal && existing
+            ? existing.approval.status === "pending"
+              ? approvalPreferences[proposal.action]
+                ? "executing"
+                : "pending"
+              : existing.approval.status
+            : approvalPreferences[proposal.action]
+              ? "executing"
+              : "pending";
+        next = upsertApprovalMessage(next, buildApprovalPayload(proposal, status));
+      });
+      return next;
+    });
+
+    if (newProposals.some((proposal) => !approvalPreferences[proposal.action])) {
+      openPanel();
+    }
+
+    newProposals
+      .filter((proposal) => approvalPreferences[proposal.action])
+      .forEach((proposal) => {
+        setMessages((prev) => patchApprovalMessage(prev, proposal.nodeId, { status: "executing" }));
+        void approveExecution(proposal.nodeId).then(() => {
+          setMessages((prev) => patchApprovalMessage(prev, proposal.nodeId, { status: "approved" }));
+        });
+      });
+  }, [approvalPreferences, approveExecution, openPanel, pendingExecutionApprovals, setMessages]);
+
   const submitText = useCallback(async (rawText: string) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
@@ -645,20 +784,38 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setExecutionApprovals, setMessages, setProjectData]);
 
-  const panelClassName = "pointer-events-auto isolate w-[420px] max-w-[95vw] qalam-panel";
+  const panelClassName = "pointer-events-auto isolate qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
-  const messageViewportHeight = Math.max(240, viewportSize.height - dockInset * 2 - 92);
+  const handleApprovalChoice = useCallback(
+    async (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => {
+      if (choice === "reject_once") {
+        dismissExecutionApproval(approval.nodeId);
+        setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "rejected" }));
+        return;
+      }
+      if (choice === "approve_always") {
+        setApprovalPreferences((prev) => ({ ...prev, [approval.action]: true }));
+      }
+      setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "executing" }));
+      await approveExecution(approval.nodeId);
+      setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "approved" }));
+    },
+    [approveExecution, dismissExecutionApproval, setApprovalPreferences, setMessages]
+  );
+  const qalamVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.65));
+  const qalamChromeHeight = 62;
+  const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.veil,
-      blur: 3,
-      fillAlpha: 0,
-      saturate: 106,
+      blur: 20,
+      fillAlpha: 0.036,
+      saturate: 122,
       fadeInsetX: 16,
       fadeInsetY: 35,
       fade: 22,
-      edgeAlpha: 0.04,
+      edgeAlpha: 0.06,
       curve: GLASS_DIFFUSION_PRESETS.veil.curve,
     }),
     []
@@ -667,7 +824,9 @@ export const QalamAgent: React.FC<Props> = ({
     position: "fixed",
     top: dockInset,
     left: dockInset,
-    width: Math.min(420, Math.max(320, viewportSize.width - dockInset * 2)),
+    width: agentFirstMode
+      ? Math.max(320, viewportSize.width - dockInset * 2)
+      : Math.min(420, Math.max(320, viewportSize.width - dockInset * 2)),
     maxWidth: `calc(100vw - ${dockInset * 2}px)`,
     zIndex: 80,
   };
@@ -689,7 +848,7 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamMark = (
     <span
       className={`qalam-wordmark inline-block text-[30px] font-semibold tracking-[-0.065em] transition duration-500 ${
-        !collapsed || isSending || isRevealing ? "qalam-wordmark--active opacity-100 blur-0" : "opacity-96"
+        !effectiveCollapsed || isSending || isRevealing ? "qalam-wordmark--active opacity-100 blur-0" : "opacity-96"
       }`}
     >
       Qalam
@@ -734,14 +893,14 @@ export const QalamAgent: React.FC<Props> = ({
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={collapsed ? openPanel : closePanel}
+              onClick={agentFirstMode ? undefined : collapsed ? openPanel : closePanel}
               className="pointer-events-auto inline-flex items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
-              aria-label={collapsed ? "Open Qalam" : "Close Qalam"}
-              title={collapsed ? "Open Qalam" : "Close Qalam"}
+              aria-label={agentFirstMode ? "Qalam" : collapsed ? "Open Qalam" : "Close Qalam"}
+              title={agentFirstMode ? "Qalam" : collapsed ? "Open Qalam" : "Close Qalam"}
             >
               {qalamMark}
             </button>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <button
                 type="button"
                 onClick={onOpenStats}
@@ -755,24 +914,24 @@ export const QalamAgent: React.FC<Props> = ({
         </div>
         <div
           className={`px-4 pb-4 pt-[62px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            collapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
+            effectiveCollapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
           }`}
         >
           <div className="relative">
             <div
               className="pointer-events-none absolute z-0 transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
               style={{
-                left: 10,
-                top: 18,
-                width: Math.max(0, messagePanelSize.width - 20),
-                height: Math.max(0, messagePanelSize.height + 22),
-                opacity: collapsed ? 0 : 1,
+                left: 0,
+                top: 0,
+                width: Math.max(0, messagePanelSize.width),
+                height: Math.min(qalamVisibleMaxHeight, Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)),
+                opacity: effectiveCollapsed ? 0 : 1,
               }}
             >
               <GlassDiffusionField
                 className="absolute inset-0"
-                width={Math.max(0, messagePanelSize.width - 20)}
-                height={Math.max(0, messagePanelSize.height + 22)}
+                width={Math.max(0, messagePanelSize.width)}
+                height={Math.min(qalamVisibleMaxHeight, Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height))}
                 config={{
                   blur: qalamGlassConfig.blur,
                   fillAlpha: qalamGlassConfig.fillAlpha,
@@ -790,9 +949,11 @@ export const QalamAgent: React.FC<Props> = ({
               <QalamChatContent
                 messages={messages}
                 isSending={isSending}
+                onApprovalChoice={handleApprovalChoice}
                 className="bg-transparent"
                 revealMode="latest"
-                style={{ height: `${messageViewportHeight}px` }}
+                latestBlockMaxHeight={messageViewportHeight}
+                style={{ maxHeight: `${messageViewportHeight}px` }}
               />
             </div>
           </div>

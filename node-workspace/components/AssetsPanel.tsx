@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
+  Download,
   Film,
   Image as ImageIcon,
   Trash2,
@@ -16,12 +17,41 @@ type AssetTab =
 type Props = {
   floating?: boolean;
   inlineAnchor?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = false }) => {
+const inferDownloadExtension = (src: string, fallback: "png" | "mp4") => {
+  if (src.startsWith("data:")) {
+    const mime = src.slice(5, src.indexOf(";"));
+    if (mime.includes("png")) return "png";
+    if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+    if (mime.includes("webp")) return "webp";
+    if (mime.includes("gif")) return "gif";
+    if (mime.includes("mp4")) return "mp4";
+    if (mime.includes("webm")) return "webm";
+    if (mime.includes("mov")) return "mov";
+  }
+  const clean = src.split("?")[0]?.split("#")[0] || "";
+  const ext = clean.split(".").pop()?.toLowerCase();
+  return ext && /^[a-z0-9]{2,5}$/.test(ext) ? ext : fallback;
+};
+
+const slugify = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+export const AssetsPanel: React.FC<Props> = ({
+  floating = true,
+  inlineAnchor = false,
+  onCollapsedChange,
+}) => {
   const { globalAssetHistory, removeGlobalHistoryItem, clearGlobalHistory } = useNodeFlowStore();
   const [collapsed, setCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState<AssetTab>("images");
@@ -47,12 +77,58 @@ export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = f
 
   const anchorClass = inlineAnchor ? "relative h-12 flex items-center" : floating ? "fixed bottom-4 right-4 z-30" : "";
 
+  const updateCollapsed = (next: boolean) => {
+    setCollapsed(next);
+    onCollapsedChange?.(next);
+  };
+
+  const handleDownload = async (src: string, prompt: string | undefined, type: "image" | "video") => {
+    const extension = inferDownloadExtension(src, type === "image" ? "png" : "mp4");
+    const baseName = slugify(prompt || `${type}-asset`) || `${type}-asset`;
+    const fileName = `${baseName}.${extension}`;
+
+    try {
+      if (src.startsWith("data:") || src.startsWith("blob:")) {
+        const directLink = document.createElement("a");
+        directLink.href = src;
+        directLink.download = fileName;
+        directLink.rel = "noopener";
+        document.body.appendChild(directLink);
+        directLink.click();
+        directLink.remove();
+        return;
+      }
+
+      const response = await fetch(src, { mode: "cors" });
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = fileName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      const fallbackLink = document.createElement("a");
+      fallbackLink.href = src;
+      fallbackLink.download = fileName;
+      fallbackLink.rel = "noopener";
+      fallbackLink.target = "_blank";
+      document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      fallbackLink.remove();
+    }
+  };
+
   if (collapsed) {
     return (
       <div className={anchorClass}>
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => updateCollapsed(false)}
           className="qalam-surface flex h-11 items-center gap-2 rounded-full px-3.5"
           title={`Assets (${totalCount})`}
         >
@@ -96,7 +172,7 @@ export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = f
             )}
             <button
               type="button"
-              onClick={() => setCollapsed(true)}
+              onClick={() => updateCollapsed(true)}
               className="h-8 w-8 rounded-full border border-[var(--app-border)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] transition"
               title="Collapse"
             >
@@ -155,14 +231,24 @@ export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = f
                       <span>{formatTime(item.timestamp)}</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeGlobalHistoryItem(item.id)}
-                    className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition opacity-0 group-hover:opacity-100"
-                    title="Remove"
-                  >
-                    <X size={12} className="mx-auto" />
-                  </button>
+                  <div className="flex flex-col gap-1 opacity-0 transition group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(item.src, item.prompt, "image")}
+                      className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition"
+                      title="Download"
+                    >
+                      <Download size={12} className="mx-auto" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeGlobalHistoryItem(item.id)}
+                      className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition"
+                      title="Remove"
+                    >
+                      <X size={12} className="mx-auto" />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -200,14 +286,24 @@ export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = f
                       <span>{formatTime(item.timestamp)}</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeGlobalHistoryItem(item.id)}
-                    className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition opacity-0 group-hover:opacity-100"
-                    title="Remove"
-                  >
-                    <X size={12} className="mx-auto" />
-                  </button>
+                  <div className="flex flex-col gap-1 opacity-0 transition group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(item.src, item.prompt, "video")}
+                      className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition"
+                      title="Download"
+                    >
+                      <Download size={12} className="mx-auto" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeGlobalHistoryItem(item.id)}
+                      className="h-7 w-7 rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text-primary)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition"
+                      title="Remove"
+                    >
+                      <X size={12} className="mx-auto" />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -224,7 +320,7 @@ export const AssetsPanel: React.FC<Props> = ({ floating = true, inlineAnchor = f
         <div className="absolute bottom-0 right-0 z-40">{panelCore}</div>
         <button
           type="button"
-          onClick={() => setCollapsed(true)}
+          onClick={() => updateCollapsed(true)}
           className="sr-only"
         >
           Close assets

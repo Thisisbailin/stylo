@@ -62,6 +62,7 @@ type ProjectMeta = {
   dramaGuide: string;
   globalStyleGuide: string;
   designAssets: Array<Record<string, unknown>>;
+  nodeFlow: Record<string, unknown> | null;
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
@@ -90,6 +91,7 @@ const DEFAULT_META: ProjectMeta = {
   dramaGuide: "",
   globalStyleGuide: "",
   designAssets: [],
+  nodeFlow: null,
   context: {
     projectSummary: "",
     episodeSummaries: [],
@@ -120,6 +122,7 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   dramaGuide: typeof projectData?.dramaGuide === "string" ? projectData.dramaGuide : "",
   globalStyleGuide: typeof projectData?.globalStyleGuide === "string" ? projectData.globalStyleGuide : "",
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
+  nodeFlow: projectData?.nodeFlow && typeof projectData.nodeFlow === "object" ? projectData.nodeFlow : null,
   context: {
     projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
     episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
@@ -341,6 +344,7 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     dramaGuide: meta.dramaGuide || "",
     globalStyleGuide: meta.globalStyleGuide || "",
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
+    nodeFlow: meta.nodeFlow && typeof meta.nodeFlow === "object" ? meta.nodeFlow : null,
     contextUsage: meta.contextUsage || emptyTokenUsage,
     phase1Usage: meta.phase1Usage || {},
     phase4Usage: meta.phase4Usage || emptyTokenUsage,

@@ -6,7 +6,6 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Film, AlertCircle, Download } from "lucide-react";
 import { QWEN_WAN_VIDEO_MODEL } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
-import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -15,8 +14,7 @@ type Props = {
 
 export const WanVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
-  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
-  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
+  const { runVideoGen } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -247,15 +245,6 @@ export const WanVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, 
             {connectedImages.length} image reference{connectedImages.length > 1 ? "s" : ""} connected
           </div>
         )}
-
-        {approval ? (
-          <NodeExecutionApprovalPanel
-            proposal={approval}
-            busy={isLoading}
-            onApprove={() => approveExecution(id)}
-            onDismiss={() => dismissExecutionApproval(id)}
-          />
-        ) : null}
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
