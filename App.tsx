@@ -2245,10 +2245,6 @@ const App: React.FC = () => {
     labModalTitle = "放映机 (视听实验室)";
     labModalWidth = 560;
     labModalContent = <ProjectorModule projectData={projectData} setProjectData={setProjectData} />;
-  } else if (openLabModal === "glassLab") {
-    labModalTitle = "Glass Lab";
-    labModalWidth = 920;
-    labModalContent = <GlassEffectLab />;
   }
 
   if (appView === "landing") {
@@ -2298,6 +2294,7 @@ const App: React.FC = () => {
             {labModalContent}
           </FloatingPanelShell>
         )}
+        <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
       </AppShell>
       {showWorkflow && (
         <>

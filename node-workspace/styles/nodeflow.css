@@ -1,24 +1,24 @@
 :root {
-  --app-bg: #07141d;
-  --app-panel: rgba(8, 23, 33, 0.84);
-  --app-panel-strong: rgba(13, 31, 45, 0.94);
-  --app-panel-muted: rgba(83, 211, 255, 0.1);
-  --app-panel-soft: rgba(83, 211, 255, 0.16);
-  --app-border: rgba(125, 224, 255, 0.18);
-  --app-border-strong: rgba(125, 224, 255, 0.32);
-  --app-text-primary: #effaff;
-  --app-text-secondary: rgba(239, 250, 255, 0.72);
-  --app-text-muted: rgba(239, 250, 255, 0.46);
-  --app-accent: #53d3ff;
-  --app-accent-strong: #8cecff;
-  --app-accent-soft: rgba(83, 211, 255, 0.18);
-  --app-shadow: 0 16px 40px rgba(1, 10, 18, 0.34);
-  --app-shadow-strong: 0 24px 56px rgba(1, 10, 18, 0.44);
-  --app-pattern: rgba(140, 236, 255, 0.12);
+  --app-bg: #dfe9df;
+  --app-panel: rgba(241, 248, 241, 0.92);
+  --app-panel-strong: rgba(247, 252, 247, 0.98);
+  --app-panel-muted: rgba(120, 154, 123, 0.08);
+  --app-panel-soft: rgba(120, 154, 123, 0.12);
+  --app-border: rgba(120, 154, 123, 0.15);
+  --app-border-strong: rgba(120, 154, 123, 0.24);
+  --app-text-primary: #213026;
+  --app-text-secondary: rgba(33, 48, 38, 0.66);
+  --app-text-muted: rgba(33, 48, 38, 0.42);
+  --app-accent: #789a7b;
+  --app-accent-strong: #5f8162;
+  --app-accent-soft: rgba(120, 154, 123, 0.12);
+  --app-shadow: 0 14px 34px rgba(44, 72, 47, 0.1);
+  --app-shadow-strong: 0 18px 42px rgba(44, 72, 47, 0.14);
+  --app-pattern: rgba(120, 154, 123, 0.065);
 
   --node-bg: var(--app-panel);
   --node-bg-selected: var(--app-panel-strong);
-  --node-bg-gradient: linear-gradient(160deg, rgba(16, 40, 56, 0.96), rgba(6, 20, 30, 0.98));
+  --node-bg-gradient: linear-gradient(160deg, rgba(247, 252, 247, 0.99), rgba(229, 239, 229, 0.97));
   --node-accent: var(--app-accent);
   --node-text-primary: var(--app-text-primary);
   --node-text-secondary: var(--app-text-secondary);
@@ -31,12 +31,12 @@
   --node-shadow-strong: var(--app-shadow-strong);
   --node-header-bg: var(--app-panel-muted);
   --node-card-width: 320px;
-  --group-bg: rgba(15, 39, 54, 0.62);
-  --group-bg-selected: rgba(18, 50, 68, 0.78);
-  --group-border: rgba(125, 224, 255, 0.16);
-  --group-border-strong: rgba(125, 224, 255, 0.3);
-  --group-highlight: rgba(255, 255, 255, 0.08);
-  --group-shadow: 0 30px 70px rgba(1, 10, 18, 0.38);
+  --group-bg: rgba(120, 154, 123, 0.06);
+  --group-bg-selected: rgba(120, 154, 123, 0.1);
+  --group-border: rgba(120, 154, 123, 0.12);
+  --group-border-strong: rgba(120, 154, 123, 0.2);
+  --group-highlight: rgba(255, 255, 255, 0.5);
+  --group-shadow: 0 18px 40px rgba(44, 72, 47, 0.08);
 }
 
 /* Base canvas */
@@ -101,7 +101,7 @@
 .group-surface[data-selected="true"] {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), transparent), var(--group-bg-selected);
   border-color: var(--group-border-strong);
-  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--app-accent-soft);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(59, 130, 246, 0.12);
 }
 
 /* Connection drop menu */
@@ -290,7 +290,7 @@
   pointer-events: none;
   border-radius: 88px;
   background:
-    radial-gradient(circle at 14% 7%, var(--app-accent-soft), transparent 18%),
+    radial-gradient(circle at 14% 7%, rgba(122, 183, 160, 0.18), transparent 18%),
     radial-gradient(circle at 70% 10%, rgba(255, 255, 255, 0.07), transparent 20%),
     linear-gradient(180deg, rgba(12, 16, 15, 0.42) 0%, rgba(12, 16, 15, 0.26) 26%, rgba(12, 16, 15, 0.12) 54%, rgba(12, 16, 15, 0.03) 76%, transparent 100%);
   backdrop-filter: blur(44px) saturate(120%);
@@ -312,7 +312,7 @@
   pointer-events: none;
   border-radius: 76px;
   background:
-    radial-gradient(circle at 12% 4%, var(--app-accent-soft), transparent 14%),
+    radial-gradient(circle at 12% 4%, rgba(122, 183, 160, 0.12), transparent 14%),
     radial-gradient(circle at 84% 16%, rgba(255, 255, 255, 0.05), transparent 16%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0.008) 12%, rgba(255, 255, 255, 0) 38%);
   filter: blur(54px);
@@ -419,7 +419,7 @@ body.qalam-resizing * {
   width: 11px;
   height: 2px;
   border-radius: 999px;
-  background: var(--app-accent-strong);
+  background: rgba(220, 252, 231, 0.94);
   transform: translate(-50%, -50%);
   box-shadow: none;
   opacity: 0;
@@ -455,16 +455,16 @@ body.qalam-resizing * {
 }
 
 .react-flow__handle[data-handletype="image"] {
-  border-color: var(--app-accent-soft) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
 .react-flow__handle[data-handletype="text"],
 .react-flow__handle[data-handletype="prompt"] {
-  border-color: var(--app-accent-soft) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
 .react-flow__handle[data-handletype="audio"] {
-  border-color: var(--app-accent-soft) !important;
+  border-color: rgba(74, 222, 128, 0.42) !important;
 }
 
 .node-flow-canvas[data-connecting="true"] .react-flow__handle {
@@ -473,11 +473,11 @@ body.qalam-resizing * {
 }
 
 .node-flow-canvas[data-connecting="true"] .react-flow__connection-path {
-  stroke: var(--app-accent-strong) !important;
+  stroke: rgba(74, 222, 128, 0.96) !important;
   stroke-width: 3.5px !important;
   stroke-linecap: round;
   stroke-dasharray: 8 10;
-  filter: drop-shadow(0 0 8px var(--app-accent-soft));
+  filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.55));
   animation: node-connection-pulse 1.05s linear infinite;
 }
 
@@ -499,8 +499,8 @@ body.qalam-resizing * {
 
 /* Controls */
 .react-flow__area-selection {
-  background: var(--app-accent-soft) !important;
-  border: 1px solid var(--app-accent) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  border: 1px solid rgba(59, 130, 246, 0.4) !important;
   border-radius: 4px;
 }
 
@@ -541,7 +541,7 @@ body.qalam-resizing * {
 .react-flow__nodeselection-rect {
   border: 1px solid var(--accent-blue) !important;
   border-radius: 24px;
-  background: var(--app-accent-soft) !important;
+  background: rgba(59, 130, 246, 0.05) !important;
 }
 
 /* Custom classes for the monochromatic theme */
@@ -779,9 +779,9 @@ body.qalam-resizing * {
 }
 
 .text-mention[data-kind="form"] {
-  background: var(--app-accent-soft);
-  border-color: var(--app-accent);
-  color: var(--app-accent-strong);
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #dbeafe;
 }
 
 .text-mention[data-kind="character"] {
@@ -1397,10 +1397,10 @@ body.qalam-resizing * {
   width: 22px !important;
   height: 22px !important;
   border-radius: 999px !important;
-  background: color-mix(in srgb, var(--app-bg) 88%, black 12%) !important;
+  background: rgba(8, 15, 10, 0.92) !important;
   box-shadow:
-    0 0 0 8px color-mix(in srgb, var(--app-accent) 22%, transparent),
-    0 10px 26px color-mix(in srgb, var(--app-accent) 34%, transparent) !important;
+    0 0 0 8px rgba(74, 222, 128, 0.08),
+    0 10px 26px rgba(34, 197, 94, 0.22) !important;
 }
 
 .react-flow__handle-left.node-card-port--multi {
@@ -1467,9 +1467,9 @@ body.qalam-resizing * {
 }
 
 .node-pill--accent {
-  border-color: var(--app-accent);
-  color: var(--app-accent-strong);
-  background: var(--app-accent-soft);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .node-pill--dashed {
@@ -1492,8 +1492,8 @@ body.qalam-resizing * {
 }
 
 .node-button-primary {
-  background: linear-gradient(135deg, var(--app-accent), var(--app-accent-strong));
-  border-color: var(--app-accent);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(14, 165, 233, 0.85));
+  border-color: rgba(59, 130, 246, 0.6);
   color: #ffffff;
 }
 
@@ -1508,13 +1508,13 @@ body.qalam-resizing * {
   0%,
   100% {
     box-shadow:
-      0 0 0 0 color-mix(in srgb, var(--app-accent) 24%, transparent),
-      0 0 18px color-mix(in srgb, var(--app-accent) 28%, transparent);
+      0 0 0 0 rgba(74, 222, 128, 0.14),
+      0 0 18px rgba(34, 197, 94, 0.2);
   }
   50% {
     box-shadow:
-      0 0 0 8px color-mix(in srgb, var(--app-accent) 10%, transparent),
-      0 0 28px color-mix(in srgb, var(--app-accent) 42%, transparent);
+      0 0 0 8px rgba(74, 222, 128, 0.04),
+      0 0 28px rgba(74, 222, 128, 0.34);
   }
 }
 

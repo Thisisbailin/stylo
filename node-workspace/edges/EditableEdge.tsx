@@ -39,11 +39,10 @@ export const EditableEdge: React.FC<Props> = (props) => {
             position: "absolute",
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
             pointerEvents: "all",
-            boxShadow: hover ? "0 12px 24px var(--app-accent-soft)" : "none",
           }}
           className={`
             group flex items-center justify-center min-w-[32px] h-6 px-2 rounded-full border transition-all duration-300 cursor-pointer
-            ${hover ? 'bg-[var(--accent-blue)] border-transparent scale-110' : 'bg-[var(--bg-panel)]/80 border-[var(--border-subtle)]'}
+            ${hover ? 'bg-[var(--accent-blue)] border-transparent scale-110 shadow-lg shadow-blue-500/20' : 'bg-[var(--bg-panel)]/80 border-[var(--border-subtle)]'}
           `}
         >
           <span className={`text-[9px] font-bold tracking-tighter uppercase transition-colors ${hover ? 'text-white' : 'text-[var(--text-secondary)] opacity-60 group-hover:opacity-100'}`}>
