@@ -7,11 +7,14 @@ import {
   findGraphNode,
   findProjectedSourceNode,
 } from "../../node-workspace/nodeflow/projectGraph";
+import { findNodeFlowNode, getNodeFlowLinkRelationsForNode, getNodeFlowNodeRef, getNodeFlowNodeTitle } from "../../node-workspace/nodeflow/model";
 
 export const READ_PROJECT_RESOURCE_TYPES = [
   "skill_package",
   "source_node",
   "graph_node",
+  "graph_node_identity",
+  "graph_node_detail",
   "execution_link",
   "graph_link",
   "map",
@@ -39,11 +42,11 @@ const readProjectResourceParameters = {
     },
     node_id: {
       type: "string",
-      description: "Concrete node id for graph_node.",
+      description: "Concrete node id for graph_node, graph_node_identity, or graph_node_detail.",
     },
     node_ref: {
       type: "string",
-      description: "Stable node ref for graph_node.",
+      description: "Stable node ref for graph_node, graph_node_identity, or graph_node_detail.",
     },
     link_id: {
       type: "string",
@@ -105,8 +108,8 @@ const parseArgs = (input: unknown) => {
   if (resourceType === "source_node" && !sourceRef && !name) {
     throw new Error("source_node 需要 source_ref 或 name。");
   }
-  if (resourceType === "graph_node" && !nodeId && !nodeRef) {
-    throw new Error("graph_node 需要 node_id 或 node_ref。");
+  if ((resourceType === "graph_node" || resourceType === "graph_node_identity" || resourceType === "graph_node_detail") && !nodeId && !nodeRef) {
+    throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
   }
     if ((resourceType === "graph_link" || resourceType === "execution_link") && !linkId) {
       throw new Error(`${resourceType} 需要 link_id。`);
@@ -203,13 +206,81 @@ export const readProjectResourceToolDef = {
     }
 
     if (args.resourceType === "graph_node") {
+      const rawNode = findNodeFlowNode(workflow, {
+        nodeId: args.nodeId,
+        nodeRef: args.nodeRef,
+      });
+      const node = findGraphNode(workflow, {
+        nodeId: args.nodeId,
+        nodeRef: args.nodeRef,
+      });
+      const linkRelations =
+        rawNode && node?.nodeId
+          ? getNodeFlowLinkRelationsForNode(workflow, node.nodeId)
+          : { incomingLinks: [], outgoingLinks: [] };
+      return node
+        ? {
+            resource_type: "graph_node",
+            found: true,
+            node_id: node.nodeId,
+            node_ref: node.ref,
+            plane: node.plane,
+            node_type: node.type,
+            title: node.title,
+            position: typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
+            parent_id: node.parentId || null,
+            incoming_links: linkRelations.incomingLinks,
+            outgoing_links: linkRelations.outgoingLinks,
+            body: clipStructuredValue(node.body, args.maxChars),
+            meta: clipStructuredValue(node.meta || {}, args.maxChars),
+          }
+        : {
+            resource_type: "graph_node",
+            found: false,
+            node_id: args.nodeId || null,
+            node_ref: args.nodeRef || null,
+          };
+    }
+
+    if (args.resourceType === "graph_node_identity") {
+      const rawNode = findNodeFlowNode(workflow, {
+        nodeId: args.nodeId,
+        nodeRef: args.nodeRef,
+      });
+      if (!rawNode) {
+        return {
+          resource_type: "graph_node_identity",
+          found: false,
+          node_id: args.nodeId || null,
+          node_ref: args.nodeRef || null,
+        };
+      }
+      const status = typeof (rawNode.data as Record<string, unknown>)?.status === "string"
+        ? String((rawNode.data as Record<string, unknown>).status)
+        : null;
+      const linkRelations = getNodeFlowLinkRelationsForNode(workflow, rawNode.id);
+      return {
+        resource_type: "graph_node_identity",
+        found: true,
+        node_id: rawNode.id,
+        node_ref: getNodeFlowNodeRef(rawNode),
+        kind: rawNode.type,
+        title: getNodeFlowNodeTitle(rawNode, workflow.nodeFlowContext),
+        status,
+        parent_id: rawNode.parentId || null,
+        incoming_links: linkRelations.incomingLinks,
+        outgoing_links: linkRelations.outgoingLinks,
+      };
+    }
+
+    if (args.resourceType === "graph_node_detail") {
       const node = findGraphNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
       });
       return node
         ? {
-            resource_type: "graph_node",
+            resource_type: "graph_node_detail",
             found: true,
             node_id: node.nodeId,
             node_ref: node.ref,
@@ -222,7 +293,7 @@ export const readProjectResourceToolDef = {
             meta: clipStructuredValue(node.meta || {}, args.maxChars),
           }
         : {
-            resource_type: "graph_node",
+            resource_type: "graph_node_detail",
             found: false,
             node_id: args.nodeId || null,
             node_ref: args.nodeRef || null,
@@ -296,6 +367,8 @@ export const readProjectResourceToolDef = {
     if (output.resource_type === "skill_package") return `读取技能包 ${output.title || output.item_id}`;
     if (output.resource_type === "source_node") return `读取 source 节点 ${output.title || output.ref}`;
     if (output.resource_type === "graph_node") return `读取 graph 节点 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "graph_node_identity") return `读取 graph 节点识别层 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "graph_node_detail") return `读取 graph 节点细节层 ${output.title || output.node_ref || output.node_id}`;
     if (output.resource_type === "execution_link") return `读取执行连线 ${output.link_id}`;
     if (output.resource_type === "graph_link") return `读取 graph 连线 ${output.link_id}`;
     return `读取地图 ${output.name || output.map_id}`;

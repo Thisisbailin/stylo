@@ -111,6 +111,16 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         audio: data.audio ?? null,
         durationMs: data.durationMs ?? null,
       };
+    case "videoInput":
+      return {
+        filename: data.filename ?? null,
+        video: data.video ?? null,
+        durationMs: data.durationMs ?? null,
+        dimensions: data.dimensions ?? null,
+        aspectRatio: data.aspectRatio ?? null,
+        resolution: data.resolution ?? null,
+        model: data.model ?? null,
+      };
     case "annotation":
       return {
         sourceImage: data.sourceImage ?? null,
@@ -247,6 +257,59 @@ export const getNodeFlowLinksForNode = (workflow: NodeFlowFile, nodeId: string) 
       ...toNodeFlowLinkRecord(edge),
       direction: edge.source === nodeId ? "outgoing" : "incoming",
     }));
+};
+
+export const getNodeFlowLinkRelationsForNode = (workflow: NodeFlowFile, nodeId: string) => {
+  const nodeMap = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const rawLinks = getNodeFlowLinksForNode(workflow, nodeId);
+
+  const toRelatedNode = (relatedNodeId: string) => {
+    const related = nodeMap.get(relatedNodeId);
+    if (!related) {
+      return {
+        nodeId: relatedNodeId,
+        nodeRef: relatedNodeId,
+        nodeTitle: relatedNodeId,
+      };
+    }
+    return {
+      nodeId: related.id,
+      nodeRef: getNodeFlowNodeRef(related),
+      nodeTitle: getNodeFlowNodeTitle(related, workflow.nodeFlowContext),
+    };
+  };
+
+  const incomingLinks = rawLinks
+    .filter((link) => link.direction === "incoming")
+    .map((link) => {
+      const related = toRelatedNode(link.fromNodeId);
+      return {
+        linkId: link.id,
+        fromNodeId: related.nodeId,
+        fromRef: related.nodeRef,
+        fromTitle: related.nodeTitle,
+        fromPort: link.fromPort ?? null,
+        toPort: link.toPort ?? null,
+        paused: link.paused,
+      };
+    });
+
+  const outgoingLinks = rawLinks
+    .filter((link) => link.direction === "outgoing")
+    .map((link) => {
+      const related = toRelatedNode(link.toNodeId);
+      return {
+        linkId: link.id,
+        toNodeId: related.nodeId,
+        toRef: related.nodeRef,
+        toTitle: related.nodeTitle,
+        fromPort: link.fromPort ?? null,
+        toPort: link.toPort ?? null,
+        paused: link.paused,
+      };
+    });
+
+  return { incomingLinks, outgoingLinks };
 };
 
 export const buildNodeFlowSearchText = (node: NodeFlowNode) => {

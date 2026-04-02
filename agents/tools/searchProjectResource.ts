@@ -2,6 +2,7 @@ import { listBuiltinSkills, resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import {
   buildGraphNodesFromWorkflow,
+  buildProjectGraphIdentitySearchText,
   buildProjectGraphLinks,
   buildProjectedSourceNodes,
   buildProjectGraphMaps,
@@ -11,6 +12,8 @@ import {
 export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "skills",
   "source",
+  "graph_identity",
+  "graph_detail",
   "graph",
   "links",
   "maps",
@@ -29,7 +32,7 @@ const searchProjectResourceParameters = {
         type: "string",
         enum: [...SEARCH_PROJECT_RESOURCE_SCOPES],
       },
-      description: "Optional scopes to search. Defaults to all supported scopes.",
+      description: "Optional scopes to search. graph_identity searches first-layer node identity; graph_detail searches deeper node details. Defaults to all supported scopes.",
     },
     max_matches: {
       type: "integer",
@@ -85,7 +88,7 @@ const parseArgs = (input: unknown) => {
     ? raw.resource_scopes.map((item) => String(item))
     : Array.isArray(raw.resourceScopes)
       ? (raw.resourceScopes as unknown[]).map((item) => String(item))
-      : [...SEARCH_PROJECT_RESOURCE_SCOPES];
+      : (["skills", "source", "graph_identity", "links", "maps"] as Scope[]);
 
   const normalizedScopes = scopes.filter((scope): scope is Scope =>
     (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
@@ -150,13 +153,31 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("graph")) {
+    if (args.scopes.includes("graph_identity")) {
+      for (const node of buildGraphNodesFromWorkflow(workflow)) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = buildProjectGraphIdentitySearchText(node);
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "graph_node_identity",
+            node_id: node.nodeId,
+            node_ref: node.ref,
+            plane: node.plane,
+            node_type: node.type,
+            title: node.title,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
+      }
+    }
+
+    if (args.scopes.includes("graph") || args.scopes.includes("graph_detail")) {
       for (const node of buildGraphNodesFromWorkflow(workflow)) {
         if (matches.length >= args.maxMatches) break;
         const haystack = buildProjectGraphSearchText(node);
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "graph_node",
+            scope: args.scopes.includes("graph_detail") ? "graph_node_detail" : "graph_node",
             node_id: node.nodeId,
             node_ref: node.ref,
             plane: node.plane,

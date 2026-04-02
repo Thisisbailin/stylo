@@ -24,6 +24,7 @@ import {
   patchNodeFlowNodeData,
   patchNodeFlowNodeStyle,
 } from "../nodeflow/mutations";
+import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
 import {
   applyNodeFlowCanvasLinkChangesCommand,
   applyNodeFlowCanvasNodeChangesCommand,
@@ -77,6 +78,12 @@ import {
   setNodeFlowProjectRoleUpdaterState,
   type NodeFlowRoleUpdater,
 } from "../nodeflow/collaboration";
+import {
+  clearNodeFlowExecutionApproval,
+  createEmptyNodeFlowApprovalState,
+  type NodeFlowExecutionApprovalProposal,
+  upsertNodeFlowExecutionApproval,
+} from "../nodeflow/approvals";
 
 export type { GlobalAssetHistoryItem, GlobalAssetType };
 
@@ -118,6 +125,7 @@ interface NodeFlowStore {
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
   updateNodeStyle: (nodeId: string, style: Partial<NodeFlowNodeStyle>) => void;
+  convertNodeToVideoInput: (nodeId: string) => void;
   removeNode: (nodeId: string, options?: RevisionGuardOptions) => void;
   onNodesChange: (changes: NodeChange<NodeFlowCanvasNode>[]) => void;
 
@@ -173,10 +181,13 @@ interface NodeFlowStore {
   appConfig: any; // Using any to avoid circular dependencies if types are complex, but AppConfig is best
   setAppConfig: (config: any) => void;
   projectRoleUpdater: NodeFlowRoleUpdater | null;
+  pendingExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal>;
   setProjectRoleUpdater: (
     updater: NodeFlowRoleUpdater | null
   ) => void;
   mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
+  requestExecutionApproval: (proposal: NodeFlowExecutionApprovalProposal) => void;
+  clearExecutionApproval: (nodeId: string) => void;
 }
 
 let nodeIdCounter = 0;
@@ -201,6 +212,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   ...createEmptyNodeFlowAssetState(),
   ...createEmptyNodeFlowCanvasState(),
   ...createEmptyNodeFlowCollaborationState(),
+  ...createEmptyNodeFlowApprovalState(),
   groupTemplates: loadNodeFlowTemplates(),
   globalStyleGuide: undefined,
   availableImageModels: [],
@@ -219,6 +231,10 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   mutateProjectRole: (roleId, updater) => {
     mutateNodeFlowProjectRole(get(), roleId, updater);
   },
+  requestExecutionApproval: (proposal) =>
+    set((state) => upsertNodeFlowExecutionApproval(state, proposal)),
+  clearExecutionApproval: (nodeId) =>
+    set((state) => clearNodeFlowExecutionApproval(state, nodeId)),
 
   setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
   setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),
@@ -244,6 +260,53 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   updateNodeStyle: (nodeId, style) => {
     set((state) => patchNodeFlowNodeStyle(state, nodeId, style));
+  },
+
+  convertNodeToVideoInput: (nodeId) => {
+    set((state) => {
+      const node = state.nodes.find((item) => item.id === nodeId);
+      if (!node) return state;
+      const sourceData = (node.data || {}) as Record<string, any>;
+      const videoUrl = typeof sourceData.videoUrl === "string" ? sourceData.videoUrl : null;
+      if (!videoUrl) return state;
+
+      const nextVideoData = {
+        ...createDefaultNodeFlowNodeData("videoInput"),
+        title: sourceData.title || "video",
+        video: videoUrl,
+        filename: sourceData.filename || `${sourceData.title || "video"}.mp4`,
+        mimeType: sourceData.mimeType || "video/mp4",
+        durationMs:
+          typeof sourceData.durationMs === "number"
+            ? sourceData.durationMs
+            : typeof sourceData.duration === "number"
+              ? sourceData.duration * 1000
+              : null,
+        dimensions: sourceData.dimensions || null,
+        aspectRatio: sourceData.aspectRatio || null,
+        resolution: sourceData.resolution || null,
+        model: sourceData.model || null,
+        qalamNodeRef: sourceData.qalamNodeRef,
+      } as NodeFlowNodeData;
+
+      const nextNodes = state.nodes.map((item) =>
+        item.id === nodeId
+          ? {
+              ...item,
+              type: "videoInput" as NodeType,
+              data: nextVideoData,
+            }
+          : item
+      );
+      const nextLinks = state.links.filter((link) => link.target !== nodeId);
+
+      return {
+        ...state,
+        revision: state.revision + 1,
+        nodes: nextNodes,
+        links: nextLinks,
+      };
+    });
   },
 
   removeNode: (nodeId, options) => {
@@ -360,6 +423,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       nodeFlowContext: hydrated.nodeFlowContext,
       viewport: hydrated.viewport,
       ...createIdleNodeFlowExecutionState(),
+      ...createEmptyNodeFlowApprovalState(),
     });
   },
 
@@ -440,6 +504,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       links: [],
       graphLinks: [],
       ...createIdleNodeFlowExecutionState(),
+      ...createEmptyNodeFlowApprovalState(),
     })),
 
   setRunning: (running) => set((state) => setNodeFlowRunningState(state, running)),

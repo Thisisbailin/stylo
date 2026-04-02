@@ -25,6 +25,9 @@ import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
+import { getNodeFlowRef } from "../../agents/runtime/nodeFlowRefs";
+import { resolveNodeFlowNodeTitle } from "../nodeflow/titles";
+import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 
 type MentionData = {
   name: string;
@@ -577,6 +580,104 @@ const buildImageVersionHistory = (
   ].slice(0, 12);
 };
 
+const truncateExecutionPreview = (text?: string | null, maxLength = 160) => {
+  const value = (text || "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+};
+
+const summarizeExecutionInputs = (options: {
+  images?: string[];
+  audios?: string[];
+  referenceImages?: string[];
+  referenceVideos?: string[];
+  projectReferenceTargets?: Array<{ category: "identity"; refId: string; label?: string }>;
+}) => {
+  const summary: string[] = [];
+  if ((options.images?.length || 0) > 0) summary.push(`${options.images!.length} 张连线图片`);
+  if ((options.audios?.length || 0) > 0) summary.push(`${options.audios!.length} 条连线音频`);
+  if ((options.referenceImages?.length || 0) > 0) summary.push(`${options.referenceImages!.length} 张节点参考图`);
+  if ((options.referenceVideos?.length || 0) > 0) summary.push(`${options.referenceVideos!.length} 条节点参考视频`);
+  if ((options.projectReferenceTargets?.length || 0) > 0) summary.push(`${options.projectReferenceTargets!.length} 个项目卡片引用`);
+  return summary;
+};
+
+const buildImageGenerationApprovalProposal = (options: {
+  node: any;
+  connectedText: string;
+  images: string[];
+  config: any;
+}): NodeFlowExecutionApprovalProposal => {
+  const { node, connectedText, images, config } = options;
+  const data = node.data as any;
+  const isNanoBananaNode = node.type === "nanoBananaImageGen";
+  const isWanImageNode = node.type === "wanImageGen";
+  const providerLabel = isNanoBananaNode
+    ? "Nano Banana"
+    : isWanImageNode
+      ? "WAN"
+      : (config?.multimodalConfig?.provider || "Image");
+  const modelLabel = isNanoBananaNode
+    ? NANOBANANA_PRO_MODEL
+    : isWanImageNode
+      ? QWEN_WAN_IMAGE_MODEL
+      : (data.model || config?.multimodalConfig?.model || "default");
+  return {
+    id: `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    nodeId: node.id,
+    nodeRef: getNodeFlowRef(node),
+    nodeType: node.type,
+    nodeTitle: resolveNodeFlowNodeTitle(node),
+    action: "image_generation",
+    providerLabel,
+    modelLabel,
+    promptPreview: truncateExecutionPreview(connectedText),
+    inputSummary: summarizeExecutionInputs({ images }),
+    createdAt: Date.now(),
+  };
+};
+
+const buildVideoGenerationApprovalProposal = (options: {
+  node: any;
+  connectedText: string;
+  images: string[];
+  audios?: string[];
+  config: any;
+}): NodeFlowExecutionApprovalProposal => {
+  const { node, connectedText, images, audios, config } = options;
+  const data = node.data as any;
+  const isSeedance = node.type === "seedanceVideoGen";
+  const isVidu = node.type === "viduVideoGen";
+  const isWan = node.type === "wanVideoGen" || node.type === "wanReferenceVideoGen";
+  const providerLabel = isSeedance
+    ? "Seedance"
+    : isVidu
+      ? "Vidu"
+      : isWan
+        ? "WAN"
+        : "Video";
+  const modelLabel = data.model || config?.videoConfig?.model || "default";
+  return {
+    id: `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    nodeId: node.id,
+    nodeRef: getNodeFlowRef(node),
+    nodeType: node.type,
+    nodeTitle: resolveNodeFlowNodeTitle(node),
+    action: "video_generation",
+    providerLabel,
+    modelLabel,
+    promptPreview: truncateExecutionPreview(connectedText),
+    inputSummary: summarizeExecutionInputs({
+      images,
+      audios,
+      referenceImages: Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [],
+      referenceVideos: Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [],
+      projectReferenceTargets: Array.isArray(data.projectReferenceTargets) ? data.projectReferenceTargets : [],
+    }),
+    createdAt: Date.now(),
+  };
+};
+
 export const useNodeFlowExecutor = () => {
   const store = useNodeFlowStore();
   const config = store.appConfig;
@@ -586,7 +687,7 @@ export const useNodeFlowExecutor = () => {
     return match ? match[1] : null;
   };
 
-  const runImageGen = useCallback(async (nodeId: string) => {
+  const executeImageGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node) return;
     const { images, text: connectedText, atMentions, entityBindings, imageRefs, connectedIdentity } = store.getConnectedInputs(nodeId);
@@ -1118,10 +1219,12 @@ export const useNodeFlowExecutor = () => {
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
 
-    const { images, audios, text: connectedText } = store.getConnectedInputs(nodeId);
+    const { images, audios, videos, text: connectedText } = store.getConnectedInputs(nodeId);
     const data = node.data as any;
     const prompt = (connectedText || "").trim();
-    const referenceVideos = Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [];
+    const referenceVideos = Array.from(
+      new Set([...(Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : []), ...(videos || []).filter(Boolean)])
+    );
 
     if (images.length === 0 && referenceVideos.length === 0) {
       store.updateNodeData(nodeId, {
@@ -1223,7 +1326,7 @@ export const useNodeFlowExecutor = () => {
     }
   }, [config, store]);
 
-  const runVideoGen = useCallback(async (nodeId: string) => {
+  const executeVideoGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
     if (node.type === "viduVideoGen") {
@@ -1232,12 +1335,14 @@ export const useNodeFlowExecutor = () => {
     if (node.type === "seedanceVideoGen") {
       return runSeedanceVideoGen(nodeId);
     }
-    const { images, text: connectedText, atMentions, entityBindings } = store.getConnectedInputs(nodeId);
+    const { images, videos, text: connectedText, atMentions, entityBindings } = store.getConnectedInputs(nodeId);
     const data = node.data as any;
     const prompt = (connectedText || "").trim();
     const isWanReferenceVideoNode = node.type === "wanReferenceVideoGen";
     const referenceImages = Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [];
-    const referenceVideos = Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [];
+    const referenceVideos = Array.from(
+      new Set([...(Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : []), ...(videos || []).filter(Boolean)])
+    );
     const projectReferenceTargets = Array.isArray(data.projectReferenceTargets)
       ? (data.projectReferenceTargets as ProjectReferenceTargetData[])
       : [];
@@ -1444,8 +1549,54 @@ export const useNodeFlowExecutor = () => {
     }
   }, [config?.videoConfig, runSeedanceVideoGen, runViduVideoGen, store]);
 
+  const runImageGen = useCallback(async (nodeId: string) => {
+    const node = store.getNodeById(nodeId);
+    if (!node) return;
+    const { images, text: connectedText } = store.getConnectedInputs(nodeId);
+    store.requestExecutionApproval(
+      buildImageGenerationApprovalProposal({
+        node,
+        connectedText,
+        images,
+        config,
+      })
+    );
+  }, [config, store]);
+
+  const runVideoGen = useCallback(async (nodeId: string) => {
+    const node = store.getNodeById(nodeId);
+    if (!node) return;
+    const { images, audios, text: connectedText } = store.getConnectedInputs(nodeId);
+    store.requestExecutionApproval(
+      buildVideoGenerationApprovalProposal({
+        node,
+        connectedText,
+        images,
+        audios,
+        config,
+      })
+    );
+  }, [config, store]);
+
+  const approveExecution = useCallback(async (nodeId: string) => {
+    const proposal = store.pendingExecutionApprovals[nodeId];
+    if (!proposal) return;
+    store.clearExecutionApproval(nodeId);
+    if (proposal.action === "image_generation") {
+      await executeImageGen(nodeId);
+      return;
+    }
+    await executeVideoGen(nodeId);
+  }, [executeImageGen, executeVideoGen, store]);
+
+  const dismissExecutionApproval = useCallback((nodeId: string) => {
+    store.clearExecutionApproval(nodeId);
+  }, [store]);
+
   return {
     runImageGen,
     runVideoGen,
+    approveExecution,
+    dismissExecutionApproval,
   };
 };

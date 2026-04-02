@@ -30,6 +30,7 @@ const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?
   storyboardBoard: { width: 1080 },
   identityCard: { width: 760 },
   audioInput: { width: 340 },
+  videoInput: { width: 360 },
   seedanceVideoGen: { width: 380 },
 };
 

@@ -14,6 +14,7 @@ import type {
   StoryboardBoardNodeData,
   TextNodeData,
   ViduVideoGenNodeData,
+  VideoInputNodeData,
   VideoGenNodeData,
 } from "../types";
 
@@ -34,6 +35,18 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         durationMs: null,
         label: "",
       } as AudioInputNodeData;
+    case "videoInput":
+      return {
+        video: null,
+        filename: null,
+        mimeType: null,
+        durationMs: null,
+        dimensions: null,
+        aspectRatio: null,
+        resolution: null,
+        model: null,
+        label: "",
+      } as VideoInputNodeData;
     case "annotation":
       return {
         sourceImage: null,

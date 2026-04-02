@@ -270,6 +270,18 @@ export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRe
 export const buildProjectGraphSearchText = (node: ProjectGraphNodeRecord) =>
   [node.ref, node.plane, node.type, node.title, JSON.stringify(node.body)].filter(Boolean).join(" ");
 
+export const buildProjectGraphIdentitySearchText = (node: ProjectGraphNodeRecord) =>
+  [
+    node.ref,
+    node.plane,
+    node.type,
+    node.title,
+    typeof node.meta?.status === "string" ? String(node.meta.status) : "",
+    node.parentId || "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
 export const buildProjectGraphLinks = (workflow: NodeFlowFile): ProjectGraphLinkRecord[] =>
   (workflow.graphLinks || []).map((link: NodeFlowGraphLink) => ({
     id: link.id,

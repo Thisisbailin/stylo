@@ -5,11 +5,13 @@ import {
   buildProjectedSourceNodes,
   buildProjectGraphMaps,
 } from "../../node-workspace/nodeflow/projectGraph";
+import { getNodeFlowLinkRelationsForNode } from "../../node-workspace/nodeflow/model";
 
 export const LIST_PROJECT_RESOURCE_TYPES = [
   "skill_packages",
   "source_nodes",
   "graph_nodes",
+  "graph_node_identities",
   "execution_links",
   "graph_links",
   "maps",
@@ -26,7 +28,7 @@ const listProjectResourcesParameters = {
     plane: {
       type: "string",
       enum: ["source", "semantic", "design", "execution"],
-      description: "Optional plane filter when resource_type=graph_nodes.",
+      description: "Optional plane filter when resource_type=graph_nodes or graph_node_identities.",
     },
     max_items: {
       type: "integer",
@@ -110,7 +112,7 @@ export const listProjectResourcesToolDef = {
       };
     }
 
-    if (args.resourceType === "graph_nodes") {
+    if (args.resourceType === "graph_nodes" || args.resourceType === "graph_node_identities") {
       const allNodes = buildGraphNodesFromWorkflow(workflow);
       const filteredNodes = args.plane ? allNodes.filter((node) => node.plane === args.plane) : allNodes;
       const items = filteredNodes.slice(0, args.maxItems).map((node) => ({
@@ -119,12 +121,15 @@ export const listProjectResourcesToolDef = {
         plane: node.plane,
         node_type: node.type,
         title: node.title,
+        status: typeof node.meta?.status === "string" ? String(node.meta.status) : null,
         parent_id: node.parentId || null,
+        incoming_link_count: node.nodeId ? getNodeFlowLinkRelationsForNode(workflow, node.nodeId).incomingLinks.length : 0,
+        outgoing_link_count: node.nodeId ? getNodeFlowLinkRelationsForNode(workflow, node.nodeId).outgoingLinks.length : 0,
         position:
           typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
       }));
       return {
-        resource_type: "graph_nodes",
+        resource_type: args.resourceType,
         total: filteredNodes.length,
         items,
       };
@@ -177,6 +182,7 @@ export const listProjectResourcesToolDef = {
     if (output?.resource_type === "skill_packages") return `列出 ${output.items?.length || 0} 个技能包`;
     if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 source 节点`;
     if (output?.resource_type === "graph_nodes") return `列出 ${output.items?.length || 0} 个 graph 节点`;
+    if (output?.resource_type === "graph_node_identities") return `列出 ${output.items?.length || 0} 个 graph 节点识别视图`;
     if (output?.resource_type === "execution_links") return `列出 ${output.items?.length || 0} 条执行连线`;
     if (output?.resource_type === "graph_links") return `列出 ${output.items?.length || 0} 条 graph 连线`;
     return `列出 ${output?.items?.length || 0} 张地图`;

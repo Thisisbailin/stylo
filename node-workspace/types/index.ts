@@ -1,11 +1,12 @@
 import type { CSSProperties } from "react";
 import { DesignAssetItem, Episode, ProjectContext, SeedanceModel, ViduReferenceMode } from "../../types";
 
-export type HandleType = "image" | "text" | "audio" | "multi";
+export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 
 export type NodeType =
   | "imageInput"
   | "audioInput"
+  | "videoInput"
   | "annotation"
   | "knowledge"
   | "text"
@@ -50,6 +51,18 @@ export interface AudioInputNodeData extends BaseNodeData {
   filename: string | null;
   mimeType?: string | null;
   durationMs?: number | null;
+  label?: string;
+}
+
+export interface VideoInputNodeData extends BaseNodeData {
+  video: string | null;
+  filename: string | null;
+  mimeType?: string | null;
+  durationMs?: number | null;
+  dimensions?: { width: number; height: number } | null;
+  aspectRatio?: string | null;
+  resolution?: string | null;
+  model?: string | null;
   label?: string;
 }
 
@@ -324,6 +337,7 @@ export interface ShotNodeData extends BaseNodeData {
 export type NodeFlowNodeData =
   | ImageInputNodeData
   | AudioInputNodeData
+  | VideoInputNodeData
   | AnnotationNodeData
   | KnowledgeNodeData
   | TextNodeData

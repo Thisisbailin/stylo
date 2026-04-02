@@ -14,6 +14,7 @@ import { dedupeNodeFlowRefs } from "./refs";
 
 const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
   audioInput: 280,
+  videoInput: 420,
   seedanceVideoGen: 640,
 };
 

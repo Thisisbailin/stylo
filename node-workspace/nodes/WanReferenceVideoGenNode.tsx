@@ -9,6 +9,7 @@ import {
   QWEN_WAN_REFERENCE_VIDEO_MODEL,
 } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
+import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -24,7 +25,8 @@ const clampDuration = (value: number) => Math.max(2, Math.min(10, Math.round(val
 
 export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs, nodeFlowContext } = useNodeFlowStore();
-  const { runVideoGen } = useNodeFlowExecutor();
+  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
+  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
   const [progress, setProgress] = useState(0);
   const [isUploadingVideoRefs, setIsUploadingVideoRefs] = useState(false);
   const [isUploadingImageRefs, setIsUploadingImageRefs] = useState(false);
@@ -408,6 +410,15 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
             )}
           </div>
         )}
+
+        {approval ? (
+          <NodeExecutionApprovalPanel
+            proposal={approval}
+            busy={isLoading}
+            onApprove={() => approveExecution(id)}
+            onDismiss={() => dismissExecutionApproval(id)}
+          />
+        ) : null}
 
         <div className="grid grid-cols-4 gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-[var(--node-text-secondary)]/70">
           <div>{referenceVideos.length} video</div>

@@ -48,6 +48,7 @@ type Props = {
   onAddIdentityCard: () => void;
   onAddImage: () => void;
   onAddAudio: () => void;
+  onAddVideo: () => void;
   onAddImageGen: () => void;
   onAddNanoBananaImageGen: () => void;
   onAddWanImageGen: () => void;
@@ -106,6 +107,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddIdentityCard,
   onAddImage,
   onAddAudio,
+  onAddVideo,
   onAddImageGen,
   onAddNanoBananaImageGen,
   onAddWanImageGen,
@@ -289,6 +291,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "Group", hint: "Frame a reusable block of nodes", meta: "Layout", onClick: onAddGroup, Icon: BoxSelect, tone: "text-stone-200", surface: "bg-stone-500/12" },
     { label: "Image", hint: "Upload a reference image or still", meta: "Input", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
     { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
+    { label: "Video", hint: "Upload a reference video clip", meta: "Input", onClick: onAddVideo, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
     { label: "Nano Banana", hint: "Nano Banana Pro image", meta: "Generation", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
     { label: "Vidu", hint: "Vidu reference-to-video", meta: "Motion", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },

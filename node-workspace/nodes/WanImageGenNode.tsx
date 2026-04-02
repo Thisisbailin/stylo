@@ -6,6 +6,7 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Sparkles, AlertCircle, Download, X } from "lucide-react";
 import { QWEN_WAN_IMAGE_MODEL } from "../../constants";
 import { getRoleDisplayLabel } from "../../utils/characterIdentity";
+import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -14,7 +15,8 @@ type Props = {
 
 export const WanImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, getConnectedInputs, nodeFlowContext } = useNodeFlowStore();
-  const { runImageGen } = useNodeFlowExecutor();
+  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
+  const { runImageGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const ensureSeed = () => Math.floor(Math.random() * 1_000_000_000);
@@ -162,6 +164,15 @@ export const WanImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, 
             )}
           </div>
         )}
+
+        {approval ? (
+          <NodeExecutionApprovalPanel
+            proposal={approval}
+            busy={isLoading}
+            onApprove={() => approveExecution(id)}
+            onDismiss={() => dismissExecutionApproval(id)}
+          />
+        ) : null}
 
         {identityOptions.length > 0 && (
           <div className="node-panel space-y-2 p-3">

@@ -6,6 +6,7 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles } from "lucide-react";
 import * as ViduService from "../../services/viduService";
 import { INITIAL_VIDU_CONFIG } from "../../constants";
+import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -43,10 +44,11 @@ const estimateCredits = (model: string, resolution: string, duration: number, of
 };
 
 export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
-  const { updateNodeData, getConnectedInputs } = useNodeFlowStore();
+  const { updateNodeData, getConnectedInputs, convertNodeToVideoInput } = useNodeFlowStore();
+  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
   const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
   const appConfig = useNodeFlowStore((state) => state.appConfig);
-  const { runVideoGen } = useNodeFlowExecutor();
+  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
@@ -294,16 +296,33 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                 <span>{progress}%</span>
               </div>
             ) : (
-              <button
-                onClick={handleGenerate}
-                className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-white bg-emerald-500/80 hover:bg-emerald-500 transition"
-              >
-                <RefreshCw size={12} />
-                重试
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => convertNodeToVideoInput(id)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-[var(--node-text-secondary)] bg-white/5 hover:bg-white/10 transition"
+                >
+                  转为 Video
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-white bg-emerald-500/80 hover:bg-emerald-500 transition"
+                >
+                  <RefreshCw size={12} />
+                  重试
+                </button>
+              </div>
             )}
           </div>
         )}
+
+        {approval ? (
+          <NodeExecutionApprovalPanel
+            proposal={approval}
+            busy={isLoading}
+            onApprove={() => approveExecution(id)}
+            onDismiss={() => dismissExecutionApproval(id)}
+          />
+        ) : null}
 
         <div className="text-[10px] uppercase tracking-[0.2em] font-black text-[var(--node-text-secondary)]/70">
           {connectedImages.length} refs · {connectedText ? "Text in" : "Prompt needed"}

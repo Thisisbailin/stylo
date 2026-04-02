@@ -13,6 +13,7 @@ import type {
   ScriptBoardNodeData,
   StoryboardBoardNodeData,
   TextNodeData,
+  VideoInputNodeData,
   VideoGenNodeData,
 } from "../types";
 import { resolveEdgeHandleType } from "../utils/handles";
@@ -20,6 +21,7 @@ import { resolveEdgeHandleType } from "../utils/handles";
 export type NodeFlowConnectedInputs = {
   images: string[];
   audios: string[];
+  videos: string[];
   text: string | null;
   atMentions?: TextNodeData["atMentions"];
   entityBindings?: TextNodeData["entityBindings"];
@@ -121,6 +123,7 @@ export const buildConnectedInputs = ({
 }): NodeFlowConnectedInputs => {
   const images: string[] = [];
   const audios: string[] = [];
+  const videos: string[] = [];
   const texts: string[] = [];
   const mentions: TextNodeData["atMentions"] = [];
   const entityBindings: TextNodeData["entityBindings"] = [];
@@ -171,6 +174,10 @@ export const buildConnectedInputs = ({
       if (effectiveHandle === "audio" && sourceNode.type === "audioInput") {
         const src = (sourceNode.data as AudioInputNodeData).audio;
         if (src) audios.push(src);
+      }
+      if (effectiveHandle === "video" && sourceNode.type === "videoInput") {
+        const src = (sourceNode.data as VideoInputNodeData).video;
+        if (src) videos.push(src);
       }
       if (effectiveHandle === "text") {
         if (sourceNode.type === "knowledge") {
@@ -224,6 +231,7 @@ export const buildConnectedInputs = ({
   return {
     images,
     audios,
+    videos,
     text: texts.length ? texts.join("\n\n") : null,
     atMentions: mentions.length ? mentions : undefined,
     entityBindings: entityBindings.length ? entityBindings : undefined,
@@ -241,7 +249,7 @@ export const validateNodeFlowState = ({
 }) => {
   const errors: string[] = [];
 
-  const hasIncomingHandleType = (nodeId: string, expectedHandle: "image" | "text" | "audio") =>
+  const hasIncomingHandleType = (nodeId: string, expectedHandle: "image" | "text" | "audio" | "video") =>
     links
       .filter((link) => link.target === nodeId)
       .some((link) => {
@@ -293,11 +301,13 @@ export const validateNodeFlowState = ({
           });
         });
       const imageConnected = edgeInputTypes.includes("image");
+      const videoConnected = edgeInputTypes.includes("video");
       const audioConnected = edgeInputTypes.includes("audio");
       const nodeData = node.data as any;
       const refs =
         (Array.isArray(nodeData.referenceVideos) ? nodeData.referenceVideos.length : 0) +
-        (imageConnected ? 1 : 0);
+        (imageConnected ? 1 : 0) +
+        (videoConnected ? 1 : 0);
       if (refs === 0) errors.push(`Seedance node "${node.id}" requires at least 1 reference image or video`);
       if (audioConnected && refs === 0) {
         errors.push(`Seedance node "${node.id}" cannot use audio alone without image/video references`);
@@ -312,7 +322,7 @@ export const validateNodeFlowState = ({
       if (!hasIncomingHandleType(node.id, "text")) {
         errors.push(`Wan reference video node "${node.id}" missing text input`);
       }
-      if (refs === 0 && !hasIncomingHandleType(node.id, "image")) {
+      if (refs === 0 && !hasIncomingHandleType(node.id, "image") && !hasIncomingHandleType(node.id, "video")) {
         errors.push(`Wan reference video node "${node.id}" missing reference assets`);
       }
     });

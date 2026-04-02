@@ -19,6 +19,7 @@ import { NodeFlowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../type
 import { EditableEdge } from "../edges/EditableEdge";
 import {
   AudioInputNode,
+  VideoInputNode,
   ImageInputNode, AnnotationNode, TextNode,
   KnowledgeNode,
   ScriptBoardNode,
@@ -55,6 +56,7 @@ import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflo
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
   audioInput: AudioInputNode,
+  videoInput: VideoInputNode,
   annotation: AnnotationNode,
   knowledge: KnowledgeNode,
   text: TextNode,
@@ -80,13 +82,13 @@ const edgeTypes: EdgeTypes = {
 interface ConnectionDropState {
   position: { x: number; y: number };
   flowPosition: { x: number; y: number };
-  handleType: "image" | "text" | "audio" | null;
+  handleType: "image" | "text" | "audio" | "video" | null;
   connectionType: "source" | "target";
   sourceNodeId: string | null;
   sourceHandleId: string | null;
 }
 
-const pickOutputHandle = (handles: string[], preferred?: "image" | "text" | "audio" | null) => {
+const pickOutputHandle = (handles: string[], preferred?: "image" | "text" | "audio" | "video" | null) => {
   if (preferred && handles.includes(preferred)) return preferred;
   if (preferred && handles.includes("multi")) return "multi";
   return handles.find((handle) => handle !== "multi") || handles[0] || null;
@@ -94,7 +96,7 @@ const pickOutputHandle = (handles: string[], preferred?: "image" | "text" | "aud
 
 const pickInputHandle = (
   handles: string[],
-  preferred?: "image" | "text" | "audio" | null,
+  preferred?: "image" | "text" | "audio" | "video" | null,
   existingHandleId?: string | null
 ) => {
   if (existingHandleId && handles.includes(existingHandleId)) {
@@ -637,7 +639,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
       const fromHandleId = connectionState.fromHandle?.id || null;
       const fromHandleType =
-        fromHandleId === "image" || fromHandleId === "text" || fromHandleId === "audio"
+        fromHandleId === "image" || fromHandleId === "text" || fromHandleId === "audio" || fromHandleId === "video"
           ? fromHandleId
           : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
@@ -806,17 +808,24 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   );
 
   const runAll = async () => {
+    let queued = 0;
     for (const n of nodes) {
-      if (n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen") await runImageGen(n.id);
+      if (n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen") {
+        queued += 1;
+        await runImageGen(n.id);
+      }
       if (
         n.type === "soraVideoGen" ||
         n.type === "wanVideoGen" ||
         n.type === "wanReferenceVideoGen" ||
         n.type === "viduVideoGen" ||
         n.type === "seedanceVideoGen"
-      ) await runVideoGen(n.id);
+      ) {
+        queued += 1;
+        await runVideoGen(n.id);
+      }
     }
-    alert("Run triggered");
+    alert(queued > 0 ? `已创建 ${queued} 个待审批生成任务。` : "当前没有可执行的生成节点。");
   };
 
   const getTemplateOrigin = useCallback(() => {
@@ -1158,6 +1167,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
               onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
               onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
+              onAddVideo={() => handleAddNode("videoInput", { x: 240, y: 140 })}
               onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
               onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
               onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}

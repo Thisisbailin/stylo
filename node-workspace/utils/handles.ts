@@ -16,15 +16,17 @@ const TEXT_SOURCE_NODE_TYPES = new Set([
 ]);
 
 const AUDIO_SOURCE_NODE_TYPES = new Set(["audioInput"]);
+const VIDEO_SOURCE_NODE_TYPES = new Set(["videoInput"]);
 
-export const isTypedHandle = (handle?: string | null): handle is "image" | "text" | "audio" =>
-  handle === "image" || handle === "text" || handle === "audio";
+export const isTypedHandle = (handle?: string | null): handle is "image" | "text" | "audio" | "video" =>
+  handle === "image" || handle === "text" || handle === "audio" || handle === "video";
 
-export const inferHandleTypeFromNodeType = (nodeType?: string | null): "image" | "text" | "audio" | null => {
+export const inferHandleTypeFromNodeType = (nodeType?: string | null): "image" | "text" | "audio" | "video" | null => {
   if (!nodeType) return null;
   if (IMAGE_SOURCE_NODE_TYPES.has(nodeType)) return "image";
   if (TEXT_SOURCE_NODE_TYPES.has(nodeType)) return "text";
   if (AUDIO_SOURCE_NODE_TYPES.has(nodeType)) return "audio";
+  if (VIDEO_SOURCE_NODE_TYPES.has(nodeType)) return "video";
   return null;
 };
 
@@ -36,7 +38,7 @@ export const resolveEdgeHandleType = ({
   sourceHandle?: string | null;
   targetHandle?: string | null;
   sourceNodeType?: string | null;
-}): "image" | "text" | "audio" | null => {
+}): "image" | "text" | "audio" | "video" | null => {
   if (isTypedHandle(targetHandle)) return targetHandle;
   if (targetHandle === "multi") {
     return isTypedHandle(sourceHandle) ? sourceHandle : inferHandleTypeFromNodeType(sourceNodeType);
@@ -56,6 +58,8 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: [], outputs: ["image"] };
     case "audioInput":
       return { inputs: [], outputs: ["audio"] };
+    case "videoInput":
+      return { inputs: [], outputs: ["video"] };
     case "annotation":
       return { inputs: ["image"], outputs: ["image"] };
     case "prompt":
@@ -79,11 +83,11 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: ["multi", "image", "text"], outputs: [] };
     case "wanVideoGen":
     case "wanReferenceVideoGen":
-      return { inputs: ["multi", "image", "text"], outputs: [] };
+      return { inputs: ["multi", "image", "video", "text"], outputs: [] };
     case "viduVideoGen":
       return { inputs: ["multi", "image", "text"], outputs: [] };
     case "seedanceVideoGen":
-      return { inputs: ["multi", "image", "text", "audio"], outputs: [] };
+      return { inputs: ["multi", "image", "video", "text", "audio"], outputs: [] };
     default:
       return { inputs: [], outputs: [] };
   }
@@ -94,5 +98,6 @@ export const isValidConnection = (connection: { sourceHandle?: string | null; ta
   if (sourceHandle === "image" && targetHandle !== "image" && targetHandle !== "multi") return false;
   if (sourceHandle === "text" && targetHandle !== "text" && targetHandle !== "multi") return false;
   if (sourceHandle === "audio" && targetHandle !== "audio" && targetHandle !== "multi") return false;
+  if (sourceHandle === "video" && targetHandle !== "video" && targetHandle !== "multi") return false;
   return true;
 };

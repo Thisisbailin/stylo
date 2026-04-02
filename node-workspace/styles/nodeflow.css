@@ -1326,7 +1326,6 @@ body.qalam-resizing * {
   z-index: 1;
 }
 
-.qalam-header-shell::after,
 .qalam-composer-shell::before {
   content: "";
   position: absolute;
@@ -1334,12 +1333,6 @@ body.qalam-resizing * {
   right: 0;
   pointer-events: none;
   z-index: 0;
-}
-
-.qalam-header-shell::after {
-  bottom: -4px;
-  height: 28px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01) 36%, rgba(255, 255, 255, 0));
 }
 
 .qalam-composer-shell::before {

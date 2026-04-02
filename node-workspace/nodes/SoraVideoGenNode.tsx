@@ -4,6 +4,7 @@ import { VideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { Settings2, Film, RefreshCw, AlertCircle, Download } from "lucide-react";
+import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
 
 type Props = {
   id: string;
@@ -12,7 +13,8 @@ type Props = {
 
 export const SoraVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, availableVideoModels, getConnectedInputs } = useNodeFlowStore();
-  const { runVideoGen } = useNodeFlowExecutor();
+  const approval = useNodeFlowStore((state) => state.pendingExecutionApprovals[id]);
+  const { runVideoGen, approveExecution, dismissExecutionApproval } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -134,6 +136,15 @@ export const SoraVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id,
             )}
           </div>
         )}
+
+        {approval ? (
+          <NodeExecutionApprovalPanel
+            proposal={approval}
+            busy={isLoading}
+            onApprove={() => approveExecution(id)}
+            onDismiss={() => dismissExecutionApproval(id)}
+          />
+        ) : null}
 
         {hasConnectedImages && (
           <div className="text-[10px] uppercase tracking-[0.2em] font-black text-[var(--node-text-secondary)]/70">
