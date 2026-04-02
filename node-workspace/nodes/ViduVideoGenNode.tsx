@@ -336,6 +336,27 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
           {connectedImages.length} refs · {connectedText ? "Text in" : "Prompt needed"}
         </div>
 
+        {effectiveMode === "nonSubject" && connectedImages.length > 0 && (
+          <div className="node-panel space-y-2 p-3">
+            <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+              参考图编号
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {connectedImages.map((_, index) => (
+                <span
+                  key={`vidu-non-subject-ref-${index}`}
+                  className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-100"
+                >
+                  图{index + 1}
+                </span>
+              ))}
+            </div>
+            <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
+              非主体调用时，系统会按输入顺序为参考图附加“图1 / 图2 / 图3 …”说明，并自动拼到提交 prompt 前。
+            </div>
+          </div>
+        )}
+
         {isProcessing && (
           <div className="node-panel space-y-2 p-3">
             <div className="flex items-center justify-between gap-2">

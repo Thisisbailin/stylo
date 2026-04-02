@@ -144,6 +144,13 @@ const formatDurationMs = (ms: number) => {
   return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
 };
 
+const buildViduNonSubjectPrompt = (prompt: string, imageCount: number) => {
+  if (imageCount <= 0) return prompt;
+  const imageRefs = Array.from({ length: imageCount }, (_, index) => `图${index + 1}=第${index + 1}张输入参考图`).join("，");
+  const prefix = `参考图顺序说明：${imageRefs}。若提示词中提到“图1 / 图2 / 图3”等编号，请按对应输入顺序理解，不要互换。`;
+  return `${prefix}\n\n${prompt}`;
+};
+
 const uploadReferenceFile = async (source: string, options?: { bucket?: string; prefix?: string }) => {
   const response = await fetch(source);
   const blob = await response.blob();
@@ -984,6 +991,7 @@ export const useNodeFlowExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
+      const promptWithImageOrder = buildViduNonSubjectPrompt(prompt, nonSubjectImages.length);
       const request = normalizedMode === "subject"
         ? {
           mode: "subject" as const,
@@ -1006,7 +1014,7 @@ export const useNodeFlowExecutor = () => {
           nonSubjectParams: {
             model,
             images: nonSubjectImages,
-            prompt,
+            prompt: promptWithImageOrder,
             bgm: false,
             duration: data.duration ?? 5,
             aspectRatio: data.aspectRatio || "16:9",
