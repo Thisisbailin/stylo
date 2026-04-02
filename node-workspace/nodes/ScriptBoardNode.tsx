@@ -4,6 +4,7 @@ import { BaseNode } from "./BaseNode";
 import { ScriptBoardNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { Character } from "../../types";
+import { resolveScriptBoardNodeTitle } from "../nodeflow/titles";
 
 type Props = {
   id: string;
@@ -36,6 +37,7 @@ const buildCharacterMatcher = (characters: Character[]) => {
 
 export const ScriptBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, nodeFlowContext } = useNodeFlowStore();
+  const nodeTitle = useMemo(() => resolveScriptBoardNodeTitle(data, nodeFlowContext), [data, nodeFlowContext]);
   const episodes = nodeFlowContext.episodes || [];
   const characters = useMemo(
     () => (nodeFlowContext.context?.characters || []).filter((character) => !!character?.name?.trim()),
@@ -113,7 +115,7 @@ export const ScriptBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, 
   );
 
   return (
-    <BaseNode title={data.title || "剧本面板节点"} outputs={["text"]} selected={selected}>
+    <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
       <div className="flex min-h-0 flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--node-border)] pb-3">
           <div className="flex min-w-0 items-center gap-3">

@@ -1,5 +1,6 @@
 import React from "react";
-import { LockKeyhole, Map, Minus, Plus, UnlockKeyhole } from "lucide-react";
+import { LibraryBig, LockKeyhole, Map, Minus, Plus, Rows3, UnlockKeyhole } from "lucide-react";
+import type { NodeFlowReadingMode } from "../nodeflow/sessionState";
 
 type Props = {
   zoom: number;
@@ -10,6 +11,8 @@ type Props = {
   onToggleLock: () => void;
   showMiniMap: boolean;
   onToggleMiniMap: () => void;
+  readingMode: NodeFlowReadingMode;
+  onToggleReadingMode: () => void;
 };
 
 export const ViewportControls: React.FC<Props> = ({
@@ -21,6 +24,8 @@ export const ViewportControls: React.FC<Props> = ({
   onToggleLock,
   showMiniMap,
   onToggleMiniMap,
+  readingMode,
+  onToggleReadingMode,
 }) => {
   const step = 0.25;
 
@@ -59,6 +64,24 @@ export const ViewportControls: React.FC<Props> = ({
           <LockKeyhole size={14} className="text-[var(--app-accent-strong)]" />
         ) : (
           <UnlockKeyhole size={14} className="text-[var(--app-accent-strong)]" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onToggleReadingMode}
+        className="flex h-9 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-medium text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+        title={readingMode === "identity" ? "切换到完整节点视图" : "切换到统一读取视图"}
+      >
+        {readingMode === "identity" ? (
+          <>
+            <Rows3 size={14} className="text-[var(--app-accent-strong)]" />
+            <span>读取</span>
+          </>
+        ) : (
+          <>
+            <LibraryBig size={14} className="text-[var(--app-text-secondary)]" />
+            <span>完整</span>
+          </>
         )}
       </button>
       <button

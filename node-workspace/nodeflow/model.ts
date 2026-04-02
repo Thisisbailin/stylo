@@ -1,10 +1,12 @@
 import type {
   KnowledgeNodeData,
+  NodeFlowContextSnapshot,
   NodeFlowLink,
   NodeFlowFile,
   NodeFlowNode,
 } from "../types";
 import { getNodeHandles } from "../utils/handles";
+import { resolveNodeFlowNodeStatus, resolveNodeFlowNodeTitle } from "./titles";
 
 export type NodeFlowNodeRecord = {
   id: string;
@@ -61,16 +63,8 @@ export const getNodeFlowNodeAssetType = (node: NodeFlowNode) => {
   return trimString(getKnowledgeNodeData(node).assetType) || `semantic.${node.type}`;
 };
 
-export const getNodeFlowNodeTitle = (node: NodeFlowNode) => {
-  const data = getNodeData(node);
-  return (
-    trimString(data.title) ||
-    trimString(data.label) ||
-    trimString(data.shotId) ||
-    trimString(data.filename) ||
-    node.id
-  );
-};
+export const getNodeFlowNodeTitle = (node: NodeFlowNode, context?: NodeFlowContextSnapshot) =>
+  resolveNodeFlowNodeTitle(node, context);
 
 const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
@@ -184,6 +178,7 @@ const summarizeNodeMeta = (node: NodeFlowNode): Record<string, unknown> => {
   return {
     plane: getNodeFlowNodePlane(node),
     assetType: getNodeFlowNodeAssetType(node),
+    status: resolveNodeFlowNodeStatus(node),
     selected: Boolean(node.selected),
     width: typeof node.style?.width === "number" ? node.style.width : node.style?.width ?? null,
     height: typeof node.style?.height === "number" ? node.style.height : node.style?.height ?? null,
@@ -191,7 +186,10 @@ const summarizeNodeMeta = (node: NodeFlowNode): Record<string, unknown> => {
   };
 };
 
-export const toNodeFlowNodeRecord = (node: NodeFlowNode): NodeFlowNodeRecord => {
+export const toNodeFlowNodeRecord = (
+  node: NodeFlowNode,
+  context?: NodeFlowContextSnapshot
+): NodeFlowNodeRecord => {
   const handles = getNodeHandles(node.type);
   return {
     id: node.id,
@@ -199,7 +197,7 @@ export const toNodeFlowNodeRecord = (node: NodeFlowNode): NodeFlowNodeRecord => 
     kind: node.type,
     plane: getNodeFlowNodePlane(node),
     assetType: getNodeFlowNodeAssetType(node),
-    title: getNodeFlowNodeTitle(node),
+    title: getNodeFlowNodeTitle(node, context),
     body: summarizeNodeBody(node),
     meta: summarizeNodeMeta(node),
     inputs: handles.inputs,
@@ -225,7 +223,7 @@ export const toNodeFlowMapView = (workflow: NodeFlowFile): NodeFlowMapView => {
   return {
     name: workflow.name,
     revision: workflow.revision,
-    nodes: workflow.nodes.map(toNodeFlowNodeRecord),
+    nodes: workflow.nodes.map((node) => toNodeFlowNodeRecord(node, workflow.nodeFlowContext)),
     links: workflow.links.map(toNodeFlowLinkRecord),
     viewport: workflow.viewport ?? null,
     activeView: workflow.activeView ?? null,

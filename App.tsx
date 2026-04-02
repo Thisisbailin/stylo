@@ -35,6 +35,7 @@ import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
+import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { ProjectorModule } from './components/ProjectorModule';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
@@ -2244,6 +2245,10 @@ const App: React.FC = () => {
     labModalTitle = "放映机 (视听实验室)";
     labModalWidth = 560;
     labModalContent = <ProjectorModule projectData={projectData} setProjectData={setProjectData} />;
+  } else if (openLabModal === "glassLab") {
+    labModalTitle = "Glass Lab";
+    labModalWidth = 920;
+    labModalContent = <GlassEffectLab />;
   }
 
   if (appView === "landing") {

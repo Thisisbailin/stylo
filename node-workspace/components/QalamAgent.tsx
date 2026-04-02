@@ -665,26 +665,6 @@ export const QalamAgent: React.FC<Props> = ({
     void submitText(submitRequest.text);
   }, [openPanel, submitRequest, submitText]);
 
-  if (panelPhase === "collapsed") {
-    if (!renderCollapsedTrigger) return null;
-    return (
-      <button
-        onClick={openPanel}
-        className="fixed z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
-        aria-label="Open Qalam"
-          style={{ left: dockInset + titleOrigin.x, top: dockInset + titleOrigin.y }}
-      >
-        <span
-          style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
-          className="block"
-        >
-          {qalamMark}
-        </span>
-      </button>
-    );
-  }
-
-  const collapsedClipPath = `inset(${titleOrigin.y}px calc(100% - ${titleOrigin.x + titleOrigin.width}px) calc(100% - ${titleOrigin.y + titleOrigin.height}px) ${titleOrigin.x}px round ${titleOrigin.radius}px)`;
   const isOpenPhase = panelPhase === "open";
 
   return (
@@ -692,10 +672,8 @@ export const QalamAgent: React.FC<Props> = ({
       className={panelClassName}
       style={{
         ...panelStyle,
-        clipPath: panelPhase === "open" ? "none" : collapsedClipPath,
-        borderRadius: panelPhase === "open" ? 0 : titleOrigin.radius,
-        transition: `clip-path ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
-        pointerEvents: panelPhase === "closing" ? "none" : "auto",
+        transition: `opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+        pointerEvents: "none",
         overflow: "visible",
         background: "transparent",
         boxShadow: "none",
@@ -704,18 +682,6 @@ export const QalamAgent: React.FC<Props> = ({
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
-      <div
-        aria-hidden="true"
-        className={`qalam-ambient qalam-ambient--primary ${isOpenPhase ? "is-open" : ""}`}
-      />
-      <div
-        aria-hidden="true"
-        className={`qalam-ambient qalam-ambient--secondary ${isOpenPhase ? "is-open" : ""}`}
-      />
-      <div
-        aria-hidden="true"
-        className={`qalam-ambient qalam-ambient--highlight ${isOpenPhase ? "is-open" : ""}`}
-      />
       <div className="relative h-full min-h-0">
         <div
           className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
@@ -724,24 +690,30 @@ export const QalamAgent: React.FC<Props> = ({
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={closePanel}
-              className="inline-flex items-center"
-              aria-label="Close Qalam"
-              title="Close Qalam"
+              onClick={collapsed ? openPanel : closePanel}
+              className="pointer-events-auto inline-flex items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
+              aria-label={collapsed ? "Open Qalam" : "Close Qalam"}
+              title={collapsed ? "Open Qalam" : "Close Qalam"}
             >
               {qalamMark}
             </button>
-            <button
-              type="button"
-              onClick={onOpenStats}
-              className="inline-flex h-8 items-center rounded-full border border-white/8 bg-white/6 px-3 text-[11px] text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/9 hover:text-[var(--app-text-primary)]"
-              title="打开 Agent Setting"
-            >
-              <span>{formatNumber(tokenUsage)}</span>
-            </button>
+            {!collapsed && (
+              <button
+                type="button"
+                onClick={onOpenStats}
+                className="pointer-events-auto inline-flex h-8 items-center rounded-full border border-white/8 bg-white/6 px-3 text-[11px] text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/9 hover:text-[var(--app-text-primary)]"
+                title="打开 Agent Setting"
+              >
+                <span>{formatNumber(tokenUsage)}</span>
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[62px]">
+        <div
+          className={`flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[62px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            collapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
+          }`}
+        >
           <QalamChatContent messages={messages} isSending={isSending} />
         </div>
       </div>

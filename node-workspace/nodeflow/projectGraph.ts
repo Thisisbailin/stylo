@@ -126,7 +126,7 @@ export const buildProjectedSourceNodes = (projectData: ProjectData): ProjectGrap
 
 export const buildGraphNodesFromWorkflow = (workflow: NodeFlowFile): ProjectGraphNodeRecord[] =>
   workflow.nodes.map((node) => {
-    const record = toNodeFlowNodeRecord(node);
+    const record = toNodeFlowNodeRecord(node, workflow.nodeFlowContext);
     const rawData = (node.data || {}) as Record<string, unknown>;
     return {
       resourceType: "graph_node",
@@ -180,14 +180,14 @@ export const findGraphNode = (
   const nodeRef = trimText(locator.nodeRef);
   const node = workflow.nodes.find((item) => (nodeId ? item.id === nodeId : getNodeFlowNodeRef(item) === nodeRef));
   if (!node) return null;
-  const record = toNodeFlowNodeRecord(node);
+  const record = toNodeFlowNodeRecord(node, workflow.nodeFlowContext);
   return {
     resourceType: "graph_node" as const,
     nodeId: record.id,
     ref: record.ref,
     plane: getNodeFlowNodePlane(node),
     type: getNodeFlowNodeAssetType(node),
-    title: getNodeFlowNodeTitle(node),
+    title: getNodeFlowNodeTitle(node, workflow.nodeFlowContext),
     body: record.body,
     locked: Boolean((node.data as Record<string, unknown>)?.locked),
     meta: record.meta,

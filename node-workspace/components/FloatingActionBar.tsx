@@ -25,6 +25,7 @@ import {
   LogOut,
   Upload,
   Share,
+  ScanSearch,
 } from "lucide-react";
 import { NodeFlowTemplate } from "../types";
 import type { ModuleKey } from "./ModuleBar";
@@ -194,7 +195,14 @@ export const FloatingActionBar: React.FC<Props> = ({
     "group inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[var(--app-text-secondary)] shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const getPopoverStyle = (anchorRect: DOMRect | null, desiredWidth: number): React.CSSProperties | undefined => {
     if (typeof window === "undefined") return undefined;
-    if (!anchorRect) return undefined;
+    if (!anchorRect) {
+      return {
+        right: 24,
+        bottom: 80,
+        width: Math.min(desiredWidth, window.innerWidth - 32),
+        maxWidth: `calc(100vw - 32px)`,
+      };
+    }
     const viewportPadding = 16;
     const width = Math.min(desiredWidth, window.innerWidth - viewportPadding * 2);
     const left = Math.max(
@@ -202,7 +210,7 @@ export const FloatingActionBar: React.FC<Props> = ({
       Math.min(anchorRect.left + anchorRect.width / 2 - width / 2, window.innerWidth - viewportPadding - width)
     );
     const gap = 12;
-    const bottom = Math.max(16, window.innerHeight - anchorRect.bottom + gap);
+    const bottom = Math.max(16, window.innerHeight - anchorRect.top + gap);
     return {
       position: "fixed",
       left,
@@ -292,6 +300,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },
     { key: "workspace" as ModuleKey, label: "Workspace", desc: "理解 / 素材 / Sync / Info", Icon: SquareStack, tone: "text-blue-200", surface: "bg-blue-500/10" },
     { key: "projector" as ModuleKey, label: "放映机", desc: "视听实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
+    { key: "glassLab" as ModuleKey, label: "Glass Lab", desc: "视觉语言实验", Icon: ScanSearch, tone: "text-zinc-200", surface: "bg-white/5" },
   ];
 
   const accountLoaded = accountInfo?.isLoaded ?? true;
@@ -359,7 +368,7 @@ export const FloatingActionBar: React.FC<Props> = ({
         <div className={sectionEyebrowClass}>Agent Setting</div>
         <div className="text-[10px] text-[var(--app-text-muted)]">{agentSettingModules.length} modules</div>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {agentSettingModules.map(({ key, label, desc, Icon, tone, surface }) => (
           <button
             key={key}

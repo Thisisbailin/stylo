@@ -16,6 +16,7 @@ import { IdentityCardNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { buildProjectIdentities, resolveLegacyIdentity, type ProjectIdentity } from "../../utils/identityCards";
 import { applyRolePortraits } from "../../utils/projectRoles";
+import { resolveIdentityCardNodeTitle } from "../nodeflow/titles";
 
 type Props = {
   id: string;
@@ -53,6 +54,7 @@ const buildIdentitySerial = (identityId: string) => {
 
 export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, nodeFlowContext, mutateProjectRole } = useNodeFlowStore();
+  const nodeTitle = useMemo(() => resolveIdentityCardNodeTitle(data, nodeFlowContext), [data, nodeFlowContext]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isUploadingPortrait, setIsUploadingPortrait] = useState(false);
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
@@ -146,7 +148,7 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
 
   if (!activeIdentity) {
     return (
-      <BaseNode title={data.title || "身份卡片节点"} outputs={["text"]} selected={selected}>
+      <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
         <div className="flex min-h-[220px] items-center justify-center rounded-[24px] border border-dashed border-[var(--node-border)] text-[12px] text-[var(--node-text-secondary)]">
           当前项目还没有可展示的身份证。
         </div>
@@ -166,7 +168,7 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
   const hasVoice = !!activeIdentity.voiceReferenceAudioUrl;
 
   return (
-    <BaseNode title={data.title || "身份卡片节点"} outputs={["text"]} selected={selected}>
+    <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
       <div className="flex min-h-0 flex-col gap-3">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--node-border)] pb-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">

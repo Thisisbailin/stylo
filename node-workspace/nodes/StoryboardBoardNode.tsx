@@ -6,6 +6,7 @@ import { StoryboardBoardNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { buildEpisodeShotNodeFlow, getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
 import { SHOT_TABLE_COLUMNS } from "../../utils/shotSchema";
+import { resolveStoryboardBoardNodeTitle } from "../nodeflow/titles";
 
 type Props = {
   id: string;
@@ -47,6 +48,7 @@ const ValueStack: React.FC<{ primary?: string; secondary?: string; tertiary?: st
 export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, nodeFlowContext, addNodesAndLinks, nodes, revision } = useNodeFlowStore();
   const { setViewport } = useReactFlow();
+  const nodeTitle = useMemo(() => resolveStoryboardBoardNodeTitle(data, nodeFlowContext), [data, nodeFlowContext]);
   const episodes = nodeFlowContext.episodes || [];
 
   const episode = useMemo(() => {
@@ -139,7 +141,7 @@ export const StoryboardBoardNode: React.FC<Props & { selected?: boolean }> = ({ 
   }, [addNodesAndLinks, episode, id, nodes, revision, setViewport, updateNodeData]);
 
   return (
-    <BaseNode title={data.title || "分镜表面板节点"} outputs={["text"]} selected={selected}>
+    <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
       <div className="flex min-h-0 flex-col">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--node-border)] pb-3">
           <div className="flex min-w-0 items-center gap-3">

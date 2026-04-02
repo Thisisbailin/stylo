@@ -58,8 +58,10 @@ import {
   setNodeFlowContextState,
   setNodeFlowCurrentNodeState,
   setNodeFlowPausedNodeState,
+  setNodeFlowReadingModeState,
   setNodeFlowRunningState,
   setNodeFlowViewportState,
+  type NodeFlowReadingMode,
 } from "../nodeflow/sessionState";
 import {
   appendGlobalAssetHistoryItem,
@@ -163,7 +165,9 @@ interface NodeFlowStore {
 
   // View management
   activeView: string | null;
+  readingMode: NodeFlowReadingMode;
   setActiveView: (view: string | null) => void;
+  setReadingMode: (mode: NodeFlowReadingMode) => void;
 
   // Global Config
   appConfig: any; // Using any to avoid circular dependencies if types are complex, but AppConfig is best
@@ -209,6 +213,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   setViewportState: (viewport) => set((state) => setNodeFlowViewportState(state, viewport)),
 
   setActiveView: (view) => set((state) => setNodeFlowActiveViewState(state, view)),
+  setReadingMode: (mode) => set((state) => setNodeFlowReadingModeState(state, mode)),
   setAppConfig: (config) => set((state) => setNodeFlowAppConfigState(state, config)),
   setProjectRoleUpdater: (updater) => set((state) => setNodeFlowProjectRoleUpdaterState(state, updater)),
   mutateProjectRole: (roleId, updater) => {

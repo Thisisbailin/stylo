@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Handle, Position, NodeResizer } from "@xyflow/react";
 import { HandleType } from "../types";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
 
 type NodeHandleSpec =
   | HandleType
@@ -39,8 +40,10 @@ export const BaseNode: React.FC<Props> = ({
   const [showResizer, setShowResizer] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
+  const readingMode = useNodeFlowStore((state) => state.readingMode);
+  const isIdentityMode = readingMode === "identity";
 
-  const minHeight = variant === "text" ? 256 : 160;
+  const minHeight = isIdentityMode ? 76 : variant === "text" ? 256 : 160;
   const keepAspectRatio = resizerKeepAspect ?? variant === "media";
 
   useEffect(() => {
@@ -146,6 +149,7 @@ export const BaseNode: React.FC<Props> = ({
       data-selected={!!selected}
       data-variant={variant}
       data-node-type={nodeType || ""}
+      data-reading-mode={readingMode}
       data-resizer-visible={showResizer || isResizing}
       data-resizing={isResizing}
       onMouseMove={updateResizerVisibility}
@@ -166,7 +170,7 @@ export const BaseNode: React.FC<Props> = ({
       <div className="node-card-shell">
         <div className="node-card-header-shell">
           <div className="node-card-header-copy">
-            {onTitleChange ? (
+            {onTitleChange && !isIdentityMode ? (
               <input
                 className="node-card-title-input nodrag"
                 value={draftTitle}
@@ -188,7 +192,7 @@ export const BaseNode: React.FC<Props> = ({
             )}
           </div>
         </div>
-        <div className="node-card-body">{children}</div>
+        {!isIdentityMode ? <div className="node-card-body">{children}</div> : null}
       </div>
 
       {normalizedInputs.map((spec, idx) => {

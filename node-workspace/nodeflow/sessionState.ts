@@ -1,5 +1,7 @@
 import type { NodeFlowContextSnapshot, NodeFlowViewport } from "../types";
 
+export type NodeFlowReadingMode = "full" | "identity";
+
 export type NodeFlowExecutionState = {
   isRunning: boolean;
   currentNodeId: string | null;
@@ -9,6 +11,7 @@ export type NodeFlowExecutionState = {
 export type NodeFlowCanvasState = {
   viewport: NodeFlowViewport | null;
   activeView: string | null;
+  readingMode: NodeFlowReadingMode;
 };
 
 export type NodeFlowContextState = {
@@ -40,6 +43,7 @@ export const createIdleNodeFlowExecutionState = (): NodeFlowExecutionState => ({
 export const createEmptyNodeFlowCanvasState = (): NodeFlowCanvasState => ({
   viewport: null,
   activeView: null,
+  readingMode: "full",
 });
 
 export const setNodeFlowContextState = <T extends NodeFlowContextState>(
@@ -64,6 +68,14 @@ export const setNodeFlowActiveViewState = <T extends NodeFlowCanvasState>(
 ): T => ({
   ...state,
   activeView,
+});
+
+export const setNodeFlowReadingModeState = <T extends NodeFlowCanvasState>(
+  state: T,
+  readingMode: NodeFlowReadingMode
+): T => ({
+  ...state,
+  readingMode,
 });
 
 export const setNodeFlowRunningState = <T extends NodeFlowExecutionState>(

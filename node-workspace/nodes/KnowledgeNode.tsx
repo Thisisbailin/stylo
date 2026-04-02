@@ -3,6 +3,7 @@ import { BookOpenText } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import type { KnowledgeNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { resolveNodeFlowNodeTitle } from "../nodeflow/titles";
 
 type Props = {
   id: string;
@@ -18,7 +19,17 @@ const PLANE_LABELS: Record<KnowledgeNodeData["plane"], string> = {
 
 export const KnowledgeNode: React.FC<Props> = ({ id, data, selected }) => {
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
+  const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const nodeTitle = resolveNodeFlowNodeTitle(
+    {
+      id,
+      type: "knowledge",
+      position: { x: 0, y: 0 },
+      data,
+    },
+    nodeFlowContext
+  );
 
   const autoResize = () => {
     if (!textareaRef.current) return;
@@ -32,7 +43,7 @@ export const KnowledgeNode: React.FC<Props> = ({ id, data, selected }) => {
 
   return (
     <BaseNode
-      title={data.title || "Knowledge"}
+      title={nodeTitle}
       onTitleChange={(title) => updateNodeData(id, { title })}
       inputs={["text"]}
       outputs={["text"]}

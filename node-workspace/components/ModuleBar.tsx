@@ -6,7 +6,8 @@ export type ModuleKey =
   | "characters"
   | "scenes"
   | "workspace"
-  | "projector";
+  | "projector"
+  | "glassLab";
 
 type ModuleItem = {
   key: ModuleKey;
@@ -26,6 +27,7 @@ export const ModuleBar: React.FC<Props> = ({ modules, onOpen }) => {
     scenes: "#22d3ee",
     workspace: "#60a5fa",
     projector: "#fb7185",
+    glassLab: "#a3a3a3",
   };
 
   return (
