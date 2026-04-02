@@ -648,7 +648,7 @@ export const QalamAgent: React.FC<Props> = ({
   const panelClassName = "pointer-events-auto isolate w-[420px] max-w-[95vw] qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
-  const messagePanelMaxHeight = Math.max(240, viewportSize.height - dockInset * 2 - 92);
+  const messageViewportHeight = Math.max(240, viewportSize.height - dockInset * 2 - 92);
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.veil,
@@ -791,7 +791,8 @@ export const QalamAgent: React.FC<Props> = ({
                 messages={messages}
                 isSending={isSending}
                 className="bg-transparent"
-                style={{ maxHeight: `${messagePanelMaxHeight}px` }}
+                revealMode="latest"
+                style={{ height: `${messageViewportHeight}px` }}
               />
             </div>
           </div>

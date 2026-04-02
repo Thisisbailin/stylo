@@ -9,6 +9,7 @@ type Props = {
   isSending: boolean;
   className?: string;
   style?: React.CSSProperties;
+  revealMode?: "scroll" | "latest";
 };
 
 const toolStatusLabel: Record<ToolStatus, string> = {
@@ -885,7 +886,8 @@ type ToolThread = {
   result?: ToolMessage;
 };
 
-const renderToolThread = (thread: ToolThread) => {
+const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) => {
+  const expanded = options?.expanded || false;
   const effectiveTool = thread.result?.tool || thread.request?.tool;
   if (!effectiveTool) return null;
   const hasDetails =
@@ -912,7 +914,7 @@ const renderToolThread = (thread: ToolThread) => {
   }
 
   return (
-    <details className={`${lineSummaryClass} group`}>
+    <details className={`${lineSummaryClass} group`} open={expanded}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Wrench size={12} weight="duotone" />,
@@ -934,7 +936,8 @@ const buildThinkingLabel = (status: StatusMessage["statusCard"]) => {
   return `思考了 ${formatThoughtDuration(duration)}`;
 };
 
-const renderStatusLine = (message: StatusMessage) => {
+const renderStatusLine = (message: StatusMessage, options?: { expanded?: boolean }) => {
+  const expanded = options?.expanded || false;
   const status = message.statusCard;
   const toneClass =
     status.status === "error"
@@ -965,7 +968,7 @@ const renderStatusLine = (message: StatusMessage) => {
   }
 
   return (
-    <details className={`${lineSummaryClass} group`}>
+    <details className={`${lineSummaryClass} group`} open={expanded}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Brain size={12} weight="duotone" />,
@@ -1028,9 +1031,15 @@ const renderAssistantPanel = (message: ChatMessage) => {
   );
 };
 
-export const QalamChatContent: React.FC<Props> = ({ messages, isSending, className = "", style }) => {
+export const QalamChatContent: React.FC<Props> = ({
+  messages,
+  isSending,
+  className = "",
+  style,
+  revealMode = "scroll",
+}) => {
   const messagesRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const currentItemRef = useRef<HTMLDivElement | null>(null);
   const previousItemCountRef = useRef(0);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
@@ -1106,7 +1115,13 @@ export const QalamChatContent: React.FC<Props> = ({ messages, isSending, classNa
     return durations;
   }, [displayMessages]);
 
+  const latestRevealItem = useMemo(() => {
+    if (!displayMessages.length) return null;
+    return [...displayMessages].reverse().find((item) => item.kind === "status" || item.kind === "tool") || displayMessages[displayMessages.length - 1];
+  }, [displayMessages]);
+
   useEffect(() => {
+    if (revealMode !== "scroll") return;
     const node = messagesRef.current;
     const currentNode = currentItemRef.current;
     if (!node || !currentNode || !isPinnedToCurrent) return;
@@ -1117,9 +1132,10 @@ export const QalamChatContent: React.FC<Props> = ({ messages, isSending, classNa
       const targetTop = Math.max(0, currentNode.offsetTop - 6);
       node.scrollTo({ top: targetTop, behavior });
     });
-  }, [displayMessages.length, isPinnedToCurrent, isSending]);
+  }, [displayMessages.length, isPinnedToCurrent, isSending, revealMode]);
 
   useEffect(() => {
+    if (revealMode !== "scroll") return;
     if (!messagesRef.current) return;
     const node = messagesRef.current;
     const handleScroll = () => {
@@ -1130,52 +1146,60 @@ export const QalamChatContent: React.FC<Props> = ({ messages, isSending, classNa
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => node.removeEventListener("scroll", handleScroll);
-  }, [displayMessages.length]);
+  }, [displayMessages.length, revealMode]);
+
+  useEffect(() => {
+    if (revealMode !== "latest") return;
+    previousItemCountRef.current = displayMessages.length;
+  }, [displayMessages.length, revealMode]);
+
+  const visibleItems = revealMode === "latest" ? (latestRevealItem ? [latestRevealItem] : []) : displayMessages;
 
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 overflow-y-auto px-4 py-4 space-y-3 ${className}`}
+      className={`qalam-scrollbar min-h-0 px-4 py-4 ${revealMode === "latest" ? "overflow-hidden" : "overflow-y-auto"} ${className}`}
       style={style}
     >
-      {displayMessages.map((item) => {
-        const isUser = item.kind === "chat" && item.message.role === "user";
-        const isAssistantPanel = item.kind === "chat" && !isUser;
-        const workedDuration =
-          isAssistantPanel && item.message.meta?.runId
-            ? runDurationMap.get(item.message.meta.runId)
-            : undefined;
-        const isCurrent = item === displayMessages[displayMessages.length - 1];
-        return (
-          <div
-            key={item.key}
-            ref={isCurrent ? currentItemRef : null}
-            className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
-          >
-            {item.kind === "status" ? (
-              renderStatusLine(item.message)
-            ) : item.kind === "tool" ? (
-              renderToolThread(item.thread)
-            ) : isUser ? (
-              <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
-                {item.message.text}
-              </div>
-            ) : (
-              <div className="w-full space-y-3">
-                {workedDuration ? (
-                  <div className="flex items-center gap-4 px-1 text-[11px] text-[var(--app-text-muted)]">
-                    <div className="h-px flex-1 bg-[var(--app-border)]" />
-                    <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
-                    <div className="h-px flex-1 bg-[var(--app-border)]" />
-                  </div>
-                ) : null}
-                {renderAssistantPanel(item.message)}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div ref={bottomRef} />
+      <div ref={contentRef} className="space-y-3">
+        {visibleItems.map((item) => {
+          const isUser = item.kind === "chat" && item.message.role === "user";
+          const isAssistantPanel = item.kind === "chat" && !isUser;
+          const workedDuration =
+            isAssistantPanel && item.message.meta?.runId
+              ? runDurationMap.get(item.message.meta.runId)
+              : undefined;
+          const isCurrent = revealMode === "latest" ? item === latestRevealItem : item === displayMessages[displayMessages.length - 1];
+          return (
+            <div
+              key={item.key}
+              ref={isCurrent ? currentItemRef : null}
+              className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
+            >
+              {item.kind === "status" ? (
+                renderStatusLine(item.message, { expanded: revealMode === "latest" })
+              ) : item.kind === "tool" ? (
+                renderToolThread(item.thread, { expanded: revealMode === "latest" })
+              ) : isUser ? (
+                <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
+                  {item.message.text}
+                </div>
+              ) : (
+                <div className="w-full space-y-3">
+                  {workedDuration ? (
+                    <div className="flex items-center gap-4 px-1 text-[11px] text-[var(--app-text-muted)]">
+                      <div className="h-px flex-1 bg-[var(--app-border)]" />
+                      <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
+                      <div className="h-px flex-1 bg-[var(--app-border)]" />
+                    </div>
+                  ) : null}
+                  {renderAssistantPanel(item.message)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

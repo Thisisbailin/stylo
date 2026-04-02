@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus,
   User,
@@ -698,17 +699,20 @@ export const FloatingActionBar: React.FC<Props> = ({
 
   return (
     <div className={rootClass}>
-      {(showPalette || showFileMenu || showTemplate) && <div className="fixed inset-0 z-10" onClick={closeMenus} />}
+      {typeof document !== "undefined" && (showPalette || showFileMenu || showTemplate)
+        ? createPortal(<div className="fixed inset-0 z-[58]" onClick={closeMenus} />, document.body)
+        : null}
 
       <div className="relative z-20 flex justify-center">
         {/* Template Menu */}
-        {showTemplate && (
-          <div
-            ref={templatePanelRef}
-            className={`fixed animate-in fade-in slide-in-from-bottom-2 duration-200 ${panelClass}`}
-            style={{ ...panelStyle, ...templatePopoverStyle }}
-          >
-            <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
+        {typeof document !== "undefined" && showTemplate
+          ? createPortal(
+            <div
+              ref={templatePanelRef}
+              className={`fixed z-[59] animate-in fade-in slide-in-from-bottom-2 duration-200 ${panelClass}`}
+              style={{ ...panelStyle, ...templatePopoverStyle }}
+            >
+              <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
               {renderPopoverHeader("Project", "项目层只保留 IO 与模板，输入输出和复用资产都从这里进入。", SquareStack, "bg-blue-500/10 text-blue-200")}
 
               {renderIoPanel()}
@@ -788,18 +792,21 @@ export const FloatingActionBar: React.FC<Props> = ({
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
+              </div>
+            </div>,
+            document.body
+          )
+          : null}
 
         {/* Plus Palette */}
-        {showPalette && (
-          <div
-            ref={palettePanelRef}
-            className={`fixed animate-in fade-in slide-in-from-bottom-2 duration-300 ${panelClass}`}
-            style={{ ...panelStyle, ...palettePopoverStyle }}
-          >
-            <div className="p-4 space-y-4">
+        {typeof document !== "undefined" && showPalette
+          ? createPortal(
+            <div
+              ref={palettePanelRef}
+              className={`fixed z-[59] animate-in fade-in slide-in-from-bottom-2 duration-300 ${panelClass}`}
+              style={{ ...panelStyle, ...palettePopoverStyle }}
+            >
+              <div className="p-4 space-y-4">
               <div className="px-1">
                 <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
                 <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
@@ -870,18 +877,21 @@ export const FloatingActionBar: React.FC<Props> = ({
               </div>
               </div>
 
-            </div>
-          </div>
-        )}
+              </div>
+            </div>,
+            document.body
+          )
+          : null}
 
         {/* File Menu */}
-        {showFileMenu && (
-          <div
-            ref={fileMenuPanelRef}
-            className={`fixed animate-in fade-in zoom-in-95 duration-200 overflow-hidden ${panelClass}`}
-            style={{ ...panelStyle, ...fileMenuPopoverStyle }}
-          >
-            <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
+        {typeof document !== "undefined" && showFileMenu
+          ? createPortal(
+            <div
+              ref={fileMenuPanelRef}
+              className={`fixed z-[59] animate-in fade-in zoom-in-95 duration-200 overflow-hidden ${panelClass}`}
+              style={{ ...panelStyle, ...fileMenuPopoverStyle }}
+            >
+              <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
               {renderPopoverHeader("Account", "聚焦账户状态、头像、主题与 agent 工作台入口。", User, "bg-emerald-500/10 text-emerald-300")}
 
               <div className={`${sectionCardClass} space-y-3`}>
@@ -1052,9 +1062,11 @@ export const FloatingActionBar: React.FC<Props> = ({
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
+              </div>
+            </div>,
+            document.body
+          )
+          : null}
 
         {/* Main Bar */}
         {isEmbedded ? (
