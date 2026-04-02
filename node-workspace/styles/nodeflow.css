@@ -1,24 +1,24 @@
 :root {
-  --app-bg: #dfe9df;
-  --app-panel: rgba(241, 248, 241, 0.92);
-  --app-panel-strong: rgba(247, 252, 247, 0.98);
-  --app-panel-muted: rgba(120, 154, 123, 0.08);
-  --app-panel-soft: rgba(120, 154, 123, 0.12);
-  --app-border: rgba(120, 154, 123, 0.15);
-  --app-border-strong: rgba(120, 154, 123, 0.24);
-  --app-text-primary: #213026;
-  --app-text-secondary: rgba(33, 48, 38, 0.66);
-  --app-text-muted: rgba(33, 48, 38, 0.42);
-  --app-accent: #789a7b;
-  --app-accent-strong: #5f8162;
-  --app-accent-soft: rgba(120, 154, 123, 0.12);
-  --app-shadow: 0 14px 34px rgba(44, 72, 47, 0.1);
-  --app-shadow-strong: 0 18px 42px rgba(44, 72, 47, 0.14);
-  --app-pattern: rgba(120, 154, 123, 0.065);
+  --app-bg: #1c1c1e;
+  --app-panel: rgba(28, 28, 30, 0.92);
+  --app-panel-strong: rgba(44, 44, 46, 0.96);
+  --app-panel-muted: rgba(255, 255, 255, 0.05);
+  --app-panel-soft: rgba(255, 255, 255, 0.08);
+  --app-border: rgba(255, 255, 255, 0.1);
+  --app-border-strong: rgba(255, 255, 255, 0.18);
+  --app-text-primary: #f5f5f7;
+  --app-text-secondary: rgba(245, 245, 247, 0.68);
+  --app-text-muted: rgba(245, 245, 247, 0.44);
+  --app-accent: #8e8e93;
+  --app-accent-strong: #aeaeb2;
+  --app-accent-soft: rgba(142, 142, 147, 0.12);
+  --app-shadow: 0 12px 28px rgba(8, 8, 10, 0.2);
+  --app-shadow-strong: 0 16px 36px rgba(8, 8, 10, 0.24);
+  --app-pattern: rgba(255, 255, 255, 0.045);
 
   --node-bg: var(--app-panel);
   --node-bg-selected: var(--app-panel-strong);
-  --node-bg-gradient: linear-gradient(160deg, rgba(247, 252, 247, 0.99), rgba(229, 239, 229, 0.97));
+  --node-bg-gradient: linear-gradient(160deg, rgba(44, 44, 46, 0.97), rgba(28, 28, 30, 0.98));
   --node-accent: var(--app-accent);
   --node-text-primary: var(--app-text-primary);
   --node-text-secondary: var(--app-text-secondary);
@@ -31,12 +31,12 @@
   --node-shadow-strong: var(--app-shadow-strong);
   --node-header-bg: var(--app-panel-muted);
   --node-card-width: 320px;
-  --group-bg: rgba(120, 154, 123, 0.06);
-  --group-bg-selected: rgba(120, 154, 123, 0.1);
-  --group-border: rgba(120, 154, 123, 0.12);
-  --group-border-strong: rgba(120, 154, 123, 0.2);
-  --group-highlight: rgba(255, 255, 255, 0.5);
-  --group-shadow: 0 18px 40px rgba(44, 72, 47, 0.08);
+  --group-bg: rgba(36, 36, 38, 0.64);
+  --group-bg-selected: rgba(50, 50, 52, 0.78);
+  --group-border: rgba(255, 255, 255, 0.1);
+  --group-border-strong: rgba(255, 255, 255, 0.18);
+  --group-highlight: rgba(255, 255, 255, 0.06);
+  --group-shadow: 0 22px 52px rgba(8, 8, 10, 0.28);
 }
 
 /* Base canvas */

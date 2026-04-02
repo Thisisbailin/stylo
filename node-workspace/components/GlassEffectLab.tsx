@@ -15,6 +15,32 @@ type DragState = {
 
 type PresetKey = "bare" | "mist" | "veil";
 
+const buildSuperellipsePath = (
+  width: number,
+  height: number,
+  exponent: number,
+  offsetX = 0,
+  offsetY = 0,
+  segments = 72
+) => {
+  const a = width / 2;
+  const b = height / 2;
+  const cx = offsetX + a;
+  const cy = offsetY + b;
+  const points: string[] = [];
+
+  for (let i = 0; i <= segments; i += 1) {
+    const theta = (Math.PI * 2 * i) / segments;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const x = cx + a * Math.sign(cos) * Math.pow(Math.abs(cos), 2 / exponent);
+    const y = cy + b * Math.sign(sin) * Math.pow(Math.abs(sin), 2 / exponent);
+    points.push(`${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+
+  return `${points.join(" ")} Z`;
+};
+
 const PRESETS: Record<
   PresetKey,
   {
@@ -25,11 +51,9 @@ const PRESETS: Record<
     saturate: number;
     spreadX: number;
     spreadY: number;
-    softness: number;
+    fade: number;
     edgeAlpha: number;
-    radius: number;
-    biasX: number;
-    biasY: number;
+    curve: number;
   }
 > = {
   bare: {
@@ -40,11 +64,9 @@ const PRESETS: Record<
     saturate: 100,
     spreadX: 80,
     spreadY: 140,
-    softness: 82,
+    fade: 74,
     edgeAlpha: 0.22,
-    radius: 36,
-    biasX: 18,
-    biasY: 12,
+    curve: 3.4,
   },
   mist: {
     width: 380,
@@ -54,11 +76,9 @@ const PRESETS: Record<
     saturate: 112,
     spreadX: 96,
     spreadY: 168,
-    softness: 88,
+    fade: 82,
     edgeAlpha: 0.3,
-    radius: 42,
-    biasX: 14,
-    biasY: 10,
+    curve: 3.85,
   },
   veil: {
     width: 400,
@@ -68,11 +88,9 @@ const PRESETS: Record<
     saturate: 118,
     spreadX: 128,
     spreadY: 220,
-    softness: 93,
+    fade: 88,
     edgeAlpha: 0.36,
-    radius: 48,
-    biasX: 12,
-    biasY: 8,
+    curve: 4.2,
   },
 };
 
@@ -90,14 +108,11 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const [saturate, setSaturate] = useState(PRESETS.mist.saturate);
   const [spreadX, setSpreadX] = useState(PRESETS.mist.spreadX);
   const [spreadY, setSpreadY] = useState(PRESETS.mist.spreadY);
-  const [softness, setSoftness] = useState(PRESETS.mist.softness);
+  const [fade, setFade] = useState(PRESETS.mist.fade);
   const [edgeAlpha, setEdgeAlpha] = useState(PRESETS.mist.edgeAlpha);
-  const [radius, setRadius] = useState(PRESETS.mist.radius);
-  const [biasX, setBiasX] = useState(PRESETS.mist.biasX);
-  const [biasY, setBiasY] = useState(PRESETS.mist.biasY);
+  const [curve, setCurve] = useState(PRESETS.mist.curve);
   const [showBoundary, setShowBoundary] = useState(true);
-  const [showCore, setShowCore] = useState(true);
-  const [showAura, setShowAura] = useState(true);
+  const [showField, setShowField] = useState(true);
   const dragStateRef = useRef<DragState>(null);
   const regionRef = useRef<HTMLDivElement | null>(null);
 
@@ -120,50 +135,58 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     setSaturate(next.saturate);
     setSpreadX(next.spreadX);
     setSpreadY(next.spreadY);
-    setSoftness(next.softness);
+    setFade(next.fade);
     setEdgeAlpha(next.edgeAlpha);
-    setRadius(next.radius);
-    setBiasX(next.biasX);
-    setBiasY(next.biasY);
+    setCurve(next.curve);
   };
 
-  const auraStyle = useMemo<React.CSSProperties>(
+  const fieldMask = useMemo(() => {
+    const maskWidth = width + spreadX;
+    const maskHeight = height + spreadY;
+    const rectX = spreadX / 2;
+    const rectY = spreadY / 2;
+    const edgeBlur = Math.max(3, (Math.min(spreadX, spreadY) * fade) / 420);
+    const path = buildSuperellipsePath(width, height, curve, rectX, rectY);
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${maskWidth}" height="${maskHeight}" viewBox="0 0 ${maskWidth} ${maskHeight}">
+        <defs>
+          <filter id="melt" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="${edgeBlur}" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        <path d="${path}" fill="white" filter="url(#melt)"/>
+      </svg>
+    `.trim();
+    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+  }, [curve, fade, height, spreadX, spreadY, width]);
+
+  const boundaryPath = useMemo(() => buildSuperellipsePath(width, height, curve), [curve, height, width]);
+
+  const fieldStyle = useMemo<React.CSSProperties>(
     () => ({
       position: "absolute",
       left: -spreadX * 0.5,
-      top: -spreadY * 0.24,
+      top: -spreadY * 0.5,
       width: `calc(100% + ${spreadX}px)`,
       height: `calc(100% + ${spreadY}px)`,
-      borderRadius: radius * 1.2,
       background: `rgba(255,255,255,${fillAlpha})`,
       backdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
       WebkitBackdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
-      WebkitMaskImage: `radial-gradient(118% 88% at ${biasX}% ${biasY}%, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.68) ${Math.max(
-        26,
-        softness - 34
-      )}%, rgba(0,0,0,0.22) ${softness}%, transparent 100%)`,
-      maskImage: `radial-gradient(118% 88% at ${biasX}% ${biasY}%, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.68) ${Math.max(
-        26,
-        softness - 34
-      )}%, rgba(0,0,0,0.22) ${softness}%, transparent 100%)`,
+      WebkitMaskImage: fieldMask,
+      maskImage: fieldMask,
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+      WebkitMaskSize: "100% 100%",
+      maskSize: "100% 100%",
+      WebkitMaskPosition: "center",
+      maskPosition: "center",
       pointerEvents: "none",
     }),
-    [biasX, biasY, blur, fillAlpha, radius, saturate, softness, spreadX, spreadY]
-  );
-
-  const coreStyle = useMemo<React.CSSProperties>(
-    () => ({
-      position: "absolute",
-      inset: 0,
-      borderRadius: radius,
-      background: `rgba(255,255,255,${fillAlpha * 0.64})`,
-      backdropFilter: `blur(${Math.max(0, blur * 0.72)}px) saturate(${saturate}%)`,
-      WebkitBackdropFilter: `blur(${Math.max(0, blur * 0.72)}px) saturate(${saturate}%)`,
-      opacity: showCore ? 1 : 0,
-      transition: "opacity 180ms ease",
-      pointerEvents: "none",
-    }),
-    [blur, fillAlpha, radius, saturate, showCore]
+    [blur, fieldMask, fillAlpha, saturate, spreadX, spreadY]
   );
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -204,7 +227,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           height,
         }}
       >
-        {showAura ? <div aria-hidden="true" style={auraStyle} /> : null}
+        {showField ? <div aria-hidden="true" style={fieldStyle} /> : null}
         <div
           onPointerDown={beginDrag}
           onPointerMove={updateDrag}
@@ -212,13 +235,26 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           onPointerCancel={endDrag}
           className="relative h-full w-full"
           style={{
-            borderRadius: radius,
-            outline: showBoundary ? `${Math.max(1, edgeAlpha * 3)}px dashed rgba(255,255,255,${edgeAlpha})` : "none",
-            outlineOffset: 0,
             cursor: "grab",
           }}
         >
-          {showCore ? <div aria-hidden="true" style={coreStyle} /> : null}
+          {showBoundary ? (
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              viewBox={`0 0 ${width} ${height}`}
+              preserveAspectRatio="none"
+            >
+              <path
+                d={boundaryPath}
+                fill="none"
+                stroke={`rgba(255,255,255,${edgeAlpha})`}
+                strokeWidth="1.2"
+                strokeDasharray="4 4"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+          ) : null}
           <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-[rgba(12,14,16,0.42)] px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-white/62 backdrop-blur-md">
             glass field
           </div>
@@ -254,17 +290,10 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         </button>
         <button
           type="button"
-          onClick={() => setShowCore((value) => !value)}
-          className={`${controlChipClass} px-3 py-2 text-[11px] ${showCore ? "border-white/22" : "text-white/54"}`}
+          onClick={() => setShowField((value) => !value)}
+          className={`${controlChipClass} px-3 py-2 text-[11px] ${showField ? "border-white/22" : "text-white/54"}`}
         >
-          core
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowAura((value) => !value)}
-          className={`${controlChipClass} px-3 py-2 text-[11px] ${showAura ? "border-white/22" : "text-white/54"}`}
-        >
-          aura
+          field
         </button>
       </div>
 
@@ -279,11 +308,9 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           { label: "saturate", value: saturate, min: 80, max: 160, step: 1, set: setSaturate },
           { label: "spread x", value: spreadX, min: 0, max: 240, step: 2, set: setSpreadX },
           { label: "spread y", value: spreadY, min: 0, max: 320, step: 2, set: setSpreadY },
-          { label: "softness", value: softness, min: 52, max: 98, step: 1, set: setSoftness },
+          { label: "fade", value: fade, min: 44, max: 96, step: 1, set: setFade },
           { label: "edge", value: edgeAlpha, min: 0.04, max: 0.56, step: 0.01, set: setEdgeAlpha },
-          { label: "radius", value: radius, min: 0, max: 96, step: 1, set: setRadius },
-          { label: "bias x", value: biasX, min: 0, max: 100, step: 1, set: setBiasX },
-          { label: "bias y", value: biasY, min: 0, max: 100, step: 1, set: setBiasY },
+          { label: "curve", value: curve, min: 2.2, max: 5.4, step: 0.05, set: setCurve },
         ].map((item) => (
           <label key={item.label} className={`${controlChipClass} block px-3 py-2`}>
             <div className="mb-1.5 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-white/68">
