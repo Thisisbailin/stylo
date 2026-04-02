@@ -1040,13 +1040,29 @@ const renderApprovalPanel = (
   const { approval } = message;
   const pending = approval.status === "pending";
   const statusLabel =
-    approval.status === "approved"
+    approval.status === "completed"
+      ? "已完成"
+      : approval.status === "failed"
+        ? "已失败"
+        : approval.status === "approved"
       ? "已批准"
       : approval.status === "rejected"
         ? "已拒绝"
         : approval.status === "executing"
           ? "执行中"
           : "待确认";
+  const statusTone =
+    approval.status === "completed"
+      ? "text-emerald-200/90"
+      : approval.status === "failed"
+        ? "text-rose-200/90"
+        : approval.status === "rejected"
+          ? "text-white/70"
+          : approval.status === "executing"
+            ? "text-sky-200/90"
+            : approval.status === "approved"
+              ? "text-emerald-200/90"
+              : "text-amber-200/80";
   return (
     <div className="w-full space-y-3 rounded-[18px] border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -1056,7 +1072,7 @@ const renderApprovalPanel = (
             {approval.action === "video_generation" ? "是否批准启动视频生成任务？" : "是否批准启动图片生成任务？"}
           </div>
         </div>
-        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-200/80">{statusLabel}</div>
+        <div className={`text-[10px] font-black uppercase tracking-[0.16em] ${statusTone}`}>{statusLabel}</div>
       </div>
       <div className="space-y-1 text-[12px] text-[var(--app-text-secondary)]">
         <div><span className="text-[var(--app-text-muted)]">节点：</span>{approval.nodeTitle}</div>
@@ -1079,6 +1095,39 @@ const renderApprovalPanel = (
           </div>
         ) : null}
       </div>
+      {approval.summary ? (
+        <div className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2 text-[12px] leading-relaxed text-[var(--app-text-primary)]">
+          {approval.summary}
+        </div>
+      ) : null}
+      {approval.steps?.length ? (
+        <div className="space-y-2 rounded-[14px] border border-white/8 bg-white/[0.03] px-3 py-3">
+          {approval.steps.map((step, index) => (
+            <div key={step.id} className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <span
+                  className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
+                    step.status === "success"
+                      ? "bg-emerald-400"
+                      : step.status === "error"
+                        ? "bg-rose-400"
+                        : step.status === "running"
+                          ? "bg-sky-400"
+                          : "bg-white/30"
+                  }`}
+                />
+                {index < approval.steps.length - 1 ? <span className="mt-1 h-full w-px bg-white/10" /> : null}
+              </div>
+              <div className="min-w-0 flex-1 pb-2">
+                <div className="text-[11px] font-semibold text-[var(--app-text-primary)]">{step.label}</div>
+                {step.detail ? (
+                  <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">{step.detail}</div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {pending ? (
         <div className="flex flex-wrap gap-2">
           <button

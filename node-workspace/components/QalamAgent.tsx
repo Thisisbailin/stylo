@@ -7,7 +7,7 @@ import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField } from "./GlassDiffusionField";
 import { QalamChatContent } from "./qalam/QalamChatContent";
-import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message } from "./qalam/types";
+import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
 import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
@@ -197,16 +197,17 @@ type ConversationState = {
 
 type ApprovalPreferenceState = Partial<Record<"image_generation" | "video_generation", true>>;
 
-const buildAssistantChatMessage = (
-  messages: Message[],
-  text: string,
-  meta?: ChatMessage["meta"]
-): ChatMessage => ({
-  role: "assistant",
-  kind: "chat",
-  text,
-  order: messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1,
-  meta,
+const createApprovalStep = (
+  id: string,
+  label: string,
+  status: "info" | "running" | "success" | "error",
+  detail?: string
+) => ({
+  id,
+  label,
+  status,
+  detail,
+  at: Date.now(),
 });
 
 const buildApprovalPayload = (
@@ -223,6 +224,15 @@ const buildApprovalPayload = (
   promptPreview: proposal.promptPreview,
   inputSummary: proposal.inputSummary,
   status,
+  summary: "等待你的批准后启动执行。",
+  steps: [
+    createApprovalStep(
+      "created",
+      "已创建审批请求",
+      "info",
+      `Agent 已为 ${proposal.nodeTitle} 准备好${proposal.action === "video_generation" ? "视频" : "图片"}生成提案，正在等待你的决定。`
+    ),
+  ],
   createdAt: proposal.createdAt,
   updatedAt: Date.now(),
 });
@@ -251,24 +261,39 @@ const upsertApprovalMessage = (
 const patchApprovalMessage = (
   messages: Message[],
   nodeId: string,
-  patch: Partial<ApprovalMessage["approval"]>
+  patch: Partial<ApprovalMessage["approval"]>,
+  options?: {
+    appendStep?: ApprovalMessage["approval"]["steps"][number];
+  }
 ) =>
   messages.map((message) => {
     if (message.kind !== "approval" || message.approval.nodeId !== nodeId) return message;
+    const existingSteps = Array.isArray(message.approval.steps) ? message.approval.steps : [];
+    const nextSteps =
+      options?.appendStep && !existingSteps.some((step) => step.id === options.appendStep!.id)
+        ? [...existingSteps, options.appendStep]
+        : existingSteps;
     return {
       ...message,
       approval: {
         ...message.approval,
         ...patch,
+        steps: nextSteps,
         updatedAt: Date.now(),
       },
     };
   });
 
-const summarizeApprovedExecutionResult = (nodeId: string, fallbackTitle: string) => {
+const summarizeApprovedExecutionResult = (
+  nodeId: string,
+  fallbackTitle: string
+): { status: ApprovalStatus; summary: string } => {
   const node = useNodeFlowStore.getState().getNodeById(nodeId);
   if (!node) {
-    return `已批准执行 ${fallbackTitle}，但节点已不存在。请在 NodeFlow 中检查该任务是否被删除。`;
+    return {
+      status: "failed",
+      summary: `已批准执行 ${fallbackTitle}，但节点已不存在。请在 NodeFlow 中检查该任务是否被删除。`,
+    };
   }
   const title = String((node.data as Record<string, unknown>)?.title || fallbackTitle || node.type);
   const status = String((node.data as Record<string, unknown>)?.status || "");
@@ -278,23 +303,41 @@ const summarizeApprovedExecutionResult = (nodeId: string, fallbackTitle: string)
 
   if (status === "complete") {
     if (outputImage) {
-      return `已批准并完成图片生成：${title}。结果已经写回节点，当前可以继续围绕这张图进行后续编辑或连线操作。`;
+      return {
+        status: "completed",
+        summary: `已批准并完成图片生成：${title}。结果已经写回节点，当前可以继续围绕这张图进行后续编辑或连线操作。`,
+      };
     }
     if (videoUrl) {
-      return `已批准并完成视频生成：${title}。结果已经写回节点，当前可以继续围绕这段视频进行后续编辑或串联工作流。`;
+      return {
+        status: "completed",
+        summary: `已批准并完成视频生成：${title}。结果已经写回节点，当前可以继续围绕这段视频进行后续编辑或串联工作流。`,
+      };
     }
-    return `已批准并完成执行：${title}。结果已经写回对应节点。`;
+    return {
+      status: "completed",
+      summary: `已批准并完成执行：${title}。结果已经写回对应节点。`,
+    };
   }
 
   if (status === "error") {
-    return `已批准执行 ${title}，但任务失败了。${error || "请检查该节点的配置、输入素材或服务端返回信息。"} `;
+    return {
+      status: "failed",
+      summary: `已批准执行 ${title}，但任务失败了。${error || "请检查该节点的配置、输入素材或服务端返回信息。"}`,
+    };
   }
 
   if (status === "loading") {
-    return `已批准执行 ${title}，任务已经启动，当前仍在处理中。结果会持续写回该节点。`;
+    return {
+      status: "executing",
+      summary: `已批准执行 ${title}，任务已经启动，当前仍在处理中。结果会持续写回该节点。`,
+    };
   }
 
-  return `已批准执行 ${title}。当前节点状态为 ${status || "unknown"}，请继续观察结果回写。`;
+  return {
+    status: "approved",
+    summary: `已批准执行 ${title}。当前节点状态为 ${status || "unknown"}，请继续观察结果回写。`,
+  };
 };
 
 const buildConversationTitle = (messages: Message[]) => {
@@ -761,17 +804,17 @@ export const QalamAgent: React.FC<Props> = ({
             message.kind === "approval" && message.approval.nodeId === proposal.nodeId
         );
         const isSameProposal = existing?.approval.id === proposal.id;
-        const status =
-          isSameProposal && existing
-            ? existing.approval.status === "pending"
-              ? approvalPreferences[proposal.action]
-                ? "executing"
-                : "pending"
-              : existing.approval.status
-            : approvalPreferences[proposal.action]
-              ? "executing"
-              : "pending";
-        next = upsertApprovalMessage(next, buildApprovalPayload(proposal, status));
+        if (isSameProposal && existing) {
+          next = patchApprovalMessage(next, proposal.nodeId, {
+            nodeTitle: proposal.nodeTitle,
+            providerLabel: proposal.providerLabel,
+            modelLabel: proposal.modelLabel,
+            promptPreview: proposal.promptPreview,
+            inputSummary: proposal.inputSummary,
+          });
+          return;
+        }
+        next = upsertApprovalMessage(next, buildApprovalPayload(proposal, "pending"));
       });
       return next;
     });
@@ -783,39 +826,54 @@ export const QalamAgent: React.FC<Props> = ({
     newProposals
       .filter((proposal) => approvalPreferences[proposal.action])
       .forEach((proposal) => {
-        setMessages((prev) => {
-          const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "executing" });
-          return [
-            ...withApproval,
-            buildAssistantChatMessage(
-              withApproval,
-              `已按你的默认偏好自动批准 ${proposal.nodeTitle} 的${proposal.action === "video_generation" ? "视频" : "图片"}生成请求，正在执行。`
-            ),
-          ];
-        });
+        setMessages((prev) =>
+          patchApprovalMessage(
+            prev,
+            proposal.nodeId,
+            {
+              status: "executing",
+              summary: `已按你的默认偏好自动批准，正在执行 ${proposal.nodeTitle} 的${proposal.action === "video_generation" ? "视频" : "图片"}生成。`,
+            },
+            {
+              appendStep: createApprovalStep(
+                "approved-auto",
+                "已自动批准",
+                "success",
+                "系统根据你的默认偏好自动通过了这次执行请求。"
+              ),
+            }
+          )
+        );
         void approveExecution(proposal.nodeId)
           .then(() => {
+            const result = summarizeApprovedExecutionResult(proposal.nodeId, proposal.nodeTitle);
             setMessages((prev) => {
-              const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "approved" });
-              return [
-                ...withApproval,
-                buildAssistantChatMessage(
-                  withApproval,
-                  summarizeApprovedExecutionResult(proposal.nodeId, proposal.nodeTitle)
-                ),
-              ];
+              return patchApprovalMessage(
+                prev,
+                proposal.nodeId,
+                { status: result.status, summary: result.summary },
+                {
+                  appendStep: createApprovalStep(
+                    result.status === "failed" ? "completed-error" : "completed-success",
+                    result.status === "failed" ? "执行失败" : "执行完成",
+                    result.status === "failed" ? "error" : "success",
+                    result.summary
+                  ),
+                }
+              );
             });
           })
           .catch((error: any) => {
+            const message = `已批准执行 ${proposal.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`;
             setMessages((prev) => {
-              const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "approved" });
-              return [
-                ...withApproval,
-                buildAssistantChatMessage(
-                  withApproval,
-                  `已批准执行 ${proposal.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`
-                ),
-              ];
+              return patchApprovalMessage(
+                prev,
+                proposal.nodeId,
+                { status: "failed", summary: message },
+                {
+                  appendStep: createApprovalStep("execution-error", "执行失败", "error", message),
+                }
+              );
             });
           });
       });
@@ -887,50 +945,81 @@ export const QalamAgent: React.FC<Props> = ({
     async (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => {
       if (choice === "reject_once") {
         dismissExecutionApproval(approval.nodeId);
-        setMessages((prev) => {
-          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "rejected" });
-          return [
-            ...withApproval,
-            buildAssistantChatMessage(withApproval, `已拒绝本次 ${approval.nodeTitle} 的执行请求。该节点配置会保留，但不会启动生成。`),
-          ];
-        });
+        setMessages((prev) =>
+          patchApprovalMessage(
+            prev,
+            approval.nodeId,
+            {
+              status: "rejected",
+              summary: `已拒绝本次 ${approval.nodeTitle} 的执行请求。该节点配置会保留，但不会启动生成。`,
+            },
+            {
+              appendStep: createApprovalStep(
+                "rejected",
+                "已拒绝",
+                "error",
+                "本次请求不会执行，你可以稍后调整节点配置后再重新发起。"
+              ),
+            }
+          )
+        );
         return;
       }
       if (choice === "approve_always") {
         setApprovalPreferences((prev) => ({ ...prev, [approval.action]: true }));
       }
-      setMessages((prev) => {
-        const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "executing" });
-        return [
-          ...withApproval,
-          buildAssistantChatMessage(
-            withApproval,
-            `已批准 ${approval.nodeTitle} 的${approval.action === "video_generation" ? "视频" : "图片"}生成请求，正在执行。`
-          ),
-        ];
-      });
+      setMessages((prev) =>
+        patchApprovalMessage(
+          prev,
+          approval.nodeId,
+          {
+            status: "executing",
+            summary:
+              choice === "approve_always"
+                ? `已批准本次请求，并记住你对${approval.action === "video_generation" ? "视频" : "图片"}生成的默认同意偏好。`
+                : `已批准 ${approval.nodeTitle} 的${approval.action === "video_generation" ? "视频" : "图片"}生成请求，正在执行。`,
+          },
+          {
+            appendStep: createApprovalStep(
+              choice === "approve_always" ? "approved-always" : "approved-once",
+              choice === "approve_always" ? "已批准并记住偏好" : "已批准执行",
+              "success",
+              choice === "approve_always"
+                ? "后续同类 Agent 生成请求会自动通过。"
+                : "本次请求已经通过，系统正在启动执行。"
+            ),
+          }
+        )
+      );
       try {
         await approveExecution(approval.nodeId);
+        const result = summarizeApprovedExecutionResult(approval.nodeId, approval.nodeTitle);
         setMessages((prev) => {
-          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "approved" });
-          return [
-            ...withApproval,
-            buildAssistantChatMessage(
-              withApproval,
-              summarizeApprovedExecutionResult(approval.nodeId, approval.nodeTitle)
-            ),
-          ];
+          return patchApprovalMessage(
+            prev,
+            approval.nodeId,
+            { status: result.status, summary: result.summary },
+            {
+              appendStep: createApprovalStep(
+                result.status === "failed" ? "completed-error" : "completed-success",
+                result.status === "failed" ? "执行失败" : "执行完成",
+                result.status === "failed" ? "error" : "success",
+                result.summary
+              ),
+            }
+          );
         });
       } catch (error: any) {
+        const message = `已批准执行 ${approval.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`;
         setMessages((prev) => {
-          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "approved" });
-          return [
-            ...withApproval,
-            buildAssistantChatMessage(
-              withApproval,
-              `已批准执行 ${approval.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`
-            ),
-          ];
+          return patchApprovalMessage(
+            prev,
+            approval.nodeId,
+            { status: "failed", summary: message },
+            {
+              appendStep: createApprovalStep("execution-error", "执行失败", "error", message),
+            }
+          );
         });
       }
     },

@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { create } from "zustand";
+import { TopRightHint } from "../../components/TopRightHint";
 
 type ToastType = "success" | "error" | "info" | "warning";
 
@@ -29,15 +30,21 @@ export const Toast: React.FC = () => {
   if (!message) return null;
 
   const colors: Record<ToastType, string> = {
-    success: "bg-emerald-600",
-    error: "bg-red-600",
-    info: "bg-blue-600",
-    warning: "bg-amber-600",
+    success: "#57c38c",
+    error: "#ff6b6b",
+    info: "#60a5fa",
+    warning: "#f0b44c",
   };
 
   return (
-    <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded text-white shadow-lg ${colors[type]}`}>
-      {message}
-    </div>
+    <TopRightHint className="z-[71]" widthClassName="w-[min(300px,calc(100vw-32px))]">
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: colors[type] }}
+        />
+        <div className="text-[12px] leading-5 text-[var(--app-text-primary)]">{message}</div>
+      </div>
+    </TopRightHint>
   );
 };

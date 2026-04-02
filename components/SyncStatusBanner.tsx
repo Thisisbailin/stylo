@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert, X } from "lucide-react";
 import { SyncState, SyncStatus } from "../types";
+import { TopRightHint } from "./TopRightHint";
 
 type Props = {
   syncState: SyncState;
@@ -120,68 +121,54 @@ export const SyncStatusBanner: React.FC<Props> = ({
       : "点击卡片查看同步详情";
 
   return (
-    <div className="pointer-events-none fixed right-5 top-5 z-[72] sm:right-6 sm:top-6">
-      <div
-        className="pointer-events-auto w-[min(360px,calc(100vw-24px))] rounded-[28px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent),var(--app-panel)] p-4 text-[var(--app-text-primary)] shadow-[0_24px_44px_-24px_rgba(0,0,0,0.48)] backdrop-blur-xl"
-        style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 44px -24px rgba(0,0,0,0.48)" }}
-      >
-        <div className="flex items-start justify-between gap-3">
+    <TopRightHint
+      onClick={onOpenDetails}
+      action={
+        onForceSync && canForceSync ? (
           <button
             type="button"
-            onClick={onOpenDetails}
-            className="group flex min-w-0 flex-1 items-start gap-3 text-left"
+            onClick={(event) => {
+              event.stopPropagation();
+              onForceSync();
+            }}
+            className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-1.5 text-[10px] font-semibold tracking-[0.02em] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] active:translate-y-px"
           >
-            <span
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-              style={{ color: meta.accent }}
-            >
-              <Icon className={`h-[18px] w-[18px] ${effectiveStatus === "syncing" || effectiveStatus === "loading" ? "animate-spin" : ""}`} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                Cloud Sync
-              </span>
-              <span className="mt-1 block text-[18px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
-                {meta.label}
-              </span>
-              <span className="mt-2 block text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                {summary}
-              </span>
-              <span className="mt-1.5 block text-[11px] leading-5 text-[var(--app-text-muted)] transition group-hover:text-[var(--app-text-secondary)]">
-                {metaLine}
-              </span>
-            </span>
+            立即同步
           </button>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-              aria-label="关闭同步提示"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        {onForceSync && canForceSync && (
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">
-              点击卡片查看详情
-            </div>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onForceSync();
-              }}
-              className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel-strong)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-primary)] transition hover:border-[var(--app-accent-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
-            >
-              Sync now
-            </button>
+        ) : null
+      }
+      dismiss={
+        onClose ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+            aria-label="关闭同步提示"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null
+      }
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)]"
+          style={{ color: meta.accent }}
+        >
+          <Icon className={`h-[14px] w-[14px] ${effectiveStatus === "syncing" || effectiveStatus === "loading" ? "animate-spin" : ""}`} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[13px] leading-5 text-[var(--app-text-primary)]">
+            {meta.label}，{summary}
           </div>
-        )}
+          <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
+            {metaLine}
+          </div>
+        </div>
       </div>
-    </div>
+    </TopRightHint>
   );
 };

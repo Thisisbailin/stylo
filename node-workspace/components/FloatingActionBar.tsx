@@ -690,7 +690,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                   <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
                     {nodePaletteMode === "panel"
                       ? "浏览项目面板类节点，整理剧本、分镜和身份信息。"
-                      : "浏览工作流节点，搭建输入、生成和引用链路。"}
+                      : "浏览 flow 节点，搭建输入、生成和引用链路。"}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
@@ -714,13 +714,13 @@ export const FloatingActionBar: React.FC<Props> = ({
                         : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
                     }`}
                   >
-                    Workflow
+                    Flow
                   </button>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panel" ? "Panel Nodes" : "Workflow Nodes"}</div>
+                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panel" ? "Panel Nodes" : "Flow Nodes"}</div>
                   <div className="text-[10px] text-[var(--app-text-muted)]">
                     {nodePaletteMode === "panel" ? `${panelActions.length} custom types` : `${nodeActions.length} actions`}
                   </div>
@@ -1040,33 +1040,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
               </button>
-              <div className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] p-1 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4)]">
-                <button
-                  type="button"
-                  onClick={() => setNodePaletteMode("panel")}
-                  className={`${compactTabClass} h-7 px-2.5 ${
-                    nodePaletteMode === "panel"
-                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                  title="Panel Nodes"
-                >
-                  Panel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNodePaletteMode("workflow")}
-                  className={`${compactTabClass} h-7 px-2.5 ${
-                    nodePaletteMode === "workflow"
-                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                  title="Workflow Nodes"
-                >
-                  Flow
-                </button>
-              </div>
-
               <button
                 onClick={(event) => {
                   setShowPalette(false);
@@ -1164,33 +1137,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
               </button>
-              <div className="inline-flex h-8 items-center gap-1 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] p-1 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4)]">
-                <button
-                  type="button"
-                  onClick={() => setNodePaletteMode("panel")}
-                  className={`${compactTabClass} h-6 px-2 ${
-                    nodePaletteMode === "panel"
-                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                  title="Panel Nodes"
-                >
-                  Panel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNodePaletteMode("workflow")}
-                  className={`${compactTabClass} h-6 px-2 ${
-                    nodePaletteMode === "workflow"
-                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                  title="Workflow Nodes"
-                >
-                  Flow
-                </button>
-              </div>
-
               <button
                 onClick={(event) => {
                   setShowPalette(false);

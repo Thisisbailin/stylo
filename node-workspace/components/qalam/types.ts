@@ -50,7 +50,14 @@ export type StatusPayload = {
 };
 export type StatusMessage = { role: "assistant"; kind: "status"; order?: number; statusCard: StatusPayload };
 export type ApprovalChoice = "approve_once" | "approve_always" | "reject_once";
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "executing" | "completed" | "failed";
+export type ApprovalStep = {
+  id: string;
+  label: string;
+  status: "info" | "running" | "success" | "error";
+  detail?: string;
+  at: number;
+};
 export type ApprovalPayload = {
   id: string;
   nodeId: string;
@@ -62,6 +69,8 @@ export type ApprovalPayload = {
   promptPreview?: string | null;
   inputSummary?: string[];
   status: ApprovalStatus;
+  summary?: string;
+  steps: ApprovalStep[];
   createdAt: number;
   updatedAt: number;
 };
