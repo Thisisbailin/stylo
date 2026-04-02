@@ -66,7 +66,7 @@ const PRESETS: Record<
     fadeInsetY: 34,
     fade: 18,
     edgeAlpha: 0.22,
-    curve: 3.4,
+    curve: 2.45,
   },
   mist: {
     width: 380,
@@ -78,7 +78,7 @@ const PRESETS: Record<
     fadeInsetY: 42,
     fade: 22,
     edgeAlpha: 0.3,
-    curve: 3.85,
+    curve: 2.7,
   },
   veil: {
     width: 400,
@@ -90,7 +90,7 @@ const PRESETS: Record<
     fadeInsetY: 54,
     fade: 28,
     edgeAlpha: 0.36,
-    curve: 4.2,
+    curve: 3.05,
   },
 };
 
@@ -143,22 +143,22 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const fieldMask = useMemo(() => {
     const maskWidth = width;
     const maskHeight = height;
-    const erodeX = Math.max(0, fadeInsetX * 0.5);
-    const erodeY = Math.max(0, fadeInsetY * 0.5);
-    const edgeBlur = Math.max(0.1, fade);
-    const path = buildSuperellipsePath(width, height, curve);
+    const outerPath = buildSuperellipsePath(width, height, curve);
+    const innerWidth = Math.max(12, width - fadeInsetX * 2);
+    const innerHeight = Math.max(12, height - fadeInsetY * 2);
+    const innerPath = buildSuperellipsePath(innerWidth, innerHeight, Math.max(2.1, curve - 0.25), fadeInsetX, fadeInsetY);
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${maskWidth}" height="${maskHeight}" viewBox="0 0 ${maskWidth} ${maskHeight}">
         <defs>
-          <filter id="melt" x="0" y="0" width="${maskWidth}" height="${maskHeight}" filterUnits="userSpaceOnUse">
-            <feMorphology in="SourceGraphic" operator="erode" radius="${erodeX} ${erodeY}" result="eroded"/>
-            <feGaussianBlur in="eroded" stdDeviation="${edgeBlur}" edgeMode="none" result="soft"/>
-            <feComponentTransfer in="soft" result="alpha">
-              <feFuncA type="gamma" amplitude="1" exponent="1.12" offset="0"/>
-            </feComponentTransfer>
-          </filter>
+          <mask id="glass-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="${maskWidth}" height="${maskHeight}">
+            <rect width="${maskWidth}" height="${maskHeight}" fill="black"/>
+            <path d="${outerPath}" fill="rgba(255,255,255,0.24)"/>
+            <path d="${innerPath}" fill="rgba(255,255,255,0.96)"/>
+          </mask>
         </defs>
-        <path d="${path}" fill="white" filter="url(#melt)"/>
+        <g mask="url(#glass-mask)">
+          <rect width="${maskWidth}" height="${maskHeight}" fill="white"/>
+        </g>
       </svg>
     `.trim();
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
@@ -307,7 +307,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           { label: "fade inset y", value: fadeInsetY, min: 0, max: 160, step: 1, set: setFadeInsetY },
           { label: "edge blur", value: fade, min: 0, max: 48, step: 1, set: setFade },
           { label: "edge", value: edgeAlpha, min: 0.04, max: 0.56, step: 0.01, set: setEdgeAlpha },
-          { label: "curve", value: curve, min: 2.2, max: 5.4, step: 0.05, set: setCurve },
+          { label: "curve", value: curve, min: 2, max: 4.2, step: 0.05, set: setCurve },
         ].map((item) => (
           <label key={item.label} className={`${controlChipClass} block px-3 py-2`}>
             <div className="mb-1.5 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-white/68">
