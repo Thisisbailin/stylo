@@ -652,13 +652,14 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.veil,
-      blur: 34,
-      fillAlpha: 0.072,
-      saturate: 126,
-      fadeInsetX: 28,
-      fadeInsetY: 34,
-      fade: 24,
-      edgeAlpha: 0.18,
+      blur: 3,
+      fillAlpha: 0,
+      saturate: 106,
+      fadeInsetX: 16,
+      fadeInsetY: 35,
+      fade: 22,
+      edgeAlpha: 0.04,
+      curve: GLASS_DIFFUSION_PRESETS.veil.curve,
     }),
     []
   );
@@ -759,19 +760,12 @@ export const QalamAgent: React.FC<Props> = ({
         >
           <div
             ref={messagePanelRef}
-            className="relative overflow-hidden rounded-[34px] border border-[var(--app-border)] bg-transparent shadow-[0_24px_56px_-34px_rgba(0,0,0,0.34)]"
+            className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[rgba(20,22,25,0.56)] shadow-[0_12px_30px_rgba(0,0,0,0.16)]"
             style={{
-              background: "color-mix(in srgb, var(--app-panel) 82%, transparent)",
-              boxShadow: "0 24px 56px -34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
+              backdropFilter: "saturate(106%)",
+              WebkitBackdropFilter: "saturate(106%)",
             }}
           >
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.028) 22%, rgba(255,255,255,0.016) 56%, rgba(255,255,255,0.05) 100%)",
-              }}
-            />
             <GlassDiffusionField
               className="pointer-events-none absolute inset-0"
               width={messagePanelSize.width}
@@ -787,7 +781,6 @@ export const QalamAgent: React.FC<Props> = ({
                 curve: qalamGlassConfig.curve,
               }}
             />
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0))]" />
             <div className="relative">
               <QalamChatContent
                 messages={messages}

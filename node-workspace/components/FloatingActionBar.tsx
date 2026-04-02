@@ -201,11 +201,10 @@ export const FloatingActionBar: React.FC<Props> = ({
       return {
         right: 24,
         bottom: 80,
-        width: Math.min(desiredWidth, window.innerWidth - 32),
-        maxWidth: `calc(100vw - 32px)`,
+        width: `min(${desiredWidth}px,calc(100vw-24px))`,
       };
     }
-    const viewportPadding = 16;
+    const viewportPadding = 12;
     const width = Math.min(desiredWidth, window.innerWidth - viewportPadding * 2);
     const left = Math.max(
       viewportPadding,
@@ -230,14 +229,17 @@ export const FloatingActionBar: React.FC<Props> = ({
     if (!showFileMenu && !showTemplate && !showPalette) return undefined;
 
     const updateAnchors = () => {
-      if (showFileMenu && accountButtonRef.current) {
-        setAccountAnchorRect(accountButtonRef.current.getBoundingClientRect());
+      if (showFileMenu && typeof document !== "undefined") {
+        const anchor = document.querySelector("[data-account-trigger]") as HTMLElement | null;
+        if (anchor) setAccountAnchorRect(anchor.getBoundingClientRect());
       }
-      if (showTemplate && projectButtonRef.current) {
-        setProjectAnchorRect(projectButtonRef.current.getBoundingClientRect());
+      if (showTemplate && typeof document !== "undefined") {
+        const anchor = document.querySelector("[data-project-trigger]") as HTMLElement | null;
+        if (anchor) setProjectAnchorRect(anchor.getBoundingClientRect());
       }
-      if (showPalette && nodesButtonRef.current) {
-        setNodesAnchorRect(nodesButtonRef.current.getBoundingClientRect());
+      if (showPalette && typeof document !== "undefined") {
+        const anchor = document.querySelector("[data-nodes-trigger]") as HTMLElement | null;
+        if (anchor) setNodesAnchorRect(anchor.getBoundingClientRect());
       }
     };
 
@@ -1063,6 +1065,7 @@ export const FloatingActionBar: React.FC<Props> = ({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 ref={accountButtonRef}
+                data-account-trigger
                 onClick={(event) => {
                   setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowFileMenu((v) => !v);
@@ -1079,6 +1082,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
               <button
                 ref={projectButtonRef}
+                data-project-trigger
                 onClick={(event) => {
                   setProjectAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowTemplate((v) => !v);
@@ -1112,6 +1116,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
               <button
                 ref={nodesButtonRef}
+                data-nodes-trigger
                 onClick={(event) => {
                   setNodesAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowPalette((v) => !v);
@@ -1159,6 +1164,7 @@ export const FloatingActionBar: React.FC<Props> = ({
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
               <button
                 ref={accountButtonRef}
+                data-account-trigger
                 onClick={(event) => {
                   setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowFileMenu((v) => !v);
@@ -1175,6 +1181,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
               <button
                 ref={projectButtonRef}
+                data-project-trigger
                 onClick={(event) => {
                   setProjectAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowTemplate((v) => !v);
@@ -1207,6 +1214,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
               <button
                 ref={nodesButtonRef}
+                data-nodes-trigger
                 onClick={(event) => {
                   setNodesAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowPalette((v) => !v);

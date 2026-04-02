@@ -344,6 +344,72 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
   return results;
 };
 
+const normalizeViduImages = async (sources: string[]) => {
+  const results: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("asset://")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-image/" }));
+      continue;
+    }
+    try {
+      const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: src, bucket: "assets" }),
+      });
+      if (downloadRes.ok) {
+        const downloadData = await downloadRes.json();
+        if (downloadData?.signedUrl) {
+          results.push(downloadData.signedUrl as string);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to resolve Vidu image URL", e);
+    }
+    results.push(src);
+  }
+  return results;
+};
+
+const normalizeViduVideos = async (sources: string[]) => {
+  const results: string[] = [];
+  for (const src of sources) {
+    if (!src) continue;
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("asset://")) {
+      results.push(src);
+      continue;
+    }
+    if (src.startsWith("data:") || src.startsWith("blob:")) {
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-video/" }));
+      continue;
+    }
+    try {
+      const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: src, bucket: "assets" }),
+      });
+      if (downloadRes.ok) {
+        const downloadData = await downloadRes.json();
+        if (downloadData?.signedUrl) {
+          results.push(downloadData.signedUrl as string);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to resolve Vidu video URL", e);
+    }
+    results.push(src);
+  }
+  return results;
+};
+
 const mapWanVideoSize = (aspectRatio?: string, resolution?: string) => {
   const ratio = (aspectRatio || "16:9").trim();
   const res = (resolution || "720P").toUpperCase();
@@ -970,9 +1036,17 @@ export const useNodeFlowExecutor = () => {
       return { ...subject, images: fallbackImg ? [fallbackImg] : defaultSubjectImages.slice(0, 1) };
     });
 
-    const nonSubjectImages = images.filter(Boolean).slice(0, 7);
+    const normalizedHydratedSubjects = await Promise.all(
+      hydratedSubjects.map(async (subject) => ({
+        ...subject,
+        images: Array.isArray(subject.images) ? await normalizeViduImages(subject.images.filter(Boolean).slice(0, 3)) : subject.images,
+        videos: Array.isArray(subject.videos) ? await normalizeViduVideos(subject.videos.filter(Boolean).slice(0, 1)) : subject.videos,
+      }))
+    );
 
-    if (normalizedMode === "subject" && hydratedSubjects.length === 0) {
+    const nonSubjectImages = await normalizeViduImages(images.filter(Boolean).slice(0, 7));
+
+    if (normalizedMode === "subject" && normalizedHydratedSubjects.length === 0) {
       store.updateNodeData(nodeId, {
         status: "error",
         error: "Q3 主体调用需要至少 1 个主体。请连接身份图片，或切换到非主体调用。",
@@ -998,7 +1072,7 @@ export const useNodeFlowExecutor = () => {
           subjectParams: {
             model,
             autoSubjects: data.autoSubjects === true,
-            subjects: hydratedSubjects,
+            subjects: normalizedHydratedSubjects,
             prompt: subjectPromptResult.prompt,
             duration: data.duration ?? 5,
             audio: audioEnabled,
