@@ -90,7 +90,6 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
   const addNode = (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => {
     const id = `${type}-${++nodeIdCounter}`;
     const defaultDimensions: Partial<Record<NodeType, { width: number; height?: number }>> = {
-      group: { width: 1100, height: 900 },
       scriptBoard: { width: 920 },
       storyboardBoard: { width: 1080 },
       identityCard: { width: 760 },

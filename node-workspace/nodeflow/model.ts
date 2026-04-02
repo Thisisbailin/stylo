@@ -127,11 +127,6 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         outputImage: data.outputImage ?? null,
         annotationCount: Array.isArray(data.annotations) ? data.annotations.length : 0,
       };
-    case "group":
-      return {
-        description: trimString(data.description) || "",
-        isExpanded: Boolean(data.isExpanded),
-      };
     case "shot":
       return {
         shotId: data.shotId ?? null,

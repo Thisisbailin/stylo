@@ -197,6 +197,18 @@ type ConversationState = {
 
 type ApprovalPreferenceState = Partial<Record<"image_generation" | "video_generation", true>>;
 
+const buildAssistantChatMessage = (
+  messages: Message[],
+  text: string,
+  meta?: ChatMessage["meta"]
+): ChatMessage => ({
+  role: "assistant",
+  kind: "chat",
+  text,
+  order: messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1,
+  meta,
+});
+
 const buildApprovalPayload = (
   proposal: NodeFlowExecutionApprovalProposal,
   status: ApprovalMessage["approval"]["status"]
@@ -252,6 +264,38 @@ const patchApprovalMessage = (
       },
     };
   });
+
+const summarizeApprovedExecutionResult = (nodeId: string, fallbackTitle: string) => {
+  const node = useNodeFlowStore.getState().getNodeById(nodeId);
+  if (!node) {
+    return `已批准执行 ${fallbackTitle}，但节点已不存在。请在 NodeFlow 中检查该任务是否被删除。`;
+  }
+  const title = String((node.data as Record<string, unknown>)?.title || fallbackTitle || node.type);
+  const status = String((node.data as Record<string, unknown>)?.status || "");
+  const error = String((node.data as Record<string, unknown>)?.error || "").trim();
+  const outputImage = String((node.data as Record<string, unknown>)?.outputImage || "").trim();
+  const videoUrl = String((node.data as Record<string, unknown>)?.videoUrl || "").trim();
+
+  if (status === "complete") {
+    if (outputImage) {
+      return `已批准并完成图片生成：${title}。结果已经写回节点，当前可以继续围绕这张图进行后续编辑或连线操作。`;
+    }
+    if (videoUrl) {
+      return `已批准并完成视频生成：${title}。结果已经写回节点，当前可以继续围绕这段视频进行后续编辑或串联工作流。`;
+    }
+    return `已批准并完成执行：${title}。结果已经写回对应节点。`;
+  }
+
+  if (status === "error") {
+    return `已批准执行 ${title}，但任务失败了。${error || "请检查该节点的配置、输入素材或服务端返回信息。"} `;
+  }
+
+  if (status === "loading") {
+    return `已批准执行 ${title}，任务已经启动，当前仍在处理中。结果会持续写回该节点。`;
+  }
+
+  return `已批准执行 ${title}。当前节点状态为 ${status || "unknown"}，请继续观察结果回写。`;
+};
 
 const buildConversationTitle = (messages: Message[]) => {
   const firstUser = messages.find((m) => m.role === "user" && (m as ChatMessage).text?.trim()) as ChatMessage | undefined;
@@ -739,10 +783,41 @@ export const QalamAgent: React.FC<Props> = ({
     newProposals
       .filter((proposal) => approvalPreferences[proposal.action])
       .forEach((proposal) => {
-        setMessages((prev) => patchApprovalMessage(prev, proposal.nodeId, { status: "executing" }));
-        void approveExecution(proposal.nodeId).then(() => {
-          setMessages((prev) => patchApprovalMessage(prev, proposal.nodeId, { status: "approved" }));
+        setMessages((prev) => {
+          const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "executing" });
+          return [
+            ...withApproval,
+            buildAssistantChatMessage(
+              withApproval,
+              `已按你的默认偏好自动批准 ${proposal.nodeTitle} 的${proposal.action === "video_generation" ? "视频" : "图片"}生成请求，正在执行。`
+            ),
+          ];
         });
+        void approveExecution(proposal.nodeId)
+          .then(() => {
+            setMessages((prev) => {
+              const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "approved" });
+              return [
+                ...withApproval,
+                buildAssistantChatMessage(
+                  withApproval,
+                  summarizeApprovedExecutionResult(proposal.nodeId, proposal.nodeTitle)
+                ),
+              ];
+            });
+          })
+          .catch((error: any) => {
+            setMessages((prev) => {
+              const withApproval = patchApprovalMessage(prev, proposal.nodeId, { status: "approved" });
+              return [
+                ...withApproval,
+                buildAssistantChatMessage(
+                  withApproval,
+                  `已批准执行 ${proposal.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`
+                ),
+              ];
+            });
+          });
       });
   }, [approvalPreferences, approveExecution, openPanel, pendingExecutionApprovals, setMessages]);
 
@@ -812,15 +887,52 @@ export const QalamAgent: React.FC<Props> = ({
     async (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => {
       if (choice === "reject_once") {
         dismissExecutionApproval(approval.nodeId);
-        setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "rejected" }));
+        setMessages((prev) => {
+          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "rejected" });
+          return [
+            ...withApproval,
+            buildAssistantChatMessage(withApproval, `已拒绝本次 ${approval.nodeTitle} 的执行请求。该节点配置会保留，但不会启动生成。`),
+          ];
+        });
         return;
       }
       if (choice === "approve_always") {
         setApprovalPreferences((prev) => ({ ...prev, [approval.action]: true }));
       }
-      setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "executing" }));
-      await approveExecution(approval.nodeId);
-      setMessages((prev) => patchApprovalMessage(prev, approval.nodeId, { status: "approved" }));
+      setMessages((prev) => {
+        const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "executing" });
+        return [
+          ...withApproval,
+          buildAssistantChatMessage(
+            withApproval,
+            `已批准 ${approval.nodeTitle} 的${approval.action === "video_generation" ? "视频" : "图片"}生成请求，正在执行。`
+          ),
+        ];
+      });
+      try {
+        await approveExecution(approval.nodeId);
+        setMessages((prev) => {
+          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "approved" });
+          return [
+            ...withApproval,
+            buildAssistantChatMessage(
+              withApproval,
+              summarizeApprovedExecutionResult(approval.nodeId, approval.nodeTitle)
+            ),
+          ];
+        });
+      } catch (error: any) {
+        setMessages((prev) => {
+          const withApproval = patchApprovalMessage(prev, approval.nodeId, { status: "approved" });
+          return [
+            ...withApproval,
+            buildAssistantChatMessage(
+              withApproval,
+              `已批准执行 ${approval.nodeTitle}，但执行过程中出现错误：${String(error?.message || error || "未知错误")}`
+            ),
+          ];
+        });
+      }
     },
     [approveExecution, dismissExecutionApproval, setApprovalPreferences, setMessages]
   );
@@ -829,18 +941,18 @@ export const QalamAgent: React.FC<Props> = ({
   const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
   const qalamGlassConfig = useMemo(
     () => ({
-      ...GLASS_DIFFUSION_PRESETS.veil,
-      blur: 20,
-      fillAlpha: 0.036,
-      saturate: 122,
-      fadeInsetX: 16,
-      fadeInsetY: 35,
-      fade: 22,
-      edgeAlpha: 0.06,
-      curve: GLASS_DIFFUSION_PRESETS.veil.curve,
+      ...GLASS_DIFFUSION_PRESETS.mist,
     }),
     []
   );
+  const qalamGlassBaseHeight = Math.min(
+    qalamVisibleMaxHeight,
+    Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)
+  );
+  const qalamGlassWidth = Math.max(0, Math.round(messagePanelSize.width * 1.2));
+  const qalamGlassHeight = Math.max(0, Math.round(qalamGlassBaseHeight * 1.2));
+  const qalamGlassOffsetX = Math.round((qalamGlassWidth - messagePanelSize.width) / -2);
+  const qalamGlassOffsetY = Math.round((qalamGlassHeight - qalamGlassBaseHeight) / -2);
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,
@@ -946,17 +1058,17 @@ export const QalamAgent: React.FC<Props> = ({
             <div
               className="pointer-events-none absolute z-0 transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
               style={{
-                left: 0,
-                top: 0,
-                width: Math.max(0, messagePanelSize.width),
-                height: Math.min(qalamVisibleMaxHeight, Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)),
+                left: qalamGlassOffsetX,
+                top: qalamGlassOffsetY,
+                width: qalamGlassWidth,
+                height: qalamGlassHeight,
                 opacity: effectiveCollapsed ? 0 : 1,
               }}
             >
               <GlassDiffusionField
                 className="absolute inset-0"
-                width={Math.max(0, messagePanelSize.width)}
-                height={Math.min(qalamVisibleMaxHeight, Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height))}
+                width={qalamGlassWidth}
+                height={qalamGlassHeight}
                 config={{
                   blur: qalamGlassConfig.blur,
                   fillAlpha: qalamGlassConfig.fillAlpha,

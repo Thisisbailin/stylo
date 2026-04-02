@@ -1,7 +1,6 @@
 import type { Connection } from "@xyflow/react";
 import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeFlowNodeStyle } from "../types";
 import { createNodeFlowLink, removeNodeFlowLink, toggleNodeFlowLinkPause } from "./links";
-import { normalizeNodeFlowGroupBindings } from "./state";
 import { ensureUniqueNodeRef, normalizeNodeRef, setNodeFlowRef } from "./refs";
 
 export type NodeFlowMutableState = {
@@ -79,7 +78,6 @@ export const connectNodesInNodeFlow = (
     ...state,
     revision: bumpRevision(state),
     links: nextLinks,
-    nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
   };
 };
 
@@ -92,7 +90,6 @@ export const removeLinkFromNodeFlow = (
     ...state,
     revision: bumpRevision(state),
     links: nextLinks,
-    nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
   };
 };
 

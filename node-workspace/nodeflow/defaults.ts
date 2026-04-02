@@ -1,7 +1,6 @@
 import type {
   AnnotationNodeData,
   AudioInputNodeData,
-  GroupNodeData,
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
@@ -209,11 +208,6 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         generateAudio: true,
         watermark: false,
       } as SeedanceVideoGenNodeData;
-    case "group":
-      return {
-        title: "Node Group",
-        isExpanded: true,
-      } as GroupNodeData;
     case "shot":
       return {
         shotId: "S-1",

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Compass, FileText, Sparkles } from "lucide-react";
 import type { Character, Episode, ProjectData } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -214,7 +215,7 @@ const compactText = (value: string, limit = 160) => {
   return clean.length > limit ? `${clean.slice(0, limit)}...` : clean;
 };
 
-const countDraftLength = (body: string) => body.replace(/\s+/g, "").length;
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const summarizeEpisode = (episode: WritingEpisode) =>
   compactText(episode.scenes.map((scene) => scene.body).find((body) => body.trim()) || "");
@@ -237,6 +238,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const [writingQalamResetToken, setWritingQalamResetToken] = useState(0);
   const [writingQalamSubmitRequest, setWritingQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
+  const [activeGuideIndex, setActiveGuideIndex] = useState(0);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
@@ -317,6 +319,13 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         window.clearTimeout(agentLineTimerRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveGuideIndex((current) => (current + 1) % 4);
+    }, 2600);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -715,12 +724,64 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   }, [agentLine, closeAgentLine]);
 
   const sceneCharacterCount = countCharactersInBody(selectedScene.body);
-  const selectedEpisodeWordCount = selectedEpisode.scenes.reduce((sum, scene) => sum + countDraftLength(scene.body), 0);
+  const selectedEpisodeLineCount = selectedEpisode.scenes.reduce(
+    (sum, scene) => sum + Math.max(1, scene.body.split(/\r?\n/).length),
+    0
+  );
   const totalSceneCount = parserPreview.reduce((sum, episode) => sum + (episode.scenes?.length || 0), 0);
   const isCompactLayout = viewportSize.width < 1180;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
+  const availableStageWidth = viewportSize.width - (isWritingQalamOpen && !isCompactLayout ? qalamPanelWidth + 104 : 72);
+  const targetPaperHeight = clamp(
+    viewportSize.height - (isCompactLayout ? (isWritingQalamOpen ? 420 : 360) : 320),
+    520,
+    820
+  );
+  const screenplayPaperWidth = Math.min(
+    clamp(
+      isCompactLayout ? availableStageWidth - 32 : availableStageWidth * 0.58,
+      isCompactLayout ? 330 : 520,
+      isCompactLayout ? 520 : 760
+    ),
+    Math.round(targetPaperHeight * (8.5 / 11))
+  );
+  const screenplayPaperHeight = Math.round(screenplayPaperWidth * (11 / 8.5));
+  const screenplayPageLines = 55;
+  const screenplayLineCount = useMemo(
+    () => Math.max(1, selectedScene.body.split(/\r?\n/).length),
+    [selectedScene.body]
+  );
+  const initialPaperOffset = screenplayPaperHeight * 0.5;
+  const revealLineStep = initialPaperOffset / screenplayPageLines;
+  const overflowLineStep = (screenplayPaperHeight * 0.48) / screenplayPageLines;
+  const paperRevealProgress = clamp((screenplayLineCount - 1) / screenplayPageLines, 0, 1);
+  const paperOverflowProgress = clamp((screenplayLineCount - screenplayPageLines) / screenplayPageLines, 0, 1);
+  const paperScale = paperRevealProgress < 1
+    ? 1.18 - paperRevealProgress * 0.18
+    : 1 + paperOverflowProgress * 0.16;
+  const paperTranslateY = paperRevealProgress < 1
+    ? initialPaperOffset - Math.min(screenplayLineCount - 1, screenplayPageLines) * revealLineStep
+    : -(screenplayLineCount - screenplayPageLines) * overflowLineStep;
+  const guideOpacity = clamp(1 - (screenplayLineCount - 1) / 14, 0, 1);
+  const pageMoodLabel =
+    screenplayLineCount <= 4
+      ? "开始落笔"
+      : screenplayLineCount < screenplayPageLines - 6
+        ? "正在写满这一页"
+        : screenplayLineCount <= screenplayPageLines + 6
+          ? "这一页已经够满"
+          : "可以自然进入下一页";
+  const writingGuides = useMemo(
+    () => [
+      { icon: Compass, title: "先落一行动作", text: "从动作或场景入口开始，纸会像打字机一样慢慢抬升。" },
+      { icon: Bot, title: "三次换行进入 Qalam", text: "继续输入时不再属于剧本，而是临时发给助手的一句对话。" },
+      { icon: FileText, title: "第 55 行左右满页", text: "完整露出标准页时，就接近编剧常见的一页节奏，适合自然切页。" },
+      { icon: Sparkles, title: "继续写会顶出上缘", text: "超过一页后，每多一行，纸继续按固定步长上移，像打字机继续送纸。" },
+    ],
+    []
+  );
   const paperShiftStyle = isWritingQalamOpen
     ? isCompactLayout
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
@@ -819,118 +880,168 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                           ref={(node) => {
                             episodeRefs.current[episode.id] = node;
                           }}
-                          className={`writing-paper relative h-full min-h-[620px] w-[min(760px,calc(100vw-2rem))] shrink-0 snap-center ${
+                          className={`writing-paper relative h-full min-h-[620px] shrink-0 snap-center ${
                             isActive ? "is-active" : ""
                           }`}
+                          style={{
+                            width: isActive
+                              ? `${Math.max(screenplayPaperWidth + 112, isCompactLayout ? Math.min(viewportSize.width - 32, 680) : 820)}px`
+                              : "360px",
+                          }}
                         >
                           <div className="writing-paper__perforation" aria-hidden="true" />
 
                           {isActive ? (
                             <div className="relative z-10 flex h-full flex-col px-6 pb-6 pt-6 md:px-7">
-                              <div className="flex flex-wrap items-start justify-between gap-4">
-                                <div className="min-w-0 flex-1">
-                                  <div className={titleClass}>Episode {selectedEpisode.id}</div>
-                                  <input
-                                    value={selectedEpisode.title}
-                                    onChange={(event) =>
-                                      patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
-                                    }
-                                    className="mt-2 w-full border-none bg-transparent p-0 text-[36px] font-semibold tracking-[-0.06em] text-[#1d1a17] outline-none placeholder:text-[#8d877f]"
-                                    placeholder={`第${selectedEpisode.id}集`}
-                                  />
-                                  <div className="mt-2 text-[12px] leading-6 text-[#736c63]">
-                                    当前共 {selectedEpisode.scenes.length} 场，正文 {selectedEpisodeWordCount} 字。
-                                  </div>
+                              <div
+                                className="writing-guide-band transition-opacity duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                                style={{
+                                  opacity: guideOpacity,
+                                  maxHeight: `${56 + guideOpacity * 92}px`,
+                                  marginBottom: `${8 + guideOpacity * 10}px`,
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div className="writing-guide-band__meta">
+                                  <span>Typewriter Motion</span>
+                                  <span>{pageMoodLabel}</span>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={addEpisode}
-                                  className="inline-flex h-10 items-center rounded-full border border-[#d8cbbb] bg-white/72 px-4 text-[12px] font-semibold text-[#574f46] transition hover:-translate-y-px hover:border-[#bfa58d]"
+                                <div className="writing-guide-band__window">
+                                  {writingGuides.map((guide, index) => {
+                                    const Icon = guide.icon;
+                                    const isGuideActive = index === activeGuideIndex;
+                                    return (
+                                      <div
+                                        key={guide.title}
+                                        className={`writing-guide-card ${isGuideActive ? "is-active" : ""}`}
+                                      >
+                                        <div className="writing-guide-card__icon">
+                                          <Icon size={16} />
+                                        </div>
+                                        <div>
+                                          <div className="writing-guide-card__title">{guide.title}</div>
+                                          <div className="writing-guide-card__text">{guide.text}</div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div className="writing-typewriter-viewport mt-4 flex-1">
+                                <div
+                                  className="writing-typewriter-sheet"
+                                  style={{
+                                    width: `${screenplayPaperWidth}px`,
+                                    minHeight: `${screenplayPaperHeight}px`,
+                                    height: `${screenplayPaperHeight}px`,
+                                    transform: `translate3d(0, ${paperTranslateY}px, 0) scale(${paperScale})`,
+                                  }}
                                 >
-                                  右侧新建一集
-                                </button>
-                              </div>
+                                  <div className="writing-typewriter-sheet__header">
+                                    <div className="min-w-0 flex-1">
+                                      <div className={titleClass}>Episode {selectedEpisode.id}</div>
+                                      <input
+                                        value={selectedEpisode.title}
+                                        onChange={(event) =>
+                                          patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
+                                        }
+                                        className="mt-2 w-full border-none bg-transparent p-0 text-[34px] font-semibold tracking-[-0.06em] text-[#1d1a17] outline-none placeholder:text-[#8d877f]"
+                                        placeholder={`第${selectedEpisode.id}集`}
+                                      />
+                                    </div>
+                                    <div className="writing-sheet-badge">
+                                      <span>{selectedEpisodeLineCount} 行</span>
+                                      <span>{pageMoodLabel}</span>
+                                    </div>
+                                  </div>
 
-                              <div className="mt-5 flex flex-wrap items-center gap-2">
-                                {selectedEpisode.scenes.map((scene, index) => (
-                                  <button
-                                    key={scene.id}
-                                    type="button"
-                                    onClick={() => setSelectedSceneId(scene.id)}
-                                    className={`inline-flex h-10 items-center rounded-full border px-4 text-[12px] font-semibold transition ${
-                                      scene.id === selectedScene.id
-                                        ? "border-[#a98967] bg-[#f0e0ca] text-[#3a2d20]"
-                                        : "border-[#decfbc] bg-[#fbf5ed] text-[#7b7065] hover:border-[#bda083] hover:text-[#4e4338]"
-                                    }`}
-                                  >
-                                    {index + 1}. {scene.title}
-                                  </button>
-                                ))}
-                                <button
-                                  type="button"
-                                  onClick={addScene}
-                                  className="inline-flex h-10 items-center rounded-full border border-dashed border-[#ceb79c] bg-transparent px-4 text-[12px] font-semibold text-[#7b6a58] transition hover:border-[#a98967] hover:text-[#473b31]"
-                                >
-                                  新建场次
-                                </button>
-                              </div>
+                                  <div className="writing-sheet-toolbar">
+                                    {selectedEpisode.scenes.map((scene, index) => (
+                                      <button
+                                        key={scene.id}
+                                        type="button"
+                                        onClick={() => setSelectedSceneId(scene.id)}
+                                        className={`inline-flex h-9 items-center rounded-full border px-3.5 text-[11px] font-semibold transition ${
+                                          scene.id === selectedScene.id
+                                            ? "border-[#a98967] bg-[#f0e0ca] text-[#3a2d20]"
+                                            : "border-[#decfbc] bg-[#fbf5ed] text-[#7b7065] hover:border-[#bda083] hover:text-[#4e4338]"
+                                        }`}
+                                      >
+                                        {index + 1}. {scene.title}
+                                      </button>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={addScene}
+                                      className="inline-flex h-9 items-center rounded-full border border-dashed border-[#ceb79c] px-3.5 text-[11px] font-semibold text-[#7b6a58] transition hover:border-[#a98967] hover:text-[#473b31]"
+                                    >
+                                      新建场次
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={addEpisode}
+                                      className="inline-flex h-9 items-center rounded-full border border-[#d8cbbb] bg-white/72 px-3.5 text-[11px] font-semibold text-[#574f46] transition hover:-translate-y-px hover:border-[#bfa58d]"
+                                    >
+                                      新建一集
+                                    </button>
+                                  </div>
 
-                              <div className="mt-5 grid grid-cols-1 gap-3 xl:grid-cols-[130px_minmax(0,1fr)_140px_140px]">
-                                <label className="space-y-2">
-                                  <div className={titleClass}>Scene ID</div>
-                                  <input
-                                    value={selectedScene.id}
-                                    onChange={(event) =>
-                                      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
-                                    }
-                                    className="w-full rounded-[18px] border border-[#decfbc] bg-[#fffaf2] px-4 py-3 text-[13px] text-[#2f2620] outline-none transition focus:border-[#b18d69]"
-                                  />
-                                </label>
-                                <label className="space-y-2">
-                                  <div className={titleClass}>Scene</div>
-                                  <input
-                                    value={selectedScene.title}
-                                    onChange={(event) =>
-                                      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
-                                    }
-                                    className="w-full rounded-[18px] border border-[#decfbc] bg-[#fffaf2] px-4 py-3 text-[13px] text-[#2f2620] outline-none transition focus:border-[#b18d69]"
-                                  />
-                                </label>
-                                <label className="space-y-2">
-                                  <div className={titleClass}>Time</div>
-                                  <input
-                                    value={selectedScene.timeOfDay}
-                                    onChange={(event) =>
-                                      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
-                                    }
-                                    className="w-full rounded-[18px] border border-[#decfbc] bg-[#fffaf2] px-4 py-3 text-[13px] text-[#2f2620] outline-none transition focus:border-[#b18d69]"
-                                  />
-                                </label>
-                                <label className="space-y-2">
-                                  <div className={titleClass}>Location</div>
-                                  <input
-                                    value={selectedScene.location}
-                                    onChange={(event) =>
-                                      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
-                                    }
-                                    className="w-full rounded-[18px] border border-[#decfbc] bg-[#fffaf2] px-4 py-3 text-[13px] text-[#2f2620] outline-none transition focus:border-[#b18d69]"
-                                  />
-                                </label>
-                              </div>
+                                  <div className="writing-sheet-meta">
+                                    <label className="writing-sheet-meta__field">
+                                      <span className={titleClass}>Scene ID</span>
+                                      <input
+                                        value={selectedScene.id}
+                                        onChange={(event) =>
+                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
+                                        }
+                                        className="writing-sheet-meta__input"
+                                      />
+                                    </label>
+                                    <label className="writing-sheet-meta__field">
+                                      <span className={titleClass}>Scene</span>
+                                      <input
+                                        value={selectedScene.title}
+                                        onChange={(event) =>
+                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
+                                        }
+                                        className="writing-sheet-meta__input"
+                                      />
+                                    </label>
+                                    <label className="writing-sheet-meta__field">
+                                      <span className={titleClass}>Time</span>
+                                      <input
+                                        value={selectedScene.timeOfDay}
+                                        onChange={(event) =>
+                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
+                                        }
+                                        className="writing-sheet-meta__input"
+                                      />
+                                    </label>
+                                    <label className="writing-sheet-meta__field">
+                                      <span className={titleClass}>Location</span>
+                                      <input
+                                        value={selectedScene.location}
+                                        onChange={(event) =>
+                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
+                                        }
+                                        className="writing-sheet-meta__input"
+                                      />
+                                    </label>
+                                    <label className="writing-sheet-meta__field writing-sheet-meta__field--wide">
+                                      <span className={titleClass}>Cast</span>
+                                      <input
+                                        value={selectedScene.castLine}
+                                        onChange={(event) =>
+                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
+                                        }
+                                        placeholder="人物：可留空，也可以只靠正文里的 @角色名"
+                                        className="writing-sheet-meta__input"
+                                      />
+                                    </label>
+                                  </div>
 
-                              <label className="mt-4 block space-y-2">
-                                <div className={titleClass}>Cast</div>
-                                <input
-                                  value={selectedScene.castLine}
-                                  onChange={(event) =>
-                                    patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
-                                  }
-                                  placeholder="人物：可留空，也可以只靠正文里的 @角色名"
-                                  className="w-full rounded-[18px] border border-[#decfbc] bg-[#fffaf2] px-4 py-3 text-[13px] text-[#2f2620] outline-none transition focus:border-[#b18d69] placeholder:text-[#9a8c80]"
-                                />
-                              </label>
-
-                              <div className="relative mt-5 flex-1 rounded-[30px] border border-[#dccab6] bg-[linear-gradient(180deg,rgba(255,252,246,0.94),rgba(247,240,231,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+                                  <div className="relative mt-5 flex-1 rounded-[30px] border border-[#dccab6] bg-[linear-gradient(180deg,rgba(255,252,246,0.94),rgba(247,240,231,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
                                 <div
                                   ref={highlightRef}
                                   aria-hidden="true"
@@ -1024,28 +1135,28 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                     </div>
                                   </div>
                                 ) : null}
-                              </div>
 
-                              <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-3">
-                                <div className="rounded-[22px] border border-[#decfbc] bg-[#fffaf3] px-4 py-4">
-                                  <div className={titleClass}>Preview</div>
-                                  <div className="mt-3 line-clamp-5 whitespace-pre-wrap text-[12px] leading-7 text-[#5e554c]">
-                                    {renderBoundText(compactText(selectedScenePreview, 220))}
+                                  <div className="writing-sheet-footer">
+                                    <div className="writing-sheet-footer__item">
+                                      <span className={titleClass}>Preview</span>
+                                      <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[11px] leading-6 text-[#5e554c]">
+                                        {renderBoundText(compactText(selectedScenePreview, 110))}
+                                      </div>
+                                    </div>
+                                    <div className="writing-sheet-footer__item">
+                                      <span className={titleClass}>Format</span>
+                                      <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
+                                        {parserIssues.length ? compactText(parserIssues[0], 72) : "格式稳定。"}
+                                      </div>
+                                    </div>
+                                    <div className="writing-sheet-footer__item">
+                                      <span className={titleClass}>Mentions</span>
+                                      <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
+                                        {sceneCharacterCount.length ? sceneCharacterCount.join("、") : "未引用角色"}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="rounded-[22px] border border-[#decfbc] bg-[#fffaf3] px-4 py-4">
-                                  <div className={titleClass}>Format</div>
-                                  <div className="mt-3 text-[12px] leading-7 text-[#5e554c]">
-                                    {parserIssues.length
-                                      ? compactText(parserIssues[0], 120)
-                                      : "当前写法可以稳定导出为现有解析器可识别的标准剧本格式。"}
-                                  </div>
-                                </div>
-                                <div className="rounded-[22px] border border-[#decfbc] bg-[#fffaf3] px-4 py-4">
-                                  <div className={titleClass}>Mentions</div>
-                                  <div className="mt-3 text-[12px] leading-7 text-[#5e554c]">
-                                    {sceneCharacterCount.length ? sceneCharacterCount.join("、") : "本场暂未引用角色。"}
-                                  </div>
                                 </div>
                               </div>
                             </div>

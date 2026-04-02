@@ -15,7 +15,7 @@ import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection, nodeSupportsHandle } from "../utils/handles";
-import { NodeFlowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
+import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
 import {
   AudioInputNode,
@@ -25,7 +25,6 @@ import {
   ScriptBoardNode,
   StoryboardBoardNode,
   IdentityCardNode,
-  GroupNode,
   ImageGenNode,
   NanoBananaImageGenNode,
   WanImageGenNode,
@@ -49,7 +48,6 @@ import { ProjectData } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
-import { getSuggestedCanvasOrigin } from "../utils/episodeShotWorkflow";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
 
 const nodeTypes: NodeTypes = {
@@ -62,7 +60,6 @@ const nodeTypes: NodeTypes = {
   scriptBoard: ScriptBoardNode,
   storyboardBoard: StoryboardBoardNode,
   identityCard: IdentityCardNode,
-  group: GroupNode,
   imageGen: ImageGenNode,
   nanoBananaImageGen: NanoBananaImageGenNode,
   wanImageGen: WanImageGenNode,
@@ -176,12 +173,6 @@ type ThemePreset = {
   patternSoft: string;
   nodeBgGradient: string;
   nodeHeaderBg: string;
-  groupBg: string;
-  groupBgSelected: string;
-  groupBorder: string;
-  groupBorderStrong: string;
-  groupHighlight: string;
-  groupShadow: string;
   scheme: "light" | "dark";
 };
 
@@ -210,12 +201,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(255, 255, 255, 0.022)",
     nodeBgGradient: "linear-gradient(160deg, rgba(44, 44, 46, 0.97), rgba(28, 28, 30, 0.98))",
     nodeHeaderBg: "rgba(255, 255, 255, 0.02)",
-    groupBg: "rgba(36, 36, 38, 0.64)",
-    groupBgSelected: "rgba(50, 50, 52, 0.78)",
-    groupBorder: "rgba(255, 255, 255, 0.1)",
-    groupBorderStrong: "rgba(255, 255, 255, 0.18)",
-    groupHighlight: "rgba(255, 255, 255, 0.06)",
-    groupShadow: "0 22px 52px rgba(8, 8, 10, 0.28)",
     scheme: "dark",
   },
   light: {
@@ -242,12 +227,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(60, 60, 67, 0.025)",
     nodeBgGradient: "linear-gradient(160deg, rgba(255, 255, 255, 0.99), rgba(245, 245, 247, 0.97))",
     nodeHeaderBg: "rgba(60, 60, 67, 0.03)",
-    groupBg: "rgba(60, 60, 67, 0.05)",
-    groupBgSelected: "rgba(60, 60, 67, 0.08)",
-    groupBorder: "rgba(60, 60, 67, 0.12)",
-    groupBorderStrong: "rgba(60, 60, 67, 0.18)",
-    groupHighlight: "rgba(255, 255, 255, 0.8)",
-    groupShadow: "0 18px 40px rgba(28, 28, 30, 0.08)",
     scheme: "light",
   },
   sand: {
@@ -274,12 +253,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(230, 150, 12, 0.055)",
     nodeBgGradient: "linear-gradient(160deg, rgba(255, 251, 242, 0.99), rgba(255, 234, 193, 0.96))",
     nodeHeaderBg: "rgba(230, 150, 12, 0.05)",
-    groupBg: "rgba(230, 150, 12, 0.07)",
-    groupBgSelected: "rgba(230, 150, 12, 0.13)",
-    groupBorder: "rgba(201, 118, 0, 0.14)",
-    groupBorderStrong: "rgba(201, 118, 0, 0.24)",
-    groupHighlight: "rgba(255, 255, 255, 0.62)",
-    groupShadow: "0 20px 44px rgba(126, 72, 0, 0.1)",
     scheme: "light",
   },
   creative: {
@@ -306,12 +279,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(18, 196, 102, 0.055)",
     nodeBgGradient: "linear-gradient(160deg, rgba(250, 255, 252, 0.99), rgba(223, 255, 235, 0.96))",
     nodeHeaderBg: "rgba(18, 196, 102, 0.05)",
-    groupBg: "rgba(18, 196, 102, 0.07)",
-    groupBgSelected: "rgba(18, 196, 102, 0.13)",
-    groupBorder: "rgba(0, 151, 74, 0.14)",
-    groupBorderStrong: "rgba(0, 151, 74, 0.24)",
-    groupHighlight: "rgba(255, 255, 255, 0.64)",
-    groupShadow: "0 20px 44px rgba(8, 88, 48, 0.08)",
     scheme: "light",
   },
   calm: {
@@ -338,12 +305,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(34, 149, 255, 0.055)",
     nodeBgGradient: "linear-gradient(160deg, rgba(250, 253, 255, 0.99), rgba(220, 241, 255, 0.96))",
     nodeHeaderBg: "rgba(34, 149, 255, 0.05)",
-    groupBg: "rgba(34, 149, 255, 0.07)",
-    groupBgSelected: "rgba(34, 149, 255, 0.13)",
-    groupBorder: "rgba(0, 107, 204, 0.14)",
-    groupBorderStrong: "rgba(0, 107, 204, 0.24)",
-    groupHighlight: "rgba(255, 255, 255, 0.66)",
-    groupShadow: "0 20px 44px rgba(0, 73, 143, 0.08)",
     scheme: "light",
   },
   lively: {
@@ -370,12 +331,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
     patternSoft: "rgba(255, 96, 156, 0.055)",
     nodeBgGradient: "linear-gradient(160deg, rgba(255, 250, 252, 0.99), rgba(255, 226, 238, 0.96))",
     nodeHeaderBg: "rgba(255, 96, 156, 0.05)",
-    groupBg: "rgba(255, 96, 156, 0.07)",
-    groupBgSelected: "rgba(255, 96, 156, 0.13)",
-    groupBorder: "rgba(214, 56, 120, 0.14)",
-    groupBorderStrong: "rgba(214, 56, 120, 0.24)",
-    groupHighlight: "rgba(255, 255, 255, 0.64)",
-    groupShadow: "0 20px 44px rgba(140, 28, 79, 0.08)",
     scheme: "light",
   },
 };
@@ -503,10 +458,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     setViewportState,
     readingMode,
     setReadingMode,
-    saveGroupTemplate,
-    applyGroupTemplate,
-    deleteGroupTemplate,
-    groupTemplates,
     viewport,
     addToGlobalHistory,
     globalAssetHistory,
@@ -797,52 +748,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     e.target.value = "";
   };
 
-  const getSelectedGroup = useCallback(
-    () => nodes.find((node) => node.selected && node.type === "group"),
-    [nodes]
-  );
-
-  const handleCreateTemplate = useCallback(() => {
-    const selectedGroup = getSelectedGroup();
-    if (!selectedGroup) {
-      showToast("请先选中一个 Group", "warning");
-      return;
-    }
-    const defaultName = (selectedGroup.data as GroupNodeData).title || "Group Template";
-    const name = window.prompt("模板名称", defaultName);
-    if (!name || !name.trim()) return;
-    const result = saveGroupTemplate(selectedGroup.id, name.trim());
-    if (!result.ok) {
-      showToast(result.error || "创建模板失败", "error");
-      return;
-    }
-    showToast("已保存为模板", "success");
-  }, [getSelectedGroup, saveGroupTemplate, showToast]);
-
-  const handleLoadTemplate = useCallback(
-    (templateId: string) => {
-      const center = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-      const flowPos = screenToFlowPosition(center);
-      const result = applyGroupTemplate(templateId, flowPos, { expectedRevision: revision });
-      if (!result.ok) {
-        showToast(result.error || "加载模板失败", "error");
-        return;
-      }
-      showToast("模板已加载", "success");
-    },
-    [applyGroupTemplate, revision, screenToFlowPosition, showToast]
-  );
-
-  const handleDeleteTemplate = useCallback(
-    (templateId: string) => {
-      const confirmed = window.confirm("确认删除该模板？");
-      if (!confirmed) return;
-      deleteGroupTemplate(templateId);
-      showToast("模板已删除", "success");
-    },
-    [deleteGroupTemplate, showToast]
-  );
-
   const runAll = async () => {
     let started = 0;
     for (const n of nodes) {
@@ -862,14 +767,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     }
     alert(started > 0 ? `已启动 ${started} 个生成节点。` : "当前没有可执行的生成节点。");
   };
-
-  const getTemplateOrigin = useCallback(() => {
-    return getSuggestedCanvasOrigin(nodes);
-  }, [nodes]);
-
-  const focusTemplate = useCallback((origin: XYPosition, zoom = 0.7) => {
-    setViewport({ x: -origin.x + 80, y: -origin.y + 80, zoom }, { duration: 800 });
-  }, [setViewport]);
 
   const handleZoomChange = useCallback(
     (value: number) => {
@@ -893,7 +790,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
   const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
-  const selectedGroup = getSelectedGroup();
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const patternDefinitions = useMemo(
@@ -962,12 +858,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       "node-shadow": activeTheme.nodeShadow,
       "node-shadow-strong": activeTheme.nodeShadowStrong,
       "node-header-bg": activeTheme.nodeHeaderBg,
-      "group-bg": activeTheme.groupBg,
-      "group-bg-selected": activeTheme.groupBgSelected,
-      "group-border": activeTheme.groupBorder,
-      "group-border-strong": activeTheme.groupBorderStrong,
-      "group-highlight": activeTheme.groupHighlight,
-      "group-shadow": activeTheme.groupShadow,
       "qalam-wordmark-glow": activeTheme.accentSoft,
     };
     Object.entries(mapping).forEach(([key, value]) => {
@@ -1219,11 +1109,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onImport={() => fileInputRef.current?.click()}
               onExport={() => exportNodeFlow()}
               onRun={runAll}
-              templates={groupTemplates}
-              canCreateTemplate={!!selectedGroup}
-              onCreateTemplate={handleCreateTemplate}
-              onLoadTemplate={handleLoadTemplate}
-              onDeleteTemplate={handleDeleteTemplate}
               floating={false}
               onOpenModule={onOpenModule}
               onExportCsv={onExportCsv}

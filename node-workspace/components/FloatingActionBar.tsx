@@ -27,7 +27,6 @@ import {
   Share,
   ScanSearch,
 } from "lucide-react";
-import { NodeFlowTemplate } from "../types";
 import type { ModuleKey } from "./ModuleBar";
 
 type AccountInfo = {
@@ -62,11 +61,6 @@ type Props = {
   onExportXls?: () => void;
   onExportUnderstandingJson?: () => void;
   onRun: () => void;
-  templates: NodeFlowTemplate[];
-  canCreateTemplate: boolean;
-  onCreateTemplate: () => void;
-  onLoadTemplate: (templateId: string) => void;
-  onDeleteTemplate: (templateId: string) => void;
   floating?: boolean;
   onOpenModule?: (key: ModuleKey) => void;
   onOpenStats?: () => void;
@@ -119,11 +113,6 @@ export const FloatingActionBar: React.FC<Props> = ({
   onExportXls,
   onExportUnderstandingJson,
   onRun,
-  templates,
-  canCreateTemplate,
-  onCreateTemplate,
-  onLoadTemplate,
-  onDeleteTemplate,
   floating = true,
   onOpenModule,
   onOpenStats,

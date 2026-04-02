@@ -17,7 +17,6 @@ import {
   GlobalAssetType,
   NodeFlowContextSnapshot,
   NodeFlowViewport,
-  NodeFlowTemplate,
   NodeFlowNodeStyle,
 } from "../types";
 import type { ProjectRoleIdentity } from "../../types";
@@ -39,13 +38,7 @@ import {
   toggleNodeFlowLinkPauseCommand,
 } from "../nodeflow/commands";
 import { type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/reactflow";
-import { loadNodeFlowTemplates, persistNodeFlowTemplates } from "../nodeflow/templates";
-import {
-  applyTemplateToNodeFlow,
-  buildTemplateFromGroup,
-  buildViduReferenceDemoState,
-  createGroupFromSelectionState,
-} from "../nodeflow/compositions";
+import { buildViduReferenceDemoState } from "../nodeflow/compositions";
 import {
   buildNodeFlowFile,
   downloadNodeFlowFile,
@@ -111,7 +104,6 @@ interface NodeFlowStore {
   globalAssetHistory: GlobalAssetHistoryItem[];
   viewport: NodeFlowViewport | null;
   nodeDefaults: NodeFlowNodeDefaults;
-  groupTemplates: NodeFlowTemplate[];
   globalStyleGuide?: string;
   availableImageModels: string[];
   availableVideoModels: string[];
@@ -159,10 +151,6 @@ interface NodeFlowStore {
   exportNodeFlow: (name?: string) => void;
   importNodeFlow: (nodeFlow: NodeFlowFile) => void;
   clearNodeFlow: () => void;
-  saveGroupTemplate: (groupId: string, name?: string) => { ok: boolean; error?: string };
-  deleteGroupTemplate: (templateId: string) => void;
-  applyGroupTemplate: (templateId: string, offset: XYPosition, options?: RevisionGuardOptions) => { ok: boolean; error?: string };
-  createGroupFromSelection: (options?: RevisionGuardOptions) => { ok: boolean; error?: string };
   applyViduReferenceDemo: (offset?: XYPosition, options?: RevisionGuardOptions) => { ok: boolean; error?: string };
 
   // Helpers
@@ -219,7 +207,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   ...createEmptyNodeFlowCanvasState(),
   ...createEmptyNodeFlowCollaborationState(),
   ...createEmptyNodeFlowApprovalState(),
-  groupTemplates: loadNodeFlowTemplates(),
   globalStyleGuide: undefined,
   availableImageModels: [],
   availableVideoModels: [],
@@ -452,50 +439,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     });
   },
 
-  saveGroupTemplate: (groupId, name) => {
-    const { revision, nodes, links, linkStyle, groupTemplates } = get();
-    const template = buildTemplateFromGroup({
-      groupId,
-      revision,
-      nodes,
-      links,
-      linkStyle,
-      name,
-    });
-    if (!template) {
-      return { ok: false, error: "未找到可保存的 Group 节点。" };
-    }
-    const nextTemplates = [...groupTemplates, template];
-    persistNodeFlowTemplates(nextTemplates);
-    set({ groupTemplates: nextTemplates });
-    return { ok: true };
-  },
-
-  deleteGroupTemplate: (templateId) => {
-    const { groupTemplates } = get();
-    const nextTemplates = groupTemplates.filter((tpl) => tpl.id !== templateId);
-    persistNodeFlowTemplates(nextTemplates);
-    set({ groupTemplates: nextTemplates });
-  },
-
-  applyGroupTemplate: (templateId, offset, options) => {
-    const { groupTemplates, nodes, links, activeView, revision } = get();
-    assertExpectedRevision(revision, options?.expectedRevision);
-    const template = groupTemplates.find((tpl) => tpl.id === templateId);
-    if (!template) return { ok: false, error: "模板不存在或已被删除。" };
-    if (!template.nodeFlow.nodes.length) return { ok: false, error: "模板内容为空。" };
-    set((state) =>
-      applyTemplateToNodeFlow({
-        template,
-        offset,
-        activeView,
-        state,
-        allocateNodeId: (nodeType) => `${nodeType}-${++nodeIdCounter}`,
-      })
-    );
-    return { ok: true };
-  },
-
   applyViduReferenceDemo: (offset = { x: 120, y: 120 }, options) => {
     const { activeView, revision } = get();
     assertExpectedRevision(revision, options?.expectedRevision);
@@ -507,18 +450,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
         allocateNodeId: (nodeType) => `${nodeType}-${++nodeIdCounter}`,
       })
     );
-    return { ok: true };
-  },
-
-  createGroupFromSelection: (options) => {
-    const { revision } = get();
-    assertExpectedRevision(revision, options?.expectedRevision);
-    const result = createGroupFromSelectionState({
-      state: get(),
-      allocateNodeId: (nodeType) => `${nodeType}-${++nodeIdCounter}`,
-    });
-    if (!result.ok) return result;
-    set(result.state);
     return { ok: true };
   },
 

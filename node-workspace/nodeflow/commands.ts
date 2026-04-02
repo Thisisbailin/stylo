@@ -15,7 +15,6 @@ import {
 import { createDefaultNodeFlowNodeData } from "./defaults";
 import { applyNodeFlowNodeChanges } from "./reactflow";
 import { applyNodeFlowLinkChanges } from "./links";
-import { normalizeNodeFlowGroupBindings } from "./state";
 
 type CommandState = NodeFlowMutableState & {
   activeView?: string | null;
@@ -24,7 +23,6 @@ type CommandState = NodeFlowMutableState & {
 type AllocateNodeId = (nodeType: NodeType) => string;
 
 const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
-  group: { width: 1100, height: 900 },
   knowledge: { width: 360, height: 260 },
   scriptBoard: { width: 920 },
   storyboardBoard: { width: 1080 },
@@ -49,17 +47,10 @@ export const createNodeFlowNodeCommand = ({
   extraData?: Partial<NodeFlowNodeData>;
   allocateNodeId: AllocateNodeId;
 }) => {
-  let effectiveParentId = parentId;
   let effectiveExtraData = { ...extraData } as Partial<NodeFlowNodeData> & { view?: string };
 
   if (state.activeView) {
     effectiveExtraData.view = state.activeView;
-    if (!effectiveParentId) {
-      const matchingGroup = state.nodes.find(
-        (node) => node.type === "group" && (node.data as { view?: string }).view === state.activeView
-      );
-      if (matchingGroup) effectiveParentId = matchingGroup.id;
-    }
   }
 
   const dim = DEFAULT_NODE_DIMENSIONS[type];
@@ -73,8 +64,6 @@ export const createNodeFlowNodeCommand = ({
     id: nodeId,
     type,
     position,
-    parentId: effectiveParentId,
-    extent: effectiveParentId ? "parent" : undefined,
     data: setNodeFlowRef(
       { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as Record<string, unknown>,
       uniqueRef
@@ -104,10 +93,6 @@ export const pasteClipboardIntoNodeFlow = ({
     idMapping.set(node.id, allocateNodeId(node.type));
   });
 
-  const matchingGroup = state.activeView
-    ? state.nodes.find((node) => node.type === "group" && (node.data as { view?: string }).view === state.activeView)
-    : null;
-
   const stagedNodes: NodeFlowNode[] = [];
   const newNodes: NodeFlowNode[] = clipboard.nodes.map((node) => {
     const newData = { ...node.data } as NodeFlowNodeData & { view?: string };
@@ -121,8 +106,6 @@ export const pasteClipboardIntoNodeFlow = ({
       id: idMapping.get(node.id)!,
       position: { x: node.position.x + offset.x, y: node.position.y + offset.y },
       selected: true,
-      parentId: node.parentId || matchingGroup?.id,
-      extent: node.parentId || matchingGroup?.id ? "parent" : undefined,
       data: setNodeFlowRef(newData as Record<string, unknown>, uniqueRef) as NodeFlowNodeData,
     };
     stagedNodes.push(nextNode);
@@ -218,7 +201,7 @@ export const applyNodeFlowCanvasNodeChangesCommand = ({
     state: {
       ...state,
       revision: state.revision + 1,
-      nodes: normalizeNodeFlowGroupBindings(nextNodes, state.links),
+      nodes: nextNodes,
     },
   };
 };
@@ -236,7 +219,6 @@ export const applyNodeFlowCanvasLinkChangesCommand = ({
       ...state,
       revision: state.revision + 1,
       links: nextLinks,
-      nodes: normalizeNodeFlowGroupBindings(state.nodes, nextLinks),
     },
   };
 };

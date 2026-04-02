@@ -209,7 +209,6 @@ export const createTextNodeSchema = z.object({
 export const createNodeWorkflowSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
-  wrapInGroup: z.boolean().optional(),
   parentId: z.string().optional(),
   layout: z.enum(["horizontal", "vertical", "fanout"]).optional(),
   originX: z.number().optional(),

@@ -81,7 +81,7 @@ const editProjectResourceParameters = {
     },
     parent_id: {
       type: "string",
-      description: "Optional parent group id for a newly created knowledge node.",
+      description: "Optional parent node id for a newly created knowledge node.",
     },
   },
   additionalProperties: false,

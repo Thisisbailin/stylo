@@ -31,12 +31,6 @@
   --node-shadow-strong: var(--app-shadow-strong);
   --node-header-bg: var(--app-panel-muted);
   --node-card-width: 320px;
-  --group-bg: rgba(36, 36, 38, 0.64);
-  --group-bg-selected: rgba(50, 50, 52, 0.78);
-  --group-border: rgba(255, 255, 255, 0.1);
-  --group-border-strong: rgba(255, 255, 255, 0.18);
-  --group-highlight: rgba(255, 255, 255, 0.06);
-  --group-shadow: 0 22px 52px rgba(8, 8, 10, 0.28);
 }
 
 /* Base canvas */
@@ -61,47 +55,6 @@
   transform-style: flat;
   backface-visibility: visible;
   will-change: auto;
-}
-
-.react-flow__node-group {
-  z-index: 0 !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  border-radius: 32px;
-}
-
-.react-flow__node-group > div {
-  border-radius: 32px;
-}
-
-.group-surface {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), transparent), var(--group-bg);
-  border: 1px solid var(--group-border);
-  box-shadow: var(--group-shadow);
-  backdrop-filter: none;
-  position: relative;
-}
-
-.node-flow-canvas[data-zoomed="true"] .group-surface {
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
-.group-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 32px;
-  border: 1px solid transparent;
-  box-shadow: inset 0 1px 0 var(--group-highlight);
-  pointer-events: none;
-}
-
-.group-surface[data-selected="true"] {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), transparent), var(--group-bg-selected);
-  border-color: var(--group-border-strong);
-  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(59, 130, 246, 0.12);
 }
 
 /* Connection drop menu */
@@ -376,7 +329,7 @@ body.qalam-resizing * {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.react-flow__node:not(.react-flow__node-group) {
+.react-flow__node {
   z-index: 2 !important;
   width: var(--node-card-width);
   min-width: var(--node-card-width);
@@ -976,6 +929,9 @@ body.qalam-resizing * {
 }
 
 .writing-paper.is-active {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 42%),
+    linear-gradient(180deg, rgba(15, 18, 22, 0.26), rgba(9, 12, 16, 0.18));
   transform: translateY(-4px);
   box-shadow:
     0 38px 90px rgba(14, 10, 8, 0.24),
@@ -984,6 +940,10 @@ body.qalam-resizing * {
 
 .writing-paper:not(.is-active) {
   filter: saturate(0.94);
+}
+
+.writing-paper.is-active .writing-paper__perforation {
+  opacity: 0.22;
 }
 
 .writing-paper--add {
@@ -1013,6 +973,225 @@ body.qalam-resizing * {
   background-position: right top, 8px 0;
   opacity: 0.84;
   pointer-events: none;
+}
+
+.writing-guide-band {
+  display: grid;
+  gap: 14px;
+}
+
+.writing-guide-band__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(223, 227, 232, 0.58);
+}
+
+.writing-guide-band__window {
+  position: relative;
+  min-height: 112px;
+}
+
+.writing-guide-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
+    rgba(10, 13, 16, 0.28);
+  padding: 18px 18px 16px;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.writing-guide-card.is-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.writing-guide-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  width: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 249, 240, 0.14), rgba(255, 249, 240, 0.04));
+  color: rgba(255, 244, 230, 0.82);
+}
+
+.writing-guide-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: rgba(255, 251, 246, 0.96);
+}
+
+.writing-guide-card__text {
+  margin-top: 6px;
+  max-width: 42ch;
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(214, 220, 228, 0.72);
+}
+
+.writing-typewriter-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+}
+
+.writing-typewriter-viewport::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 34%;
+  background: linear-gradient(180deg, rgba(7, 10, 14, 0.12), transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.writing-typewriter-viewport::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 18%;
+  background: linear-gradient(180deg, transparent, rgba(7, 10, 14, 0.08));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.writing-typewriter-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  border: 1px solid rgba(219, 201, 179, 0.88);
+  border-radius: 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(245, 236, 224, 0.98)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(125, 104, 82, 0.02) 0px,
+      rgba(125, 104, 82, 0.02) 36px,
+      rgba(125, 104, 82, 0.07) 36px,
+      rgba(125, 104, 82, 0.07) 37px
+    );
+  box-shadow:
+    0 30px 70px rgba(20, 12, 6, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transform-origin: center top;
+  transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.writing-typewriter-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 24px;
+  border: 1px solid rgba(188, 166, 141, 0.16);
+  pointer-events: none;
+}
+
+.writing-typewriter-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 34px 34px 0;
+}
+
+.writing-sheet-badge {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  padding-top: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(111, 96, 82, 0.78);
+}
+
+.writing-sheet-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 20px 34px 0;
+}
+
+.writing-sheet-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 34px 0;
+}
+
+.writing-sheet-meta__field {
+  display: grid;
+  gap: 6px;
+}
+
+.writing-sheet-meta__field--wide {
+  grid-column: span 2;
+}
+
+.writing-sheet-meta__input {
+  width: 100%;
+  border: 1px solid rgba(222, 207, 188, 0.92);
+  border-radius: 16px;
+  background: rgba(255, 250, 242, 0.88);
+  padding: 11px 14px;
+  font-size: 12px;
+  color: #2f2620;
+  outline: none;
+  transition: border-color 160ms ease;
+}
+
+.writing-sheet-meta__input:focus {
+  border-color: #b18d69;
+}
+
+.writing-sheet-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 20px 20px;
+}
+
+.writing-sheet-footer__item {
+  min-width: 0;
+  border-top: 1px solid rgba(188, 166, 141, 0.22);
+  padding-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .writing-sheet-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .writing-sheet-meta__field--wide {
+    grid-column: span 2;
+  }
+
+  .writing-sheet-footer {
+    grid-template-columns: 1fr;
+  }
 }
 
 .writing-agent-line {
@@ -1751,7 +1930,6 @@ body.qalam-resizing * {
 }
 
 .node-card-base[data-resizer-visible="true"] .react-flow__resize-control.handle,
-.group-surface[data-resizer-visible="true"] .react-flow__resize-control.handle,
 .react-flow__resize-control.handle:active {
   opacity: 1;
   transform: scale(1);
@@ -1812,41 +1990,6 @@ body.qalam-resizing * {
   top: auto !important;
   left: auto !important;
   --arc-clip: inset(50% 0 0 50%);
-}
-
-.react-flow__resize-control.handle.group-arc-handle {
-  --arc-size: 64px;
-  --arc-offset: -32px;
-  width: var(--arc-size) !important;
-  height: var(--arc-size) !important;
-}
-
-.react-flow__resize-control.handle.top.left.group-arc-handle {
-  top: var(--arc-offset) !important;
-  left: var(--arc-offset) !important;
-  right: auto !important;
-  bottom: auto !important;
-}
-
-.react-flow__resize-control.handle.top.right.group-arc-handle {
-  top: var(--arc-offset) !important;
-  right: var(--arc-offset) !important;
-  left: auto !important;
-  bottom: auto !important;
-}
-
-.react-flow__resize-control.handle.bottom.left.group-arc-handle {
-  bottom: var(--arc-offset) !important;
-  left: var(--arc-offset) !important;
-  top: auto !important;
-  right: auto !important;
-}
-
-.react-flow__resize-control.handle.bottom.right.group-arc-handle {
-  bottom: var(--arc-offset) !important;
-  right: var(--arc-offset) !important;
-  top: auto !important;
-  left: auto !important;
 }
 
 .react-flow__resize-control.handle.top:not(.left):not(.right),

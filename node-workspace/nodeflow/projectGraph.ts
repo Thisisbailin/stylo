@@ -244,10 +244,6 @@ export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRe
           .filter((node) => trimText((node.data as Record<string, unknown>)?.view) === view)
           .map((node) => getNodeFlowNodeRef(node))
       );
-      const groupTitleNode = workflow.nodes.find(
-        (node) => node.type === "group" && trimText((node.data as Record<string, unknown>)?.view) === view
-      );
-      const groupTitle = trimText((groupTitleNode?.data as Record<string, unknown> | undefined)?.title) || view;
       const executionLinkCount = workflow.links.filter(
         (link) => nodeIds.has(link.source) && nodeIds.has(link.target)
       ).length;
@@ -256,7 +252,7 @@ export const buildProjectGraphMaps = (workflow: NodeFlowFile): ProjectGraphMapRe
       ).length;
       maps.push({
         mapId: `map:view:${view}`,
-        name: String(groupTitle || view),
+        name: String(view),
         view,
         nodeCount: nodeIds.size,
         linkCount: executionLinkCount + graphLinkCount,

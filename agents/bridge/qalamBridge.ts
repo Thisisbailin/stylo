@@ -119,7 +119,6 @@ export type CreateNodeFlowMapInput = {
   expectedRevision?: number;
   title?: string;
   description?: string;
-  wrapInGroup?: boolean;
   parentId?: string;
   layout?: "horizontal" | "vertical" | "fanout";
   originX?: number;
@@ -129,7 +128,6 @@ export type CreateNodeFlowMapInput = {
 };
 
 export type CreateNodeFlowMapResult = {
-  groupId?: string;
   nodes: Array<{
     key: string;
     id: string;

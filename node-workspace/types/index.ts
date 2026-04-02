@@ -20,7 +20,6 @@ export type NodeType =
   | "wanReferenceVideoGen"
   | "viduVideoGen"
   | "seedanceVideoGen"
-  | "group"
   | "shot";
 
 export type NodeStatus = "idle" | "loading" | "complete" | "error";
@@ -313,12 +312,6 @@ export interface OutputNodeData extends BaseNodeData {
   text?: string | null;
 }
 
-export interface GroupNodeData extends BaseNodeData {
-  title: string;
-  description?: string;
-  isExpanded?: boolean;
-}
-
 export interface NoteNodeData extends BaseNodeData {
   title?: string;
   text: string;
@@ -357,7 +350,6 @@ export type NodeFlowNodeData =
   | VideoGenNodeData
   | ViduVideoGenNodeData
   | SeedanceVideoGenNodeData
-  | GroupNodeData
   | ShotNodeData;
 
 export type NodeFlowNodeDefaults = Partial<Record<NodeType, Partial<NodeFlowNodeData>>>;
@@ -452,10 +444,3 @@ export interface NodeFlowFile {
   viewport?: NodeFlowViewport;
   activeView?: string | null;
 }
-
-export type NodeFlowTemplate = {
-  id: string;
-  name: string;
-  createdAt: number;
-  nodeFlow: NodeFlowFile;
-};

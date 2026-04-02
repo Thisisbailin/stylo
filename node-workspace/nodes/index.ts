@@ -7,7 +7,6 @@ export * from "./TextNode";
 export * from "./ScriptBoardNode";
 export * from "./StoryboardBoardNode";
 export * from "./IdentityCardNode";
-export * from "./GroupNode";
 export * from "./ShotNode";
 export { ImageGenNode } from "./ImageGenNode";
 export { NanoBananaImageGenNode } from "./NanoBananaImageGenNode";

@@ -29,7 +29,6 @@ const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: numbe
   seedanceVideoGen: { width: 360, height: 520 },
 };
 
-const GROUP_PADDING = { x: 80, y: 96 };
 const GAP = { x: 72, y: 56 };
 const NODE_HANDLES: Record<CreateNodeFlowMapNodeInput["type"], { inputs: string[]; outputs: string[] }> = {
   text: { inputs: ["text"], outputs: ["text"] },
@@ -141,30 +140,13 @@ export const createNodeFlowMapWithBridge = (
   deps: NodeFlowBuilderDeps
 ): CreateNodeFlowMapResult => {
   const layout = input.layout || "horizontal";
-  const wrapInGroup = input.wrapInGroup !== false;
   const normalizedLinks = normalizeLinks(input);
-  const groupOrigin = {
-    x: Math.round(input.originX || 0),
-    y: Math.round(input.originY || 0),
-  };
 
-  let groupId: string | undefined;
   const keyToNodeId = new Map<string, string>();
   const createdNodes: CreateNodeFlowMapResult["nodes"] = [];
   const createdLinkIds: string[] = [];
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
 
   try {
-    if (wrapInGroup) {
-      groupId = deps.addNode("group", groupOrigin, input.parentId, {
-        title: input.title || "Agent NodeFlow",
-        description: input.description || "",
-      } as Partial<NodeFlowNodeData>);
-    }
-
     input.nodes.forEach((node, index) => {
       const dim = NODE_DIMENSIONS[node.type];
       const autoPosition = layoutNodePosition(index, layout);
@@ -172,7 +154,7 @@ export const createNodeFlowMapWithBridge = (
         x: Math.round(node.x ?? autoPosition.x),
         y: Math.round(node.y ?? autoPosition.y),
       };
-      const nodeId = deps.addNode(node.type, position, groupId || input.parentId, buildNodeData(node));
+      const nodeId = deps.addNode(node.type, position, input.parentId, buildNodeData(node));
       if (node.width || node.height) {
         deps.updateNodeStyle(nodeId, {
           ...(node.width ? { width: node.width } : {}),
@@ -186,17 +168,7 @@ export const createNodeFlowMapWithBridge = (
         type: node.type,
         title: node.title,
       });
-      minX = Math.min(minX, position.x);
-      minY = Math.min(minY, position.y);
-      maxX = Math.max(maxX, position.x + (node.width || dim.width));
-      maxY = Math.max(maxY, position.y + (node.height || dim.height));
     });
-
-    if (groupId && Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)) {
-      const width = Math.max(720, maxX - minX + GROUP_PADDING.x * 2);
-      const height = Math.max(520, maxY - minY + GROUP_PADDING.y * 2);
-      deps.updateNodeStyle(groupId, { width, height });
-    }
 
     let linkCount = 0;
     for (const link of normalizedLinks) {
@@ -226,14 +198,12 @@ export const createNodeFlowMapWithBridge = (
     }
 
     return {
-      groupId,
       nodes: createdNodes,
       linkCount,
     };
   } catch (error) {
     createdLinkIds.slice().reverse().forEach((linkId) => deps.removeLink(linkId));
     createdNodes.slice().reverse().forEach((node) => deps.removeNode(node.id));
-    if (groupId) deps.removeNode(groupId);
     throw error;
   }
 };
