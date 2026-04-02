@@ -24,6 +24,7 @@ const PROJECT_PATCH_KEYS = new Set([
   "globalStyleGuide",
   "designAssets",
   "nodeFlow",
+  "nodeDefaults",
   "stats"
 ]);
 
@@ -92,6 +93,9 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
     }
     if (meta.nodeFlow !== undefined && !isRecord(meta.nodeFlow)) {
       return { ok: false, error: "delta.meta.nodeFlow is not an object" };
+    }
+    if (meta.nodeDefaults !== undefined && !isRecord(meta.nodeDefaults)) {
+      return { ok: false, error: "delta.meta.nodeDefaults is not an object" };
     }
     if (meta.context !== undefined) {
       if (!isRecord(meta.context)) return { ok: false, error: "delta.meta.context is not an object" };

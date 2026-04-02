@@ -63,6 +63,7 @@ type ProjectMeta = {
   globalStyleGuide: string;
   designAssets: Array<Record<string, unknown>>;
   nodeFlow: Record<string, unknown> | null;
+  nodeDefaults: Record<string, unknown> | null;
   context: {
     projectSummary: string;
     episodeSummaries: { episodeId: number; summary: string }[];
@@ -92,6 +93,7 @@ const DEFAULT_META: ProjectMeta = {
   globalStyleGuide: "",
   designAssets: [],
   nodeFlow: null,
+  nodeDefaults: null,
   context: {
     projectSummary: "",
     episodeSummaries: [],
@@ -123,6 +125,7 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   globalStyleGuide: typeof projectData?.globalStyleGuide === "string" ? projectData.globalStyleGuide : "",
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
   nodeFlow: projectData?.nodeFlow && typeof projectData.nodeFlow === "object" ? projectData.nodeFlow : null,
+  nodeDefaults: projectData?.nodeDefaults && typeof projectData.nodeDefaults === "object" ? projectData.nodeDefaults : null,
   context: {
     projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
     episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
@@ -345,6 +348,7 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     globalStyleGuide: meta.globalStyleGuide || "",
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
     nodeFlow: meta.nodeFlow && typeof meta.nodeFlow === "object" ? meta.nodeFlow : null,
+    nodeDefaults: meta.nodeDefaults && typeof meta.nodeDefaults === "object" ? meta.nodeDefaults : null,
     contextUsage: meta.contextUsage || emptyTokenUsage,
     phase1Usage: meta.phase1Usage || {},
     phase4Usage: meta.phase4Usage || emptyTokenUsage,

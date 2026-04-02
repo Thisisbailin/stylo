@@ -33,7 +33,7 @@ import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
-import type { NodeFlowFile } from './node-workspace/types';
+import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
 import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
@@ -433,15 +433,35 @@ const App: React.FC = () => {
   const workflowGlobalAssetHistory = useNodeFlowStore(state => state.globalAssetHistory);
   const workflowActiveView = useNodeFlowStore(state => state.activeView);
   const workflowViewport = useNodeFlowStore(state => state.viewport);
+  const workflowNodeDefaults = useNodeFlowStore(state => state.nodeDefaults);
   const importNodeFlow = useNodeFlowStore(state => state.importNodeFlow);
   const clearNodeFlow = useNodeFlowStore(state => state.clearNodeFlow);
+  const setWorkflowNodeDefaults = useNodeFlowStore(state => state.setNodeDefaults);
   const hasHydratedNodeFlowRef = useRef(false);
   const isApplyingProjectNodeFlowRef = useRef(false);
   const lastNodeFlowSerializedRef = useRef<string | null>(null);
+  const hasHydratedNodeDefaultsRef = useRef(false);
+  const lastNodeDefaultsSerializedRef = useRef<string | null>(null);
 
   useEffect(() => {
     setAppConfigStore(config);
   }, [config, setAppConfigStore]);
+
+  useEffect(() => {
+    try {
+      const remoteNodeDefaults = (projectData.nodeDefaults || {}) as NodeFlowNodeDefaults;
+      const serialized = JSON.stringify(remoteNodeDefaults);
+      if (serialized === lastNodeDefaultsSerializedRef.current) {
+        hasHydratedNodeDefaultsRef.current = true;
+        return;
+      }
+      hasHydratedNodeDefaultsRef.current = true;
+      lastNodeDefaultsSerializedRef.current = serialized;
+      setWorkflowNodeDefaults(remoteNodeDefaults);
+    } catch (e) {
+      console.warn("Failed to restore node defaults from project data", e);
+    }
+  }, [projectData.nodeDefaults, setWorkflowNodeDefaults]);
 
   useEffect(() => {
     const remoteNodeFlow = projectData.nodeFlow;
@@ -527,6 +547,32 @@ const App: React.FC = () => {
     workflowActiveView,
     setProjectData,
   ]);
+
+  useEffect(() => {
+    if (!hasHydratedNodeDefaultsRef.current) return;
+    const timeout = window.setTimeout(() => {
+      try {
+        const serialized = JSON.stringify(workflowNodeDefaults || {});
+        lastNodeDefaultsSerializedRef.current = serialized;
+        setProjectData((prev) => {
+          try {
+            const prevSerialized = JSON.stringify(prev.nodeDefaults || {});
+            if (prevSerialized === serialized) return prev;
+          } catch {
+            // Fall through and overwrite with the latest node defaults.
+          }
+          return {
+            ...prev,
+            nodeDefaults: (workflowNodeDefaults || {}) as NodeFlowNodeDefaults,
+          };
+        });
+      } catch (e) {
+        console.warn("Failed to persist node defaults", e);
+      }
+    }, 150);
+
+    return () => window.clearTimeout(timeout);
+  }, [workflowNodeDefaults, setProjectData]);
 
   // Sync global theme classes for both Tailwind dark styles and CSS variable themes
   useEffect(() => {

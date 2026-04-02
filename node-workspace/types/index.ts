@@ -351,6 +351,8 @@ export type NodeFlowNodeData =
   | GroupNodeData
   | ShotNodeData;
 
+export type NodeFlowNodeDefaults = Partial<Record<NodeType, Partial<NodeFlowNodeData>>>;
+
 export type NodeFlowPosition = {
   x: number;
   y: number;

@@ -382,39 +382,6 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
   },
 };
 
-const QALAM_WORDMARK_STYLE: Record<ThemeKey, { gradient: string; glow: string }> = {
-  dark: {
-    gradient:
-      "linear-gradient(110deg, rgba(252, 251, 248, 0.99) 0%, rgba(233, 246, 244, 0.98) 14%, rgba(246, 244, 227, 0.98) 28%, rgba(250, 236, 220, 0.97) 42%, rgba(242, 229, 247, 0.98) 58%, rgba(229, 234, 250, 0.98) 74%, rgba(225, 242, 251, 0.98) 88%, rgba(252, 251, 248, 0.99) 100%)",
-    glow: "rgba(244, 240, 255, 0.14)",
-  },
-  light: {
-    gradient:
-      "linear-gradient(110deg, rgba(20, 35, 58, 0.92) 0%, rgba(50, 118, 255, 0.96) 36%, rgba(117, 168, 255, 0.92) 68%, rgba(20, 35, 58, 0.92) 100%)",
-    glow: "rgba(50, 118, 255, 0.2)",
-  },
-  sand: {
-    gradient:
-      "linear-gradient(110deg, rgba(95, 52, 0, 0.94) 0%, rgba(230, 150, 12, 0.98) 34%, rgba(255, 208, 98, 0.95) 68%, rgba(95, 52, 0, 0.94) 100%)",
-    glow: "rgba(230, 150, 12, 0.24)",
-  },
-  creative: {
-    gradient:
-      "linear-gradient(110deg, rgba(11, 65, 36, 0.94) 0%, rgba(18, 196, 102, 0.98) 34%, rgba(112, 238, 171, 0.94) 68%, rgba(11, 65, 36, 0.94) 100%)",
-    glow: "rgba(18, 196, 102, 0.22)",
-  },
-  calm: {
-    gradient:
-      "linear-gradient(110deg, rgba(10, 54, 97, 0.94) 0%, rgba(34, 149, 255, 0.98) 34%, rgba(134, 206, 255, 0.94) 68%, rgba(10, 54, 97, 0.94) 100%)",
-    glow: "rgba(34, 149, 255, 0.22)",
-  },
-  lively: {
-    gradient:
-      "linear-gradient(110deg, rgba(95, 16, 52, 0.94) 0%, rgba(255, 96, 156, 0.98) 34%, rgba(255, 174, 210, 0.94) 68%, rgba(95, 16, 52, 0.94) 100%)",
-    glow: "rgba(255, 96, 156, 0.24)",
-  },
-};
-
 const boostAlpha = (color: string, multiplier: number) => {
   const match = color.match(/rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/i);
   if (!match) return color;
@@ -953,7 +920,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
-    const qalamWordmarkStyle = QALAM_WORDMARK_STYLE[bgTheme];
     const mapping: Record<string, string> = {
       "bg-base": activeTheme.bg,
       "bg-panel": activeTheme.panel,
@@ -1006,14 +972,13 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       "group-border-strong": activeTheme.groupBorderStrong,
       "group-highlight": activeTheme.groupHighlight,
       "group-shadow": activeTheme.groupShadow,
-      "qalam-wordmark-gradient": qalamWordmarkStyle.gradient,
-      "qalam-wordmark-glow": qalamWordmarkStyle.glow,
+      "qalam-wordmark-glow": activeTheme.accentSoft,
     };
     Object.entries(mapping).forEach(([key, value]) => {
       root.style.setProperty(`--${key}`, value);
     });
     root.style.colorScheme = activeTheme.scheme;
-  }, [activeTheme, bgTheme]);
+  }, [activeTheme]);
 
   const backgroundStyle = useMemo(() => {
     const base = activeTheme.bg;

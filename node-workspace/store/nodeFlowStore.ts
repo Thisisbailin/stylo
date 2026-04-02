@@ -12,6 +12,7 @@ import {
   NodeType,
   NodeFlowNodeData,
   NodeFlowFile,
+  NodeFlowNodeDefaults,
   GlobalAssetHistoryItem,
   GlobalAssetType,
   NodeFlowContextSnapshot,
@@ -25,6 +26,7 @@ import {
   patchNodeFlowNodeStyle,
 } from "../nodeflow/mutations";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+import { normalizeNodeFlowNodeDefaults, upsertNodeDefault } from "../nodeflow/nodeDefaults";
 import {
   applyNodeFlowCanvasLinkChangesCommand,
   applyNodeFlowCanvasNodeChangesCommand,
@@ -108,6 +110,7 @@ interface NodeFlowStore {
   clipboard: ClipboardData | null;
   globalAssetHistory: GlobalAssetHistoryItem[];
   viewport: NodeFlowViewport | null;
+  nodeDefaults: NodeFlowNodeDefaults;
   groupTemplates: NodeFlowTemplate[];
   globalStyleGuide?: string;
   availableImageModels: string[];
@@ -117,6 +120,7 @@ interface NodeFlowStore {
   nodeFlowContext: NodeFlowContextSnapshot;
   setNodeFlowContext: (ctx: NodeFlowContextSnapshot) => void;
   setViewportState: (viewport: NodeFlowViewport | null) => void;
+  setNodeDefaults: (defaults: NodeFlowNodeDefaults) => void;
 
   // Settings
   setLinkStyle: (style: LinkStyle) => void;
@@ -220,11 +224,13 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   availableImageModels: [],
   availableVideoModels: [],
   nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
+  nodeDefaults: {},
 
   setAvailableImageModels: (models) => set({ availableImageModels: models }),
   setAvailableVideoModels: (models) => set({ availableVideoModels: models }),
   setNodeFlowContext: (ctx) => set((state) => setNodeFlowContextState(state, ctx)),
   setViewportState: (viewport) => set((state) => setNodeFlowViewportState(state, viewport)),
+  setNodeDefaults: (defaults) => set({ nodeDefaults: normalizeNodeFlowNodeDefaults(defaults) }),
 
   setActiveView: (view) => set((state) => setNodeFlowActiveViewState(state, view)),
   setReadingMode: (mode) => set((state) => setNodeFlowReadingModeState(state, mode)),
@@ -244,14 +250,17 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),
 
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => {
-    const { revision } = get();
+    const { revision, nodeDefaults } = get();
     assertExpectedRevision(revision, options?.expectedRevision);
     const result = createNodeFlowNodeCommand({
       state: get(),
       type,
       position,
       parentId,
-      extraData,
+      extraData: {
+        ...(nodeDefaults[type] || {}),
+        ...(extraData || {}),
+      },
       allocateNodeId: (nodeType) => `${nodeType}-${++nodeIdCounter}`,
     });
     set(result.state);
@@ -259,7 +268,21 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
-    set((state) => patchNodeFlowNodeData(state, nodeId, data));
+    set((state) => {
+      const node = state.nodes.find((item) => item.id === nodeId);
+      if (!node) return state;
+      const nextState = patchNodeFlowNodeData(state, nodeId, data);
+      const nextDefaults = upsertNodeDefault(
+        state.nodeDefaults,
+        node.type,
+        { ...(node.data || {}), ...(data || {}) } as Partial<NodeFlowNodeData>
+      );
+      if (nextDefaults === state.nodeDefaults) return nextState;
+      return {
+        ...nextState,
+        nodeDefaults: nextDefaults,
+      };
+    });
   },
 
   updateNodeStyle: (nodeId, style) => {

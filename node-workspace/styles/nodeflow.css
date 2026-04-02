@@ -1322,40 +1322,36 @@ body.qalam-resizing * {
 
 .qalam-wordmark--active {
   color: transparent;
-  background-image: var(
-    --qalam-wordmark-gradient,
-    linear-gradient(
-      110deg,
-      rgba(252, 251, 248, 0.99) 0%,
-      rgba(233, 246, 244, 0.98) 14%,
-      rgba(246, 244, 227, 0.98) 28%,
-      rgba(250, 236, 220, 0.97) 42%,
-      rgba(242, 229, 247, 0.98) 58%,
-      rgba(229, 234, 250, 0.98) 74%,
-      rgba(225, 242, 251, 0.98) 88%,
-      rgba(252, 251, 248, 0.99) 100%
-    )
+  background-image: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--app-text-primary) 82%, var(--app-accent) 18%) 0%,
+    color-mix(in srgb, var(--app-accent-strong) 72%, var(--app-text-primary) 28%) 18%,
+    color-mix(in srgb, var(--app-accent) 88%, white 12%) 36%,
+    color-mix(in srgb, var(--app-accent) 96%, var(--app-text-primary) 4%) 52%,
+    color-mix(in srgb, var(--app-accent-strong) 74%, white 26%) 68%,
+    color-mix(in srgb, var(--app-accent) 62%, var(--app-text-primary) 38%) 84%,
+    color-mix(in srgb, var(--app-text-primary) 80%, var(--app-accent) 20%) 100%
   );
-  background-size: 240% 100%;
+  background-size: 220% 100%;
   background-position: 0% 50%;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 0 14px var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)));
-  animation: qalam-wordmark-shift 8.4s linear infinite;
+  filter: drop-shadow(0 0 12px var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)));
+  animation: qalam-wordmark-shift 7.2s linear infinite;
 }
 
 @keyframes qalam-wordmark-shift {
   0% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 72%, transparent));
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 64%, transparent));
   }
   50% {
     background-position: 100% 50%;
-    filter: drop-shadow(0 0 16px var(--qalam-wordmark-glow, rgba(228, 238, 255, 0.14)));
+    filter: drop-shadow(0 0 14px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(228, 238, 255, 0.14)) 92%, transparent));
   }
   100% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 72%, transparent));
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--qalam-wordmark-glow, rgba(244, 240, 255, 0.12)) 64%, transparent));
   }
 }
 
