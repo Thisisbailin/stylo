@@ -1216,7 +1216,11 @@ export const QalamChatContent: React.FC<Props> = ({
     const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
     previousItemCountRef.current = nextCount;
     requestAnimationFrame(() => {
-      const targetTop = Math.max(0, currentNode.offsetTop - 6);
+      const itemTop = Math.max(0, currentNode.offsetTop - 6);
+      const itemBottom = currentNode.offsetTop + currentNode.offsetHeight + 6;
+      const viewportHeight = node.clientHeight;
+      const itemHeight = currentNode.offsetHeight + 12;
+      const targetTop = itemHeight > viewportHeight ? Math.max(0, itemBottom - viewportHeight) : itemTop;
       node.scrollTo({ top: targetTop, behavior });
     });
   }, [displayMessages.length, isPinnedToCurrent, isSending, revealMode]);
@@ -1228,8 +1232,14 @@ export const QalamChatContent: React.FC<Props> = ({
     const handleScroll = () => {
       const currentNode = currentItemRef.current;
       if (!currentNode) return;
-      const targetTop = Math.max(0, currentNode.offsetTop - 6);
-      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
+      const itemTop = Math.max(0, currentNode.offsetTop - 6);
+      const itemBottom = currentNode.offsetTop + currentNode.offsetHeight + 6;
+      const viewportTop = node.scrollTop;
+      const viewportBottom = viewportTop + node.clientHeight;
+      const withinTopAnchor = Math.abs(viewportTop - itemTop) < 72;
+      const withinBottomAnchor = Math.abs(viewportBottom - itemBottom) < 72;
+      const fullyVisible = itemTop >= viewportTop - 8 && itemBottom <= viewportBottom + 8;
+      setIsPinnedToCurrent(withinTopAnchor || withinBottomAnchor || fullyVisible);
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => node.removeEventListener("scroll", handleScroll);

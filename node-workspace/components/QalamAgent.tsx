@@ -416,6 +416,7 @@ export const QalamAgent: React.FC<Props> = ({
         viewport: viewport || undefined,
         activeView,
       }),
+      getPendingExecutionApprovals: () => Object.values(pendingExecutionApprovals),
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
       updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
@@ -428,7 +429,7 @@ export const QalamAgent: React.FC<Props> = ({
       requestExecutionApproval,
       clearExecutionApproval,
     }),
-    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, requestExecutionApproval, clearExecutionApproval, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
+    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, pendingExecutionApprovals, projectData, removeLink, removeNode, requestExecutionApproval, clearExecutionApproval, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -951,7 +952,7 @@ export const QalamAgent: React.FC<Props> = ({
                 isSending={isSending}
                 onApprovalChoice={handleApprovalChoice}
                 className="bg-transparent"
-                revealMode="latest"
+                revealMode="scroll"
                 latestBlockMaxHeight={messageViewportHeight}
                 style={{ maxHeight: `${messageViewportHeight}px` }}
               />

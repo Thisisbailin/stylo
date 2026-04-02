@@ -33,6 +33,7 @@ import type {
 type NodeFlowBridgeDeps = {
   getProjectData: () => ProjectData;
   getNodeFlowSnapshot: () => NodeFlowFile;
+  getPendingExecutionApprovals?: () => NodeFlowExecutionApprovalProposal[];
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
@@ -402,6 +403,7 @@ const clearNodeFlowExecutionApproval = (
 export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBridge => ({
   getProjectData: deps.getProjectData,
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
+  getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),

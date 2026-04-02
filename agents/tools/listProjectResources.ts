@@ -12,6 +12,7 @@ export const LIST_PROJECT_RESOURCE_TYPES = [
   "source_nodes",
   "graph_nodes",
   "graph_node_identities",
+  "execution_approvals",
   "execution_links",
   "graph_links",
   "maps",
@@ -74,7 +75,7 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List available graph resource directories before reading them. Supports skill packages, projected source nodes, graph nodes, graph links, and maps.",
+    "List available graph resource directories before reading them. Supports skill packages, projected source nodes, graph nodes, pending execution approvals, graph links, and maps.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -151,6 +152,26 @@ export const listProjectResourcesToolDef = {
       };
     }
 
+    if (args.resourceType === "execution_approvals") {
+      const approvals = bridge.getPendingNodeFlowExecutionApprovals();
+      const items = approvals.slice(0, args.maxItems).map((approval) => ({
+        approval_id: approval.id,
+        node_id: approval.nodeId,
+        node_ref: approval.nodeRef || null,
+        node_type: approval.nodeType,
+        node_title: approval.nodeTitle,
+        action: approval.action,
+        provider: approval.providerLabel,
+        model: approval.modelLabel,
+        created_at: approval.createdAt,
+      }));
+      return {
+        resource_type: "execution_approvals",
+        total: approvals.length,
+        items,
+      };
+    }
+
     if (args.resourceType === "graph_links") {
       const items = (workflow.graphLinks || []).slice(0, args.maxItems).map((link) => ({
         link_id: link.id,
@@ -183,6 +204,7 @@ export const listProjectResourcesToolDef = {
     if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 source 节点`;
     if (output?.resource_type === "graph_nodes") return `列出 ${output.items?.length || 0} 个 graph 节点`;
     if (output?.resource_type === "graph_node_identities") return `列出 ${output.items?.length || 0} 个 graph 节点识别视图`;
+    if (output?.resource_type === "execution_approvals") return `列出 ${output.items?.length || 0} 个待审批执行请求`;
     if (output?.resource_type === "execution_links") return `列出 ${output.items?.length || 0} 条执行连线`;
     if (output?.resource_type === "graph_links") return `列出 ${output.items?.length || 0} 条 graph 连线`;
     return `列出 ${output?.items?.length || 0} 张地图`;

@@ -15,6 +15,7 @@ export const READ_PROJECT_RESOURCE_TYPES = [
   "graph_node",
   "graph_node_identity",
   "graph_node_detail",
+  "execution_approval",
   "execution_link",
   "graph_link",
   "map",
@@ -50,7 +51,7 @@ const readProjectResourceParameters = {
     },
     link_id: {
       type: "string",
-      description: "Link id for execution_link or graph_link.",
+      description: "Link id for execution_link, graph_link, or execution_approval lookup by approval id.",
     },
     map_id: {
       type: "string",
@@ -111,7 +112,7 @@ const parseArgs = (input: unknown) => {
   if ((resourceType === "graph_node" || resourceType === "graph_node_identity" || resourceType === "graph_node_detail") && !nodeId && !nodeRef) {
     throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
   }
-    if ((resourceType === "graph_link" || resourceType === "execution_link") && !linkId) {
+    if ((resourceType === "graph_link" || resourceType === "execution_link" || resourceType === "execution_approval") && !linkId && !nodeId && !nodeRef) {
       throw new Error(`${resourceType} 需要 link_id。`);
     }
   if (resourceType === "map" && !mapId && !view && !name) {
@@ -151,7 +152,7 @@ const clipStructuredValue = (value: unknown, maxChars?: number): unknown => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete graph resource from the current project. Supports skill packages, projected source nodes, graph nodes, graph links, and map views.",
+    "Read a concrete graph resource from the current project. Supports skill packages, projected source nodes, graph nodes, pending execution approvals, graph links, and map views.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -300,6 +301,38 @@ export const readProjectResourceToolDef = {
           };
     }
 
+    if (args.resourceType === "execution_approval") {
+      const approvals = bridge.getPendingNodeFlowExecutionApprovals();
+      const approval =
+        approvals.find((item) => item.id === args.linkId) ||
+        approvals.find((item) => item.nodeId === args.nodeId) ||
+        approvals.find((item) => item.nodeRef && item.nodeRef === args.nodeRef);
+      return approval
+        ? {
+            resource_type: "execution_approval",
+            found: true,
+            approval_id: approval.id,
+            node_id: approval.nodeId,
+            node_ref: approval.nodeRef || null,
+            node_type: approval.nodeType,
+            node_title: approval.nodeTitle,
+            action: approval.action,
+            provider: approval.providerLabel,
+            model: approval.modelLabel,
+            prompt_preview: approval.promptPreview,
+            input_summary: approval.inputSummary,
+            created_at: approval.createdAt,
+            approval_status: "pending",
+          }
+        : {
+            resource_type: "execution_approval",
+            found: false,
+            approval_id: args.linkId || null,
+            node_id: args.nodeId || null,
+            node_ref: args.nodeRef || null,
+          };
+    }
+
     if (args.resourceType === "execution_link") {
       const link = findExecutionLink(workflow, args.linkId!);
       return link
@@ -369,6 +402,7 @@ export const readProjectResourceToolDef = {
     if (output.resource_type === "graph_node") return `读取 graph 节点 ${output.title || output.node_ref || output.node_id}`;
     if (output.resource_type === "graph_node_identity") return `读取 graph 节点识别层 ${output.title || output.node_ref || output.node_id}`;
     if (output.resource_type === "graph_node_detail") return `读取 graph 节点细节层 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "execution_approval") return `读取待审批执行请求 ${output.node_title || output.node_ref || output.node_id}`;
     if (output.resource_type === "execution_link") return `读取执行连线 ${output.link_id}`;
     if (output.resource_type === "graph_link") return `读取 graph 连线 ${output.link_id}`;
     return `读取地图 ${output.name || output.map_id}`;

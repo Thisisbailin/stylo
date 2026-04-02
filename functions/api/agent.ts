@@ -140,6 +140,7 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
     bridge: createQalamAgentBridge({
       getProjectData: () => currentProjectData,
       getNodeFlowSnapshot: () => currentNodeFlow,
+      getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
       updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
         currentProjectData = updater(currentProjectData);
         projectDataUpdated = true;

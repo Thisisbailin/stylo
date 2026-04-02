@@ -15,6 +15,7 @@ export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "graph_identity",
   "graph_detail",
   "graph",
+  "approvals",
   "links",
   "maps",
 ] as const;
@@ -88,7 +89,7 @@ const parseArgs = (input: unknown) => {
     ? raw.resource_scopes.map((item) => String(item))
     : Array.isArray(raw.resourceScopes)
       ? (raw.resourceScopes as unknown[]).map((item) => String(item))
-      : (["skills", "source", "graph_identity", "links", "maps"] as Scope[]);
+      : (["skills", "source", "graph_identity", "approvals", "links", "maps"] as Scope[]);
 
   const normalizedScopes = scopes.filter((scope): scope is Scope =>
     (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
@@ -217,6 +218,37 @@ export const searchProjectResourceToolDef = {
           matches.push({
             scope: "graph_link",
             link_id: link.id,
+            snippet: buildSnippet(haystack, args.query, radius),
+          });
+        }
+      }
+    }
+
+    if (args.scopes.includes("approvals")) {
+      for (const approval of bridge.getPendingNodeFlowExecutionApprovals()) {
+        if (matches.length >= args.maxMatches) break;
+        const haystack = [
+          approval.id,
+          approval.nodeId,
+          approval.nodeRef,
+          approval.nodeType,
+          approval.nodeTitle,
+          approval.action,
+          approval.providerLabel,
+          approval.modelLabel,
+          approval.promptPreview || "",
+          ...(approval.inputSummary || []),
+        ]
+          .filter(Boolean)
+          .join(" ");
+        if (haystack && includesQuery(haystack, args.query)) {
+          matches.push({
+            scope: "execution_approval",
+            approval_id: approval.id,
+            node_id: approval.nodeId,
+            node_ref: approval.nodeRef,
+            title: approval.nodeTitle,
+            action: approval.action,
             snippet: buildSnippet(haystack, args.query, radius),
           });
         }

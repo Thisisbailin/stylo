@@ -154,6 +154,7 @@ export type CreateNodeFlowGraphLinkResult = {
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
+  getPendingNodeFlowExecutionApprovals(): NodeFlowExecutionApprovalProposal[];
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;

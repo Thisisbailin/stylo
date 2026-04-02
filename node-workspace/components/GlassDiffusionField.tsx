@@ -43,7 +43,7 @@ export const buildSuperellipsePath = (
 
 export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffusionConfig> = {
   bare: {
-    width: 360,
+    width: 440,
     height: 540,
     blur: 0,
     fillAlpha: 0,
@@ -55,7 +55,7 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
     curve: 3.4,
   },
   mist: {
-    width: 380,
+    width: 480,
     height: 560,
     blur: 24,
     fillAlpha: 0.045,
@@ -67,7 +67,7 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
     curve: 3.85,
   },
   veil: {
-    width: 400,
+    width: 520,
     height: 600,
     blur: 38,
     fillAlpha: 0.055,
