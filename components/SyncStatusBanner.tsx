@@ -97,8 +97,6 @@ export const SyncStatusBanner: React.FC<Props> = ({
     return false;
   }, [aggregateStatus, isOnline, isSignedIn, pendingOps, retryCount, rolloutDisabled]);
 
-  if (!shouldShow) return null;
-
   const effectiveStatus: SyncStatus = rolloutDisabled ? "disabled" : aggregateStatus;
   const meta = statusMeta(effectiveStatus);
   const Icon = meta.icon;
@@ -121,13 +119,16 @@ export const SyncStatusBanner: React.FC<Props> = ({
       : "点击卡片查看同步详情";
 
   useEffect(() => {
-    if (!onClose) return undefined;
+    if (!shouldShow || !onClose) return undefined;
     const timeoutId = window.setTimeout(() => onClose(), 3000);
     return () => window.clearTimeout(timeoutId);
-  }, [onClose, summary, metaLine, meta.label]);
+  }, [onClose, shouldShow, summary, metaLine, meta.label]);
+
+  if (!shouldShow) return null;
 
   return (
     <TopRightHint
+      stackIndex={0}
       onClick={onOpenDetails}
       action={
         onForceSync && canForceSync ? (

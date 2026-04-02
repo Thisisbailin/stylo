@@ -41,10 +41,10 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\
 const buildCharacterDetail = (character?: Character) => {
   if (!character) return "";
   return [
-    character.name ? `角色：${character.name}` : "",
-    character.role ? `身份：${character.role}` : "",
-    typeof character.appearanceCount === "number" ? `出现次数：${character.appearanceCount}` : "",
-    character.episodeUsage ? `出现区间：${character.episodeUsage}` : "",
+    character.name ? `Character: ${character.name}` : "",
+    character.role ? `Role: ${character.role}` : "",
+    typeof character.appearanceCount === "number" ? `Appearances: ${character.appearanceCount}` : "",
+    character.episodeUsage ? `Episodes: ${character.episodeUsage}` : "",
     character.bio || "",
   ]
     .filter(Boolean)
@@ -62,7 +62,7 @@ const buildCharacterMatcher = (characters: Character[]) => {
 
 const createEmptyScene = (episodeId: number, sceneIndex: number): WritingScene => ({
   id: `${episodeId}-${sceneIndex}`,
-  title: `场景 ${sceneIndex}`,
+  title: `SCENE ${sceneIndex}`,
   timeOfDay: "",
   location: "",
   castLine: "",
@@ -71,7 +71,7 @@ const createEmptyScene = (episodeId: number, sceneIndex: number): WritingScene =
 
 const createEmptyEpisode = (episodeId: number): WritingEpisode => ({
   id: episodeId,
-  title: `第${episodeId}集`,
+  title: `Episode ${episodeId}`,
   scenes: [createEmptyScene(episodeId, 1)],
 });
 
@@ -86,19 +86,19 @@ const sceneContentToDraftBody = (content: string) => {
       const qualifiedMatch = trimmed.match(/^([^：（:]+?)\s*（([^）]+)）\s*[:：]\s*(.+)$/);
       if (qualifiedMatch) {
         const [, speaker, qualifier, body] = qualifiedMatch;
-        if (/OS/i.test(qualifier)) return `@${speaker.trim()} /os ${body.trim()}`;
-        if (/VO/i.test(qualifier)) return `@${speaker.trim()} /vo ${body.trim()}`;
+        if (/OS/i.test(qualifier)) return `${speaker.trim().toUpperCase()} (O.S.)\n${body.trim()}`;
+        if (/VO/i.test(qualifier)) return `${speaker.trim().toUpperCase()} (V.O.)\n${body.trim()}`;
         return trimmed;
       }
 
       const dialogueMatch = trimmed.match(/^([^：:]+?)\s*[:：]\s*(.+)$/);
       if (dialogueMatch) {
         const [, speaker, body] = dialogueMatch;
-        return `@${speaker.trim()}：${body.trim()}`;
+        return `${speaker.trim().toUpperCase()}\n${body.trim()}`;
       }
 
       if (trimmed.startsWith("△")) {
-        return `# ${trimmed.replace(/^△\s*/, "")}`;
+        return trimmed.replace(/^△\s*/, "");
       }
 
       return trimmed;
@@ -114,12 +114,12 @@ const buildDraftFromEpisodes = (episodes: Episode[], rawScript: string): Writing
 
   return episodes.map((episode, index) => ({
     id: episode.id || index + 1,
-    title: (episode.title || `第${episode.id || index + 1}集`).trim(),
+    title: (episode.title || `Episode ${episode.id || index + 1}`).trim(),
     scenes:
       episode.scenes?.length
         ? episode.scenes.map((scene, sceneIndex) => ({
             id: scene.id || `${episode.id || index + 1}-${sceneIndex + 1}`,
-            title: scene.title || `场景 ${sceneIndex + 1}`,
+            title: scene.title || `SCENE ${sceneIndex + 1}`,
             timeOfDay: scene.timeOfDay || "",
             location: scene.location || "",
             castLine: (episode.characters || []).join("、"),
@@ -169,7 +169,7 @@ const exportScene = (scene: WritingScene) => {
 
 const exportEpisode = (episode: WritingEpisode) =>
   [
-    episode.title.trim() || `第${episode.id}集`,
+    episode.title.trim() || `Episode ${episode.id}`,
     "",
     ...episode.scenes.map((scene) => exportScene(scene)),
   ]
@@ -211,7 +211,7 @@ const joinNodes = (parts: React.ReactNode[]) => parts.flatMap((part, index) => (
 
 const compactText = (value: string, limit = 160) => {
   const clean = value.replace(/\s+/g, " ").trim();
-  if (!clean) return "这一集还没有正文。";
+  if (!clean) return "No draft on this page yet.";
   return clean.length > limit ? `${clean.slice(0, limit)}...` : clean;
 };
 
@@ -219,6 +219,18 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 const summarizeEpisode = (episode: WritingEpisode) =>
   compactText(episode.scenes.map((scene) => scene.body).find((body) => body.trim()) || "");
+
+const buildScenePreview = (scene: WritingScene) => {
+  const sluglineParts = [
+    scene.location.trim().toUpperCase(),
+    scene.title.trim().toUpperCase(),
+    scene.timeOfDay.trim().toUpperCase(),
+  ].filter(Boolean);
+  const slugline = sluglineParts.join(" - ");
+  return [slugline || scene.title.trim() || "UNTITLED SCENE", "", scene.body.trim()]
+    .filter(Boolean)
+    .join("\n");
+};
 
 export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onClose, getAuthToken }) => {
   const [draft, setDraft] = useState<WritingEpisode[]>(() =>
@@ -375,52 +387,52 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   const fullScript = useMemo(() => exportDraft(draft), [draft]);
   const parserPreview = useMemo(() => parseScriptToEpisodes(fullScript), [fullScript]);
-  const selectedScenePreview = useMemo(() => exportScene(selectedScene), [selectedScene]);
+  const selectedScenePreview = useMemo(() => buildScenePreview(selectedScene), [selectedScene]);
 
   const parserIssues = useMemo(() => {
     const issues: string[] = [];
     const sceneIdSet = new Set<string>();
 
     draft.forEach((episode) => {
-      if (!/^第.+集$/.test((episode.title || "").trim())) {
-        issues.push(`${episode.title || `第${episode.id}集`} 的集标题不符合“第X集”格式。`);
+      if (!/^(episode\s+\d+|第.+集)$/i.test((episode.title || "").trim())) {
+        issues.push(`${episode.title || `Episode ${episode.id}`} should follow an episode-style title.`);
       }
 
       episode.scenes.forEach((scene, index) => {
         const sceneKey = scene.id.trim();
         if (!/^\d+-\d+$/.test(sceneKey)) {
-          issues.push(`${episode.title} 的第 ${index + 1} 场缺少合法场号。`);
+          issues.push(`${episode.title} scene ${index + 1} needs a valid scene number.`);
         }
         if (sceneIdSet.has(sceneKey)) {
-          issues.push(`${sceneKey} 在全剧本中重复出现。`);
+          issues.push(`${sceneKey} appears more than once in the draft.`);
         }
         sceneIdSet.add(sceneKey);
         if (sceneKey && !sceneKey.startsWith(`${episode.id}-`)) {
-          issues.push(`${sceneKey} 的场号前缀与 ${episode.title} 不一致。`);
+          issues.push(`${sceneKey} should stay under ${episode.title}.`);
         }
-        if (!scene.title.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 缺少场景标题。`);
-        if (!scene.timeOfDay.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 缺少时间标记。`);
-        if (!scene.location.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 缺少内/外标记。`);
+        if (!scene.title.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing a slugline label.`);
+        if (!scene.timeOfDay.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing time of day.`);
+        if (!scene.location.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing INT./EXT. context.`);
 
         parseCastNames(scene.castLine).forEach((name) => {
           if (!characterMap.has(name)) {
-            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 的人物行中包含未绑定角色：${name}`);
+            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} cast line includes an unbound character: ${name}`);
           }
         });
 
         const lines = scene.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
         if (!lines.length) {
-          issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 还没有正文内容。`);
+          issues.push(`${sceneKey || `${episode.id}-${index + 1}`} still has no screenplay lines.`);
         }
         lines.forEach((line, lineIndex) => {
           const mentions = (line.match(/@([\w\u4e00-\u9fa5-]+)/g) || []).map((item) => item.slice(1));
           mentions.forEach((name) => {
             if (!characterMap.has(name)) {
-              issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 第 ${lineIndex + 1} 行引用了未绑定角色 @${name}`);
+              issues.push(`${sceneKey || `${episode.id}-${index + 1}`} line ${lineIndex + 1} references unknown mention @${name}`);
             }
           });
           if (/^@/.test(line) && !/[:：]/.test(line) && !/\/\s*(os|vo)/i.test(line)) {
-            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} 第 ${lineIndex + 1} 行以 @ 角色开头，但缺少对白或 /os /vo 标记。`);
+            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} line ${lineIndex + 1} starts with @ but has no dialogue payload.`);
           }
         });
       });
@@ -431,7 +443,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   const renderBoundText = useCallback(
     (text: string) => {
-      if (!text) return "（空内容）";
+      if (!text) return "(Empty)";
       if (!characterMatcher) return text;
       const parts: React.ReactNode[] = [];
       let lastIndex = 0;
@@ -586,6 +598,60 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         );
         parts.push(...pushMentions(actionMatch[1], `action-body-${lineIndex}`));
         return <>{parts}</>;
+      }
+
+      const trimmed = line.trim();
+      const isSlugline = /^(INT\.|EXT\.|INT\/EXT\.|EST\.|I\/E\.)/i.test(trimmed);
+      if (isSlugline) {
+        return (
+          <>
+            <span key={`slug-${lineIndex}`} className="writing-token writing-token-slugline">
+              SLUGLINE
+            </span>
+            {pushMentions(trimmed.toUpperCase(), `slug-body-${lineIndex}`)}
+          </>
+        );
+      }
+
+      const isTransition = /^[A-Z0-9 .'\-]+TO:$/.test(trimmed);
+      if (isTransition) {
+        return (
+          <>
+            <span key={`transition-${lineIndex}`} className="writing-token writing-token-transition">
+              TRANSITION
+            </span>
+            {pushMentions(trimmed, `transition-body-${lineIndex}`)}
+          </>
+        );
+      }
+
+      const isParenthetical = /^\(.+\)$/.test(trimmed);
+      if (isParenthetical) {
+        return (
+          <>
+            <span key={`paren-${lineIndex}`} className="writing-token writing-token-parenthetical">
+              NOTE
+            </span>
+            {pushMentions(trimmed, `paren-body-${lineIndex}`)}
+          </>
+        );
+      }
+
+      const isCharacterCue =
+        /^[A-Z0-9 .'\-()]+$/.test(trimmed) &&
+        !isSlugline &&
+        trimmed.length <= 32 &&
+        trimmed === trimmed.toUpperCase() &&
+        !/[.:]$/.test(trimmed);
+      if (isCharacterCue) {
+        return (
+          <>
+            <span key={`character-${lineIndex}`} className="writing-token writing-token-character">
+              CHARACTER
+            </span>
+            {pushMentions(trimmed, `character-body-${lineIndex}`)}
+          </>
+        );
       }
 
       const osVoMatch = line.match(/^(\s*@[\w\u4e00-\u9fa5-]+)(\s+\/\s*(os|vo)\b)(.*)$/i);
@@ -767,18 +833,18 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const guideOpacity = clamp(1 - (screenplayLineCount - 1) / 14, 0, 1);
   const pageMoodLabel =
     screenplayLineCount <= 4
-      ? "开始落笔"
+      ? "Opening lines"
       : screenplayLineCount < screenplayPageLines - 6
-        ? "正在写满这一页"
+        ? "Building the page"
         : screenplayLineCount <= screenplayPageLines + 6
-          ? "这一页已经够满"
-          : "可以自然进入下一页";
+          ? "This page feels full"
+          : "Natural page rollover";
   const writingGuides = useMemo(
     () => [
-      { icon: Compass, title: "先落一行动作", text: "从动作或场景入口开始，纸会像打字机一样慢慢抬升。" },
-      { icon: Bot, title: "三次换行进入 Qalam", text: "继续输入时不再属于剧本，而是临时发给助手的一句对话。" },
-      { icon: FileText, title: "第 55 行左右满页", text: "完整露出标准页时，就接近编剧常见的一页节奏，适合自然切页。" },
-      { icon: Sparkles, title: "继续写会顶出上缘", text: "超过一页后，每多一行，纸继续按固定步长上移，像打字机继续送纸。" },
+      { icon: Compass, title: "Open on action", text: "Start with a clean action line or slugline. The page rises one line at a time." },
+      { icon: Bot, title: "Triple return for Qalam", text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
+      { icon: FileText, title: "About 55 lines per page", text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
+      { icon: Sparkles, title: "Keep writing past the page", text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
     ],
     []
   );
@@ -817,9 +883,9 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         <header className="relative z-20 flex items-start justify-between gap-6 px-4 pb-4 pt-5 md:px-6 md:pt-6">
           <div className="max-w-[560px]">
             <div className={titleClass}>Writing Room</div>
-            <div className="mt-2 text-[32px] font-semibold tracking-[-0.06em] text-white">剧本创作页</div>
+            <div className="mt-2 text-[32px] font-semibold tracking-[-0.06em] text-white">Fountain Screenwriting</div>
             <div className="mt-2 text-[13px] leading-7 text-[var(--app-text-secondary)]">
-              不再是侧边面板，而是一排可横向浏览的稿纸。连续换行三次会切换到 Qalam 对话行，发送后自动退回写作。
+              Built for the screenwriting workflow first. English by default, Fountain on the page, and Qalam available without the bottom composer.
             </div>
           </div>
 
@@ -836,21 +902,21 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
               }}
               className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/6 px-4 text-[12px] font-semibold text-[var(--app-text-primary)] backdrop-blur-md transition hover:-translate-y-px hover:border-white/18 hover:bg-white/10"
             >
-              {isWritingQalamOpen ? "收起 Qalam" : "唤起 Qalam"}
+              {isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
             </button>
             <button
               type="button"
               onClick={applyToProject}
               className="inline-flex h-11 items-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,248,234,0.18),rgba(255,248,234,0.08))] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:-translate-y-px hover:border-white/20"
             >
-              写回项目
+              Sync to Project
             </button>
             <button
               type="button"
               onClick={onClose}
               className="inline-flex h-11 items-center rounded-full border border-white/10 bg-black/24 px-4 text-[12px] font-semibold text-[var(--app-text-secondary)] backdrop-blur-md transition hover:-translate-y-px hover:border-white/18 hover:text-[var(--app-text-primary)]"
             >
-              关闭
+              Close
             </button>
           </div>
         </header>
@@ -859,12 +925,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
           <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border border-white/8 bg-[rgba(12,14,18,0.34)] shadow-[0_28px_90px_rgba(0,0,0,0.34)] backdrop-blur-[18px]">
             <div className="flex items-center justify-between gap-4 border-b border-white/8 px-5 py-4">
               <div className="flex flex-wrap items-center gap-4 text-[12px] text-[var(--app-text-secondary)]">
-                <span>{draft.length} 集</span>
-                <span>{totalSceneCount} 场</span>
-                <span>{parserIssues.length ? `${parserIssues.length} 个格式提醒` : "格式状态稳定"}</span>
+                <span>{draft.length} episodes</span>
+                <span>{totalSceneCount} scenes</span>
+                <span>{parserIssues.length ? `${parserIssues.length} format notes` : "format stable"}</span>
               </div>
               <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-text-muted)]">
-                选中稿纸后直接开始写
+                Start on the selected page
               </div>
             </div>
 
@@ -947,11 +1013,11 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                           patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
                                         }
                                         className="mt-2 w-full border-none bg-transparent p-0 text-[34px] font-semibold tracking-[-0.06em] text-[#1d1a17] outline-none placeholder:text-[#8d877f]"
-                                        placeholder={`第${selectedEpisode.id}集`}
+                                        placeholder={`Episode ${selectedEpisode.id}`}
                                       />
                                     </div>
                                     <div className="writing-sheet-badge">
-                                      <span>{selectedEpisodeLineCount} 行</span>
+                                      <span>{selectedEpisodeLineCount} lines</span>
                                       <span>{pageMoodLabel}</span>
                                     </div>
                                   </div>
@@ -976,56 +1042,60 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                       onClick={addScene}
                                       className="inline-flex h-9 items-center rounded-full border border-dashed border-[#ceb79c] px-3.5 text-[11px] font-semibold text-[#7b6a58] transition hover:border-[#a98967] hover:text-[#473b31]"
                                     >
-                                      新建场次
+                                      New Scene
                                     </button>
                                     <button
                                       type="button"
                                       onClick={addEpisode}
                                       className="inline-flex h-9 items-center rounded-full border border-[#d8cbbb] bg-white/72 px-3.5 text-[11px] font-semibold text-[#574f46] transition hover:-translate-y-px hover:border-[#bfa58d]"
                                     >
-                                      新建一集
+                                      New Episode
                                     </button>
                                   </div>
 
                                   <div className="writing-sheet-meta">
                                     <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Scene ID</span>
+                                      <span className={titleClass}>Scene No.</span>
                                       <input
                                         value={selectedScene.id}
                                         onChange={(event) =>
                                           patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
                                         }
                                         className="writing-sheet-meta__input"
+                                        placeholder={`${selectedEpisode.id}-1`}
                                       />
                                     </label>
                                     <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Scene</span>
+                                      <span className={titleClass}>Slugline</span>
                                       <input
                                         value={selectedScene.title}
                                         onChange={(event) =>
                                           patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
                                         }
                                         className="writing-sheet-meta__input"
+                                        placeholder="APARTMENT"
                                       />
                                     </label>
                                     <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Time</span>
+                                      <span className={titleClass}>Time of Day</span>
                                       <input
                                         value={selectedScene.timeOfDay}
                                         onChange={(event) =>
                                           patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
                                         }
                                         className="writing-sheet-meta__input"
+                                        placeholder="NIGHT"
                                       />
                                     </label>
                                     <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Location</span>
+                                      <span className={titleClass}>INT./EXT.</span>
                                       <input
                                         value={selectedScene.location}
                                         onChange={(event) =>
                                           patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
                                         }
                                         className="writing-sheet-meta__input"
+                                        placeholder="INT."
                                       />
                                     </label>
                                     <label className="writing-sheet-meta__field writing-sheet-meta__field--wide">
@@ -1035,7 +1105,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                         onChange={(event) =>
                                           patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
                                         }
-                                        placeholder="人物：可留空，也可以只靠正文里的 @角色名"
+                                        placeholder="Optional cast line. Fountain pages can still stay clean and character-first."
                                         className="writing-sheet-meta__input"
                                       />
                                     </label>
@@ -1073,7 +1143,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                   }}
                                   onKeyDown={handleEditorKeyDown}
                                   rows={18}
-                                  placeholder={"# 红烛高照，洛青舟坐在桌边。\n@洛青舟 /os 我竟堂堂博士穿成了庶子。\n@婚服女子：......\n# 外面的风声压了过来。\n\n\n"}
+                                  placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
                                   className="writing-editor relative z-10 h-full w-full rounded-[30px] border-none bg-transparent px-6 py-6 font-sans text-[16px] leading-9 outline-none"
                                 />
 
@@ -1104,7 +1174,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                           closeAgentLine();
                                         }
                                       }}
-                                      placeholder="继续输入，这一行将发送给 Qalam。Enter 发送，Esc 退出。"
+                                      placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
                                       className="writing-agent-line__input"
                                     />
                                   </div>
@@ -1112,9 +1182,9 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
                                 {mentionState && filteredCharacters.length > 0 ? (
                                   <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-6 top-6 z-30 w-[320px]">
-                                    <div className="mention-picker-header">
-                                      <div className="mention-picker-title">角色绑定</div>
-                                      <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ 选择，Enter / Tab 插入，Esc 关闭</div>
+                                      <div className="mention-picker-header">
+                                      <div className="mention-picker-title">Character Mentions</div>
+                                      <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter / Tab insert, Esc dismiss</div>
                                     </div>
                                     <div className="mention-picker-grid">
                                       {filteredCharacters.map((character, index) => (
@@ -1129,7 +1199,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                                           title={buildCharacterDetail(character)}
                                         >
                                           <span className="font-semibold">@{character.name}</span>
-                                          <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "角色"}</span>
+                                          <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
                                         </button>
                                       ))}
                                     </div>
@@ -1138,21 +1208,21 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
                                   <div className="writing-sheet-footer">
                                     <div className="writing-sheet-footer__item">
-                                      <span className={titleClass}>Preview</span>
+                                      <span className={titleClass}>Fountain Preview</span>
                                       <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[11px] leading-6 text-[#5e554c]">
                                         {renderBoundText(compactText(selectedScenePreview, 110))}
                                       </div>
                                     </div>
                                     <div className="writing-sheet-footer__item">
-                                      <span className={titleClass}>Format</span>
+                                      <span className={titleClass}>Fountain Check</span>
                                       <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
-                                        {parserIssues.length ? compactText(parserIssues[0], 72) : "格式稳定。"}
+                                        {parserIssues.length ? compactText(parserIssues[0], 72) : "Fountain flow looks stable."}
                                       </div>
                                     </div>
                                     <div className="writing-sheet-footer__item">
                                       <span className={titleClass}>Mentions</span>
                                       <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
-                                        {sceneCharacterCount.length ? sceneCharacterCount.join("、") : "未引用角色"}
+                                        {sceneCharacterCount.length ? sceneCharacterCount.join(", ") : "No character mentions yet"}
                                       </div>
                                     </div>
                                   </div>
@@ -1173,13 +1243,13 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                               <div className="mt-3 text-[30px] font-semibold tracking-[-0.05em] text-[#2b2119]">
                                 {episode.title}
                               </div>
-                              <div className="mt-2 text-[12px] text-[#766b61]">{episode.scenes.length} 场</div>
+                              <div className="mt-2 text-[12px] text-[#766b61]">{episode.scenes.length} scenes</div>
                               <div className="mt-8 text-[13px] leading-8 text-[#5f554b]">
                                 {summarizeEpisode(episode)}
                               </div>
                               <div className="mt-auto flex items-center justify-between pt-8 text-[12px] font-semibold text-[#6f6458]">
-                                <span>{episode.scenes[0]?.id || `第${episode.id}集`}</span>
-                                <span>展开稿纸</span>
+                                <span>{episode.scenes[0]?.id || `Episode ${episode.id}`}</span>
+                                <span>Open page</span>
                               </div>
                             </button>
                           )}
@@ -1194,9 +1264,9 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     >
                       <div className="relative z-10 text-center">
                         <div className={titleClass}>New Episode</div>
-                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#2d241d]">右侧添一张稿纸</div>
+                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#2d241d]">Add another page to the right</div>
                         <div className="mt-3 text-[13px] leading-7 text-[#6e6257]">
-                          新建一集会在右侧生成新的创作页，沿着当前纸带继续向右展开。
+                          A new episode becomes a new sheet in the rail, extending the writing run one page farther.
                         </div>
                       </div>
                     </button>

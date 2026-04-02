@@ -874,6 +874,26 @@ body.qalam-resizing * {
   color: color-mix(in srgb, var(--node-accent) 78%, white);
 }
 
+.writing-token-slugline {
+  background: rgba(31, 41, 55, 0.12);
+  color: rgba(47, 55, 67, 0.82);
+}
+
+.writing-token-character {
+  background: rgba(120, 84, 42, 0.12);
+  color: rgba(104, 69, 32, 0.82);
+}
+
+.writing-token-parenthetical {
+  background: rgba(94, 110, 124, 0.12);
+  color: rgba(88, 97, 106, 0.82);
+}
+
+.writing-token-transition {
+  background: rgba(125, 65, 65, 0.12);
+  color: rgba(117, 55, 55, 0.84);
+}
+
 .writing-room {
   isolation: isolate;
 }

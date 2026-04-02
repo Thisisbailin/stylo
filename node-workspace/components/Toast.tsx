@@ -37,7 +37,7 @@ export const Toast: React.FC = () => {
   };
 
   return (
-    <TopRightHint className="z-[71]" widthClassName="w-[min(300px,calc(100vw-32px))]">
+    <TopRightHint stackIndex={1} widthClassName="w-[min(320px,calc(100vw-32px))]">
       <div className="flex items-start gap-3">
         <span
           className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"

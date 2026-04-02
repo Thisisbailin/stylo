@@ -4,6 +4,8 @@ type Props = {
   children: React.ReactNode;
   right?: number;
   top?: number;
+  stackIndex?: number;
+  stackGap?: number;
   widthClassName?: string;
   className?: string;
   onClick?: () => void;
@@ -15,6 +17,8 @@ export const TopRightHint: React.FC<Props> = ({
   children,
   right = 16,
   top = 16,
+  stackIndex = 0,
+  stackGap = 12,
   widthClassName = "w-[min(320px,calc(100vw-32px))]",
   className = "",
   onClick,
@@ -38,7 +42,10 @@ export const TopRightHint: React.FC<Props> = ({
   );
 
   return (
-    <div className="pointer-events-none fixed z-[72]" style={{ right, top }}>
+    <div
+      className="pointer-events-none fixed z-[72]"
+      style={{ right, top: top + stackIndex * (84 + stackGap) }}
+    >
       <div
         className={`pointer-events-auto ${onClick ? "cursor-pointer" : ""}`}
         onClick={onClick}

@@ -109,9 +109,6 @@ export const ConflictModal: React.FC<Props> = ({
   const remote = useMemo(() => summarize(remoteData), [remoteData]);
   const local = useMemo(() => summarize(localData), [localData]);
   const diffItems = useMemo(() => buildDiffs(remoteData, localData), [remoteData, localData]);
-
-  if (!isOpen) return null;
-
   const isNotice = mode === "notice";
 
   useEffect(() => {
@@ -125,6 +122,8 @@ export const ConflictModal: React.FC<Props> = ({
     }, 3000);
     return () => window.clearTimeout(timeoutId);
   }, [isNotice, isOpen, onAcknowledge, onKeepLocal]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="pointer-events-none fixed right-5 top-[112px] z-[73] sm:right-6">
