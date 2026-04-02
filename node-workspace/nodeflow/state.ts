@@ -58,16 +58,23 @@ export const sanitizeNodeFlowNodeStyle = (type: NodeType, style?: NodeFlowNodeSt
   return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
 };
 
+const normalizeLegacyNodeType = (type: string): NodeType => {
+  if (type === "wanVideoGen") return "wanReferenceVideoGen";
+  return type as NodeType;
+};
+
 export const normalizeNodeFlowNode = (node: NodeFlowNode): NodeFlowNode => {
-  const base = createDefaultNodeFlowNodeData(node.type);
+  const normalizedType = normalizeLegacyNodeType(String(node.type || ""));
+  const base = createDefaultNodeFlowNodeData(normalizedType);
   const data = base ? { ...base, ...(node.data || {}) } : node.data || {};
   const position = node.position || { x: 0, y: 0 };
   return {
     ...node,
+    type: normalizedType,
     position,
     selected: false,
     data,
-    style: sanitizeNodeFlowNodeStyle(node.type, node.style),
+    style: sanitizeNodeFlowNodeStyle(normalizedType, node.style),
   };
 };
 

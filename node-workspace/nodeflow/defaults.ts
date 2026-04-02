@@ -94,6 +94,14 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         status: "idle",
         error: null,
         aspectRatio: "1:1",
+        taskRequestedAt: null,
+        taskSubmittedAt: null,
+        processingStartedAt: null,
+        taskCompletedAt: null,
+        taskState: null,
+        progressPercent: null,
+        progressLabel: null,
+        progressHint: null,
       } as ImageGenNodeData;
     case "nanoBananaImageGen":
       return {
@@ -104,6 +112,14 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         error: null,
         aspectRatio: "1:1",
         model: "nano banana pro",
+        taskRequestedAt: null,
+        taskSubmittedAt: null,
+        processingStartedAt: null,
+        taskCompletedAt: null,
+        taskState: null,
+        progressPercent: null,
+        progressLabel: null,
+        progressHint: null,
       } as ImageGenNodeData;
     case "wanImageGen":
       return {
@@ -125,23 +141,6 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         status: "idle",
         error: null,
         aspectRatio: "16:9",
-      } as VideoGenNodeData;
-    case "wanVideoGen":
-      return {
-        inputImages: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-        duration: "10s",
-        model: "wan2.6-i2v",
-        quality: "standard",
-        resolution: "720P",
-        shotType: "multi",
-        watermark: false,
-        audioEnabled: false,
-        audioUrl: "",
       } as VideoGenNodeData;
     case "wanReferenceVideoGen":
       return {
@@ -173,8 +172,10 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         progressLabel: null,
         progressHint: null,
         taskState: null,
+        taskRequestedAt: null,
         taskSubmittedAt: null,
         processingStartedAt: null,
+        taskCompletedAt: null,
         lastCreditsCost: null,
         authProbeStatus: "idle",
         authProbeSummary: null,

@@ -19,8 +19,8 @@ const controlChipClass =
 
 export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const [preset, setPreset] = useState<GlassDiffusionPresetKey>("mist");
-  const [posX, setPosX] = useState(16);
-  const [posY, setPosY] = useState(18);
+  const [posX, setPosX] = useState(36);
+  const [posY, setPosY] = useState(82);
   const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.mist.width);
   const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.mist.height);
   const [blur, setBlur] = useState(GLASS_DIFFUSION_PRESETS.mist.blur);
@@ -87,7 +87,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[95] overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 z-[85] overflow-hidden">
       <div
         ref={regionRef}
         className="absolute"
@@ -134,7 +134,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
       </div>
 
-      <div className="fixed left-5 top-5 z-[96] flex items-center gap-2">
+      <div className="fixed left-5 top-5 z-[86] flex items-center gap-2">
         <button type="button" onClick={onClose} className={`${controlChipClass} text-[11px] uppercase tracking-[0.2em] text-white/72`}>
           Close Glass Lab
         </button>
@@ -150,7 +150,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         ))}
       </div>
 
-      <div className="fixed right-5 top-5 z-[96] flex max-w-[360px] flex-wrap justify-end gap-2">
+      <div className="fixed right-5 top-5 z-[86] flex max-w-[360px] flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={() => setShowBoundary((value) => !value)}
@@ -167,7 +167,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         </button>
       </div>
 
-      <div className="fixed left-5 bottom-24 z-[96] grid w-[min(520px,calc(100vw-40px))] grid-cols-2 gap-2">
+      <div className="fixed left-5 bottom-24 z-[86] grid w-[min(460px,calc(100vw-40px))] grid-cols-2 gap-2">
         {[
           { label: "x", value: posX, min: 0, max: 720, step: 1, set: setPosX },
           { label: "y", value: posY, min: 0, max: 720, step: 1, set: setPosY },

@@ -141,27 +141,12 @@ export const buildViduReferenceDemoState = ({
   allocateNodeId,
 }: BuildViduReferenceDemoInput) => {
   const deselectedNodes = state.nodes.map((n) => ({ ...n, selected: false }));
-  const groupId = allocateNodeId("group");
-  const groupNode: NodeFlowNode = {
-    id: groupId,
-    type: "group",
-    position: offset,
-    data: {
-      title: "Vidu 演示",
-      description: "音视频直出默认启用，1080p，错峰开启，示例含 3 主体与场景参考。",
-      view: activeView || undefined,
-    } as GroupNodeData,
-    style: { width: 1100, height: 900 },
-  };
-
   const promptText = "@Chef 和 @Guest 在一起吃火锅，并且旁白音说火锅大家都爱吃。";
   const textNodeId = allocateNodeId("text");
   const textNode: NodeFlowNode = {
     id: textNodeId,
     type: "text",
-    position: { x: 80, y: 120 },
-    parentId: groupId,
-    extent: "parent",
+    position: { x: offset.x + 80, y: offset.y + 120 },
     data: {
       title: "参考提示词",
       text: promptText,
@@ -187,9 +172,7 @@ export const buildViduReferenceDemoState = ({
   const imageNodes: NodeFlowNode[] = imageUrls.map((img, idx) => ({
     id: allocateNodeId("imageInput"),
     type: "imageInput",
-    position: { x: 80 + (idx % 3) * 180, y: 260 + Math.floor(idx / 3) * 180 },
-    parentId: groupId,
-    extent: "parent",
+    position: { x: offset.x + 80 + (idx % 3) * 180, y: offset.y + 260 + Math.floor(idx / 3) * 180 },
     data: {
       image: img.url,
       filename: `ref-${idx + 1}.png`,
@@ -203,9 +186,7 @@ export const buildViduReferenceDemoState = ({
   const viduNode: NodeFlowNode = {
     id: viduNodeId,
     type: "viduVideoGen",
-    position: { x: 620, y: 260 },
-    parentId: groupId,
-    extent: "parent",
+    position: { x: offset.x + 620, y: offset.y + 260 },
     data: {
       title: "Vidu",
       mode: "subject",
@@ -256,7 +237,7 @@ export const buildViduReferenceDemoState = ({
       ...state,
       nodes: deselectedNodes,
     },
-    [groupNode, textNode, ...imageNodes, viduNode],
+    [textNode, ...imageNodes, viduNode],
     newLinks
   );
 };

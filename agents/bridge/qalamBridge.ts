@@ -96,7 +96,7 @@ export type CreateNodeFlowMapNodeInput = {
   key: string;
   type: Extract<
     NodeType,
-    "text" | "shot" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
+    "text" | "shot" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
   >;
   title?: string;
   text?: string;

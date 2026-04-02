@@ -35,7 +35,6 @@ import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
 import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
 import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
-import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { ProjectorModule } from './components/ProjectorModule';
@@ -2360,14 +2359,6 @@ const App: React.FC = () => {
   let labModalWidth: number | string | undefined = undefined;
   let labModalContent: React.ReactNode = null;
   if (openLabModal === "writing") {
-    labModalTitle = "Writing";
-    labModalWidth = 520;
-    labModalContent = (
-      <WritingPanel
-        projectData={projectData}
-        setProjectData={setProjectData}
-      />
-    );
   } else if (openLabModal === "workspace") {
     labModalTitle = "Workspace";
     labModalWidth = 560;

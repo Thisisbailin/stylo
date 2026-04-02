@@ -277,7 +277,7 @@ export const validateNodeFlowState = ({
     });
 
   nodes
-    .filter((node) => node.type === "soraVideoGen" || node.type === "wanVideoGen")
+    .filter((node) => node.type === "soraVideoGen")
     .forEach((node) => {
       if (!hasIncomingHandleType(node.id, "image")) {
         errors.push(`VideoGen node "${node.id}" missing image input`);

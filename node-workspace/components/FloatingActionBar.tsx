@@ -9,7 +9,6 @@ import {
   Sparkles,
   Video,
   SquareStack,
-  BoxSelect,
   Library,
   ChevronRight,
   ChevronsRight,
@@ -55,10 +54,8 @@ type Props = {
   onAddWanImageGen: () => void;
   onAddVideoGen: () => void;
   onAddViduVideoGen: () => void;
-  onAddWanVideoGen: () => void;
   onAddWanReferenceVideoGen: () => void;
   onAddSeedanceVideoGen: () => void;
-  onAddGroup: () => void;
   onImport: () => void;
   onExport: () => void;
   onExportCsv?: () => void;
@@ -114,10 +111,8 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddWanImageGen,
   onAddVideoGen,
   onAddViduVideoGen,
-  onAddWanVideoGen,
   onAddWanReferenceVideoGen,
   onAddSeedanceVideoGen,
-  onAddGroup,
   onImport,
   onExport,
   onExportCsv,
@@ -151,6 +146,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [showTemplate, setShowTemplate] = useState(false);
   const [showWip, setShowWip] = useState(false);
   const [ioPane, setIoPane] = useState<"project" | "guides" | "export">("project");
+  const [nodePaletteMode, setNodePaletteMode] = useState<"panel" | "workflow">("workflow");
   const scriptInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const understandingInputRef = useRef<HTMLInputElement>(null);
@@ -286,14 +282,12 @@ export const FloatingActionBar: React.FC<Props> = ({
   ];
   const nodeActions = [
     { label: "Text", hint: "Draft prompts, notes, and structure", meta: "Writing", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
-    { label: "Group", hint: "Frame a reusable block of nodes", meta: "Layout", onClick: onAddGroup, Icon: BoxSelect, tone: "text-stone-200", surface: "bg-stone-500/12" },
     { label: "Image", hint: "Upload a reference image or still", meta: "Input", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
     { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "Video", hint: "Upload a reference video clip", meta: "Input", onClick: onAddVideo, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
     { label: "Nano Banana", hint: "Nano Banana Pro image", meta: "Generation", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
     { label: "Vidu", hint: "Vidu reference-to-video", meta: "Motion", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
-    { label: "WAN Vid", hint: "Wan 2.6 video workflow", meta: "Motion", onClick: onAddWanVideoGen, Icon: Video, tone: "text-violet-300", surface: "bg-violet-500/12" },
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
@@ -677,88 +671,123 @@ export const FloatingActionBar: React.FC<Props> = ({
 
       <div className="relative z-20 flex justify-center">
         {/* Template Menu */}
-        {typeof document !== "undefined" && showTemplate
-          ? createPortal(
+        {typeof document !== "undefined" && showTemplate ? (
+          createPortal(
             <div
               ref={templatePanelRef}
               className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
               style={{ ...panelStyle, ...templatePopoverStyle }}
             >
               <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
-              {renderIoPanel()}
+                {renderIoPanel()}
+              </div>
+            </div>,
+            document.body
+          )
+        ) : null}
 
-              <div className={`${sectionCardClass} space-y-3`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className={sectionEyebrowClass}>Templates</div>
-                    <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">保存当前 Group，或快速载入最近模板。</div>
+        {/* Plus Palette */}
+        {typeof document !== "undefined" && showPalette ? (
+          createPortal(
+            <div
+            ref={palettePanelRef}
+            className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
+            style={{ ...panelStyle, ...palettePopoverStyle }}
+          >
+              <div className="p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3 px-1">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
+                  <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
+                    {nodePaletteMode === "panel"
+                      ? "浏览项目面板类节点，整理剧本、分镜和身份信息。"
+                      : "浏览工作流节点，搭建输入、生成和引用链路。"}
                   </div>
-                  <div className="text-[10px] text-[var(--app-text-muted)]">{templates.length} saved</div>
                 </div>
-
-                <button
-                  onClick={() => {
-                    onCreateTemplate();
-                    closeMenus();
-                  }}
-                  className={`w-full rounded-[18px] border border-[var(--app-border)] px-3 py-3 text-left transition ${canCreateTemplate ? "bg-[var(--app-panel-muted)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px" : "bg-[var(--app-panel-muted)] opacity-50 cursor-not-allowed"}`}
-                  disabled={!canCreateTemplate}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
-                      <Library size={16} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">保存为模板</div>
-                      <div className="text-[10px] text-[var(--app-text-secondary)]">选中 Group 后写入模板库</div>
-                    </div>
+                <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
+                  <button
+                    type="button"
+                    onClick={() => setNodePaletteMode("panel")}
+                    className={`${compactTabClass} ${
+                      nodePaletteMode === "panel"
+                        ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                        : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                    }`}
+                  >
+                    Panel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNodePaletteMode("workflow")}
+                    className={`${compactTabClass} ${
+                      nodePaletteMode === "workflow"
+                        ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                        : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                    }`}
+                  >
+                    Workflow
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panel" ? "Panel Nodes" : "Workflow Nodes"}</div>
+                  <div className="text-[10px] text-[var(--app-text-muted)]">
+                    {nodePaletteMode === "panel" ? `${panelActions.length} custom types` : `${nodeActions.length} actions`}
                   </div>
-                </button>
-
-                {templates.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3.5 py-4 text-[11px] leading-5 text-[var(--app-text-secondary)]">
-                    当前还没有自定义模板。
+                </div>
+                {nodePaletteMode === "panel" ? (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
+                      <button
+                        key={label}
+                        onClick={() => {
+                          onClick();
+                          closeMenus();
+                        }}
+                        className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                      >
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                          <Icon size={18} />
+                        </div>
+                        <div className="mt-4">
+                          <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                          <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                        </div>
+                        <div className="mt-4">
+                          <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                            {meta}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {templates.slice(0, 4).map((template) => (
-                      <div
-                        key={template.id}
-                        className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-2.5"
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {nodeActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
+                      <button
+                        key={label}
+                        onClick={() => {
+                          onClick();
+                          closeMenus();
+                        }}
+                        className="group/node relative overflow-hidden rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
                       >
-                        <button
-                          onClick={() => {
-                            onLoadTemplate(template.id);
-                            closeMenus();
-                          }}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        >
-                          <div className="flex h-9 w-9 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] text-[var(--app-text-secondary)]">
-                            <Library size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{template.name}</div>
-                            <div className="mt-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                              {new Date(template.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTemplate(template.id);
-                            closeMenus();
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] text-[var(--app-text-muted)] transition hover:border-red-400/30 hover:text-red-300"
-                          title="删除模板"
-                        >
-                          ×
-                        </button>
-                      </div>
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-border)] ${surface} ${tone}`}>
+                          <Icon size={18} />
+                        </div>
+                        <div className="mt-3 min-w-0">
+                          <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                          <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between">
+                          <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                            {meta}
+                          </span>
+                          <ChevronRight size={14} className="text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
+                        </div>
+                      </button>
                     ))}
-                    {templates.length > 4 && (
-                      <div className="px-1 text-[10px] text-[var(--app-text-muted)]">其余模板可继续向下滚动查看。</div>
-                    )}
                   </div>
                 )}
               </div>
@@ -766,96 +795,11 @@ export const FloatingActionBar: React.FC<Props> = ({
             </div>,
             document.body
           )
-          : null}
-
-        {/* Plus Palette */}
-        {typeof document !== "undefined" && showPalette
-          ? createPortal(
-            <div
-            ref={palettePanelRef}
-            className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
-            style={{ ...panelStyle, ...palettePopoverStyle }}
-          >
-              <div className="p-4 space-y-4">
-              <div className="px-1">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
-                <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
-                  先放入面板类节点，再补充生成和工作流节点，层级会更清晰。
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>Panel Nodes</div>
-                  <div className="text-[10px] text-[var(--app-text-muted)]">3 custom types</div>
-                </div>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                  {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
-                    <button
-                      key={label}
-                      onClick={() => {
-                        onClick();
-                        closeMenus();
-                      }}
-                      className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
-                    >
-                      <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                          <Icon size={18} />
-                      </div>
-                      <div className="mt-4">
-                        <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                        <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
-                      </div>
-                      <div className="mt-4">
-                        <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                          {meta}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>Workflow Nodes</div>
-                  <div className="text-[10px] text-[var(--app-text-muted)]">{nodeActions.length} actions</div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                {nodeActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
-                  <button
-                    key={label}
-                    onClick={() => {
-                      onClick();
-                      closeMenus();
-                    }}
-                    className="group/node relative overflow-hidden rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-3 text-left hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] transition-all"
-                  >
-                    <div className={`h-10 w-10 flex items-center justify-center rounded-2xl border border-[var(--app-border)] ${surface} ${tone}`}>
-                        <Icon size={18} />
-                    </div>
-                    <div className="mt-3 min-w-0">
-                      <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                      <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                        {meta}
-                      </span>
-                      <ChevronRight size={14} className="text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-              </div>
-
-              </div>
-            </div>,
-            document.body
-          )
-          : null}
+        ) : null}
 
         {/* File Menu */}
-        {typeof document !== "undefined" && showFileMenu
-          ? createPortal(
+        {typeof document !== "undefined" && showFileMenu ? (
+          createPortal(
             <div
             ref={fileMenuPanelRef}
             className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden ${panelClass}`}
@@ -1034,7 +978,7 @@ export const FloatingActionBar: React.FC<Props> = ({
             </div>,
             document.body
           )
-          : null}
+        ) : null}
 
         {/* Main Bar */}
         {isEmbedded ? (
@@ -1107,6 +1051,32 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
               </button>
+              <div className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] p-1 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4)]">
+                <button
+                  type="button"
+                  onClick={() => setNodePaletteMode("panel")}
+                  className={`${compactTabClass} h-7 px-2.5 ${
+                    nodePaletteMode === "panel"
+                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                  title="Panel Nodes"
+                >
+                  Panel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNodePaletteMode("workflow")}
+                  className={`${compactTabClass} h-7 px-2.5 ${
+                    nodePaletteMode === "workflow"
+                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                  title="Workflow Nodes"
+                >
+                  Flow
+                </button>
+              </div>
 
               <button
                 onClick={(event) => {
@@ -1205,6 +1175,32 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
               </button>
+              <div className="inline-flex h-8 items-center gap-1 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] p-1 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4)]">
+                <button
+                  type="button"
+                  onClick={() => setNodePaletteMode("panel")}
+                  className={`${compactTabClass} h-6 px-2 ${
+                    nodePaletteMode === "panel"
+                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                  title="Panel Nodes"
+                >
+                  Panel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNodePaletteMode("workflow")}
+                  className={`${compactTabClass} h-6 px-2 ${
+                    nodePaletteMode === "workflow"
+                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                      : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                  title="Workflow Nodes"
+                >
+                  Flow
+                </button>
+              </div>
 
               <button
                 onClick={(event) => {

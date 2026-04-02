@@ -93,6 +93,10 @@ export type QalamAgentMemory = {
 export type QalamAgentEnvironment = {
   project: AgentEnvironmentProjectDigest;
   capabilityManifest: AgentEnvironmentCapabilityManifest;
+  executionApprovals: {
+    pendingCount: number;
+    pendingNodeTitles: string[];
+  };
   runtimeCapabilities: {
     runtimeMode: "browser" | "edge_full";
     enabledTools: string[];

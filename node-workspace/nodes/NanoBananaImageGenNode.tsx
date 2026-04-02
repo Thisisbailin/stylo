@@ -12,6 +12,51 @@ type Props = {
   data: ImageGenNodeData;
 };
 
+const formatElapsedMs = (ms?: number | null) => {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "—";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+};
+
+const buildTimingRows = (data: ImageGenNodeData, now: number) => {
+  const requestedAt = typeof data.taskRequestedAt === "number" ? data.taskRequestedAt : null;
+  const submittedAt = typeof data.taskSubmittedAt === "number" ? data.taskSubmittedAt : null;
+  const processingStartedAt = typeof data.processingStartedAt === "number" ? data.processingStartedAt : null;
+  const completedAt = typeof data.taskCompletedAt === "number" ? data.taskCompletedAt : null;
+  const activeEnd = completedAt ?? now;
+
+  if (!requestedAt) return null;
+
+  const submitEnd = submittedAt ?? activeEnd;
+  const queueEnd = processingStartedAt ?? (submittedAt ? activeEnd : null);
+  const processingEnd = processingStartedAt ? activeEnd : null;
+
+  return [
+    {
+      label: "提交",
+      value: formatElapsedMs(submitEnd - requestedAt),
+      muted: Boolean(submittedAt),
+    },
+    {
+      label: "排队",
+      value: submittedAt && queueEnd ? formatElapsedMs(queueEnd - submittedAt) : "—",
+      muted: Boolean(processingStartedAt || completedAt),
+    },
+    {
+      label: "生成",
+      value: processingEnd ? formatElapsedMs(processingEnd - processingStartedAt!) : "—",
+      muted: Boolean(completedAt),
+    },
+    {
+      label: "总计",
+      value: formatElapsedMs(activeEnd - requestedAt),
+      muted: Boolean(completedAt),
+    },
+  ];
+};
+
 export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const { updateNodeData, nodeFlowContext, getConnectedInputs } = useNodeFlowStore();
   const { runImageGen } = useNodeFlowExecutor();
@@ -19,8 +64,10 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   const isLoading = data.status === "loading";
   const { connectedIdentity } = getConnectedInputs(id);
+  const timingRows = useMemo(() => buildTimingRows(data, now), [data, now]);
 
   const identityOptions = useMemo(() => {
     const roles = nodeFlowContext?.context?.roles || [];
@@ -72,6 +119,12 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
       setPreviewImage(null);
     }
   }, [data.outputImage, previewImage]);
+
+  useEffect(() => {
+    if (!data.taskRequestedAt || data.taskCompletedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [data.taskCompletedAt, data.taskRequestedAt]);
 
   useEffect(() => {
     if (!connectedIdentity) return;
@@ -381,6 +434,31 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
               Nano Banana
             </div>
           </div>
+
+          {timingRows && (
+            <div className="node-panel space-y-2 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+                  本次用时
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-[var(--node-text-secondary)]">
+                  {data.taskState || data.status}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {timingRows.map((row) => (
+                  <div key={row.label} className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2">
+                    <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-60">
+                      {row.label}
+                    </div>
+                    <div className={`mt-1 text-[11px] font-semibold ${row.muted ? "text-[var(--node-text-secondary)]" : "text-[var(--node-text-primary)]"}`}>
+                      {row.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="node-control node-control--tight w-full px-2 text-[var(--node-text-secondary)] text-[9px] font-bold text-center uppercase tracking-wide truncate">
             {NANOBANANA_PRO_MODEL}

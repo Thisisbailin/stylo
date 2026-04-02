@@ -891,9 +891,7 @@ body.qalam-resizing * {
 }
 
 .writing-editor-highlight {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
-    var(--app-panel-soft);
+  background: transparent;
   color: var(--app-text-primary);
 }
 
@@ -921,6 +919,182 @@ body.qalam-resizing * {
 .writing-token-mode {
   background: color-mix(in srgb, var(--node-accent) 18%, transparent);
   color: color-mix(in srgb, var(--node-accent) 78%, white);
+}
+
+.writing-room {
+  isolation: isolate;
+}
+
+.writing-episode-rail {
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.writing-episode-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.writing-paper {
+  overflow: hidden;
+  border: 1px solid rgba(219, 201, 179, 0.8);
+  border-radius: 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(245, 236, 224, 0.98)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(125, 104, 82, 0.02) 0px,
+      rgba(125, 104, 82, 0.02) 36px,
+      rgba(125, 104, 82, 0.07) 36px,
+      rgba(125, 104, 82, 0.07) 37px
+    );
+  box-shadow:
+    0 28px 60px rgba(20, 12, 6, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  transition:
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.writing-paper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(173, 135, 96, 0.12), transparent 24%);
+  pointer-events: none;
+}
+
+.writing-paper::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 24px;
+  border: 1px solid rgba(188, 166, 141, 0.18);
+  pointer-events: none;
+}
+
+.writing-paper.is-active {
+  transform: translateY(-4px);
+  box-shadow:
+    0 38px 90px rgba(14, 10, 8, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.writing-paper:not(.is-active) {
+  filter: saturate(0.94);
+}
+
+.writing-paper--add {
+  border-style: dashed;
+  background:
+    linear-gradient(180deg, rgba(253, 247, 238, 0.92), rgba(245, 234, 220, 0.92)),
+    repeating-linear-gradient(
+      180deg,
+      rgba(125, 104, 82, 0.015) 0px,
+      rgba(125, 104, 82, 0.015) 36px,
+      rgba(125, 104, 82, 0.05) 36px,
+      rgba(125, 104, 82, 0.05) 37px
+    );
+}
+
+.writing-paper__perforation {
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  right: 0;
+  width: 26px;
+  background:
+    radial-gradient(circle at right center, transparent 0 9px, rgba(245, 236, 224, 0.98) 9.5px),
+    linear-gradient(180deg, rgba(168, 141, 111, 0.18), rgba(168, 141, 111, 0.08));
+  background-size: 26px 24px, 1px 100%;
+  background-repeat: repeat-y, no-repeat;
+  background-position: right top, 8px 0;
+  opacity: 0.84;
+  pointer-events: none;
+}
+
+.writing-agent-line {
+  border: 1px solid rgba(110, 202, 166, 0.48);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(24, 34, 40, 0.92), rgba(17, 23, 29, 0.94)),
+    radial-gradient(circle at top left, rgba(110, 235, 190, 0.14), transparent 42%);
+  box-shadow:
+    0 18px 42px rgba(7, 12, 14, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 12px 14px 14px;
+  overflow: hidden;
+  animation: writing-agent-line-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.writing-agent-line::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: linear-gradient(110deg, transparent 0%, rgba(132, 255, 210, 0.12) 34%, transparent 62%);
+  transform: translateX(-48%);
+  animation: writing-agent-sheen 2.8s linear infinite;
+  pointer-events: none;
+}
+
+.writing-agent-line.is-sent {
+  opacity: 0;
+  transform: translateY(-14px) scale(0.98);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.writing-agent-line__label {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(162, 239, 207, 0.84);
+}
+
+.writing-agent-line__input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  max-height: 136px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  color: rgba(247, 255, 251, 0.96);
+  font-size: 14px;
+  line-height: 1.7;
+  outline: none;
+}
+
+.writing-agent-line__input::placeholder {
+  color: rgba(201, 223, 214, 0.6);
+}
+
+@keyframes writing-agent-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes writing-agent-sheen {
+  0% {
+    transform: translateX(-48%);
+  }
+  100% {
+    transform: translateX(54%);
+  }
 }
 
 .image-input-shell {

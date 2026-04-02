@@ -1207,8 +1207,18 @@ export const QalamChatContent: React.FC<Props> = ({
     return [...displayMessages].reverse().find((item) => item.kind === "status" || item.kind === "tool" || item.kind === "approval") || displayMessages[displayMessages.length - 1];
   }, [displayMessages]);
 
+  const getCurrentAnchorScrollTop = useMemo(
+    () => (node: HTMLDivElement, currentNode: HTMLDivElement) => {
+      const topInset = revealMode === "latest" ? 2 : 6;
+      const headerTarget = Math.max(0, currentNode.offsetTop - topInset);
+      const bottomTarget = Math.max(0, currentNode.offsetTop + currentNode.offsetHeight - node.clientHeight);
+      return currentNode.offsetHeight + topInset <= node.clientHeight ? headerTarget : bottomTarget;
+    },
+    [revealMode]
+  );
+
   useEffect(() => {
-    if (revealMode !== "scroll") return;
+    if (revealMode !== "scroll" && revealMode !== "latest") return;
     const node = messagesRef.current;
     const currentNode = currentItemRef.current;
     if (!node || !currentNode || !isPinnedToCurrent) return;
@@ -1216,37 +1226,27 @@ export const QalamChatContent: React.FC<Props> = ({
     const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
     previousItemCountRef.current = nextCount;
     requestAnimationFrame(() => {
-      const itemTop = Math.max(0, currentNode.offsetTop - 6);
-      const itemBottom = currentNode.offsetTop + currentNode.offsetHeight + 6;
-      const viewportHeight = node.clientHeight;
-      const itemHeight = currentNode.offsetHeight + 12;
-      const targetTop = itemHeight > viewportHeight ? Math.max(0, itemBottom - viewportHeight) : itemTop;
+      const targetTop = getCurrentAnchorScrollTop(node, currentNode);
       node.scrollTo({ top: targetTop, behavior });
     });
-  }, [displayMessages.length, isPinnedToCurrent, isSending, revealMode]);
+  }, [messages, displayMessages.length, getCurrentAnchorScrollTop, isPinnedToCurrent, isSending, revealMode]);
 
   useEffect(() => {
-    if (revealMode !== "scroll") return;
+    if (revealMode !== "scroll" && revealMode !== "latest") return;
     if (!messagesRef.current) return;
     const node = messagesRef.current;
     const handleScroll = () => {
       const currentNode = currentItemRef.current;
       if (!currentNode) return;
-      const itemTop = Math.max(0, currentNode.offsetTop - 6);
-      const itemBottom = currentNode.offsetTop + currentNode.offsetHeight + 6;
-      const viewportTop = node.scrollTop;
-      const viewportBottom = viewportTop + node.clientHeight;
-      const withinTopAnchor = Math.abs(viewportTop - itemTop) < 72;
-      const withinBottomAnchor = Math.abs(viewportBottom - itemBottom) < 72;
-      const fullyVisible = itemTop >= viewportTop - 8 && itemBottom <= viewportBottom + 8;
-      setIsPinnedToCurrent(withinTopAnchor || withinBottomAnchor || fullyVisible);
+      const targetTop = getCurrentAnchorScrollTop(node, currentNode);
+      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => node.removeEventListener("scroll", handleScroll);
-  }, [displayMessages.length, revealMode]);
+  }, [displayMessages.length, getCurrentAnchorScrollTop, revealMode]);
 
   useEffect(() => {
-    if (revealMode !== "latest") return;
+    if (revealMode !== "latest" && revealMode !== "scroll") return;
     previousItemCountRef.current = displayMessages.length;
   }, [displayMessages.length, revealMode]);
 
@@ -1301,27 +1301,19 @@ export const QalamChatContent: React.FC<Props> = ({
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 ${revealMode === "latest" ? "overflow-visible px-0 py-0" : "overflow-y-auto px-4 py-4"} ${className}`}
-      style={style}
+      className={`qalam-scrollbar min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-1 pb-4" : "px-4 py-4"} ${className}`}
+      style={{
+        ...style,
+        maxHeight: revealMode === "latest" && latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : style?.maxHeight,
+      }}
     >
-      {revealMode === "latest" ? (
-        latestRevealItem ? (
-          <div
-            className="qalam-scrollbar overflow-y-auto px-4 py-4"
-            style={{
-              maxHeight: latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : undefined,
-            }}
-          >
-            {renderMessageItem(latestRevealItem, true, true)}
-          </div>
-        ) : null
-      ) : (
-        <div className="space-y-3">
-          {displayMessages.map((item) =>
-            renderMessageItem(item, false, item === displayMessages[displayMessages.length - 1])
-          )}
-        </div>
-      )}
+      <div className="space-y-3">
+        {displayMessages.map((item) => {
+          const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;
+          const isLatestListItem = item === displayMessages[displayMessages.length - 1];
+          return renderMessageItem(item, isCurrentReveal, revealMode === "latest" ? isCurrentReveal : isLatestListItem);
+        })}
+      </div>
     </div>
   );
 };

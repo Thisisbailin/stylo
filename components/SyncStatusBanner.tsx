@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AlertCircle, CloudOff, Loader2, ShieldAlert, CheckCircle2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert, X } from "lucide-react";
 import { SyncState, SyncStatus } from "../types";
 
 type Props = {
@@ -40,36 +40,20 @@ const statusMeta = (status: SyncStatus) => {
   switch (status) {
     case "syncing":
     case "loading":
-      return { label: statusLabel(status), tone: "sky", icon: Loader2 };
+      return { label: statusLabel(status), icon: Loader2, accent: "var(--app-accent-strong)" };
     case "conflict":
-      return { label: "同步冲突", tone: "amber", icon: AlertCircle };
+      return { label: "同步冲突", icon: AlertCircle, accent: "#f0b44c" };
     case "error":
-      return { label: "同步失败", tone: "rose", icon: AlertCircle };
+      return { label: "同步失败", icon: AlertCircle, accent: "#ff6b6b" };
     case "offline":
-      return { label: "离线", tone: "slate", icon: CloudOff };
+      return { label: "离线", icon: CloudOff, accent: "var(--app-text-muted)" };
     case "disabled":
-      return { label: "仅本地", tone: "slate", icon: ShieldAlert };
+      return { label: "仅本地", icon: ShieldAlert, accent: "var(--app-text-muted)" };
     case "synced":
-      return { label: "已同步", tone: "emerald", icon: CheckCircle2 };
+      return { label: "已同步", icon: CheckCircle2, accent: "#57c38c" };
     case "idle":
     default:
-      return { label: "就绪", tone: "slate", icon: CheckCircle2 };
-  }
-};
-
-const toneClasses = (tone: string) => {
-  switch (tone) {
-    case "sky":
-      return "border-sky-400/60 bg-sky-900/10";
-    case "amber":
-      return "border-amber-400/60 bg-amber-900/10";
-    case "rose":
-      return "border-rose-400/60 bg-rose-900/10";
-    case "emerald":
-      return "border-emerald-400/60 bg-emerald-900/10";
-    case "slate":
-    default:
-      return "border-slate-400/60 bg-slate-900/10";
+      return { label: "就绪", icon: CheckCircle2, accent: "var(--app-text-secondary)" };
   }
 };
 
@@ -80,7 +64,7 @@ export const SyncStatusBanner: React.FC<Props> = ({
   syncRollout,
   onOpenDetails,
   onForceSync,
-  onClose
+  onClose,
 }) => {
   const project = syncState.project;
   const secrets = syncState.secrets;
@@ -88,7 +72,6 @@ export const SyncStatusBanner: React.FC<Props> = ({
   const retryCount = (project.retryCount ?? 0) + (secrets.retryCount ?? 0);
   const lastAttemptAt = Math.max(project.lastAttemptAt ?? 0, secrets.lastAttemptAt ?? 0) || undefined;
   const lastSyncAt = Math.max(project.lastSyncAt ?? 0, secrets.lastSyncAt ?? 0) || undefined;
-  const lastError = project.lastError || secrets.lastError;
   const rolloutDisabled = !!syncRollout && !syncRollout.enabled;
   const canForceSync = isOnline && !rolloutDisabled;
 
@@ -119,69 +102,85 @@ export const SyncStatusBanner: React.FC<Props> = ({
   const meta = statusMeta(effectiveStatus);
   const Icon = meta.icon;
 
-  const detailParts: string[] = [];
-  if (rolloutDisabled && syncRollout) {
-    detailParts.push(`灰度发布 ${syncRollout.percent}% · 当前账号未启用`);
-  }
-  detailParts.push(`项目: ${statusLabel(project.status)}`);
-  detailParts.push(`密钥: ${statusLabel(secrets.status)}`);
-  if (pendingOps > 0) detailParts.push(`待发送: ${pendingOps}`);
-  if (retryCount > 0) detailParts.push(`重试: ${retryCount}`);
-  if (lastSyncAt) detailParts.push(`上次成功: ${formatTime(lastSyncAt)}`);
-  if (lastAttemptAt) detailParts.push(`最近尝试: ${formatTime(lastAttemptAt)}`);
-  if (lastError) detailParts.push(`错误: ${lastError}`);
+  const summary = rolloutDisabled
+    ? `灰度 ${syncRollout?.percent ?? 0}% · 当前账号未启用`
+    : [
+        `项目 ${statusLabel(project.status)}`,
+        `密钥 ${statusLabel(secrets.status)}`,
+        pendingOps > 0 ? `待发送 ${pendingOps}` : null,
+        retryCount > 0 ? `重试 ${retryCount}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
-  const accent =
-    meta.tone === "emerald"
-      ? "text-emerald-300"
-      : meta.tone === "sky"
-        ? "text-sky-300"
-        : meta.tone === "amber"
-          ? "text-amber-300"
-          : meta.tone === "rose"
-            ? "text-rose-300"
-            : "text-[var(--text-secondary)]";
+  const metaLine = lastSyncAt
+    ? `上次成功 ${formatTime(lastSyncAt)}${lastAttemptAt ? ` · 最近尝试 ${formatTime(lastAttemptAt)}` : ""}`
+    : lastAttemptAt
+      ? `最近尝试 ${formatTime(lastAttemptAt)}`
+      : "点击卡片查看同步详情";
 
   return (
-    <div className="pointer-events-none fixed bottom-24 right-6 z-50">
-      <div className="pointer-events-auto relative max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[var(--text-primary)] shadow-[var(--shadow-soft)] backdrop-blur px-4 py-3">
-        {onClose && (
+    <div className="pointer-events-none fixed right-5 top-5 z-[72] sm:right-6 sm:top-6">
+      <div
+        className="pointer-events-auto w-[min(360px,calc(100vw-24px))] rounded-[28px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent),var(--app-panel)] p-4 text-[var(--app-text-primary)] shadow-[0_24px_44px_-24px_rgba(0,0,0,0.48)] backdrop-blur-xl"
+        style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 44px -24px rgba(0,0,0,0.48)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
           <button
-            onClick={onClose}
-            className="absolute top-3 right-3 p-1 rounded-full text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-muted)] transition"
+            type="button"
+            onClick={onOpenDetails}
+            className="group flex min-w-0 flex-1 items-start gap-3 text-left"
           >
-            <X className="h-4 w-4" />
+            <span
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              style={{ color: meta.accent }}
+            >
+              <Icon className={`h-[18px] w-[18px] ${effectiveStatus === "syncing" || effectiveStatus === "loading" ? "animate-spin" : ""}`} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                Cloud Sync
+              </span>
+              <span className="mt-1 block text-[18px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+                {meta.label}
+              </span>
+              <span className="mt-2 block text-[12px] leading-5 text-[var(--app-text-secondary)]">
+                {summary}
+              </span>
+              <span className="mt-1.5 block text-[11px] leading-5 text-[var(--app-text-muted)] transition group-hover:text-[var(--app-text-secondary)]">
+                {metaLine}
+              </span>
+            </span>
           </button>
-        )}
-        <div className="flex items-start gap-3">
-          <div className="h-10 w-10 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-muted)] flex items-center justify-center">
-            <Icon className={`h-4 w-4 ${["同步中", "加载中"].includes(meta.label) ? "animate-spin" : ""} ${accent}`} />
-          </div>
-          <div className="flex-1 space-y-2">
-            <div className="text-sm font-semibold text-[var(--text-primary)]">{meta.label}</div>
-            <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              {detailParts.join(" · ")}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {onForceSync && canForceSync && (
-                <button
-                  onClick={onForceSync}
-                  className="px-3 py-1.5 rounded-full text-[12px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[var(--text-primary)] hover:border-emerald-300 hover:bg-emerald-500/10 transition"
-                >
-                  立即同步
-                </button>
-              )}
-              {onOpenDetails && (
-                <button
-                  onClick={onOpenDetails}
-                  className="px-3 py-1.5 rounded-full text-[12px] bg-[var(--accent-blue)] text-white hover:bg-sky-500 transition"
-                >
-                  查看详情
-                </button>
-              )}
-            </div>
-          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+              aria-label="关闭同步提示"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
+
+        {onForceSync && canForceSync && (
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">
+              点击卡片查看详情
+            </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onForceSync();
+              }}
+              className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel-strong)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-primary)] transition hover:border-[var(--app-accent-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+            >
+              Sync now
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

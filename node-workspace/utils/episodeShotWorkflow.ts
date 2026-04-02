@@ -1,7 +1,6 @@
 import type { XYPosition } from "@xyflow/react";
 import type { Episode } from "../../types";
 import type {
-  GroupNodeData,
   ImageGenNodeData,
   ShotNodeData,
   TextNodeData,
@@ -44,10 +43,8 @@ export const buildEpisodeShotNodeFlow = ({
   const nodes: NodeFlowNode[] = [];
   const links: NodeFlowLink[] = [];
   const topPadding = 120;
-  const bottomPadding = 180;
   const shotGap = 160;
   const promptGap = 100;
-  const groupWidth = 1720;
   const estimatedShotHeight = 340;
   const estimatedWanHeight = 560;
 
@@ -64,37 +61,25 @@ export const buildEpisodeShotNodeFlow = ({
     return layout;
   });
 
-  const groupId = `group-episode-${episode.id}-${stamp}`;
-  const groupHeight = yCursor + bottomPadding;
-
-  nodes.push({
-    id: groupId,
-    type: "group",
-    position: { x: origin.x, y: origin.y },
-    data: {
-      title: `EPISODE ${episode.id}: ${episode.title.toUpperCase()}`,
-    } as GroupNodeData,
-    style: { width: groupWidth, height: groupHeight },
-  });
-
   episode.shots.forEach((shot, index) => {
     const layout = layouts[index];
     const suffix = `${episode.id}-${shot.id}-${stamp}`;
     const shotNodeId = `shot-${suffix}`;
     const soraPromptNodeId = `text-sora-${suffix}`;
     const storyboardPromptNodeId = `text-storyboard-${suffix}`;
-    const wanVideoNodeId = `wan-video-${suffix}`;
+    const wanVideoNodeId = `wan-ref-video-${suffix}`;
     const wanImageNodeId = `wan-image-${suffix}`;
-    const yPos = layout?.y ?? topPadding + index * (estimatedShotHeight + shotGap);
+    const yPos = origin.y + (layout?.y ?? topPadding + index * (estimatedShotHeight + shotGap));
+    const leftColumnX = origin.x + 40;
+    const promptColumnX = origin.x + 420;
+    const generatorColumnX = origin.x + 940;
     const soraY = yPos;
     const storyboardY = yPos + (layout?.soraHeight ?? estimateTextNodeHeight(shot.soraPrompt || "")) + promptGap;
 
     nodes.push({
       id: shotNodeId,
       type: "shot",
-      position: { x: 40, y: yPos },
-      parentId: groupId,
-      extent: "parent",
+      position: { x: leftColumnX, y: yPos },
       data: {
         shotId: shot.id,
         duration: shot.duration,
@@ -117,9 +102,7 @@ export const buildEpisodeShotNodeFlow = ({
     nodes.push({
       id: soraPromptNodeId,
       type: "text",
-      position: { x: 420, y: soraY },
-      parentId: groupId,
-      extent: "parent",
+      position: { x: promptColumnX, y: soraY },
       data: {
         title: `Sora Prompt: ${shot.id}`,
         text: shot.soraPrompt || "",
@@ -130,9 +113,7 @@ export const buildEpisodeShotNodeFlow = ({
     nodes.push({
       id: storyboardPromptNodeId,
       type: "text",
-      position: { x: 420, y: storyboardY },
-      parentId: groupId,
-      extent: "parent",
+      position: { x: promptColumnX, y: storyboardY },
       data: {
         title: `Storyboard Prompt: ${shot.id}`,
         text: shot.storyboardPrompt || "",
@@ -142,13 +123,13 @@ export const buildEpisodeShotNodeFlow = ({
 
     nodes.push({
       id: wanVideoNodeId,
-      type: "wanVideoGen",
-      position: { x: 940, y: soraY },
-      parentId: groupId,
-      extent: "parent",
+      type: "wanReferenceVideoGen",
+      position: { x: generatorColumnX, y: soraY },
       data: {
-        title: `WAN Vid: ${shot.id}`,
+        title: `WAN Ref Vid: ${shot.id}`,
         inputImages: [],
+        referenceImages: [],
+        referenceVideos: [],
         status: "idle",
         error: null,
         aspectRatio: "16:9",
@@ -158,9 +139,7 @@ export const buildEpisodeShotNodeFlow = ({
     nodes.push({
       id: wanImageNodeId,
       type: "wanImageGen",
-      position: { x: 940, y: storyboardY },
-      parentId: groupId,
-      extent: "parent",
+      position: { x: generatorColumnX, y: storyboardY },
       data: {
         title: `WAN Img: ${shot.id}`,
         inputImages: [],

@@ -81,7 +81,6 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: ["multi", "image", "text"], outputs: ["image"] };
     case "soraVideoGen":
       return { inputs: ["multi", "image", "text"], outputs: [] };
-    case "wanVideoGen":
     case "wanReferenceVideoGen":
       return { inputs: ["multi", "image", "video", "text"], outputs: [] };
     case "viduVideoGen":

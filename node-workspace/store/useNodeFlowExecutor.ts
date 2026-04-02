@@ -16,7 +16,6 @@ import {
   QWEN_WAN_VIDEO_ENDPOINT,
   QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL,
   QWEN_WAN_REFERENCE_VIDEO_MODEL,
-  QWEN_WAN_VIDEO_MODEL,
   SEEDANCE_DEFAULT_BASE_URL,
   SEEDANCE_DEFAULT_MODEL,
 } from "../../constants";
@@ -141,6 +140,15 @@ const formatDurationMs = (ms: number) => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+};
+
+const isProcessingTaskState = (state?: string | null) => {
+  const normalized = (state || "").toLowerCase();
+  return (
+    normalized.includes("process") ||
+    normalized.includes("run") ||
+    normalized.includes("generat")
+  );
 };
 
 const buildViduNonSubjectPrompt = (prompt: string, imageCount: number) => {
@@ -684,15 +692,18 @@ export const useNodeFlowExecutor = () => {
       return;
     }
 
+    const taskRequestedAt = Date.now();
     store.updateNodeData(nodeId, {
       status: "loading",
       error: null,
       progressPercent: null,
       progressLabel: null,
       progressHint: null,
-      taskState: null,
-      taskSubmittedAt: Date.now(),
+      taskState: "submitting",
+      taskRequestedAt,
+      taskSubmittedAt: null,
       processingStartedAt: null,
+      taskCompletedAt: null,
     });
     try {
       const aspectRatio = data.aspectRatio || "1:1";
@@ -725,12 +736,26 @@ export const useNodeFlowExecutor = () => {
           inputImageUrl: refImage,
           size: data.size
         });
+        let processingStartedAt: number | null = null;
+        const taskSubmittedAt = Date.now();
 
-        store.updateNodeData(nodeId, { status: "loading", taskId: id, error: null });
+        store.updateNodeData(nodeId, {
+          status: "loading",
+          taskId: id,
+          error: null,
+          taskRequestedAt,
+          taskSubmittedAt,
+          processingStartedAt: null,
+          taskCompletedAt: null,
+          taskState: "queued",
+        });
 
         const maxAttempts = 60;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           const result = await WuyinkejiService.checkImageTaskStatus(id, configToUse);
+          if (!processingStartedAt && result.status === "processing") {
+            processingStartedAt = Date.now();
+          }
           if (result.status === "succeeded") {
             const nextVersionHistory = buildImageVersionHistory(
               data.outputImage,
@@ -743,6 +768,11 @@ export const useNodeFlowExecutor = () => {
               versionHistory: nextVersionHistory,
               error: null,
               model: configToUse.model,
+              taskRequestedAt,
+              taskSubmittedAt,
+              processingStartedAt,
+              taskCompletedAt: Date.now(),
+              taskState: "succeeded",
               identityId: activeIdentityId,
               identityTag: activeIdentityMention,
               designCategory: activeIdentityId ? "identity" : data.designCategory,
@@ -764,14 +794,39 @@ export const useNodeFlowExecutor = () => {
             return;
           }
           if (result.status === "failed") {
-            store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Image generation failed." });
+            store.updateNodeData(nodeId, {
+              status: "error",
+              error: result.errorMsg || "Image generation failed.",
+              taskRequestedAt,
+              taskSubmittedAt,
+              processingStartedAt,
+              taskCompletedAt: Date.now(),
+              taskState: "failed",
+            });
             return;
           }
+          store.updateNodeData(nodeId, {
+            status: "loading",
+            error: null,
+            taskRequestedAt,
+            taskSubmittedAt,
+            processingStartedAt,
+            taskCompletedAt: null,
+            taskState: result.status,
+          });
           // Wait 5 seconds between polls
           await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
-        store.updateNodeData(nodeId, { status: "error", error: "Image generation timed out." });
+        store.updateNodeData(nodeId, {
+          status: "error",
+          error: "Image generation timed out.",
+          taskRequestedAt,
+          taskSubmittedAt,
+          processingStartedAt,
+          taskCompletedAt: Date.now(),
+          taskState: processingStartedAt ? "processing" : "queued",
+        });
         return;
       }
 
@@ -799,11 +854,15 @@ export const useNodeFlowExecutor = () => {
             model: configToUse.model,
             aspectRatio
           });
-        } catch (e: any) {
-          store.updateNodeData(nodeId, { status: "error", error: e.message || "Seedream generation failed." });
-        }
-        return;
-      }
+    } catch (e: any) {
+      store.updateNodeData(nodeId, {
+        status: "error",
+        error: e.message || "Seedream generation failed.",
+        taskCompletedAt: Date.now(),
+      });
+    }
+    return;
+  }
 
       if (configToUse.provider === 'wan') {
         if (!text) {
@@ -1099,6 +1158,23 @@ export const useNodeFlowExecutor = () => {
           },
         };
 
+      const taskRequestedAt = Date.now();
+      store.updateNodeData(nodeId, {
+        status: "loading",
+        videoId: undefined,
+        videoUrl: undefined,
+        error: null,
+        progressPercent: null,
+        progressLabel: "提交中",
+        progressHint: "正在向 Vidu 提交任务。",
+        taskState: "submitting",
+        taskRequestedAt,
+        taskSubmittedAt: null,
+        processingStartedAt: null,
+        taskCompletedAt: null,
+        lastCreditsCost: data.lastCreditsCost ?? null,
+      });
+
       const { taskId, credits } = await ViduService.createReferenceVideo(request as any, viduConfig);
 
       const taskSubmittedAt = Date.now();
@@ -1113,8 +1189,10 @@ export const useNodeFlowExecutor = () => {
         progressLabel: null,
         progressHint: null,
         taskState: null,
+        taskRequestedAt,
         taskSubmittedAt,
         processingStartedAt: null,
+        taskCompletedAt: null,
         lastCreditsCost: typeof credits === "number" ? credits : data.lastCreditsCost ?? null,
       });
 
@@ -1122,7 +1200,7 @@ export const useNodeFlowExecutor = () => {
         const result = await ViduService.fetchTaskResult(taskId, viduConfig);
         const rawState = result.rawState || result.state;
         const normalizedRawState = rawState.toLowerCase();
-        if (!processingStartedAt && (normalizedRawState.includes("process") || normalizedRawState.includes("run") || normalizedRawState.includes("generat"))) {
+        if (!processingStartedAt && isProcessingTaskState(normalizedRawState)) {
           processingStartedAt = Date.now();
         }
         const snapshot = getViduProgressSnapshot({
@@ -1141,7 +1219,9 @@ export const useNodeFlowExecutor = () => {
             progressLabel: "生成完成",
             progressHint: "Vidu 已返回最终视频结果。",
             taskState: rawState,
+            taskRequestedAt,
             processingStartedAt,
+            taskCompletedAt: Date.now(),
           });
           return;
         }
@@ -1153,7 +1233,9 @@ export const useNodeFlowExecutor = () => {
             progressLabel: snapshot.progressLabel,
             progressHint: snapshot.progressHint,
             taskState: rawState,
+            taskRequestedAt,
             processingStartedAt,
+            taskCompletedAt: Date.now(),
           });
           return;
         }
@@ -1165,8 +1247,10 @@ export const useNodeFlowExecutor = () => {
           progressLabel: snapshot.progressLabel,
           progressHint: snapshot.progressHint,
           taskState: rawState,
+          taskRequestedAt,
           taskSubmittedAt,
           processingStartedAt,
+          taskCompletedAt: null,
         });
 
         if (processingStartedAt && Date.now() - processingStartedAt >= VIDU_PROCESSING_TIMEOUT_MS) {
@@ -1178,8 +1262,10 @@ export const useNodeFlowExecutor = () => {
             progressLabel: "生成中",
             progressHint: `本次任务在生成阶段已等待 ${formatDurationMs(processingWaitedMs)}，当前固定超时上限为 30 分钟。`,
             taskState: rawState,
+            taskRequestedAt,
             taskSubmittedAt,
             processingStartedAt,
+            taskCompletedAt: Date.now(),
           });
           return;
         }
@@ -1192,6 +1278,7 @@ export const useNodeFlowExecutor = () => {
         error: e.message || "Vidu 提交失败",
         progressLabel: "请求失败",
         progressHint: "提交或轮询时发生错误。",
+        taskCompletedAt: Date.now(),
       });
     }
   }, [config, store]);
@@ -1335,17 +1422,16 @@ export const useNodeFlowExecutor = () => {
     }
 
     const isWanVideo = (config.videoConfig.baseUrl || "").includes("/api/v1/services/aigc/video-generation/");
-    const isWanVideoNode = node.type === "wanVideoGen";
-    if (!config.videoConfig.baseUrl || (!config.videoConfig.apiKey && !isWanVideo && !isWanVideoNode && !isWanReferenceVideoNode)) {
+    if (!config.videoConfig.baseUrl || (!config.videoConfig.apiKey && !isWanVideo && !isWanReferenceVideoNode)) {
       store.updateNodeData(nodeId, { status: "error", error: "Missing video API configuration." });
       return;
     }
 
-    if ((isWanVideo || isWanVideoNode) && images.length === 0) {
+    if (isWanVideo && images.length === 0) {
       store.updateNodeData(nodeId, { status: "error", error: "Wan 视频需要至少一张参考图。" });
       return;
     }
-    if ((isWanVideo || isWanVideoNode) && !prompt) {
+    if (isWanVideo && !prompt) {
       store.updateNodeData(nodeId, { status: "error", error: "Wan 视频需要提示词。" });
       return;
     }
@@ -1361,10 +1447,10 @@ export const useNodeFlowExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
-      const normalizedImages = (isWanVideo || isWanVideoNode || isWanReferenceVideoNode) ? await normalizeWanImages(images) : images;
+      const normalizedImages = (isWanVideo || isWanReferenceVideoNode) ? await normalizeWanImages(images) : images;
       const refImage =
         normalizedImages.find((src) => src.startsWith("http")) ||
-        ((isWanVideo || isWanVideoNode) ? normalizedImages[0] : undefined);
+        (isWanVideo ? normalizedImages[0] : undefined);
       const params: any = {
         aspectRatio: data.aspectRatio || "16:9",
         duration: data.duration || "5s",
@@ -1430,11 +1516,6 @@ export const useNodeFlowExecutor = () => {
         ...config.videoConfig,
         model: data.model || config.videoConfig.model
       };
-      if (isWanVideoNode) {
-        configToUse.baseUrl = QWEN_WAN_VIDEO_ENDPOINT;
-        configToUse.model = QWEN_WAN_VIDEO_MODEL;
-        configToUse.apiKey = "";
-      }
       if (isWanReferenceVideoNode) {
         configToUse.baseUrl = QWEN_WAN_VIDEO_ENDPOINT;
         configToUse.model =
@@ -1444,7 +1525,7 @@ export const useNodeFlowExecutor = () => {
         configToUse.apiKey = "";
       }
 
-      if (isWanVideo || isWanVideoNode) {
+      if (isWanVideo) {
         const { id, url } = await WanService.submitWanVideoTask(prompt || "Animate this", configToUse, params);
         if (url) {
           store.updateNodeData(nodeId, { status: "complete", videoUrl: url, error: null });

@@ -31,6 +31,10 @@ type Props = {
   onSendingChange?: (sending: boolean) => void;
   renderCollapsedTrigger?: boolean;
   agentFirstMode?: boolean;
+  conversationStorageKey?: string;
+  conversationResetToken?: number;
+  panelStyleOverride?: React.CSSProperties;
+  showUsageBadge?: boolean;
 };
 
 const WORK_HINT_KEYWORDS = [
@@ -282,6 +286,10 @@ export const QalamAgent: React.FC<Props> = ({
   onSendingChange,
   renderCollapsedTrigger = true,
   agentFirstMode = false,
+  conversationStorageKey = "qalam_conversations_v1",
+  conversationResetToken,
+  panelStyleOverride,
+  showUsageBadge = true,
 }) => {
   const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
@@ -311,7 +319,7 @@ export const QalamAgent: React.FC<Props> = ({
   const [isRevealing, setIsRevealing] = useState(false);
   const [panelPhase, setPanelPhase] = useState<"collapsed" | "opening" | "open" | "closing">("collapsed");
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
-    key: "qalam_conversations_v1",
+    key: conversationStorageKey,
     initialValue: { activeId: "", items: [] },
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
@@ -398,6 +406,7 @@ export const QalamAgent: React.FC<Props> = ({
   const phaseTimerRef = useRef<number | null>(null);
   const messagePanelRef = useRef<HTMLDivElement | null>(null);
   const approvalSyncRef = useRef<string[]>([]);
+  const handledConversationResetRef = useRef<number | null>(null);
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
   const effectiveCollapsed = agentFirstMode ? false : collapsed;
   const bridge = useMemo<QalamAgentBridge>(
@@ -608,6 +617,17 @@ export const QalamAgent: React.FC<Props> = ({
       setConversationState((prev) => ({ ...prev, activeId: prev.items[0]?.id || "" }));
     }
   }, [conversationState.activeId, conversationState.items, setConversationState]);
+
+  useEffect(() => {
+    if (typeof conversationResetToken !== "number" || conversationResetToken <= 0) return;
+    if (handledConversationResetRef.current === conversationResetToken) return;
+    handledConversationResetRef.current = conversationResetToken;
+    const created = createConversationRecord();
+    setConversationState((prev) => ({
+      activeId: created.id,
+      items: [created, ...prev.items.filter((item) => item.id !== created.id)].slice(0, 12),
+    }));
+  }, [conversationResetToken, setConversationState]);
 
   useEffect(() => {
     onCollapsedChange?.(effectiveCollapsed);
@@ -831,6 +851,10 @@ export const QalamAgent: React.FC<Props> = ({
     maxWidth: `calc(100vw - ${dockInset * 2}px)`,
     zIndex: 80,
   };
+  const resolvedPanelStyle: React.CSSProperties = {
+    ...panelStyle,
+    ...(panelStyleOverride || {}),
+  };
 
   const tokenUsage = useMemo(() => {
     const sumPhase = (obj: any): number => {
@@ -875,7 +899,7 @@ export const QalamAgent: React.FC<Props> = ({
     <div
       className={panelClassName}
       style={{
-        ...panelStyle,
+        ...resolvedPanelStyle,
         transition: `opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
         pointerEvents: "none",
         overflow: "visible",
@@ -901,7 +925,7 @@ export const QalamAgent: React.FC<Props> = ({
             >
               {qalamMark}
             </button>
-            {!effectiveCollapsed && (
+            {!effectiveCollapsed && showUsageBadge && (
               <button
                 type="button"
                 onClick={onOpenStats}
@@ -914,7 +938,7 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
         <div
-          className={`px-4 pb-4 pt-[62px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`px-4 pb-4 pt-[46px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             effectiveCollapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
           }`}
         >
@@ -952,7 +976,7 @@ export const QalamAgent: React.FC<Props> = ({
                 isSending={isSending}
                 onApprovalChoice={handleApprovalChoice}
                 className="bg-transparent"
-                revealMode="scroll"
+                revealMode="latest"
                 latestBlockMaxHeight={messageViewportHeight}
                 style={{ maxHeight: `${messageViewportHeight}px` }}
               />

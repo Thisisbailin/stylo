@@ -160,7 +160,6 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         identityTag: data.identityTag ?? null,
       };
     case "soraVideoGen":
-    case "wanVideoGen":
     case "wanReferenceVideoGen":
     case "viduVideoGen":
     case "seedanceVideoGen":

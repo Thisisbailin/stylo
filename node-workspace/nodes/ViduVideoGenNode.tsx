@@ -13,6 +13,51 @@ type Props = {
   selected?: boolean;
 };
 
+const formatElapsedMs = (ms?: number | null) => {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return "—";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+};
+
+const buildTimingRows = (data: ViduVideoGenNodeData, now: number) => {
+  const requestedAt = typeof data.taskRequestedAt === "number" ? data.taskRequestedAt : null;
+  const submittedAt = typeof data.taskSubmittedAt === "number" ? data.taskSubmittedAt : null;
+  const processingStartedAt = typeof data.processingStartedAt === "number" ? data.processingStartedAt : null;
+  const completedAt = typeof data.taskCompletedAt === "number" ? data.taskCompletedAt : null;
+  const activeEnd = completedAt ?? now;
+
+  if (!requestedAt) return null;
+
+  const submitEnd = submittedAt ?? activeEnd;
+  const queueEnd = processingStartedAt ?? (submittedAt ? activeEnd : null);
+  const processingEnd = processingStartedAt ? activeEnd : null;
+
+  return [
+    {
+      label: "提交",
+      value: formatElapsedMs(submitEnd - requestedAt),
+      muted: Boolean(submittedAt),
+    },
+    {
+      label: "排队",
+      value: submittedAt && queueEnd ? formatElapsedMs(queueEnd - submittedAt) : "—",
+      muted: Boolean(processingStartedAt || completedAt),
+    },
+    {
+      label: "生成",
+      value: processingEnd ? formatElapsedMs(processingEnd - processingStartedAt!) : "—",
+      muted: Boolean(completedAt),
+    },
+    {
+      label: "总计",
+      value: formatElapsedMs(activeEnd - requestedAt),
+      muted: Boolean(completedAt),
+    },
+  ];
+};
+
 const normalizeMode = (mode?: string) => {
   if (mode === "audioVideo") return "subject";
   if (mode === "videoOnly") return "nonSubject";
@@ -48,6 +93,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const appConfig = useNodeFlowStore((state) => state.appConfig);
   const { runVideoGen } = useNodeFlowExecutor();
   const [showAdvanced, setShowAdvanced] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   const { text: connectedText, images: connectedImages, atMentions, entityBindings, imageRefs } = getConnectedInputs(id);
   const isLoading = data.status === "loading";
@@ -72,6 +118,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     () => estimateCredits(model, data.resolution || "720p", data.duration || 5, data.offPeak === true),
     [data.duration, data.offPeak, data.resolution, model]
   );
+  const timingRows = useMemo(() => buildTimingRows(data, now), [data, now]);
 
   const resolvedIdentityMentions = useMemo(() => {
     const roles = nodeFlowContext?.context?.roles || [];
@@ -121,6 +168,12 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
       updateNodeData(id, { mode: "nonSubject" });
     }
   }, [id, model, requestedMode, updateNodeData]);
+
+  useEffect(() => {
+    if (!data.taskRequestedAt || data.taskCompletedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [data.taskCompletedAt, data.taskRequestedAt]);
 
   const warnings = useMemo(() => {
     const msgs: string[] = [];
@@ -424,6 +477,31 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
             <Settings2 size={12} />
           </button>
         </div>
+
+        {timingRows && (
+          <div className="node-panel space-y-2 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-70">
+                本次用时
+              </div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-[var(--node-text-secondary)]">
+                {data.taskState || data.status}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {timingRows.map((row) => (
+                <div key={row.label} className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2">
+                  <div className="text-[8px] font-black uppercase tracking-widest text-[var(--node-text-secondary)] opacity-60">
+                    {row.label}
+                  </div>
+                  <div className={`mt-1 text-[11px] font-semibold ${row.muted ? "text-[var(--node-text-secondary)]" : "text-[var(--node-text-primary)]"}`}>
+                    {row.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-1.5">
           <select

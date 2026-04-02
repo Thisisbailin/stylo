@@ -1,4 +1,5 @@
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
+import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 import type {
   AgentEnvironmentCapabilityManifest,
   AgentEnvironmentRecentAction,
@@ -74,11 +75,13 @@ export const summarizeRecentSuccessfulActions = (messages: AgentSessionMessage[]
 
 export const buildAgentEnvironment = ({
   projectData,
+  executionApprovals,
   runtimeMode,
   enabledTools,
   sessionMessages,
 }: {
   projectData: ProjectData;
+  executionApprovals?: NodeFlowExecutionApprovalProposal[];
   runtimeMode: "browser" | "edge_full";
   enabledTools: string[];
   sessionMessages?: AgentSessionMessage[];
@@ -126,6 +129,13 @@ export const buildAgentEnvironment = ({
       },
     },
     capabilityManifest,
+    executionApprovals: {
+      pendingCount: (executionApprovals || []).length,
+      pendingNodeTitles: (executionApprovals || [])
+        .slice(0, 8)
+        .map((item) => item.nodeTitle)
+        .filter(Boolean),
+    },
     runtimeCapabilities: {
       runtimeMode,
       enabledTools,

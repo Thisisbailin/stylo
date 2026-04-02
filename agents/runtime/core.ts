@@ -328,6 +328,7 @@ export const runQalamAgentCore = async ({
     runtimeMode,
     agentEnvironment: buildAgentEnvironment({
       projectData: bridge.getProjectData(),
+      executionApprovals: bridge.getPendingNodeFlowExecutionApprovals(),
       runtimeMode,
       enabledTools: tools.map((tool) => tool.name),
       sessionMessages,

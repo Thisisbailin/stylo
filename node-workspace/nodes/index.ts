@@ -13,7 +13,6 @@ export { ImageGenNode } from "./ImageGenNode";
 export { NanoBananaImageGenNode } from "./NanoBananaImageGenNode";
 export { WanImageGenNode } from "./WanImageGenNode";
 export { SoraVideoGenNode } from "./SoraVideoGenNode";
-export { WanVideoGenNode } from "./WanVideoGenNode";
 export { WanReferenceVideoGenNode } from "./WanReferenceVideoGenNode";
 export { ViduVideoGenNode } from "./ViduVideoGenNode";
 export { SeedanceVideoGenNode } from "./SeedanceVideoGenNode";

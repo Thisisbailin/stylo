@@ -17,7 +17,6 @@ export type NodeType =
   | "nanoBananaImageGen"
   | "wanImageGen"
   | "soraVideoGen"
-  | "wanVideoGen"
   | "wanReferenceVideoGen"
   | "viduVideoGen"
   | "seedanceVideoGen"
@@ -222,6 +221,14 @@ export interface ImageGenNodeData extends BaseNodeData {
   designRefId?: string;
   identityTag?: string;
   identityId?: string;
+  taskRequestedAt?: number | null;
+  taskSubmittedAt?: number | null;
+  processingStartedAt?: number | null;
+  taskCompletedAt?: number | null;
+  taskState?: string | null;
+  progressPercent?: number | null;
+  progressLabel?: string | null;
+  progressHint?: string | null;
 }
 
 export interface VideoGenNodeData extends BaseNodeData {
@@ -260,8 +267,10 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
   progressLabel?: string | null;
   progressHint?: string | null;
   taskState?: string | null;
+  taskRequestedAt?: number | null;
   taskSubmittedAt?: number | null;
   processingStartedAt?: number | null;
+  taskCompletedAt?: number | null;
   lastCreditsCost?: number | null;
   authProbeStatus?: 'idle' | 'loading' | 'complete' | 'error';
   authProbeSummary?: string | null;

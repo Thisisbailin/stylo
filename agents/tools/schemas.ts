@@ -225,7 +225,6 @@ export const createNodeWorkflowSchema = z.object({
           "imageGen",
           "wanImageGen",
           "soraVideoGen",
-          "wanVideoGen",
           "wanReferenceVideoGen",
           "viduVideoGen",
           "seedanceVideoGen",
