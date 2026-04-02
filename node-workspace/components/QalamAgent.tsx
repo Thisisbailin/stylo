@@ -758,33 +758,39 @@ export const QalamAgent: React.FC<Props> = ({
             collapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
           }`}
         >
-          <div
-            ref={messagePanelRef}
-            className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[rgba(20,22,25,0.56)] shadow-[0_12px_30px_rgba(0,0,0,0.16)]"
-            style={{
-              backdropFilter: "saturate(106%)",
-              WebkitBackdropFilter: "saturate(106%)",
-            }}
-          >
-            <GlassDiffusionField
-              className="pointer-events-none absolute inset-0"
-              width={messagePanelSize.width}
-              height={messagePanelSize.height}
-              config={{
-                blur: qalamGlassConfig.blur,
-                fillAlpha: qalamGlassConfig.fillAlpha,
-                saturate: qalamGlassConfig.saturate,
-                fadeInsetX: qalamGlassConfig.fadeInsetX,
-                fadeInsetY: qalamGlassConfig.fadeInsetY,
-                fade: qalamGlassConfig.fade,
-                edgeAlpha: qalamGlassConfig.edgeAlpha,
-                curve: qalamGlassConfig.curve,
+          <div className="relative">
+            <div
+              className="pointer-events-none absolute z-0 transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{
+                left: 10,
+                top: 18,
+                width: Math.max(0, messagePanelSize.width - 20),
+                height: Math.max(0, messagePanelSize.height + 22),
+                opacity: collapsed ? 0 : 1,
               }}
-            />
-            <div className="relative">
+            >
+              <GlassDiffusionField
+                className="absolute inset-0"
+                width={Math.max(0, messagePanelSize.width - 20)}
+                height={Math.max(0, messagePanelSize.height + 22)}
+                config={{
+                  blur: qalamGlassConfig.blur,
+                  fillAlpha: qalamGlassConfig.fillAlpha,
+                  saturate: qalamGlassConfig.saturate,
+                  fadeInsetX: qalamGlassConfig.fadeInsetX,
+                  fadeInsetY: qalamGlassConfig.fadeInsetY,
+                  fade: qalamGlassConfig.fade,
+                  edgeAlpha: qalamGlassConfig.edgeAlpha,
+                  curve: qalamGlassConfig.curve,
+                }}
+                showBoundary={false}
+              />
+            </div>
+            <div ref={messagePanelRef} className="relative z-10 rounded-[30px] bg-transparent">
               <QalamChatContent
                 messages={messages}
                 isSending={isSending}
+                className="bg-transparent"
                 style={{ maxHeight: `${messagePanelMaxHeight}px` }}
               />
             </div>

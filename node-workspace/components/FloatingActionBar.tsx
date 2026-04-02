@@ -229,17 +229,14 @@ export const FloatingActionBar: React.FC<Props> = ({
     if (!showFileMenu && !showTemplate && !showPalette) return undefined;
 
     const updateAnchors = () => {
-      if (showFileMenu && typeof document !== "undefined") {
-        const anchor = document.querySelector("[data-account-trigger]") as HTMLElement | null;
-        if (anchor) setAccountAnchorRect(anchor.getBoundingClientRect());
+      if (showFileMenu && accountButtonRef.current) {
+        setAccountAnchorRect(accountButtonRef.current.getBoundingClientRect());
       }
-      if (showTemplate && typeof document !== "undefined") {
-        const anchor = document.querySelector("[data-project-trigger]") as HTMLElement | null;
-        if (anchor) setProjectAnchorRect(anchor.getBoundingClientRect());
+      if (showTemplate && projectButtonRef.current) {
+        setProjectAnchorRect(projectButtonRef.current.getBoundingClientRect());
       }
-      if (showPalette && typeof document !== "undefined") {
-        const anchor = document.querySelector("[data-nodes-trigger]") as HTMLElement | null;
-        if (anchor) setNodesAnchorRect(anchor.getBoundingClientRect());
+      if (showPalette && nodesButtonRef.current) {
+        setNodesAnchorRect(nodesButtonRef.current.getBoundingClientRect());
       }
     };
 
