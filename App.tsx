@@ -33,6 +33,8 @@ import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
+import type { NodeFlowFile } from './node-workspace/types';
+import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
@@ -347,6 +349,7 @@ const PROJECT_STORAGE_KEY = 'qalam_project_v1';
 const CONFIG_STORAGE_KEY = 'qalam_config_v1';
 const UI_STATE_STORAGE_KEY = 'qalam_ui_state_v1';
 const THEME_STORAGE_KEY = 'qalam_theme_v1';
+const NODEFLOW_STORAGE_KEY = 'qalam_nodeflow_v1';
 const LOCAL_BACKUP_KEY = 'qalam_local_backup';
 const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
 const LANDING_ROUTE_HASH = "#/landing";
@@ -424,11 +427,68 @@ const App: React.FC = () => {
   const setAppConfigStore = useNodeFlowStore(state => state.setAppConfig);
   const addWorkflowNode = useNodeFlowStore(state => state.addNode);
   const workflowNodes = useNodeFlowStore(state => state.nodes);
+  const workflowLinks = useNodeFlowStore(state => state.links);
+  const workflowGraphLinks = useNodeFlowStore(state => state.graphLinks);
+  const workflowLinkStyle = useNodeFlowStore(state => state.linkStyle);
+  const workflowGlobalAssetHistory = useNodeFlowStore(state => state.globalAssetHistory);
+  const workflowActiveView = useNodeFlowStore(state => state.activeView);
+  const workflowNodeFlowContext = useNodeFlowStore(state => state.nodeFlowContext);
   const workflowViewport = useNodeFlowStore(state => state.viewport);
+  const importNodeFlow = useNodeFlowStore(state => state.importNodeFlow);
+  const clearNodeFlow = useNodeFlowStore(state => state.clearNodeFlow);
+  const hasHydratedNodeFlowRef = useRef(false);
 
   useEffect(() => {
     setAppConfigStore(config);
   }, [config, setAppConfigStore]);
+
+  useEffect(() => {
+    if (hasHydratedNodeFlowRef.current) return;
+    hasHydratedNodeFlowRef.current = true;
+    try {
+      const raw = window.localStorage.getItem(NODEFLOW_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as NodeFlowFile;
+      if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.links)) {
+        importNodeFlow(parsed);
+      }
+    } catch (e) {
+      console.warn("Failed to restore NodeFlow from local storage", e);
+    }
+  }, [importNodeFlow]);
+
+  useEffect(() => {
+    if (!hasHydratedNodeFlowRef.current) return;
+    const timeout = window.setTimeout(() => {
+      try {
+        const snapshot = buildNodeFlowFile({
+          revision: useNodeFlowStore.getState().revision,
+          nodes: workflowNodes,
+          links: workflowLinks,
+          graphLinks: workflowGraphLinks,
+          linkStyle: workflowLinkStyle,
+          globalAssetHistory: workflowGlobalAssetHistory,
+          nodeFlowContext: workflowNodeFlowContext,
+          viewport: workflowViewport,
+          activeView: workflowActiveView,
+        });
+        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, JSON.stringify(snapshot));
+      } catch (e) {
+        console.warn("Failed to persist NodeFlow locally", e);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    workflowNodes,
+    workflowLinks,
+    workflowGraphLinks,
+    workflowLinkStyle,
+    workflowGlobalAssetHistory,
+    workflowNodeFlowContext,
+    workflowViewport,
+    workflowActiveView,
+  ]);
 
   // Sync global theme classes for both Tailwind dark styles and CSS variable themes
   useEffect(() => {
@@ -893,11 +953,13 @@ const App: React.FC = () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
       localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
       setProjectData(INITIAL_PROJECT_DATA);
+      clearNodeFlow();
       setStep(WorkflowStep.IDLE);
       setAnalysisStep(AnalysisSubStep.IDLE);
       setCurrentEpIndex(0);
       setActiveTab('lab');
       localStorage.removeItem(PROJECT_STORAGE_KEY);
+      localStorage.removeItem(NODEFLOW_STORAGE_KEY);
       localStorage.removeItem(UI_STATE_STORAGE_KEY);
       localStorage.removeItem(LOCAL_BACKUP_KEY);
       localStorage.removeItem(REMOTE_BACKUP_KEY);

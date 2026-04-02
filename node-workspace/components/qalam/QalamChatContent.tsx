@@ -1150,19 +1150,42 @@ export const QalamChatContent: React.FC<Props> = ({
 
   useEffect(() => {
     if (revealMode !== "latest") return;
-    previousItemCountRef.current = displayMessages.length;
-  }, [displayMessages.length, revealMode]);
+    const node = messagesRef.current;
+    const currentNode = currentItemRef.current;
+    if (!node || !currentNode || !isPinnedToCurrent) return;
 
-  const visibleItems = revealMode === "latest" ? (latestRevealItem ? [latestRevealItem] : []) : displayMessages;
+    const nextCount = displayMessages.length;
+    const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
+    previousItemCountRef.current = nextCount;
+
+    requestAnimationFrame(() => {
+      const targetTop = Math.max(0, currentNode.offsetTop - 18);
+      node.scrollTo({ top: targetTop, behavior });
+    });
+  }, [displayMessages.length, isPinnedToCurrent, isSending, revealMode]);
+
+  useEffect(() => {
+    if (revealMode !== "latest") return;
+    if (!messagesRef.current) return;
+    const node = messagesRef.current;
+    const handleScroll = () => {
+      const currentNode = currentItemRef.current;
+      if (!currentNode) return;
+      const targetTop = Math.max(0, currentNode.offsetTop - 18);
+      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
+    };
+    node.addEventListener("scroll", handleScroll, { passive: true });
+    return () => node.removeEventListener("scroll", handleScroll);
+  }, [displayMessages.length, revealMode]);
 
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 px-4 py-4 ${revealMode === "latest" ? "overflow-hidden" : "overflow-y-auto"} ${className}`}
+      className={`qalam-scrollbar min-h-0 overflow-y-auto px-4 py-4 ${className}`}
       style={style}
     >
       <div ref={contentRef} className="space-y-3">
-        {visibleItems.map((item) => {
+        {displayMessages.map((item) => {
           const isUser = item.kind === "chat" && item.message.role === "user";
           const isAssistantPanel = item.kind === "chat" && !isUser;
           const workedDuration =
@@ -1177,9 +1200,9 @@ export const QalamChatContent: React.FC<Props> = ({
               className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
             >
               {item.kind === "status" ? (
-                renderStatusLine(item.message, { expanded: revealMode === "latest" })
+                renderStatusLine(item.message, { expanded: revealMode === "latest" && item === latestRevealItem })
               ) : item.kind === "tool" ? (
-                renderToolThread(item.thread, { expanded: revealMode === "latest" })
+                renderToolThread(item.thread, { expanded: revealMode === "latest" && item === latestRevealItem })
               ) : isUser ? (
                 <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
                   {item.message.text}
