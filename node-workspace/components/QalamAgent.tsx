@@ -1034,14 +1034,19 @@ export const QalamAgent: React.FC<Props> = ({
     }),
     []
   );
+  const qalamGlassScale = 1.35;
+  const qalamTitleBandHeight = titleOrigin.y + titleOrigin.height + 10;
+  const qalamUnifiedBaseWidth = Math.max(0, messagePanelSize.width);
   const qalamGlassBaseHeight = Math.min(
     qalamVisibleMaxHeight,
     Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)
   );
-  const qalamGlassWidth = Math.max(0, Math.round(messagePanelSize.width * 1.2));
-  const qalamGlassHeight = Math.max(0, Math.round(qalamGlassBaseHeight * 1.2));
-  const qalamGlassOffsetX = Math.round((qalamGlassWidth - messagePanelSize.width) / -2);
-  const qalamGlassOffsetY = Math.round((qalamGlassHeight - qalamGlassBaseHeight) / -2);
+  const qalamUnifiedBaseHeight = qalamGlassBaseHeight + qalamTitleBandHeight;
+  const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth * qalamGlassScale));
+  const qalamGlassHeight = Math.max(0, Math.round(qalamUnifiedBaseHeight * qalamGlassScale));
+  const qalamGlassOffsetX = Math.round((qalamGlassWidth - qalamUnifiedBaseWidth) / -2);
+  const qalamGlassOffsetY =
+    -qalamTitleBandHeight - Math.round((qalamGlassHeight - qalamUnifiedBaseHeight) / 2);
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,

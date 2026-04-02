@@ -35,6 +35,7 @@ import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
 import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
 import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
+import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { ProjectorModule } from './components/ProjectorModule';
