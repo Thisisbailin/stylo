@@ -14,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { getNodeHandles, isValidConnection, nodeSupportsHandle } from "../utils/handles";
+import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection, nodeSupportsHandle } from "../utils/handles";
 import { NodeFlowFile, NodeType, GroupNodeData, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
 import {
@@ -85,6 +85,26 @@ interface ConnectionDropState {
   sourceNodeId: string | null;
   sourceHandleId: string | null;
 }
+
+const pickOutputHandle = (handles: string[], preferred?: "image" | "text" | "audio" | null) => {
+  if (preferred && handles.includes(preferred)) return preferred;
+  if (preferred && handles.includes("multi")) return "multi";
+  return handles.find((handle) => handle !== "multi") || handles[0] || null;
+};
+
+const pickInputHandle = (
+  handles: string[],
+  preferred?: "image" | "text" | "audio" | null,
+  existingHandleId?: string | null
+) => {
+  if (existingHandleId && handles.includes(existingHandleId)) {
+    if (existingHandleId === "multi") return "multi";
+    if (!preferred || existingHandleId === preferred) return existingHandleId;
+  }
+  if (preferred && handles.includes(preferred)) return preferred;
+  if (preferred && handles.includes("multi")) return "multi";
+  return handles[0] || null;
+};
 
 interface NodeFlowProps {
   projectData: ProjectData;
@@ -634,41 +654,85 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleDropCreate = (type: NodeType) => {
     if (!connectionDrop) return;
 
-    let position = connectionDrop.flowPosition;
+    const position = connectionDrop.flowPosition;
+    const existingNode = connectionDrop.sourceNodeId
+      ? useNodeFlowStore.getState().nodes.find((node) => node.id === connectionDrop.sourceNodeId)
+      : null;
+    const existingNodeHandles = existingNode ? getNodeHandles(existingNode.type) : { inputs: [], outputs: [] };
+    const newNodeHandles = getNodeHandles(type);
+    const existingTypedHandle =
+      isTypedHandle(connectionDrop.sourceHandleId) ? connectionDrop.sourceHandleId : null;
+    const inferredExistingType = existingNode ? inferHandleTypeFromNodeType(existingNode.type) : null;
+    const preferredHandleType = connectionDrop.handleType || existingTypedHandle || inferredExistingType;
+
+    const canAttach =
+      connectionDrop.connectionType === "source"
+        ? Boolean(pickInputHandle(newNodeHandles.inputs, preferredHandleType))
+        : Boolean(pickOutputHandle(newNodeHandles.outputs, preferredHandleType));
+
+    if (!canAttach) {
+      showToast(
+        preferredHandleType
+          ? `该节点不支持 ${preferredHandleType} 类型素材连接`
+          : "该节点没有可用于自动连接的端口",
+        "warning"
+      );
+      setConnectionDrop(null);
+      return;
+    }
 
     const newId = handleAddNode(type, position);
+    const latestRevision = useNodeFlowStore.getState().revision;
 
-    if (connectionDrop.handleType) {
-      const newNodeHandles = getNodeHandles(type);
-      const canAttach =
-        connectionDrop.connectionType === "source"
-          ? nodeSupportsHandle(newNodeHandles.inputs, connectionDrop.handleType)
-          : nodeSupportsHandle(newNodeHandles.outputs, connectionDrop.handleType);
-      if (!canAttach) {
-        showToast(`该节点不支持 ${connectionDrop.handleType} 类型素材连接`, "warning");
+    if (connectionDrop.connectionType === "source") {
+      const resolvedSourceHandle =
+        (isTypedHandle(connectionDrop.sourceHandleId) ? connectionDrop.sourceHandleId : null) ||
+        pickOutputHandle(existingNodeHandles.outputs, preferredHandleType);
+      const resolvedTargetHandle = pickInputHandle(newNodeHandles.inputs, preferredHandleType);
+
+      if (!resolvedSourceHandle || !resolvedTargetHandle || !connectionDrop.sourceNodeId) {
+        showToast("新节点已创建，但未能推断出有效连接端口", "warning");
         setConnectionDrop(null);
         return;
       }
-      if (connectionDrop.connectionType === "source") {
-        const resolvedTargetHandle = newNodeHandles.inputs.includes("multi") ? "multi" : connectionDrop.handleType;
-        const latestRevision = useNodeFlowStore.getState().revision;
-        connectNodes({
-          source: connectionDrop.sourceNodeId!,
-          sourceHandle: connectionDrop.sourceHandleId!,
+
+      connectNodes(
+        {
+          source: connectionDrop.sourceNodeId,
+          sourceHandle: resolvedSourceHandle,
           target: newId,
           targetHandle: resolvedTargetHandle,
-        }, { expectedRevision: latestRevision });
-      } else {
-        const resolvedSourceHandle = newNodeHandles.outputs.includes("multi") ? "multi" : connectionDrop.handleType;
-        const latestRevision = useNodeFlowStore.getState().revision;
-        connectNodes({
+        },
+        { expectedRevision: latestRevision }
+      );
+    } else {
+      const resolvedSourceHandle = pickOutputHandle(
+        newNodeHandles.outputs,
+        preferredHandleType || inferHandleTypeFromNodeType(type)
+      );
+      const resolvedTargetHandle = pickInputHandle(
+        existingNodeHandles.inputs,
+        preferredHandleType || (isTypedHandle(resolvedSourceHandle) ? resolvedSourceHandle : inferHandleTypeFromNodeType(type)),
+        connectionDrop.sourceHandleId
+      );
+
+      if (!resolvedSourceHandle || !resolvedTargetHandle || !connectionDrop.sourceNodeId) {
+        showToast("新节点已创建，但未能推断出有效连接端口", "warning");
+        setConnectionDrop(null);
+        return;
+      }
+
+      connectNodes(
+        {
           source: newId,
           sourceHandle: resolvedSourceHandle,
-          target: connectionDrop.sourceNodeId!,
-          targetHandle: connectionDrop.sourceHandleId!,
-        }, { expectedRevision: latestRevision });
-      }
+          target: connectionDrop.sourceNodeId,
+          targetHandle: resolvedTargetHandle,
+        },
+        { expectedRevision: latestRevision }
+      );
     }
+
     setConnectionDrop(null);
   };
 

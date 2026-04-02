@@ -199,7 +199,7 @@ export const BaseNode: React.FC<Props> = ({
             position={Position.Left}
             id={spec.id}
             style={{ top: spec.top }}
-            className={`node-card-port node-card-port--input !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+            className={`node-card-port node-card-port--input !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
             data-handletype={spec.id}
           />
         );
@@ -213,7 +213,7 @@ export const BaseNode: React.FC<Props> = ({
             position={Position.Right}
             id={spec.id}
             style={{ top: spec.top }}
-            className={`node-card-port node-card-port--output !w-2 !h-2 !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
+            className={`node-card-port node-card-port--output !border-0 !bg-[var(--node-text-secondary)] ${spec.hidden ? "node-card-port--ghost" : ""} ${spec.className}`.trim()}
             data-handletype={spec.id}
           />
         );

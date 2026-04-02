@@ -618,7 +618,7 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setMessages, setProjectData]);
 
-  const panelClassName = "pointer-events-auto qalam-panel-cloud w-[420px] max-w-[95vw] qalam-panel";
+  const panelClassName = "pointer-events-auto isolate w-[420px] max-w-[95vw] qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const panelStyle: React.CSSProperties | undefined = {
@@ -688,34 +688,48 @@ export const QalamAgent: React.FC<Props> = ({
   }
 
   const collapsedClipPath = `inset(${titleOrigin.y}px calc(100% - ${titleOrigin.x + titleOrigin.width}px) calc(100% - ${titleOrigin.y + titleOrigin.height}px) ${titleOrigin.x}px round ${titleOrigin.radius}px)`;
+  const isOpenPhase = panelPhase === "open";
 
   return (
     <div
       className={panelClassName}
       style={{
         ...panelStyle,
-        clipPath:
-          panelPhase === "open"
-            ? "inset(-56px -72px -180px -36px round 0px)"
-            : collapsedClipPath,
+        clipPath: panelPhase === "open" ? "none" : collapsedClipPath,
         borderRadius: panelPhase === "open" ? 0 : titleOrigin.radius,
-        transition: `clip-path ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), border-radius ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), box-shadow ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+        transition: `clip-path ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1), opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
         pointerEvents: panelPhase === "closing" ? "none" : "auto",
-        overflow: panelPhase === "open" ? "visible" : "hidden",
+        overflow: "visible",
+        background: "transparent",
+        boxShadow: "none",
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
       <div
-        className={`pointer-events-none absolute left-0 top-0 h-36 w-56 bg-[radial-gradient(circle_at_top_left,rgba(122,183,160,0.22),transparent_62%)] blur-2xl transition-opacity duration-700 ${isRevealing ? "opacity-100" : "opacity-55"}`}
+        aria-hidden="true"
+        className={`qalam-ambient qalam-ambient--primary ${isOpenPhase ? "is-open" : ""}`}
+      />
+      <div
+        aria-hidden="true"
+        className={`qalam-ambient qalam-ambient--secondary ${isOpenPhase ? "is-open" : ""}`}
+      />
+      <div
+        aria-hidden="true"
+        className={`qalam-ambient qalam-ambient--highlight ${isOpenPhase ? "is-open" : ""}`}
       />
       <div className="relative h-full min-h-0">
-        <div className="qalam-header-shell absolute left-4 right-4 top-[10px] z-20 flex items-center justify-between gap-3">
+        <div
+          className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
+          style={{ top: titleOrigin.y }}
+        >
           <div className="flex min-w-0 items-center gap-3">
             {qalamMark}
             <button
               type="button"
               onClick={onOpenStats}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-secondary)]"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 text-[11px] text-[var(--app-text-muted)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/8 hover:text-[var(--app-text-secondary)]"
               title="打开 Agent Setting"
             >
               <span className="text-[var(--app-text-primary)]">Agent Setting</span>
@@ -725,14 +739,14 @@ export const QalamAgent: React.FC<Props> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={closePanel}
-              className="h-9 w-9 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/72 text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
+              className="h-9 w-9 rounded-full border border-white/10 bg-white/7 text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/14 hover:bg-white/10 hover:text-[var(--app-text-primary)]"
               title="Close"
             >
               <X size={14} className="mx-auto" weight="bold" />
             </button>
           </div>
         </div>
-        <div className="flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[72px]">
+        <div className="flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[62px]">
           <QalamChatContent messages={messages} isSending={isSending} />
         </div>
       </div>
