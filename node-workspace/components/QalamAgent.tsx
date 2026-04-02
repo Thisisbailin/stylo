@@ -1,7 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  X,
-} from "@phosphor-icons/react";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
@@ -645,14 +642,14 @@ export const QalamAgent: React.FC<Props> = ({
   }, [projectData]);
 
   const formatNumber = (n: number) => n.toLocaleString();
-  const wordmarkTone = isSending ? "text-[#eef8f2]" : "text-[var(--app-text-primary)]";
   const qalamMark = (
-    <div className="relative inline-flex h-10 items-center">
-      <span
-        className={`pointer-events-none absolute -inset-x-3 -inset-y-2 rounded-[14px] bg-[radial-gradient(circle_at_20%_50%,rgba(122,183,160,0.18),transparent_30%),radial-gradient(circle_at_75%_25%,rgba(255,255,255,0.1),transparent_42%)] transition-all duration-700 ${isRevealing ? "scale-100 opacity-100" : "scale-95 opacity-35"}`}
-      />
-      <span className={`relative text-[30px] font-semibold tracking-[-0.065em] transition-colors duration-300 ${wordmarkTone}`}>Qalam</span>
-    </div>
+    <span
+      className={`inline-block text-[30px] font-semibold tracking-[-0.065em] text-[var(--app-text-primary)] transition duration-500 ${
+        isRevealing ? "opacity-100 blur-0" : "opacity-96"
+      }`}
+    >
+      Qalam
+    </span>
   );
 
   useEffect(() => {
@@ -675,7 +672,7 @@ export const QalamAgent: React.FC<Props> = ({
         onClick={openPanel}
         className="fixed z-[82] pointer-events-auto transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
         aria-label="Open Qalam"
-        style={{ left: dockInset + titleOrigin.x, top: dockInset + titleOrigin.y }}
+          style={{ left: dockInset + titleOrigin.x, top: dockInset + titleOrigin.y }}
       >
         <span
           style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
@@ -725,24 +722,22 @@ export const QalamAgent: React.FC<Props> = ({
           style={{ top: titleOrigin.y }}
         >
           <div className="flex min-w-0 items-center gap-3">
-            {qalamMark}
+            <button
+              type="button"
+              onClick={closePanel}
+              className="inline-flex items-center"
+              aria-label="Close Qalam"
+              title="Close Qalam"
+            >
+              {qalamMark}
+            </button>
             <button
               type="button"
               onClick={onOpenStats}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 text-[11px] text-[var(--app-text-muted)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/8 hover:text-[var(--app-text-secondary)]"
+              className="inline-flex h-8 items-center rounded-full border border-white/8 bg-white/6 px-3 text-[11px] text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/9 hover:text-[var(--app-text-primary)]"
               title="打开 Agent Setting"
             >
-              <span className="text-[var(--app-text-primary)]">Agent Setting</span>
               <span>{formatNumber(tokenUsage)}</span>
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={closePanel}
-              className="h-9 w-9 rounded-full border border-white/10 bg-white/7 text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/14 hover:bg-white/10 hover:text-[var(--app-text-primary)]"
-              title="Close"
-            >
-              <X size={14} className="mx-auto" weight="bold" />
             </button>
           </div>
         </div>

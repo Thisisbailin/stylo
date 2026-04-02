@@ -232,50 +232,45 @@
 }
 
 .qalam-ambient--primary {
-  left: -56px;
-  top: -34px;
-  width: 560px;
-  height: min(86vh, 820px);
-  border-radius: 88px 132px 188px 96px / 82px 92px 210px 146px;
-  background:
-    radial-gradient(82% 50% at 18% 10%, rgba(108, 171, 145, 0.18) 0%, rgba(108, 171, 145, 0.1) 18%, rgba(255, 255, 255, 0.08) 34%, rgba(255, 255, 255, 0.03) 48%, rgba(14, 19, 18, 0.06) 62%, transparent 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.045) 10%, rgba(14, 19, 18, 0.07) 26%, rgba(14, 19, 18, 0.038) 46%, rgba(14, 19, 18, 0.016) 62%, transparent 84%);
-  backdrop-filter: blur(42px) saturate(128%);
-  -webkit-backdrop-filter: blur(42px) saturate(128%);
+  left: -78px;
+  top: -30px;
+  width: 590px;
+  height: min(88vh, 860px);
+  border-radius: 46% 54% 58% 42% / 18% 18% 82% 82%;
+  background: rgba(255, 255, 255, 0.052);
+  backdrop-filter: blur(40px) saturate(116%);
+  -webkit-backdrop-filter: blur(40px) saturate(116%);
   -webkit-mask-image:
-    radial-gradient(112% 76% at 20% 12%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.92) 34%, rgba(0, 0, 0, 0.68) 54%, rgba(0, 0, 0, 0.26) 72%, transparent 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0.34) 62%, rgba(0, 0, 0, 0.08) 82%, transparent 100%);
+    radial-gradient(130% 78% at 18% 8%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.9) 28%, rgba(0, 0, 0, 0.52) 52%, rgba(0, 0, 0, 0.16) 72%, transparent 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.82) 26%, rgba(0, 0, 0, 0.3) 54%, rgba(0, 0, 0, 0.08) 78%, transparent 100%);
   mask-image:
-    radial-gradient(112% 76% at 20% 12%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.92) 34%, rgba(0, 0, 0, 0.68) 54%, rgba(0, 0, 0, 0.26) 72%, transparent 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.86) 34%, rgba(0, 0, 0, 0.34) 62%, rgba(0, 0, 0, 0.08) 82%, transparent 100%);
+    radial-gradient(130% 78% at 18% 8%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.9) 28%, rgba(0, 0, 0, 0.52) 52%, rgba(0, 0, 0, 0.16) 72%, transparent 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.98) 0%, rgba(0, 0, 0, 0.82) 26%, rgba(0, 0, 0, 0.3) 54%, rgba(0, 0, 0, 0.08) 78%, transparent 100%);
 }
 
 .qalam-ambient--secondary {
-  left: -8px;
-  top: 54px;
-  width: 430px;
-  height: min(64vh, 560px);
-  border-radius: 64px 98px 158px 72px / 56px 74px 172px 126px;
-  background:
-    radial-gradient(84% 60% at 28% 8%, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.024) 30%, rgba(14, 19, 18, 0.045) 56%, transparent 100%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(14, 19, 18, 0.044) 40%, rgba(14, 19, 18, 0.018) 58%, transparent 88%);
-  backdrop-filter: blur(56px) saturate(118%);
-  -webkit-backdrop-filter: blur(56px) saturate(118%);
-  -webkit-mask-image: radial-gradient(96% 84% at 34% 18%, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.58) 54%, rgba(0, 0, 0, 0.14) 78%, transparent 100%);
-  mask-image: radial-gradient(96% 84% at 34% 18%, rgba(0, 0, 0, 0.96) 0%, rgba(0, 0, 0, 0.58) 54%, rgba(0, 0, 0, 0.14) 78%, transparent 100%);
+  left: -42px;
+  top: 24px;
+  width: 500px;
+  height: min(74vh, 660px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.024);
+  backdrop-filter: blur(62px) saturate(108%);
+  -webkit-backdrop-filter: blur(62px) saturate(108%);
+  -webkit-mask-image: radial-gradient(104% 88% at 24% 16%, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.42) 52%, rgba(0, 0, 0, 0.12) 74%, transparent 100%);
+  mask-image: radial-gradient(104% 88% at 24% 16%, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.42) 52%, rgba(0, 0, 0, 0.12) 74%, transparent 100%);
 }
 
 .qalam-ambient--highlight {
-  left: -76px;
-  top: -62px;
-  width: 320px;
-  height: 220px;
+  left: -96px;
+  top: -66px;
+  width: 620px;
+  height: 240px;
   border-radius: 999px;
-  background:
-    radial-gradient(circle at 36% 40%, rgba(116, 192, 161, 0.16) 0%, rgba(116, 192, 161, 0.07) 30%, rgba(255, 255, 255, 0.05) 52%, transparent 78%);
-  filter: blur(44px);
-  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.86) 0%, rgba(0, 0, 0, 0.42) 58%, transparent 100%);
-  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.86) 0%, rgba(0, 0, 0, 0.42) 58%, transparent 100%);
+  background: rgba(255, 255, 255, 0.018);
+  filter: blur(64px);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.22) 46%, transparent 100%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.22) 46%, transparent 100%);
 }
 
 .qalam-panel-cloud {

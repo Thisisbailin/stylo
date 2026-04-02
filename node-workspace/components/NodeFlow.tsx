@@ -448,6 +448,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
+  const showPeripheralWidgets = false;
   const [showAgentSettings, setShowAgentSettings] = useState(false);
   const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
@@ -1115,7 +1116,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           />
           <div
             className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              isQalamCollapsed ? "opacity-100" : "pointer-events-none opacity-0"
+              showPeripheralWidgets ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           >
             <ViewportControls
@@ -1136,9 +1137,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       >
         <div className="flex w-[min(560px,calc(100vw-48px))] flex-col items-center gap-2">
           <div
-            className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              isQalamCollapsed ? "opacity-100 translate-y-0" : "pointer-events-none -translate-y-3 opacity-0"
-            }`}
+            className="pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] opacity-100 translate-y-0"
           >
             <FloatingActionBar
               onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
@@ -1241,13 +1240,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           </div>
         </div>
       </div>
-      <div className="fixed bottom-4 right-4 z-30 pointer-events-none">
-        <div className="pointer-events-auto qalam-bottom-assets">
-          <div className="relative h-12 flex items-center">
-            <AssetsPanel
-              floating={false}
-              inlineAnchor
-            />
+      <div className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${showPeripheralWidgets ? "opacity-100" : "opacity-0"}`}>
+        <div className={`pointer-events-auto qalam-bottom-assets ${showPeripheralWidgets ? "" : "pointer-events-none"}`}>
+          <div className="relative flex h-12 items-center">
+            <AssetsPanel floating={false} inlineAnchor />
           </div>
         </div>
       </div>
