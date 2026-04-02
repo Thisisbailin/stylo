@@ -25,9 +25,7 @@ import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
-import { getNodeFlowRef } from "../../agents/runtime/nodeFlowRefs";
-import { resolveNodeFlowNodeTitle } from "../nodeflow/titles";
-import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
+import { buildNodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 
 type MentionData = {
   name: string;
@@ -578,104 +576,6 @@ const buildImageVersionHistory = (
     },
     ...dedupedHistory.filter((item) => item.src !== currentImage),
   ].slice(0, 12);
-};
-
-const truncateExecutionPreview = (text?: string | null, maxLength = 160) => {
-  const value = (text || "").replace(/\s+/g, " ").trim();
-  if (!value) return null;
-  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
-};
-
-const summarizeExecutionInputs = (options: {
-  images?: string[];
-  audios?: string[];
-  referenceImages?: string[];
-  referenceVideos?: string[];
-  projectReferenceTargets?: Array<{ category: "identity"; refId: string; label?: string }>;
-}) => {
-  const summary: string[] = [];
-  if ((options.images?.length || 0) > 0) summary.push(`${options.images!.length} 张连线图片`);
-  if ((options.audios?.length || 0) > 0) summary.push(`${options.audios!.length} 条连线音频`);
-  if ((options.referenceImages?.length || 0) > 0) summary.push(`${options.referenceImages!.length} 张节点参考图`);
-  if ((options.referenceVideos?.length || 0) > 0) summary.push(`${options.referenceVideos!.length} 条节点参考视频`);
-  if ((options.projectReferenceTargets?.length || 0) > 0) summary.push(`${options.projectReferenceTargets!.length} 个项目卡片引用`);
-  return summary;
-};
-
-const buildImageGenerationApprovalProposal = (options: {
-  node: any;
-  connectedText: string;
-  images: string[];
-  config: any;
-}): NodeFlowExecutionApprovalProposal => {
-  const { node, connectedText, images, config } = options;
-  const data = node.data as any;
-  const isNanoBananaNode = node.type === "nanoBananaImageGen";
-  const isWanImageNode = node.type === "wanImageGen";
-  const providerLabel = isNanoBananaNode
-    ? "Nano Banana"
-    : isWanImageNode
-      ? "WAN"
-      : (config?.multimodalConfig?.provider || "Image");
-  const modelLabel = isNanoBananaNode
-    ? NANOBANANA_PRO_MODEL
-    : isWanImageNode
-      ? QWEN_WAN_IMAGE_MODEL
-      : (data.model || config?.multimodalConfig?.model || "default");
-  return {
-    id: `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    nodeId: node.id,
-    nodeRef: getNodeFlowRef(node),
-    nodeType: node.type,
-    nodeTitle: resolveNodeFlowNodeTitle(node),
-    action: "image_generation",
-    providerLabel,
-    modelLabel,
-    promptPreview: truncateExecutionPreview(connectedText),
-    inputSummary: summarizeExecutionInputs({ images }),
-    createdAt: Date.now(),
-  };
-};
-
-const buildVideoGenerationApprovalProposal = (options: {
-  node: any;
-  connectedText: string;
-  images: string[];
-  audios?: string[];
-  config: any;
-}): NodeFlowExecutionApprovalProposal => {
-  const { node, connectedText, images, audios, config } = options;
-  const data = node.data as any;
-  const isSeedance = node.type === "seedanceVideoGen";
-  const isVidu = node.type === "viduVideoGen";
-  const isWan = node.type === "wanVideoGen" || node.type === "wanReferenceVideoGen";
-  const providerLabel = isSeedance
-    ? "Seedance"
-    : isVidu
-      ? "Vidu"
-      : isWan
-        ? "WAN"
-        : "Video";
-  const modelLabel = data.model || config?.videoConfig?.model || "default";
-  return {
-    id: `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    nodeId: node.id,
-    nodeRef: getNodeFlowRef(node),
-    nodeType: node.type,
-    nodeTitle: resolveNodeFlowNodeTitle(node),
-    action: "video_generation",
-    providerLabel,
-    modelLabel,
-    promptPreview: truncateExecutionPreview(connectedText),
-    inputSummary: summarizeExecutionInputs({
-      images,
-      audios,
-      referenceImages: Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [],
-      referenceVideos: Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [],
-      projectReferenceTargets: Array.isArray(data.projectReferenceTargets) ? data.projectReferenceTargets : [],
-    }),
-    createdAt: Date.now(),
-  };
 };
 
 export const useNodeFlowExecutor = () => {
@@ -1552,13 +1452,15 @@ export const useNodeFlowExecutor = () => {
   const runImageGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node) return;
-    const { images, text: connectedText } = store.getConnectedInputs(nodeId);
+    const connectedInputs = store.getConnectedInputs(nodeId);
     store.requestExecutionApproval(
-      buildImageGenerationApprovalProposal({
+      buildNodeFlowExecutionApprovalProposal({
         node,
-        connectedText,
-        images,
-        config,
+        connectedInputs,
+        runtimeDefaults: {
+          imageProviderLabel: config?.multimodalConfig?.provider || "Image",
+          imageModelLabel: config?.multimodalConfig?.model || "global default",
+        },
       })
     );
   }, [config, store]);
@@ -1566,14 +1468,15 @@ export const useNodeFlowExecutor = () => {
   const runVideoGen = useCallback(async (nodeId: string) => {
     const node = store.getNodeById(nodeId);
     if (!node) return;
-    const { images, audios, text: connectedText } = store.getConnectedInputs(nodeId);
+    const connectedInputs = store.getConnectedInputs(nodeId);
     store.requestExecutionApproval(
-      buildVideoGenerationApprovalProposal({
+      buildNodeFlowExecutionApprovalProposal({
         node,
-        connectedText,
-        images,
-        audios,
-        config,
+        connectedInputs,
+        runtimeDefaults: {
+          videoProviderLabel: config?.videoConfig?.baseUrl ? "Video" : "Video",
+          videoModelLabel: config?.videoConfig?.model || "global default",
+        },
       })
     );
   }, [config, store]);

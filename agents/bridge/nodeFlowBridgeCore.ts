@@ -4,6 +4,12 @@ import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from 
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
 import { findProjectGraphNodeByRef } from "../../node-workspace/nodeflow/projectGraph";
+import { buildConnectedInputs } from "../../node-workspace/nodeflow/queries";
+import {
+  buildNodeFlowExecutionApprovalProposal,
+  inferExecutionApprovalAction,
+  type NodeFlowExecutionApprovalProposal,
+} from "../../node-workspace/nodeflow/approvals";
 import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
 import { ensureUniqueNodeRef, getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../runtime/nodeFlowRefs";
 import { createNodeFlowMapWithBridge } from "./nodeFlowBuilder";
@@ -36,6 +42,8 @@ type NodeFlowBridgeDeps = {
   removeNode: (nodeId: string) => void;
   removeLink: (linkId: string) => void;
   toggleLinkPause: (linkId: string) => void;
+  requestExecutionApproval?: (proposal: NodeFlowExecutionApprovalProposal) => void;
+  clearExecutionApproval?: (nodeId: string) => void;
 };
 
 const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
@@ -346,6 +354,51 @@ const createNodeFlowMap = (
   );
 };
 
+const resolveExecutionApprovalNode = (snapshot: NodeFlowFile, input: { nodeId?: string; nodeRef?: string }) => {
+  const resolvedRef = normalizeNodeRef(input.nodeRef);
+  return resolvedRef
+    ? snapshot.nodes.find((node) => getNodeFlowRef(node) === resolvedRef)
+    : snapshot.nodes.find((node) => node.id === input.nodeId);
+};
+
+const requestNodeFlowExecutionApproval = (
+  deps: NodeFlowBridgeDeps,
+  input: { nodeId?: string; nodeRef?: string }
+) => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  const node = resolveExecutionApprovalNode(snapshot, input);
+  if (!node) {
+    throw new Error("requestNodeFlowExecutionApproval 引用了不存在的节点。");
+  }
+  if (!inferExecutionApprovalAction(node.type)) {
+    throw new Error(`节点 ${node.type} 不是可审批的生成节点。`);
+  }
+  const proposal = buildNodeFlowExecutionApprovalProposal({
+    node,
+    connectedInputs: buildConnectedInputs({
+      nodeId: node.id,
+      nodes: snapshot.nodes,
+      links: snapshot.links,
+      nodeFlowContext: snapshot.nodeFlowContext,
+    }),
+  });
+  deps.requestExecutionApproval?.(proposal);
+  return proposal;
+};
+
+const clearNodeFlowExecutionApproval = (
+  deps: NodeFlowBridgeDeps,
+  input: { nodeId?: string; nodeRef?: string }
+) => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  const node = resolveExecutionApprovalNode(snapshot, input);
+  if (!node) {
+    throw new Error("clearNodeFlowExecutionApproval 引用了不存在的节点。");
+  }
+  deps.clearExecutionApproval?.(node.id);
+  return { nodeId: node.id };
+};
+
 export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBridge => ({
   getProjectData: deps.getProjectData,
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
@@ -357,6 +410,8 @@ export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBrid
   connectNodeFlowNodes: (input) => connectNodeFlowNodes(deps, input),
   getNodeFlowNode: (input) => lookupNodeFlowNodeInSnapshot(deps.getNodeFlowSnapshot(), input),
   createNodeFlowMap: (input) => createNodeFlowMap(deps, input),
+  requestNodeFlowExecutionApproval: (input) => requestNodeFlowExecutionApproval(deps, input),
+  clearNodeFlowExecutionApproval: (input) => clearNodeFlowExecutionApproval(deps, input),
   getViewport: () => (deps.getNodeFlowSnapshot().viewport || null) as NodeFlowViewport | null,
   getNodeCount: () => deps.getNodeFlowSnapshot().nodes.length,
 });

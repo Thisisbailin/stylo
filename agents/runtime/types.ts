@@ -1,6 +1,7 @@
 import type { Session } from "@openai/agents";
 import type { ProjectData, QalamToolSettings } from "../../types";
 import type { NodeFlowFile } from "../../node-workspace/types";
+import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 
 export type AgentAttachment = {
   id: string;
@@ -150,6 +151,7 @@ export type QalamRunResult = {
   toolCalls: AgentExecutedToolCall[];
   updatedProjectData?: ProjectData;
   updatedNodeFlow?: NodeFlowFile;
+  updatedExecutionApprovals?: NodeFlowExecutionApprovalProposal[];
   tracing?: {
     enabled: boolean;
     traceId?: string;

@@ -8,6 +8,8 @@ import { pingToolDef } from "./ping";
 import { readProjectResourceToolDef } from "./readProjectResource";
 import { searchProjectResourceToolDef } from "./searchProjectResource";
 import { editUnderstandingResourceToolDef } from "./editUnderstandingResource";
+import { prepareGenerationExecutionToolDef } from "./prepareGenerationExecution";
+import { cancelGenerationExecutionToolDef } from "./cancelGenerationExecution";
 
 const LOOKUP_TOOL_NAMES = new Set([
   "list_project_resources",
@@ -17,6 +19,8 @@ const LOOKUP_TOOL_NAMES = new Set([
 const MUTATING_TOOL_NAMES = new Set([
   "edit_project_resource",
   "operate_project_resource",
+  "prepare_generation_execution",
+  "cancel_generation_execution",
 ]);
 
 const TOOL_DEFS = [
@@ -26,6 +30,8 @@ const TOOL_DEFS = [
   searchProjectResourceToolDef,
   editUnderstandingResourceToolDef,
   operateProjectResourceToolDef,
+  prepareGenerationExecutionToolDef,
+  cancelGenerationExecutionToolDef,
 ] as const;
 
 const stableSerialize = (value: unknown): string => {

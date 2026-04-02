@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField, GlassDiffusionPresetKey } from "./GlassDiffusionField";
 
 type Props = {
   isOpen: boolean;
@@ -13,104 +14,23 @@ type DragState = {
   originY: number;
 } | null;
 
-type PresetKey = "bare" | "mist" | "veil";
-
-const buildSuperellipsePath = (
-  width: number,
-  height: number,
-  exponent: number,
-  offsetX = 0,
-  offsetY = 0,
-  segments = 72
-) => {
-  const a = width / 2;
-  const b = height / 2;
-  const cx = offsetX + a;
-  const cy = offsetY + b;
-  const points: string[] = [];
-
-  for (let i = 0; i <= segments; i += 1) {
-    const theta = (Math.PI * 2 * i) / segments;
-    const cos = Math.cos(theta);
-    const sin = Math.sin(theta);
-    const x = cx + a * Math.sign(cos) * Math.pow(Math.abs(cos), 2 / exponent);
-    const y = cy + b * Math.sign(sin) * Math.pow(Math.abs(sin), 2 / exponent);
-    points.push(`${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
-  }
-
-  return `${points.join(" ")} Z`;
-};
-
-const PRESETS: Record<
-  PresetKey,
-  {
-    width: number;
-    height: number;
-    blur: number;
-    fillAlpha: number;
-    saturate: number;
-    fadeInsetX: number;
-    fadeInsetY: number;
-    fade: number;
-    edgeAlpha: number;
-    curve: number;
-  }
-> = {
-  bare: {
-    width: 360,
-    height: 540,
-    blur: 0,
-    fillAlpha: 0,
-    saturate: 100,
-    fadeInsetX: 28,
-    fadeInsetY: 34,
-    fade: 18,
-    edgeAlpha: 0.22,
-    curve: 3.4,
-  },
-  mist: {
-    width: 380,
-    height: 560,
-    blur: 24,
-    fillAlpha: 0.045,
-    saturate: 112,
-    fadeInsetX: 34,
-    fadeInsetY: 42,
-    fade: 22,
-    edgeAlpha: 0.3,
-    curve: 3.85,
-  },
-  veil: {
-    width: 400,
-    height: 600,
-    blur: 38,
-    fillAlpha: 0.055,
-    saturate: 118,
-    fadeInsetX: 42,
-    fadeInsetY: 54,
-    fade: 28,
-    edgeAlpha: 0.36,
-    curve: 4.2,
-  },
-};
-
 const controlChipClass =
   "pointer-events-auto rounded-[22px] border border-white/10 bg-[rgba(20,22,25,0.56)] px-4 py-3 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.16)] backdrop-blur-xl";
 
 export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
-  const [preset, setPreset] = useState<PresetKey>("mist");
+  const [preset, setPreset] = useState<GlassDiffusionPresetKey>("mist");
   const [posX, setPosX] = useState(36);
   const [posY, setPosY] = useState(82);
-  const [width, setWidth] = useState(PRESETS.mist.width);
-  const [height, setHeight] = useState(PRESETS.mist.height);
-  const [blur, setBlur] = useState(PRESETS.mist.blur);
-  const [fillAlpha, setFillAlpha] = useState(PRESETS.mist.fillAlpha);
-  const [saturate, setSaturate] = useState(PRESETS.mist.saturate);
-  const [fadeInsetX, setFadeInsetX] = useState(PRESETS.mist.fadeInsetX);
-  const [fadeInsetY, setFadeInsetY] = useState(PRESETS.mist.fadeInsetY);
-  const [fade, setFade] = useState(PRESETS.mist.fade);
-  const [edgeAlpha, setEdgeAlpha] = useState(PRESETS.mist.edgeAlpha);
-  const [curve, setCurve] = useState(PRESETS.mist.curve);
+  const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.mist.width);
+  const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.mist.height);
+  const [blur, setBlur] = useState(GLASS_DIFFUSION_PRESETS.mist.blur);
+  const [fillAlpha, setFillAlpha] = useState(GLASS_DIFFUSION_PRESETS.mist.fillAlpha);
+  const [saturate, setSaturate] = useState(GLASS_DIFFUSION_PRESETS.mist.saturate);
+  const [fadeInsetX, setFadeInsetX] = useState(GLASS_DIFFUSION_PRESETS.mist.fadeInsetX);
+  const [fadeInsetY, setFadeInsetY] = useState(GLASS_DIFFUSION_PRESETS.mist.fadeInsetY);
+  const [fade, setFade] = useState(GLASS_DIFFUSION_PRESETS.mist.fade);
+  const [edgeAlpha, setEdgeAlpha] = useState(GLASS_DIFFUSION_PRESETS.mist.edgeAlpha);
+  const [curve, setCurve] = useState(GLASS_DIFFUSION_PRESETS.mist.curve);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showField, setShowField] = useState(true);
   const dragStateRef = useRef<DragState>(null);
@@ -125,8 +45,8 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, onClose]);
 
-  const applyPreset = (key: PresetKey) => {
-    const next = PRESETS[key];
+  const applyPreset = (key: GlassDiffusionPresetKey) => {
+    const next = GLASS_DIFFUSION_PRESETS[key];
     setPreset(key);
     setWidth(next.width);
     setHeight(next.height);
@@ -139,59 +59,6 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     setEdgeAlpha(next.edgeAlpha);
     setCurve(next.curve);
   };
-
-  const fieldMask = useMemo(() => {
-    const maskWidth = width;
-    const maskHeight = height;
-    const innerWidth = Math.max(24, width - fadeInsetX * 2);
-    const innerHeight = Math.max(24, height - fadeInsetY * 2);
-    const innerX = (width - innerWidth) / 2;
-    const innerY = (height - innerHeight) / 2;
-    const edgeBlur = Math.max(0.1, fade);
-    const outerPath = buildSuperellipsePath(width, height, curve);
-    const innerPath = buildSuperellipsePath(innerWidth, innerHeight, curve, innerX, innerY);
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${maskWidth}" height="${maskHeight}" viewBox="0 0 ${maskWidth} ${maskHeight}">
-        <defs>
-          <clipPath id="outer-clip">
-            <path d="${outerPath}"/>
-          </clipPath>
-          <filter id="melt" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="${edgeBlur}" edgeMode="none" result="soft"/>
-            <feComponentTransfer in="soft" result="alpha-shaped">
-              <feFuncA type="gamma" amplitude="1" exponent="0.92" offset="0"/>
-            </feComponentTransfer>
-          </filter>
-        </defs>
-        <g clip-path="url(#outer-clip)">
-          <path d="${innerPath}" fill="white" filter="url(#melt)"/>
-        </g>
-      </svg>
-    `.trim();
-    return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-  }, [curve, fade, fadeInsetX, fadeInsetY, height, width]);
-
-  const boundaryPath = useMemo(() => buildSuperellipsePath(width, height, curve), [curve, height, width]);
-
-  const fieldStyle = useMemo<React.CSSProperties>(
-    () => ({
-      position: "absolute",
-      inset: 0,
-      background: `rgba(255,255,255,${fillAlpha})`,
-      backdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
-      WebkitBackdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
-      WebkitMaskImage: fieldMask,
-      maskImage: fieldMask,
-      WebkitMaskRepeat: "no-repeat",
-      maskRepeat: "no-repeat",
-      WebkitMaskSize: "100% 100%",
-      maskSize: "100% 100%",
-      WebkitMaskPosition: "center",
-      maskPosition: "center",
-      pointerEvents: "none",
-    }),
-    [blur, fieldMask, fillAlpha, saturate]
-  );
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     dragStateRef.current = {
@@ -231,7 +98,23 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           height,
         }}
       >
-        {showField ? <div aria-hidden="true" style={fieldStyle} /> : null}
+        <GlassDiffusionField
+          className="absolute inset-0"
+          width={width}
+          height={height}
+          config={{
+            blur,
+            fillAlpha,
+            saturate,
+            fadeInsetX,
+            fadeInsetY,
+            fade,
+            edgeAlpha,
+            curve,
+          }}
+          showField={showField}
+          showBoundary={showBoundary}
+        />
         <div
           onPointerDown={beginDrag}
           onPointerMove={updateDrag}
@@ -242,23 +125,6 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
             cursor: "grab",
           }}
         >
-          {showBoundary ? (
-            <svg
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 h-full w-full"
-              viewBox={`0 0 ${width} ${height}`}
-              preserveAspectRatio="none"
-            >
-              <path
-                d={boundaryPath}
-                fill="none"
-                stroke={`rgba(255,255,255,${edgeAlpha})`}
-                strokeWidth="1.2"
-                strokeDasharray="4 4"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-          ) : null}
           <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-[rgba(12,14,16,0.42)] px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-white/62 backdrop-blur-md">
             glass field
           </div>
@@ -272,7 +138,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         <button type="button" onClick={onClose} className={`${controlChipClass} text-[11px] uppercase tracking-[0.2em] text-white/72`}>
           Close Glass Lab
         </button>
-        {(["bare", "mist", "veil"] as PresetKey[]).map((key) => (
+        {(["bare", "mist", "veil"] as GlassDiffusionPresetKey[]).map((key) => (
           <button
             key={key}
             type="button"

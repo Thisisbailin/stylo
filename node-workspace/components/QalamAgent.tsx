@@ -5,6 +5,7 @@ import { ProjectData } from "../../types";
 import type { NodeFlowFile } from "../types";
 import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
+import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField } from "./GlassDiffusionField";
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
@@ -231,6 +232,9 @@ export const QalamAgent: React.FC<Props> = ({
   const removeNode = useNodeFlowStore((state) => state.removeNode);
   const removeLink = useNodeFlowStore((state) => state.removeLink);
   const importNodeFlow = useNodeFlowStore((state) => state.importNodeFlow);
+  const requestExecutionApproval = useNodeFlowStore((state) => state.requestExecutionApproval);
+  const clearExecutionApproval = useNodeFlowStore((state) => state.clearExecutionApproval);
+  const setExecutionApprovals = useNodeFlowStore((state) => state.setExecutionApprovals);
   const nodes = useNodeFlowStore((state) => state.nodes);
   const links = useNodeFlowStore((state) => state.links);
   const graphLinks = useNodeFlowStore((state) => state.graphLinks);
@@ -308,11 +312,15 @@ export const QalamAgent: React.FC<Props> = ({
     [setConversationState, clampMessages]
   );
   const [isSending, setIsSending] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(
-    typeof window !== "undefined" ? window.innerWidth : 1200
+  const [viewportSize, setViewportSize] = useState(
+    typeof window !== "undefined"
+      ? { width: window.innerWidth, height: window.innerHeight }
+      : { width: 1200, height: 900 }
   );
   const handledSubmitRequestRef = useRef<number>(0);
   const phaseTimerRef = useRef<number | null>(null);
+  const messagePanelRef = useRef<HTMLDivElement | null>(null);
+  const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
   const bridge = useMemo<QalamAgentBridge>(
     () => createQalamAgentBridge({
       getProjectData: () => projectData,
@@ -338,8 +346,10 @@ export const QalamAgent: React.FC<Props> = ({
       removeNode,
       removeLink,
       toggleLinkPause,
+      requestExecutionApproval,
+      clearExecutionApproval,
     }),
-    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
+    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, projectData, removeLink, removeNode, requestExecutionApproval, clearExecutionApproval, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -466,10 +476,27 @@ export const QalamAgent: React.FC<Props> = ({
   });
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleResize = () => setViewportWidth(window.innerWidth);
+    const handleResize = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    const node = messagePanelRef.current;
+    if (!node) return;
+
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      setMessagePanelSize({ width: rect.width, height: rect.height });
+    };
+
+    update();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => update());
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [collapsed, messages.length, panelPhase]);
 
   useEffect(() => {
     if (conversationState.items.length) return;
@@ -582,6 +609,9 @@ export const QalamAgent: React.FC<Props> = ({
       if (runResult.updatedNodeFlow) {
         importNodeFlow(runResult.updatedNodeFlow);
       }
+      if (runResult.updatedExecutionApprovals) {
+        setExecutionApprovals(runResult.updatedExecutionApprovals);
+      }
     } catch (err: any) {
       if (err?.qalamAlreadyDisplayed) {
         return;
@@ -613,17 +643,30 @@ export const QalamAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setMessages, setProjectData]);
+  }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setExecutionApprovals, setMessages, setProjectData]);
 
   const panelClassName = "pointer-events-auto isolate w-[420px] max-w-[95vw] qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
+  const messagePanelMaxHeight = Math.max(240, viewportSize.height - dockInset * 2 - 92);
+  const qalamGlassConfig = useMemo(
+    () => ({
+      ...GLASS_DIFFUSION_PRESETS.veil,
+      blur: 34,
+      fillAlpha: 0.072,
+      saturate: 126,
+      fadeInsetX: 28,
+      fadeInsetY: 34,
+      fade: 24,
+      edgeAlpha: 0.18,
+    }),
+    []
+  );
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,
-    bottom: dockInset,
     left: dockInset,
-    width: Math.min(420, Math.max(320, viewportWidth - dockInset * 2)),
+    width: Math.min(420, Math.max(320, viewportSize.width - dockInset * 2)),
     maxWidth: `calc(100vw - ${dockInset * 2}px)`,
     zIndex: 80,
   };
@@ -644,8 +687,8 @@ export const QalamAgent: React.FC<Props> = ({
   const formatNumber = (n: number) => n.toLocaleString();
   const qalamMark = (
     <span
-      className={`inline-block text-[30px] font-semibold tracking-[-0.065em] text-[var(--app-text-primary)] transition duration-500 ${
-        isRevealing ? "opacity-100 blur-0" : "opacity-96"
+      className={`qalam-wordmark inline-block text-[30px] font-semibold tracking-[-0.065em] transition duration-500 ${
+        !collapsed || isSending || isRevealing ? "qalam-wordmark--active opacity-100 blur-0" : "opacity-96"
       }`}
     >
       Qalam
@@ -682,10 +725,10 @@ export const QalamAgent: React.FC<Props> = ({
         fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
       }}
     >
-      <div className="relative h-full min-h-0">
+      <div className="relative">
         <div
           className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
-          style={{ top: titleOrigin.y }}
+          style={{ top: titleOrigin.y, minHeight: titleOrigin.height }}
         >
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -710,11 +753,49 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
         <div
-          className={`flex h-full min-h-0 overflow-hidden px-4 pb-6 pt-[62px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`px-4 pb-4 pt-[62px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             collapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
           }`}
         >
-          <QalamChatContent messages={messages} isSending={isSending} />
+          <div
+            ref={messagePanelRef}
+            className="relative overflow-hidden rounded-[34px] border border-[var(--app-border)] bg-transparent shadow-[0_24px_56px_-34px_rgba(0,0,0,0.34)]"
+            style={{
+              background: "color-mix(in srgb, var(--app-panel) 82%, transparent)",
+              boxShadow: "0 24px 56px -34px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.06)",
+            }}
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.028) 22%, rgba(255,255,255,0.016) 56%, rgba(255,255,255,0.05) 100%)",
+              }}
+            />
+            <GlassDiffusionField
+              className="pointer-events-none absolute inset-0"
+              width={messagePanelSize.width}
+              height={messagePanelSize.height}
+              config={{
+                blur: qalamGlassConfig.blur,
+                fillAlpha: qalamGlassConfig.fillAlpha,
+                saturate: qalamGlassConfig.saturate,
+                fadeInsetX: qalamGlassConfig.fadeInsetX,
+                fadeInsetY: qalamGlassConfig.fadeInsetY,
+                fade: qalamGlassConfig.fade,
+                edgeAlpha: qalamGlassConfig.edgeAlpha,
+                curve: qalamGlassConfig.curve,
+              }}
+            />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0))]" />
+            <div className="relative">
+              <QalamChatContent
+                messages={messages}
+                isSending={isSending}
+                style={{ maxHeight: `${messagePanelMaxHeight}px` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

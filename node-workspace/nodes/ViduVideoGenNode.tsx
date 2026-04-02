@@ -3,7 +3,7 @@ import { BaseNode } from "./BaseNode";
 import { ViduVideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles } from "lucide-react";
+import { Settings2, RefreshCw, AlertCircle, Film, Download, Layers, Sparkles, ArrowRightLeft } from "lucide-react";
 import * as ViduService from "../../services/viduService";
 import { INITIAL_VIDU_CONFIG } from "../../constants";
 import { NodeExecutionApprovalPanel } from "../components/NodeExecutionApprovalPanel";
@@ -224,6 +224,22 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
       onTitleChange={(title) => updateNodeData(id, { title })}
       inputs={["image", "text"]}
       selected={selected}
+      headerActions={
+        data.videoUrl && !isLoading ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              convertNodeToVideoInput(id);
+            }}
+            title="转为 Video 节点"
+            aria-label="转为 Video 节点"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--node-border)] text-[var(--node-text-secondary)] transition hover:border-[var(--node-border-strong)] hover:text-[var(--node-text-primary)] nodrag"
+          >
+            <ArrowRightLeft size={12} />
+          </button>
+        ) : null
+      }
     >
       <div className="space-y-4 flex-1 flex flex-col">
         {data.videoUrl ? (
@@ -296,21 +312,13 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
                 <span>{progress}%</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => convertNodeToVideoInput(id)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-[var(--node-text-secondary)] bg-white/5 hover:bg-white/10 transition"
-                >
-                  转为 Video
-                </button>
-                <button
-                  onClick={handleGenerate}
-                  className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-white bg-emerald-500/80 hover:bg-emerald-500 transition"
-                >
-                  <RefreshCw size={12} />
-                  重试
-                </button>
-              </div>
+              <button
+                onClick={handleGenerate}
+                className="flex items-center gap-2 px-3 py-2 rounded-full text-[10px] font-semibold uppercase tracking-widest text-white bg-emerald-500/80 hover:bg-emerald-500 transition"
+              >
+                <RefreshCw size={12} />
+                重试
+              </button>
             )}
           </div>
         )}

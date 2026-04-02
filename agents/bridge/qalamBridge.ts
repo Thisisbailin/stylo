@@ -7,6 +7,7 @@ import type {
   NodeFlowFile,
   NodeFlowViewport,
 } from "../../node-workspace/types";
+import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 
 export type CreateTextNodeInput = {
   title: string;
@@ -161,6 +162,14 @@ export interface QalamAgentBridge {
   connectNodeFlowNodes(input: ConnectNodeFlowNodesInput): ConnectNodeFlowNodesResult;
   getNodeFlowNode(input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null;
   createNodeFlowMap(input: CreateNodeFlowMapInput): CreateNodeFlowMapResult;
+  requestNodeFlowExecutionApproval(input: {
+    nodeId?: string;
+    nodeRef?: string;
+  }): NodeFlowExecutionApprovalProposal;
+  clearNodeFlowExecutionApproval(input: {
+    nodeId?: string;
+    nodeRef?: string;
+  }): { nodeId: string };
   getViewport(): NodeFlowViewport | null;
   getNodeCount(): number;
 }

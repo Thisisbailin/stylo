@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Globe } from "lucide-react";
 import { Brain, CaretRight, Wrench } from "@phosphor-icons/react";
 import type { ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
@@ -8,6 +8,7 @@ type Props = {
   messages: Message[];
   isSending: boolean;
   className?: string;
+  style?: React.CSSProperties;
 };
 
 const toolStatusLabel: Record<ToolStatus, string> = {
@@ -1027,9 +1028,12 @@ const renderAssistantPanel = (message: ChatMessage) => {
   );
 };
 
-export const QalamChatContent: React.FC<Props> = ({ messages, isSending, className = "" }) => {
+export const QalamChatContent: React.FC<Props> = ({ messages, isSending, className = "", style }) => {
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const currentItemRef = useRef<HTMLDivElement | null>(null);
+  const previousItemCountRef = useRef(0);
+  const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
   const displayMessages = useMemo(() => {
     const consumed = new Set<number>();
     const items: Array<
@@ -1103,15 +1107,37 @@ export const QalamChatContent: React.FC<Props> = ({ messages, isSending, classNa
   }, [displayMessages]);
 
   useEffect(() => {
+    const node = messagesRef.current;
+    const currentNode = currentItemRef.current;
+    if (!node || !currentNode || !isPinnedToCurrent) return;
+    const nextCount = displayMessages.length;
+    const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
+    previousItemCountRef.current = nextCount;
+    requestAnimationFrame(() => {
+      const targetTop = Math.max(0, currentNode.offsetTop - 6);
+      node.scrollTo({ top: targetTop, behavior });
+    });
+  }, [displayMessages.length, isPinnedToCurrent, isSending]);
+
+  useEffect(() => {
     if (!messagesRef.current) return;
     const node = messagesRef.current;
-    requestAnimationFrame(() => {
-      node.scrollTop = node.scrollHeight;
-    });
-  }, [messages, isSending]);
+    const handleScroll = () => {
+      const currentNode = currentItemRef.current;
+      if (!currentNode) return;
+      const targetTop = Math.max(0, currentNode.offsetTop - 6);
+      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
+    };
+    node.addEventListener("scroll", handleScroll, { passive: true });
+    return () => node.removeEventListener("scroll", handleScroll);
+  }, [displayMessages.length]);
 
   return (
-    <div ref={messagesRef} className={`qalam-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 space-y-3 ${className}`}>
+    <div
+      ref={messagesRef}
+      className={`qalam-scrollbar min-h-0 overflow-y-auto px-4 py-4 space-y-3 ${className}`}
+      style={style}
+    >
       {displayMessages.map((item) => {
         const isUser = item.kind === "chat" && item.message.role === "user";
         const isAssistantPanel = item.kind === "chat" && !isUser;
@@ -1119,9 +1145,11 @@ export const QalamChatContent: React.FC<Props> = ({ messages, isSending, classNa
           isAssistantPanel && item.message.meta?.runId
             ? runDurationMap.get(item.message.meta.runId)
             : undefined;
+        const isCurrent = item === displayMessages[displayMessages.length - 1];
         return (
           <div
             key={item.key}
+            ref={isCurrent ? currentItemRef : null}
             className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
           >
             {item.kind === "status" ? (

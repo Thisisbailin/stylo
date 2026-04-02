@@ -16,6 +16,7 @@ import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
+import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 import {
   appendNodeToNodeFlow,
   connectNodesInNodeFlow,
@@ -78,6 +79,8 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
     }
   );
   let nodeFlowUpdated = false;
+  let currentExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal> = {};
+  let executionApprovalsUpdated = false;
   let nodeIdCounter = (currentNodeFlow.nodes || []).reduce((max, node) => {
     const match = String(node.id || "").match(/-(\d+)$/);
     return match ? Math.max(max, Number(match[1])) : max;
@@ -147,11 +150,27 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
       removeNode,
       removeLink,
       toggleLinkPause,
+      requestExecutionApproval: (proposal) => {
+        currentExecutionApprovals = {
+          ...currentExecutionApprovals,
+          [proposal.nodeId]: proposal,
+        };
+        executionApprovalsUpdated = true;
+      },
+      clearExecutionApproval: (nodeId) => {
+        if (!currentExecutionApprovals[nodeId]) return;
+        const next = { ...currentExecutionApprovals };
+        delete next[nodeId];
+        currentExecutionApprovals = next;
+        executionApprovalsUpdated = true;
+      },
     }),
     getProjectData: () => currentProjectData,
     hasUpdatedProjectData: () => projectDataUpdated,
     getNodeFlow: () => currentNodeFlow,
     hasUpdatedNodeFlow: () => nodeFlowUpdated,
+    getExecutionApprovals: () => Object.values(currentExecutionApprovals),
+    hasUpdatedExecutionApprovals: () => executionApprovalsUpdated,
   };
 };
 
@@ -373,6 +392,9 @@ export const onRequestPost = async (context: any) => {
           getExtraResult: () => ({
             updatedProjectData: bridgeState.hasUpdatedProjectData() ? bridgeState.getProjectData() : undefined,
             updatedNodeFlow: bridgeState.hasUpdatedNodeFlow() ? bridgeState.getNodeFlow() : undefined,
+            updatedExecutionApprovals: bridgeState.hasUpdatedExecutionApprovals()
+              ? bridgeState.getExecutionApprovals()
+              : undefined,
             tracing: {
               enabled: tracingEnabled,
               traceId,

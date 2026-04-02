@@ -59,7 +59,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "audioInput":
       return { inputs: [], outputs: ["audio"] };
     case "videoInput":
-      return { inputs: [], outputs: ["video"] };
+      return { inputs: ["multi", "image", "text", "audio", "video"], outputs: ["video"] };
     case "annotation":
       return { inputs: ["image"], outputs: ["image"] };
     case "prompt":

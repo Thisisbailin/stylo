@@ -81,6 +81,7 @@ import {
 import {
   clearNodeFlowExecutionApproval,
   createEmptyNodeFlowApprovalState,
+  setNodeFlowExecutionApprovals,
   type NodeFlowExecutionApprovalProposal,
   upsertNodeFlowExecutionApproval,
 } from "../nodeflow/approvals";
@@ -188,6 +189,7 @@ interface NodeFlowStore {
   mutateProjectRole: (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => void;
   requestExecutionApproval: (proposal: NodeFlowExecutionApprovalProposal) => void;
   clearExecutionApproval: (nodeId: string) => void;
+  setExecutionApprovals: (proposals: NodeFlowExecutionApprovalProposal[]) => void;
 }
 
 let nodeIdCounter = 0;
@@ -235,6 +237,8 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     set((state) => upsertNodeFlowExecutionApproval(state, proposal)),
   clearExecutionApproval: (nodeId) =>
     set((state) => clearNodeFlowExecutionApproval(state, nodeId)),
+  setExecutionApprovals: (proposals) =>
+    set((state) => setNodeFlowExecutionApprovals(state, proposals)),
 
   setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
   setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),
@@ -298,13 +302,11 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
             }
           : item
       );
-      const nextLinks = state.links.filter((link) => link.target !== nodeId);
-
       return {
         ...state,
         revision: state.revision + 1,
         nodes: nextNodes,
-        links: nextLinks,
+        links: state.links,
       };
     });
   },
