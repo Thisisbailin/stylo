@@ -1324,34 +1324,36 @@ body.qalam-resizing * {
   color: transparent;
   background-image:
     linear-gradient(
-      115deg,
-      rgba(244, 244, 246, 0.98) 0%,
-      rgba(176, 226, 255, 0.94) 18%,
-      rgba(165, 240, 216, 0.96) 34%,
-      rgba(243, 210, 255, 0.94) 52%,
-      rgba(255, 234, 184, 0.96) 70%,
-      rgba(244, 244, 246, 0.98) 100%
+      110deg,
+      rgba(252, 251, 248, 0.99) 0%,
+      rgba(233, 246, 244, 0.98) 14%,
+      rgba(246, 244, 227, 0.98) 28%,
+      rgba(250, 236, 220, 0.97) 42%,
+      rgba(242, 229, 247, 0.98) 58%,
+      rgba(229, 234, 250, 0.98) 74%,
+      rgba(225, 242, 251, 0.98) 88%,
+      rgba(252, 251, 248, 0.99) 100%
     );
-  background-size: 220% 100%;
+  background-size: 240% 100%;
   background-position: 0% 50%;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 0 14px rgba(190, 228, 255, 0.12));
-  animation: qalam-wordmark-shift 6.8s linear infinite;
+  filter: drop-shadow(0 0 14px rgba(244, 240, 255, 0.12));
+  animation: qalam-wordmark-shift 8.4s linear infinite;
 }
 
 @keyframes qalam-wordmark-shift {
   0% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px rgba(190, 228, 255, 0.08));
+    filter: drop-shadow(0 0 10px rgba(244, 240, 255, 0.08));
   }
   50% {
     background-position: 100% 50%;
-    filter: drop-shadow(0 0 16px rgba(214, 198, 255, 0.14));
+    filter: drop-shadow(0 0 16px rgba(228, 238, 255, 0.14));
   }
   100% {
     background-position: 0% 50%;
-    filter: drop-shadow(0 0 10px rgba(190, 228, 255, 0.08));
+    filter: drop-shadow(0 0 10px rgba(244, 240, 255, 0.08));
   }
 }
 
