@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert, X } from "lucide-react";
 import { SyncState, SyncStatus } from "../types";
 import { TopRightHint } from "./TopRightHint";
 
@@ -105,18 +105,17 @@ export const SyncStatusBanner: React.FC<Props> = ({
     ? `灰度 ${syncRollout?.percent ?? 0}% · 当前账号未启用`
     : [
         `项目 ${statusLabel(project.status)}`,
-        `密钥 ${statusLabel(secrets.status)}`,
-        pendingOps > 0 ? `待发送 ${pendingOps}` : null,
+        pendingOps > 0 ? `待同步 ${pendingOps}` : `密钥 ${statusLabel(secrets.status)}`,
         retryCount > 0 ? `重试 ${retryCount}` : null,
       ]
         .filter(Boolean)
         .join(" · ");
 
   const metaLine = lastSyncAt
-    ? `上次成功 ${formatTime(lastSyncAt)}${lastAttemptAt ? ` · 最近尝试 ${formatTime(lastAttemptAt)}` : ""}`
+    ? `上次 ${formatTime(lastSyncAt)}`
     : lastAttemptAt
-      ? `最近尝试 ${formatTime(lastAttemptAt)}`
-      : "点击卡片查看同步详情";
+      ? `尝试 ${formatTime(lastAttemptAt)}`
+      : "点开查看同步详情";
 
   useEffect(() => {
     if (!shouldShow || !onClose) return undefined;
@@ -130,6 +129,25 @@ export const SyncStatusBanner: React.FC<Props> = ({
     <TopRightHint
       stackIndex={0}
       onClick={onOpenDetails}
+      variant="compact"
+      top={20}
+      right={20}
+      widthClassName="w-[248px] max-w-[calc(100vw-24px)]"
+      dismiss={
+        onClose ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/10 text-[var(--app-text-muted)] transition hover:bg-black/15 hover:text-[var(--app-text-primary)] active:translate-y-px"
+            aria-label="关闭同步提示"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null
+      }
       action={
         onForceSync && canForceSync ? (
           <button
@@ -138,27 +156,35 @@ export const SyncStatusBanner: React.FC<Props> = ({
               event.stopPropagation();
               onForceSync();
             }}
-            className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-1.5 text-[10px] font-semibold tracking-[0.02em] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+            className="rounded-full bg-[var(--app-panel-soft)] px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.02em] text-[var(--app-text-primary)] transition hover:bg-[color-mix(in_srgb,var(--app-panel-soft)_74%,white_10%)] active:translate-y-px"
           >
             立即同步
           </button>
         ) : null
       }
     >
-      <div className="flex items-start gap-3">
+      <div className="min-h-[116px]">
+        <div className="flex items-start gap-3">
         <span
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)]"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[14px] bg-[color-mix(in_srgb,var(--app-panel-soft)_82%,transparent)]"
           style={{ color: meta.accent }}
         >
           <Icon className={`h-[14px] w-[14px] ${effectiveStatus === "syncing" || effectiveStatus === "loading" ? "animate-spin" : ""}`} />
         </span>
         <div className="min-w-0">
-          <div className="text-[13px] leading-5 text-[var(--app-text-primary)]">
-            {meta.label}，{summary}
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+            Cloud Sync
+          </div>
+          <div className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+            {meta.label}
           </div>
           <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
+            {summary}
+          </div>
+          <div className="mt-1 text-[10px] leading-5 text-[var(--app-text-muted)]">
             {metaLine}
           </div>
+        </div>
         </div>
       </div>
     </TopRightHint>

@@ -1044,9 +1044,11 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamUnifiedBaseHeight = qalamGlassBaseHeight + qalamTitleBandHeight;
   const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth * qalamGlassScale));
   const qalamGlassHeight = Math.max(0, Math.round(qalamUnifiedBaseHeight * qalamGlassScale));
-  const qalamGlassOffsetX = Math.round((qalamGlassWidth - qalamUnifiedBaseWidth) / -2);
+  const qalamGlassNudgeX = Math.round(qalamGlassWidth * 0.1);
+  const qalamGlassNudgeY = Math.round(qalamGlassHeight * 0.1);
+  const qalamGlassOffsetX = Math.round((qalamGlassWidth - qalamUnifiedBaseWidth) / -2) - qalamGlassNudgeX;
   const qalamGlassOffsetY =
-    -qalamTitleBandHeight - Math.round((qalamGlassHeight - qalamUnifiedBaseHeight) / 2);
+    -qalamTitleBandHeight - Math.round((qalamGlassHeight - qalamUnifiedBaseHeight) / 2) - qalamGlassNudgeY;
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,

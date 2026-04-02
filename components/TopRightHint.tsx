@@ -11,6 +11,7 @@ type Props = {
   onClick?: () => void;
   action?: React.ReactNode;
   dismiss?: React.ReactNode;
+  variant?: "default" | "compact";
 };
 
 export const TopRightHint: React.FC<Props> = ({
@@ -24,10 +25,15 @@ export const TopRightHint: React.FC<Props> = ({
   onClick,
   action,
   dismiss,
+  variant = "default",
 }) => {
+  const shellClassName =
+    variant === "compact"
+      ? "rounded-[26px] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--app-panel-strong)_90%,white_6%),color-mix(in_srgb,var(--app-panel)_96%,transparent))] px-3.5 py-3 text-[var(--app-text-primary)] shadow-[0_18px_38px_-24px_rgba(0,0,0,0.48)] backdrop-blur-xl"
+      : "rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-4 py-3 text-[var(--app-text-primary)] shadow-[0_16px_36px_-24px_rgba(0,0,0,0.42)] backdrop-blur-xl";
   const content = (
     <div
-      className={`${widthClassName} rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-4 py-3 text-[var(--app-text-primary)] shadow-[0_16px_36px_-24px_rgba(0,0,0,0.42)] backdrop-blur-xl ${className}`}
+      className={`${widthClassName} ${shellClassName} ${className}`}
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">{children}</div>
