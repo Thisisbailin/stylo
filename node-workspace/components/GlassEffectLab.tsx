@@ -49,8 +49,8 @@ const PRESETS: Record<
     blur: number;
     fillAlpha: number;
     saturate: number;
-    spreadX: number;
-    spreadY: number;
+    fadeInsetX: number;
+    fadeInsetY: number;
     fade: number;
     edgeAlpha: number;
     curve: number;
@@ -62,9 +62,9 @@ const PRESETS: Record<
     blur: 0,
     fillAlpha: 0,
     saturate: 100,
-    spreadX: 80,
-    spreadY: 140,
-    fade: 74,
+    fadeInsetX: 28,
+    fadeInsetY: 34,
+    fade: 18,
     edgeAlpha: 0.22,
     curve: 3.4,
   },
@@ -74,9 +74,9 @@ const PRESETS: Record<
     blur: 24,
     fillAlpha: 0.045,
     saturate: 112,
-    spreadX: 96,
-    spreadY: 168,
-    fade: 82,
+    fadeInsetX: 34,
+    fadeInsetY: 42,
+    fade: 22,
     edgeAlpha: 0.3,
     curve: 3.85,
   },
@@ -86,9 +86,9 @@ const PRESETS: Record<
     blur: 38,
     fillAlpha: 0.055,
     saturate: 118,
-    spreadX: 128,
-    spreadY: 220,
-    fade: 88,
+    fadeInsetX: 42,
+    fadeInsetY: 54,
+    fade: 28,
     edgeAlpha: 0.36,
     curve: 4.2,
   },
@@ -106,8 +106,8 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const [blur, setBlur] = useState(PRESETS.mist.blur);
   const [fillAlpha, setFillAlpha] = useState(PRESETS.mist.fillAlpha);
   const [saturate, setSaturate] = useState(PRESETS.mist.saturate);
-  const [spreadX, setSpreadX] = useState(PRESETS.mist.spreadX);
-  const [spreadY, setSpreadY] = useState(PRESETS.mist.spreadY);
+  const [fadeInsetX, setFadeInsetX] = useState(PRESETS.mist.fadeInsetX);
+  const [fadeInsetY, setFadeInsetY] = useState(PRESETS.mist.fadeInsetY);
   const [fade, setFade] = useState(PRESETS.mist.fade);
   const [edgeAlpha, setEdgeAlpha] = useState(PRESETS.mist.edgeAlpha);
   const [curve, setCurve] = useState(PRESETS.mist.curve);
@@ -133,24 +133,24 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     setBlur(next.blur);
     setFillAlpha(next.fillAlpha);
     setSaturate(next.saturate);
-    setSpreadX(next.spreadX);
-    setSpreadY(next.spreadY);
+    setFadeInsetX(next.fadeInsetX);
+    setFadeInsetY(next.fadeInsetY);
     setFade(next.fade);
     setEdgeAlpha(next.edgeAlpha);
     setCurve(next.curve);
   };
 
   const fieldMask = useMemo(() => {
-    const maskWidth = width + spreadX;
-    const maskHeight = height + spreadY;
-    const rectX = spreadX / 2;
-    const rectY = spreadY / 2;
-    const edgeBlur = Math.max(3, (Math.min(spreadX, spreadY) * fade) / 420);
-    const path = buildSuperellipsePath(width, height, curve, rectX, rectY);
+    const maskWidth = width;
+    const maskHeight = height;
+    const innerWidth = Math.max(16, width - fadeInsetX * 2);
+    const innerHeight = Math.max(16, height - fadeInsetY * 2);
+    const edgeBlur = Math.max(2, fade);
+    const path = buildSuperellipsePath(innerWidth, innerHeight, curve, fadeInsetX, fadeInsetY);
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${maskWidth}" height="${maskHeight}" viewBox="0 0 ${maskWidth} ${maskHeight}">
         <defs>
-          <filter id="melt" x="-40%" y="-40%" width="180%" height="180%">
+          <filter id="melt" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="${edgeBlur}" result="blur"/>
             <feMerge>
               <feMergeNode in="blur"/>
@@ -162,17 +162,14 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
       </svg>
     `.trim();
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-  }, [curve, fade, height, spreadX, spreadY, width]);
+  }, [curve, fade, fadeInsetX, fadeInsetY, height, width]);
 
   const boundaryPath = useMemo(() => buildSuperellipsePath(width, height, curve), [curve, height, width]);
 
   const fieldStyle = useMemo<React.CSSProperties>(
     () => ({
       position: "absolute",
-      left: -spreadX * 0.5,
-      top: -spreadY * 0.5,
-      width: `calc(100% + ${spreadX}px)`,
-      height: `calc(100% + ${spreadY}px)`,
+      inset: 0,
       background: `rgba(255,255,255,${fillAlpha})`,
       backdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
       WebkitBackdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
@@ -186,7 +183,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
       maskPosition: "center",
       pointerEvents: "none",
     }),
-    [blur, fieldMask, fillAlpha, saturate, spreadX, spreadY]
+    [blur, fieldMask, fillAlpha, saturate]
   );
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -306,9 +303,9 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           { label: "blur", value: blur, min: 0, max: 96, step: 1, set: setBlur },
           { label: "fill", value: fillAlpha, min: 0, max: 0.12, step: 0.002, set: setFillAlpha },
           { label: "saturate", value: saturate, min: 80, max: 160, step: 1, set: setSaturate },
-          { label: "spread x", value: spreadX, min: 0, max: 240, step: 2, set: setSpreadX },
-          { label: "spread y", value: spreadY, min: 0, max: 320, step: 2, set: setSpreadY },
-          { label: "fade", value: fade, min: 44, max: 96, step: 1, set: setFade },
+          { label: "fade inset x", value: fadeInsetX, min: 0, max: 120, step: 1, set: setFadeInsetX },
+          { label: "fade inset y", value: fadeInsetY, min: 0, max: 160, step: 1, set: setFadeInsetY },
+          { label: "edge blur", value: fade, min: 0, max: 48, step: 1, set: setFade },
           { label: "edge", value: edgeAlpha, min: 0.04, max: 0.56, step: 0.01, set: setEdgeAlpha },
           { label: "curve", value: curve, min: 2.2, max: 5.4, step: 0.05, set: setCurve },
         ].map((item) => (
