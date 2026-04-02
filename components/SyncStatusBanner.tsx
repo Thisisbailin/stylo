@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert, X } from "lucide-react";
+import React, { useEffect, useMemo } from "react";
+import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert } from "lucide-react";
 import { SyncState, SyncStatus } from "../types";
 import { TopRightHint } from "./TopRightHint";
 
@@ -120,6 +120,12 @@ export const SyncStatusBanner: React.FC<Props> = ({
       ? `最近尝试 ${formatTime(lastAttemptAt)}`
       : "点击卡片查看同步详情";
 
+  useEffect(() => {
+    if (!onClose) return undefined;
+    const timeoutId = window.setTimeout(() => onClose(), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [onClose, summary, metaLine, meta.label]);
+
   return (
     <TopRightHint
       onClick={onOpenDetails}
@@ -134,21 +140,6 @@ export const SyncStatusBanner: React.FC<Props> = ({
             className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-1.5 text-[10px] font-semibold tracking-[0.02em] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] active:translate-y-px"
           >
             立即同步
-          </button>
-        ) : null
-      }
-      dismiss={
-        onClose ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onClose();
-            }}
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-            aria-label="关闭同步提示"
-          >
-            <X className="h-3.5 w-3.5" />
           </button>
         ) : null
       }

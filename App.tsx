@@ -2213,6 +2213,28 @@ const App: React.FC = () => {
     return { label: agg.label, color: colorMap[agg.state] || "#a5b4fc" };
   })();
 
+  const syncBannerSignature = useMemo(
+    () =>
+      [
+        isOnline ? "online" : "offline",
+        !!authSignedIn ? "signed-in" : "signed-out",
+        syncRollout.enabled ? `rollout-${syncRollout.percent}` : "rollout-disabled",
+        syncState.project.status,
+        syncState.project.pendingOps ?? 0,
+        syncState.project.retryCount ?? 0,
+        syncState.project.lastAttemptAt ?? 0,
+        syncState.secrets.status,
+        syncState.secrets.pendingOps ?? 0,
+        syncState.secrets.retryCount ?? 0,
+        syncState.secrets.lastAttemptAt ?? 0,
+      ].join("|"),
+    [authSignedIn, isOnline, syncRollout.enabled, syncRollout.percent, syncState]
+  );
+
+  useEffect(() => {
+    setIsSyncBannerDismissed(false);
+  }, [syncBannerSignature]);
+
   const handleExportCsv = () => exportToCSV(projectData.episodes);
   const handleExportXls = () => exportToXLS(projectData.episodes);
   const handleExportUnderstandingJson = () => exportUnderstandingToJSON(projectData);
@@ -2433,6 +2455,14 @@ const App: React.FC = () => {
         )}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
       </AppShell>
+      {openLabModal === "writing" && (
+        <WritingPanel
+          projectData={projectData}
+          setProjectData={setProjectData}
+          onClose={closeLabModal}
+          getAuthToken={getAuthToken}
+        />
+      )}
       {showWorkflow && (
         <>
           <div className="fixed inset-0 z-[55]" onClick={() => setShowWorkflow(false)} />

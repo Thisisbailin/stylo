@@ -789,7 +789,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     : undefined;
 
   return (
-    <div className="writing-room fixed inset-0 z-[56] overflow-hidden text-[var(--app-text-primary)]">
+    <div className="writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,rgba(7,10,15,0.78),rgba(7,10,15,0.92))]" />
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.014)_1px,transparent_1px)] bg-[size:32px_32px] opacity-50" />
 

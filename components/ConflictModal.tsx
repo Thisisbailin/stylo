@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { AlertTriangle, Cloud, HardDrive, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Cloud, HardDrive } from "lucide-react";
 import { ProjectData } from "../types";
 
 type Props = {
@@ -114,6 +114,18 @@ export const ConflictModal: React.FC<Props> = ({
 
   const isNotice = mode === "notice";
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      if (isNotice) {
+        onAcknowledge?.();
+      } else {
+        onKeepLocal?.();
+      }
+    }, 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [isNotice, isOpen, onAcknowledge, onKeepLocal]);
+
   return (
     <div className="pointer-events-none fixed right-5 top-[112px] z-[73] sm:right-6">
       <div
@@ -139,16 +151,6 @@ export const ConflictModal: React.FC<Props> = ({
               </div>
             </div>
           </div>
-          {isNotice && onAcknowledge && (
-            <button
-              type="button"
-              onClick={onAcknowledge}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-[var(--app-text-muted)] transition hover:border-[var(--app-border)] hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)]"
-              aria-label="关闭冲突提示"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
         </div>
 
         {isNotice ? (
@@ -181,6 +183,9 @@ export const ConflictModal: React.FC<Props> = ({
         )}
 
         <div className="mt-4">
+          <div className="mb-3 text-[11px] leading-5 text-[var(--app-text-muted)]">
+            {isNotice ? "3 秒后自动忽略该提示。" : "3 秒后默认保留本地版本，忽略本次同步异常。"}
+          </div>
           <button
             type="button"
             onClick={() => setShowDiffs((value) => !value)}
