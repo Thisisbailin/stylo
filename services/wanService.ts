@@ -48,7 +48,7 @@ const resolveSize = (aspectRatio?: string) => {
 const mapStatus = (status?: string) => {
   const value = (status || "").toLowerCase();
   if (["succeeded", "success", "completed", "finished"].includes(value)) return "succeeded";
-  if (["failed", "error", "canceled", "cancelled"].includes(value)) return "failed";
+  if (["failed", "error", "canceled", "cancelled", "unknown"].includes(value)) return "failed";
   if (["pending", "queued"].includes(value)) return "queued";
   return "processing";
 };
@@ -319,7 +319,8 @@ export const submitWanReferenceVideoTask = async (
   prompt: string,
   config: VideoServiceConfig,
   options?: {
-    media: Array<{ url: string; kind: "image" | "video" }>;
+    media: Array<{ url: string; kind: "image" | "video"; referenceVoiceUrl?: string }>;
+    firstFrameUrl?: string;
     aspectRatio?: string;
     resolution?: string;
     duration?: string;
@@ -345,21 +346,32 @@ export const submitWanReferenceVideoTask = async (
   const duration = options?.duration ? Number.parseInt(options.duration.replace("s", ""), 10) : undefined;
   const parameters: Record<string, any> = {
     prompt_extend: options?.promptExtend ?? true,
-    resolution: options?.resolution || "720P",
+    resolution: options?.resolution || "1080P",
     ratio: options?.aspectRatio || "16:9",
     watermark: options?.watermark ?? false,
     ...(Number.isFinite(options?.seed) ? { seed: options?.seed } : {}),
     ...(Number.isFinite(duration) ? { duration } : {}),
-  }
+  };
 
   const payload: Record<string, any> = {
     model: config.model,
     input: {
       prompt,
-      media: media.map((item) => ({
-        type: item.kind,
-        url: item.url,
-      })),
+      media: [
+        ...(options?.firstFrameUrl
+          ? [
+              {
+                type: "first_frame",
+                url: options.firstFrameUrl,
+              },
+            ]
+          : []),
+        ...media.map((item) => ({
+          type: item.kind === "video" ? "reference_video" : "reference_image",
+          url: item.url,
+          ...(item.referenceVoiceUrl ? { reference_voice: item.referenceVoiceUrl } : {}),
+        })),
+      ],
     },
     parameters,
   };
@@ -391,7 +403,11 @@ export const checkWanTaskStatus = async (taskId: string): Promise<WanTaskStatusR
     const statusRaw = output?.task_status || output?.status || data?.status;
     const status = mapStatus(statusRaw);
     const url = extractUrl(data);
-    const errorMsg = output?.message || output?.error || data?.message;
+    const errorMsg =
+      output?.message ||
+      output?.error ||
+      data?.message ||
+      (String(statusRaw || "").toUpperCase() === "UNKNOWN" ? "Wan 任务不存在或已过期（task_id 超过 24 小时）。" : undefined);
     return { id: taskId, status, url, errorMsg };
   } catch (e: any) {
     return { id: taskId, status: "processing", errorMsg: e.message };

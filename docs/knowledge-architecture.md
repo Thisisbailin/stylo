@@ -2,27 +2,78 @@
 
 ## 1. 模块定位
 
-`Knowledge` 模块不是用户功能模块，也不是 `NodeFlow` 的一个节点类型扩展。
-
-它的严格定位是：
+`Knowledge` 模块的严格定位是：
 
 > **Qalam Agent 的长期记忆数据层。**
 
+它不是用户功能模块，不是资料库面板，不是 `NodeFlow` 的一个节点类型扩展，也不是工作流执行层。
+
 这意味着：
 
-- 它服务于 Agent 的持续学习、修正、沉淀与检索
+- 它服务于 Agent 的长期学习、持续修正、知识沉淀与检索
 - 它不直接面向用户操作
 - 它不以 UI 组件或画布形式作为本体
-- 它不是工作流执行层
-- 它不是 `NodeFlow` 的一部分
+- 它不由 `NodeFlow` 定义
+- 它是比 `NodeFlow` 更底层的数据架构
 
-`Knowledge` 的本体是底层知识数据，而不是节点卡片、列表面板或地图画布。
+`Knowledge` 的本体是底层知识数据，而不是节点卡片、列表面板或可视化画布。
 
-## 2. 架构层级
+## 2. 核心判断
 
-Qalam 的相关底层应当理解为如下层级：
+## 2.1 Knowledge 是长期记忆，不是“理解结果”
 
-### 2.1 Canonical Source Layer
+`Knowledge` 不应被理解为某次分析后的静态理解结果。
+
+Agent 在项目中的认知不是一次性完成的，它会持续：
+
+- 学习
+- 补全
+- 修正
+- 淘汰旧知识
+- 建立更高阶关系
+
+因此，Knowledge 表示的是 **可持续演进的知识网络**，而不是一次性的 understanding。
+
+## 2.2 Knowledge 的设计理念是“图式”
+
+Knowledge 的本质是网状的，但这里的“网状”不是指某种具体 UI 形态，而是指更底层的数据组织形式：
+
+> **原子，以及原子关系。**
+
+换句话说，Knowledge 的底层真相可以被抽象成最简洁的 `a-b` 元表示：
+
+- `a` 是知识原子
+- `b` 是另一个知识原子
+- `a-b` 是它们之间的关系
+
+大量这样的原子及其关系，自然折叠形成知识网络，也即 `map`。
+
+因此，Knowledge 的“图式”不是额外的一层复杂图谱本体，而是：
+
+- 原子
+- 原子关系
+- 由它们自然投影出的地图
+
+## 2.3 Knowledge 与 NodeFlow 理念统一，但层级不同
+
+`Knowledge` 和 `NodeFlow` 在设计理念上是一致的：
+
+- 都遵循 `node -> link -> map`
+- 都以“原子 + 关系 + 投影”为基础
+- 都强调极简、原子化、可缩放
+
+但两者不在同一层级。
+
+- `Knowledge` 是更底层的 Agent 长期记忆数据层
+- `NodeFlow` 是更上层的用户工作流设施
+
+`NodeFlow` 为当前 `Knowledge` 的设计提供了实践经验，但不能反过来定义 `Knowledge` 的本体。
+
+## 3. 架构层级
+
+Qalam 的相关底层应理解为以下层级：
+
+### 3.1 Canonical Source Layer
 
 项目的确定起点。
 
@@ -31,43 +82,41 @@ Qalam 的相关底层应当理解为如下层级：
 - 原始剧本文本
 - episode
 - scene
-- 用户导入的 guide / reference
+- guide / reference
 - 其他明确的项目源资料
 
 这一层的职责是：
 
 - 提供不可随意篡改的源事实
 - 作为 Knowledge 的锚点来源
-- 作为 Agent 知识修正时的回溯依据
+- 作为 Agent 修正知识时的回溯依据
 
 这一层不是 Agent 的长期记忆本体。
 
-### 2.2 Knowledge Core
+### 3.2 Knowledge Core
 
 这是 Agent 的长期记忆数据层，也是本架构的核心。
 
 它负责：
 
-- 沉淀知识条目
-- 记录知识之间的关系
+- 沉淀知识原子
+- 记录知识原子之间的关系
 - 保存知识与源事实的锚点
-- 允许 Agent 持续补全、修正、淘汰旧知识
+- 允许 Agent 持续补全、修正、弱化、淘汰旧知识
 
 Knowledge Core 的本体是：
 
-- `entry`
-- `relation`
-- `anchor`
-- `map`
+- `knowledge node`
+- `knowledge link`
+- `knowledge map`
 
 其中：
 
-- `entry` 是第一实体
-- `relation` 是 entry 之间的关系记录
-- `anchor` 是知识与外部事实/对象的可追溯绑定
-- `map` 是大量 entry 与 relation 形成的知识视图
+- `knowledge node` 是第一实体
+- `knowledge link` 是节点之间的原子关系记录
+- `knowledge map` 是大量节点与关系形成的投影
 
-### 2.3 Agent Runtime Layer
+### 3.3 Agent Runtime Layer
 
 Agent 通过 tools 或内部 memory 接口读写 Knowledge Core。
 
@@ -77,116 +126,48 @@ Agent 通过 tools 或内部 memory 接口读写 Knowledge Core。
 - 创建知识
 - 修正知识
 - 将新的观察沉淀为知识
-- 将冲突或过期知识标记为 superseded / rejected
+- 将过期或冲突知识标记为 `superseded / rejected`
 
-### 2.4 NodeFlow / UI Layer
+### 3.4 Debug / Inspector Layer
 
-`NodeFlow` 属于面向用户的上层设施。
+为了避免底层知识系统黑盒化，可以提供 `Knowledge Inspector`。
 
-它服务于：
+它的职责是：
 
-- 用户创作工作流
-- 生成流程组织
-- 资产连接与执行
-- 结构化创作可视化
+- 展示当前 knowledge nodes
+- 展示 knowledge links
+- 展示局部或全局 knowledge map 投影
+- 用于开发和调试观察
 
-它不是 Knowledge 的本体。
-
-在开发和调试阶段，可以**借用** `NodeFlow` 的 panel / flow 基础设施，将 `Knowledge` 投影为可视结构，以避免底层知识系统黑盒化。
-
-但这种关系必须始终保持为：
+这一层可以借用 `NodeFlow` 的 panel / flow 承接能力，但必须始终保持：
 
 > `Knowledge Core` 为真相  
-> `NodeFlow Debug Projection` 为投影
+> `Inspector Projection` 为投影
 
-而不能反过来让 `NodeFlow` 定义 `Knowledge`。
-
-## 3. 核心判断
-
-### 3.1 Knowledge 不是 Understanding 的改名
-
-`Knowledge` 的含义比 “understanding” 更深一层。
-
-原因：
-
-- Agent 在项目中不是一次性理解后结束
-- 它会持续学习
-- 会持续补全
-- 会持续修正
-- 会不断建立更高阶关系
-
-因此，这不再只是一次性“理解结果”，而是可持续演进的知识网络。
-
-### 3.2 Knowledge 是长期记忆，不是工作流节点
-
-Knowledge 虽然也具有“图”的形态，但它的图是**数据组织形式**，不是 `NodeFlow` 那种表层具体设施。
-
-不要将：
-
-- `knowledge map`
-- `node flow`
-- `ReactFlow node`
-
-视为同一种东西。
-
-它们属于不同层次：
-
-- `knowledge map` 是认知结构
-- `node flow` 是用户工作流设施
-- `flow node` 是表层可视组件
-
-### 3.3 Entry 是第一实体
-
-Knowledge 的唯一第一实体是 `entry`。
-
-`relation` 不是与 entry 平权的第二种“知识实体”，而是 entry 与 entry 之间的原子关系记录。  
-`map` 也不是独立本体，而是 entry 与 relation 的投影。
-
-因此：
-
-- `entry` 是本体
-- `relation` 是关系
-- `map` 是视图
-
-### 3.4 Knowledge 不是用户可写资料库
-
-用户不直接操作 Knowledge Core。
-
-用户的主要操作对象仍然应当是：
-
-- 剧本
-- NodeFlow
-- 分镜
-- 角色资料
-- 生成节点
-- 资产
-
-Knowledge 只服务于：
-
-- Agent 的长期记忆
-- Agent 的知识沉淀
-- Agent 的认知修正
-- 开发者调试观察
+它不是知识本体，也不是用户产品面板。
 
 ## 4. 核心数据模型
 
-## 4.1 KnowledgeEntry
+## 4.1 KnowledgeNode
 
-Knowledge 的最小原子单位。
+Knowledge 的唯一第一实体。
+
+Knowledge Node 表示一个稳定的知识原子节点。
 
 ```ts
-type KnowledgeEntry = {
+type KnowledgeNode = {
   id: string;
   ref: string;
   kind: string;
-  title: string;
 
-  payload: Record<string, unknown>;
+  package: {
+    title: string;
+    status: "draft" | "working" | "accepted" | "superseded" | "rejected";
+    confidence?: "low" | "medium" | "high";
+  };
+
+  content: Record<string, unknown>;
   meta?: Record<string, unknown>;
-
-  status: "draft" | "working" | "accepted" | "superseded" | "rejected";
-  confidence?: "low" | "medium" | "high";
-
   anchors: KnowledgeAnchor[];
 
   createdAt: number;
@@ -204,36 +185,49 @@ type KnowledgeEntry = {
 
 - `kind`
   开放命名空间类型，例如：
+  - `source.script`
+  - `source.episode`
+  - `source.scene`
   - `character.fact`
-  - `character.relationship`
   - `scene.constraint`
   - `theme.inference`
   - `design.decision`
   - `prompt.strategy`
 
-- `title`
-  用于快速识别知识单元，不承担完整语义
+- `package`
+  节点的略览层
 
-- `payload`
-  条目的真实内容
+- `content`
+  节点的精读层真实内容
 
 - `meta`
-  辅助元信息，不等于条目正文
-
-- `status`
-  知识生命周期状态
-
-- `confidence`
-  Agent 当前对该知识的确信程度
+  辅助元信息，不等于正文
 
 - `anchors`
-  知识的来源锚点
+  知识来源锚点
 
-### Entry 原子化原则
+### 两层读取原则
 
-一个 `entry` 只表达一个稳定知识点。
+Knowledge Node 天然支持两层动作：
 
-不建议一开始就把这些做成单个超级条目：
+1. `package layer`
+  用于整体略览，快速知道“这是什么知识节点”
+
+2. `content layer`
+  用于精读，深入查看知识的具体内容
+
+也就是：
+
+- 先识别
+- 再深读
+
+这条原则与 `NodeFlow` 的读取理念一致。
+
+### Knowledge Node 原子化原则
+
+一个 `KnowledgeNode` 只表达一个稳定知识点。
+
+不建议一开始就把这些做成单个超级节点：
 
 - 完整人物大全
 - 一整集分析总结
@@ -250,16 +244,18 @@ type KnowledgeEntry = {
 - 一个设计决策
 - 一个 prompt 策略
 
-## 4.2 KnowledgeRelation
+## 4.2 KnowledgeLink
 
-关系记录应保持极简。
+Knowledge Link 是知识节点之间的原子关系记录。
+
+它不是与 `KnowledgeNode` 平权的第二种知识本体。
 
 ```ts
-type KnowledgeRelation = {
+type KnowledgeLink = {
   id: string;
 
-  fromEntryId: string;
-  toEntryId: string;
+  fromNodeId: string;
+  toNodeId: string;
   type: string;
 
   weight?: number;
@@ -270,31 +266,36 @@ type KnowledgeRelation = {
 };
 ```
 
-### 关系原则
+### Link 原则
 
-`relation` 不是“第二种 entry”。
+第一阶段保持极简。
 
-第一阶段不建议在 relation 上挂载：
+不要过早在 link 上挂载：
 
 - 大段正文
 - 独立摘要
 - 复杂 payload
-- 用户展示专用字段
-- UI 坐标信息
+- UI 展示字段
+- 几何位置
 
-relation 应尽量只保留：
+Knowledge Link 应尽量只保留：
 
 - 谁指向谁
 - 关系类型
 - 关系是否仍有效
 
-### Relation Minimalism
+### 第一批关系类型建议
 
-Knowledge 关系必须足够轻，原因是：
+第一阶段建议只保留高度抽象的关系类型，例如：
 
-- 长期记忆网络会逐渐变大
-- Agent 高频需要做局部遍历
-- 厚 relation 会迅速把系统变成难维护的半图谱平台
+- `derived_from`
+- `describes`
+- `supports`
+- `contradicts`
+- `contains`
+- `references`
+
+不要过早把关系类型做成厚重的本体系统。
 
 ## 4.3 KnowledgeAnchor
 
@@ -320,24 +321,52 @@ Knowledge 不应只存“结论”，而不存任何来源。
 
 `map` 是视图，不是独立真相。
 
+Knowledge 的 map 表示由 knowledge nodes 和 knowledge links 形成的知识网络投影。
+
 ```ts
-type KnowledgeMapView = {
+type KnowledgeMap = {
   revision: number;
-  entries: KnowledgeEntry[];
-  relations: KnowledgeRelation[];
+  nodes: KnowledgeNode[];
+  links: KnowledgeLink[];
 };
 ```
 
-### Map 的定位
+这里的关键不是“存很多地图实体”，而是：
 
-Knowledge 的 map 代表：
+> 一张知识网，在不同 lens 下投影出不同 map。
 
-- 某个局部认知区域
-- 某个主题簇
-- 某个实体邻域
-- 某个任务上下文下的知识投影
+### Knowledge Map Lens
 
-它是数据组织形式，不是画布对象，不自带 UI 几何信息。
+Knowledge 的 map 需要支持不同尺度的缩放和局部观察。
+
+```ts
+type KnowledgeMapLens = {
+  id: string;
+  kind: "full" | "local" | "anchor" | "kind" | "focus";
+  focusNodeRefs?: string[];
+  anchorRefs?: string[];
+  nodeKinds?: string[];
+  depth?: number;
+};
+```
+
+这样：
+
+- `full` 表示整张知识网
+- `local` 表示围绕某个节点的局部邻域
+- `anchor` 表示围绕某类源锚点的知识投影
+- `kind` 表示某类知识节点的专题地图
+- `focus` 表示当前任务上下文下的知识聚焦图
+
+也就是说，Knowledge 的地图天然是可缩放的：
+
+- 可以像地区地图
+- 可以像城市地图
+- 也可以像国家级投影
+
+甚至可以形成 `map of map` 的多尺度投影体系。
+
+但这些都不是新的本体，只是同一知识网在不同视野下的投影。
 
 ## 5. 架构原则
 
@@ -347,9 +376,13 @@ Knowledge 的设计首先服务于 Agent 的长期记忆，而不是服务于用
 
 如果某个字段只对画布或展示有意义，就不应进入 Knowledge Core。
 
-## 5.2 Entry First
+## 5.2 Node-Link-Map First
 
-所有设计从 `entry` 出发。
+Knowledge 的底层真相也遵循：
+
+- `node` 是本体
+- `link` 是关系
+- `map` 是投影
 
 不要优先围绕：
 
@@ -360,7 +393,16 @@ Knowledge 的设计首先服务于 Agent 的长期记忆，而不是服务于用
 
 展开设计。
 
-## 5.3 Anchor Everything
+## 5.3 Package Before Content
+
+知识节点必须天然支持两层读取：
+
+- 先通过 `package` 略览
+- 再通过 `content` 精读
+
+不要让 Agent 一开始就吞入所有细节。
+
+## 5.4 Anchor Everything
 
 知识沉淀必须尽量带来源锚点。
 
@@ -372,18 +414,17 @@ Knowledge 的设计首先服务于 Agent 的长期记忆，而不是服务于用
 - NodeFlow 节点
 - 已生成资产
 
-## 5.4 Derived, Not Duplicated
+## 5.5 Derived, Not Duplicated
 
 能从 Knowledge Core 推导出的东西，不要再作为第二套真相存储。
 
 例如：
 
-- 角色资料卡是投影
-- 场景卡片是投影
-- 知识网络局部视图是投影
-- Debug NodeFlow 视图也是投影
+- 局部知识地图是投影
+- 调试视图是投影
+- map lens 也是投影规则
 
-## 5.5 Correctable, Not Immutable
+## 5.6 Correctable, Not Immutable
 
 Knowledge 不是一次性写入后永远不变。
 
@@ -403,15 +444,15 @@ Agent 在长期运行中会：
 
 而不是只允许“覆盖写入”。
 
-## 5.6 Read Small, Derive Big
+## 5.7 Read Small, Derive Big
 
 Agent 不应默认吞整张知识图。
 
 正确方式是：
 
-- 先读局部 entry
-- 再读邻域 relation
-- 再按需要构造局部 map
+- 先读局部 knowledge node
+- 再读邻域 knowledge links
+- 再按需要构造局部 knowledge map
 
 即：
 
@@ -420,7 +461,13 @@ Agent 不应默认吞整张知识图。
 - 小修正
 - 大结构为派生结果
 
-## 5.7 No UI Leakage
+## 5.8 One Graph, Many Lenses
+
+Knowledge Core 只有一张知识网真相。
+
+不同的地图、局部视图、专题视图，都来自不同 lens，而不是第二套独立地图存储。
+
+## 5.9 No UI Leakage
 
 Knowledge Core 里不应出现这些字段作为本体：
 
@@ -430,63 +477,64 @@ Knowledge Core 里不应出现这些字段作为本体：
 - `view`
 - ReactFlow / NodeFlow handles
 - 节点组件状态
+- 用户展示专用装饰字段
 
 这些如果未来需要用于调试投影，应该存在于 projection 层，而不是本体层。
 
 ## 6. 与 NodeFlow 的关系
 
-## 6.1 不是并列关系
+## 6.1 NodeFlow 不是 Knowledge 的本体
 
-Knowledge 比 NodeFlow 更底层。
+`NodeFlow` 属于面向用户的上层设施。
 
-NodeFlow 是面向用户的上层设施。  
-Knowledge 是 Agent 的长期记忆数据层。
+它服务于：
 
-两者不并列，也不共享同一本体。
+- 用户创作工作流
+- 生成流程组织
+- 资产连接与执行
+- 结构化创作可视化
 
-## 6.2 只允许 Projection，不允许反向定义
+它不是 Knowledge 的本体。
 
-允许：
+## 6.2 NodeFlow 只是当前可借用的调试壳
 
-- 将 Knowledge 映射为调试节点
-- 将 Knowledge 映射为调试连线
-- 将 Knowledge 映射为可视化 map
+在开发和调试阶段，可以借用 `NodeFlow` 的 panel / flow 承接能力，将 `Knowledge` 投影为可视结构，以避免底层知识系统黑盒化。
 
-不允许：
+但这种关系必须始终保持为：
 
-- 用 NodeFlow node 反向定义 KnowledgeEntry
-- 用 NodeFlow link 反向定义 KnowledgeRelation
-- 用画布几何结构决定知识本体结构
+> `Knowledge Core` 为真相  
+> `NodeFlow Debug Projection` 为投影
 
-## 6.3 Debug Projection 的角色
+而不能反过来让 `NodeFlow` 定义 `Knowledge`。
 
-为了避免底层知识系统黑盒化，可以提供一个 `Knowledge Inspector`。
+## 6.3 理念同构，不是本体同构
 
-这个 Inspector 可以：
+`Knowledge` 与 `NodeFlow` 在理念上同构：
 
-- 借用 `NodeFlow` 的 panel / flow 承接能力
-- 把 Knowledge 投影成可调试结构
-- 让开发者直观看到 entry / relation / map
+- 都遵循 `node -> link -> map`
+- 都以图式组织数据
+- 都强调极简、原子化、可缩放
 
-但它的严格定位必须是：
+但它们的本体并不相同：
 
-> 调试投影层  
-> 不是知识本体  
-> 不是用户产品面板
+- `KnowledgeNode` 不是 `NodeFlowNode`
+- `KnowledgeLink` 不是 `NodeFlowLink`
+- `KnowledgeMap` 不是画布 map
 
 ## 7. 模块结构建议
 
-建议新增独立目录，而不是继续把 Knowledge 寄存在 `nodeflow/` 中：
+建议维持独立目录，而不是继续把 Knowledge 寄存在 `nodeflow/` 中：
 
 ```txt
 knowledge/
   types.ts
   defaults.ts
+  builders.ts
+  anchors.ts
   mutations.ts
   queries.ts
   maps.ts
   serialization.ts
-  anchors.ts
   inspector/
     projection.ts
     KnowledgePanel.tsx
@@ -495,108 +543,64 @@ knowledge/
 ### 各模块职责
 
 - `types.ts`
-  Knowledge Core 的本体类型
+  Knowledge Core 本体类型
 
 - `defaults.ts`
   默认值与初始工厂
 
+- `builders.ts`
+  Knowledge node / link 的最小构造规则
+
+- `anchors.ts`
+  source anchor 构造与解析
+
 - `mutations.ts`
-  entry / relation 的纯变更逻辑
+  knowledge node / link 的纯变更逻辑
 
 - `queries.ts`
   局部读取、邻域遍历、检索
 
 - `maps.ts`
-  局部 map 的派生与构造
+  基于 lens 的 knowledge map 派生与构造
 
 - `serialization.ts`
   持久化与导入导出
-
-- `anchors.ts`
-  source anchor 构造与解析
 
 - `inspector/projection.ts`
   Knowledge -> Debug Projection 映射
 
 - `inspector/KnowledgePanel.tsx`
-  开发调试视图
+  开发调试承接面板
 
-## 8. 非目标
+## 8. 当前实施路线
 
-当前阶段 Knowledge 不负责：
+### 第一阶段
 
-- 用户直接编辑
-- 用户产品化资料库
-- 用户交互式知识画布
-- 面向用户的角色库/场景库设计
-- 与 NodeFlow 的深度双向联动
+先落地 Knowledge Core 的最小本体：
 
-这些属于未来可能的投影层议题，不属于当前长期记忆本体设计范围。
-
-## 9. 当前实现方向的指导
-
-基于本架构，当前代码中的这些内容应视为过渡：
-
-- `understanding` 命名
-- `KnowledgeNodeData`
-- `knowledge` 作为 `NodeType`
-- `UnderstandingPanel`
-- 通过 `plane / assetType / content` 表达理解资产本体
-
-它们可以暂时存在于过渡期，但不应继续扩大为长期核心。
-
-长期上：
-
-- `understanding` 应退出命名体系
-- `Knowledge` 应成为独立底层模块
-- `UnderstandingPanel` 应让位于 `Knowledge Inspector`
-- NodeFlow 中的 `knowledge` 节点应仅保留为调试投影，而不是本体
-
-## 10. 实施路线
-
-### Phase 1
-
-先定义 `Knowledge Core` 最小数据模型：
-
-- `KnowledgeEntry`
-- `KnowledgeRelation`
+- `KnowledgeNode`
+- `KnowledgeLink`
 - `KnowledgeAnchor`
-- `KnowledgeMapView`
+- `KnowledgeMap`
 
-### Phase 2
+并从 Canonical Source Layer 种入第一批只读 source nodes。
 
-建立基础读写能力：
+### 第二阶段
 
-- 新建 entry
-- 更新 entry
-- 标记 superseded / rejected
-- 新建 relation
-- 查询局部邻域
+补第一批 source links，让知识网真正开始形成：
 
-### Phase 3
+- script -> episode
+- episode -> scene
+- guide -> source node
 
-建立持久化与 revision 机制：
+### 第三阶段
 
-- `revision`
-- 导入导出
-- 冲突检测
+再引入 Agent 写入与修正：
 
-### Phase 4
+- 新增 derived knowledge nodes
+- 新增知识 links
+- 基于 anchors 做知识修正与 supersede
 
-建立 `Knowledge Inspector`
+### 第四阶段
 
-- 先提供开发调试视图
-- 允许借用 NodeFlow 可视化壳
-- 但保持单向 projection
-
-### Phase 5
-
-最后才考虑上层 Agent tools 如何正式接入新的 Knowledge Core。
-
-## 11. 一句话总纲
-
-> Knowledge 不是给用户操作的图形工作流。  
-> 它是 Qalam Agent 的长期记忆数据层。  
-> 它以 entry、relation、anchor 和 map 组织知识，  
-> 可以被调试性地投影到 NodeFlow，  
-> 但绝不能被 NodeFlow 反向定义。
+最后再做 `Knowledge Inspector` 的图式调试投影，而不是反过来先设计用户面板。

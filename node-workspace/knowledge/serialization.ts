@@ -7,7 +7,7 @@ export const parseKnowledgeSnapshot = (raw: string): KnowledgeSnapshot => {
   const parsed = JSON.parse(raw) as KnowledgeSnapshot;
   return {
     revision: typeof parsed.revision === "number" ? parsed.revision : 0,
-    entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-    relations: Array.isArray(parsed.relations) ? parsed.relations : [],
+    nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+    links: Array.isArray(parsed.links) ? parsed.links : [],
   };
 };

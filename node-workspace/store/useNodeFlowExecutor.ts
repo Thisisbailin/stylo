@@ -953,7 +953,7 @@ export const useNodeFlowExecutor = () => {
             store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Wan 图像生成失败。" });
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 15000));
         }
 
         store.updateNodeData(nodeId, { status: "error", error: "Wan 图像生成超时。" });
@@ -1426,7 +1426,7 @@ export const useNodeFlowExecutor = () => {
     if (node.type === "seedanceVideoGen") {
       return runSeedanceVideoGen(nodeId);
     }
-    const { images, videos, text: connectedText, atMentions, entityBindings } = store.getConnectedInputs(nodeId);
+    const { images, audios, videos, text: connectedText, atMentions, entityBindings } = store.getConnectedInputs(nodeId);
     const data = node.data as any;
     const prompt = (connectedText || "").trim();
     const isWanReferenceVideoNode = node.type === "wanReferenceVideoGen";
@@ -1434,6 +1434,10 @@ export const useNodeFlowExecutor = () => {
     const referenceVideos = Array.from(
       new Set([...(Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : []), ...(videos || []).filter(Boolean)])
     );
+    const referenceAudios = Array.from(
+      new Set([...(Array.isArray(data.referenceAudios) ? data.referenceAudios.filter(Boolean) : []), ...(audios || []).filter(Boolean)])
+    );
+    const firstFrameImage = typeof data.firstFrameImage === "string" ? data.firstFrameImage.trim() : "";
     const projectReferenceTargets = Array.isArray(data.projectReferenceTargets)
       ? (data.projectReferenceTargets as ProjectReferenceTargetData[])
       : [];
@@ -1444,17 +1448,17 @@ export const useNodeFlowExecutor = () => {
       return;
     }
 
-    const isWanVideo = (config.videoConfig.baseUrl || "").includes("/api/v1/services/aigc/video-generation/");
-    if (!config.videoConfig.baseUrl || (!config.videoConfig.apiKey && !isWanVideo && !isWanReferenceVideoNode)) {
+    const isWanLegacyVideo = !isWanReferenceVideoNode && (config.videoConfig.baseUrl || "").includes("/api/v1/services/aigc/video-generation/");
+    if (!isWanLegacyVideo && !isWanReferenceVideoNode && (!config.videoConfig.baseUrl || !config.videoConfig.apiKey)) {
       store.updateNodeData(nodeId, { status: "error", error: "Missing video API configuration." });
       return;
     }
 
-    if (isWanVideo && images.length === 0) {
+    if (isWanLegacyVideo && images.length === 0) {
       store.updateNodeData(nodeId, { status: "error", error: "Wan 视频需要至少一张参考图。" });
       return;
     }
-    if (isWanVideo && !prompt) {
+    if (isWanLegacyVideo && !prompt) {
       store.updateNodeData(nodeId, { status: "error", error: "Wan 视频需要提示词。" });
       return;
     }
@@ -1470,17 +1474,17 @@ export const useNodeFlowExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
-      const normalizedImages = (isWanVideo || isWanReferenceVideoNode) ? await normalizeWanImages(images) : images;
+      const normalizedImages = (isWanLegacyVideo || isWanReferenceVideoNode) ? await normalizeWanImages(images) : images;
       const refImage =
         normalizedImages.find((src) => src.startsWith("http")) ||
-        (isWanVideo ? normalizedImages[0] : undefined);
+        (isWanLegacyVideo ? normalizedImages[0] : undefined);
       const params: any = {
         aspectRatio: data.aspectRatio || "16:9",
         duration: data.duration || "5s",
         quality: data.quality || "standard",
         inputImageUrl: refImage,
       };
-      if (isWanVideo || isWanVideoNode) {
+      if (isWanLegacyVideo) {
         const fallbackResolution = data.quality === "high" ? "1080P" : "720P";
         const resolution = data.resolution || fallbackResolution;
         params.size = mapWanVideoSize(data.aspectRatio, resolution);
@@ -1505,6 +1509,9 @@ export const useNodeFlowExecutor = () => {
         );
         const normalizedVideos = await normalizeWanReferenceVideos(referenceVideos);
         const normalizedReferenceImages = await normalizeWanImages(referenceImages);
+        const normalizedReferenceAudios = await Promise.all(referenceAudios.slice(0, 1).map((item) => normalizeWanAudio(item)));
+        const referenceVoiceUrl = normalizedReferenceAudios.find(Boolean);
+        const normalizedFirstFrame = firstFrameImage ? await normalizeWanImages([firstFrameImage]) : [];
         const explicitProjectRefs = projectReferenceTargets
           .map((target) => latestProjectRefs.get(makeProjectRefKey(target.category, target.refId)))
           .filter((item): item is ProjectReferenceAsset => !!item);
@@ -1553,13 +1560,22 @@ export const useNodeFlowExecutor = () => {
           videoCount: cappedVideos.length,
         });
         params.aspectRatio = data.aspectRatio || "16:9";
-        params.resolution = data.resolution || "720P";
+        params.resolution = data.resolution || "1080P";
         params.watermark = data.watermark;
         params.seed = data.seed;
         params.media = [
-          ...cappedVideos.map((url) => ({ kind: "video" as const, url })),
-          ...imageMedia.map((item) => ({ kind: "image" as const, url: item.url })),
+          ...cappedVideos.map((url, index) => ({
+            kind: "video" as const,
+            url,
+            referenceVoiceUrl: index === 0 ? referenceVoiceUrl : undefined,
+          })),
+          ...imageMedia.map((item, index) => ({
+            kind: "image" as const,
+            url: item.url,
+            referenceVoiceUrl: cappedVideos.length === 0 && index === 0 ? referenceVoiceUrl : undefined,
+          })),
         ];
+        params.firstFrameUrl = normalizedFirstFrame[0];
         if (params.media.length === 0) {
           throw new Error("Wan 参考生视频未找到可用的项目卡片或引用素材。");
         }
@@ -1571,12 +1587,15 @@ export const useNodeFlowExecutor = () => {
         model: data.model || config.videoConfig.model
       };
       if (isWanReferenceVideoNode) {
-        configToUse.baseUrl = QWEN_WAN_VIDEO_ENDPOINT;
+        configToUse.baseUrl =
+          config.videoConfig.baseUrl?.includes("/api/v1/services/aigc/video-generation/video-synthesis")
+            ? config.videoConfig.baseUrl
+            : QWEN_WAN_VIDEO_ENDPOINT;
         configToUse.model = data.model || QWEN_WAN_REFERENCE_VIDEO_MODEL;
         configToUse.apiKey = "";
       }
 
-      if (isWanVideo) {
+      if (isWanLegacyVideo) {
         const { id, url } = await WanService.submitWanVideoTask(prompt || "Animate this", configToUse, params);
         if (url) {
           store.updateNodeData(nodeId, { status: "complete", videoUrl: url, error: null });
@@ -1600,7 +1619,7 @@ export const useNodeFlowExecutor = () => {
             store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Wan 视频生成失败。" });
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 15000));
         }
 
         store.updateNodeData(nodeId, { status: "error", error: "Wan 视频生成超时。" });

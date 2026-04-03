@@ -3,7 +3,7 @@ import { BaseNode } from "./BaseNode";
 import { VideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import { RefreshCw, Film, AlertCircle, Download, X, Video, Image as ImageIcon } from "lucide-react";
+import { RefreshCw, Film, AlertCircle, Download, X, Video, Image as ImageIcon, AudioLines, Mic } from "lucide-react";
 import { QWEN_WAN_REFERENCE_VIDEO_MODEL } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
 
@@ -25,12 +25,18 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
   const [progress, setProgress] = useState(0);
   const [isUploadingVideoRefs, setIsUploadingVideoRefs] = useState(false);
   const [isUploadingImageRefs, setIsUploadingImageRefs] = useState(false);
+  const [isUploadingVoiceRef, setIsUploadingVoiceRef] = useState(false);
+  const [isUploadingFirstFrame, setIsUploadingFirstFrame] = useState(false);
   const refVideoInputRef = useRef<HTMLInputElement>(null);
   const refImageInputRef = useRef<HTMLInputElement>(null);
+  const refVoiceInputRef = useRef<HTMLInputElement>(null);
+  const firstFrameInputRef = useRef<HTMLInputElement>(null);
 
-  const { images: connectedImages, atMentions } = getConnectedInputs(id);
+  const { images: connectedImages, audios: connectedAudios, atMentions } = getConnectedInputs(id);
   const referenceVideos = Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [];
   const referenceImages = Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [];
+  const referenceAudios = Array.isArray(data.referenceAudios) ? data.referenceAudios.filter(Boolean) : [];
+  const firstFrameImage = typeof data.firstFrameImage === "string" ? data.firstFrameImage : null;
   const projectReferenceTargets = Array.isArray(data.projectReferenceTargets) ? data.projectReferenceTargets : [];
   const manualRefs = useMemo<ManualReferenceAsset[]>(
     () => [
@@ -73,9 +79,10 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
   );
   const hasConnectedImages = connectedImages.length > 0;
   const totalReferenceCount = manualRefs.length + connectedImages.length + projectReferenceTargets.length;
+  const effectiveVoiceCount = referenceAudios.length > 0 || connectedAudios.length > 0 ? 1 : 0;
   const isLoading = data.status === "loading";
   const currentModel = QWEN_WAN_REFERENCE_VIDEO_MODEL;
-  const currentResolution = (data.resolution || "720P").toUpperCase();
+  const currentResolution = (data.resolution || "1080P").toUpperCase();
   const aspectRatioOptions: Record<string, { value: string; label: string }[]> = {
     "720P": [
       { value: "16:9", label: "16:9 Landscape" },
@@ -92,7 +99,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
       { value: "3:4", label: "3:4 Portrait" },
     ],
   };
-  const allowedAspectOptions = aspectRatioOptions[currentResolution] || aspectRatioOptions["720P"];
+  const allowedAspectOptions = aspectRatioOptions[currentResolution] || aspectRatioOptions["1080P"];
   const currentAspect =
     allowedAspectOptions.find((opt) => opt.value === data.aspectRatio)?.value || allowedAspectOptions[0].value;
   const currentDuration = clampDuration(Number.parseInt((data.duration || "5s").replace("s", ""), 10) || 5);
@@ -219,6 +226,46 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     return url;
   };
 
+  const handleReferenceVoiceFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setIsUploadingVoiceRef(true);
+    try {
+      const file = files[0];
+      const uploaded = await uploadReferenceAsset(file, { prefix: "wan-reference-voice", fallbackType: "audio/mpeg" });
+      updateNodeData(id, {
+        referenceAudios: [uploaded],
+        error: null,
+      });
+    } catch (e: any) {
+      updateNodeData(id, { error: e?.message || "参考音色上传失败。" });
+    } finally {
+      setIsUploadingVoiceRef(false);
+      if (refVoiceInputRef.current) {
+        refVoiceInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleFirstFrameFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setIsUploadingFirstFrame(true);
+    try {
+      const file = files[0];
+      const uploaded = await uploadReferenceAsset(file, { prefix: "wan-first-frame", fallbackType: "image/png" });
+      updateNodeData(id, {
+        firstFrameImage: uploaded,
+        error: null,
+      });
+    } catch (e: any) {
+      updateNodeData(id, { error: e?.message || "首帧图片上传失败。" });
+    } finally {
+      setIsUploadingFirstFrame(false);
+      if (firstFrameInputRef.current) {
+        firstFrameInputRef.current.value = "";
+      }
+    }
+  };
+
   const handleReferenceVideoFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     const remainingVideoSlots = Math.max(0, 3 - referenceVideos.length);
@@ -317,7 +364,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     <BaseNode
       title={data.title || "WAN Ref Vid"}
       onTitleChange={(title) => updateNodeData(id, { title })}
-      inputs={["image", "text"]}
+      inputs={["image", "video", "audio", "text"]}
       selected={selected}
     >
       <div className="space-y-4 flex-1 flex flex-col">
@@ -402,12 +449,17 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
           </div>
         )}
 
-        <div className="grid grid-cols-4 gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-[var(--node-text-secondary)]/70">
-          <div>{referenceVideos.length} video</div>
-          <div className="text-center">{referenceImages.length} image</div>
-          <div className="text-center">{projectReferenceTargets.length} card</div>
-          <div className="text-right">{connectedImages.length} linked</div>
-        </div>
+	        <div className="grid grid-cols-4 gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-[var(--node-text-secondary)]/70">
+	          <div>{referenceVideos.length} video</div>
+	          <div className="text-center">{referenceImages.length} image</div>
+	          <div className="text-center">{projectReferenceTargets.length} card</div>
+	          <div className="text-right">{connectedImages.length} linked</div>
+	        </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-[0.18em] font-black text-[var(--node-text-secondary)]/70">
+            <div>{effectiveVoiceCount} voice</div>
+            <div className="text-right">{firstFrameImage ? "first frame" : "no first frame"}</div>
+          </div>
 
         <div className="node-panel space-y-3 p-3 nodrag">
           <div className="space-y-1">
@@ -488,7 +540,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+	          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => refVideoInputRef.current?.click()}
@@ -517,15 +569,110 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
               className="hidden"
               onChange={(e) => handleReferenceVideoFiles(e.target.files)}
             />
-            <input
-              ref={refImageInputRef}
+	            <input
+	              ref={refImageInputRef}
               type="file"
               accept="image/jpeg,image/jpg,image/png,image/bmp,image/webp,.jpg,.jpeg,.png,.bmp,.webp"
               multiple
               className="hidden"
-              onChange={(e) => handleReferenceImageFiles(e.target.files)}
-            />
-          </div>
+	              onChange={(e) => handleReferenceImageFiles(e.target.files)}
+	            />
+	          </div>
+
+	          <div className="grid grid-cols-2 gap-2">
+	            <button
+	              type="button"
+	              onClick={() => firstFrameInputRef.current?.click()}
+	              disabled={isUploadingFirstFrame}
+	              className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag disabled:opacity-60"
+	              onMouseDown={(e) => e.stopPropagation()}
+	            >
+	              <ImageIcon size={12} />
+	              {isUploadingFirstFrame ? "Uploading" : "Add First Frame"}
+	            </button>
+	            <button
+	              type="button"
+	              onClick={() => refVoiceInputRef.current?.click()}
+	              disabled={isUploadingVoiceRef}
+	              className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag disabled:opacity-60"
+	              onMouseDown={(e) => e.stopPropagation()}
+	            >
+	              <AudioLines size={12} />
+	              {isUploadingVoiceRef ? "Uploading" : "Add Voice"}
+	            </button>
+	            <input
+	              ref={firstFrameInputRef}
+	              type="file"
+	              accept="image/jpeg,image/jpg,image/png,image/bmp,image/webp,.jpg,.jpeg,.png,.bmp,.webp"
+	              className="hidden"
+	              onChange={(e) => handleFirstFrameFiles(e.target.files)}
+	            />
+	            <input
+	              ref={refVoiceInputRef}
+	              type="file"
+	              accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav"
+	              className="hidden"
+	              onChange={(e) => handleReferenceVoiceFiles(e.target.files)}
+	            />
+	          </div>
+
+	          {(firstFrameImage || effectiveVoiceCount > 0) && (
+	            <div className="grid grid-cols-2 gap-2">
+	              <div className="rounded-[14px] border border-white/10 bg-black/20 p-2">
+	                <div className="mb-2 text-[8px] font-bold uppercase tracking-[0.16em] text-white/60">first frame</div>
+	                {firstFrameImage ? (
+	                  <div className="relative overflow-hidden rounded-[12px] bg-black/30 aspect-[4/5]">
+	                    <img
+	                      src={firstFrameImage}
+	                      alt="first frame"
+	                      className="h-full w-full object-cover nodrag"
+	                      onMouseDown={(e) => e.stopPropagation()}
+	                      onPointerDown={(e) => e.stopPropagation()}
+	                    />
+	                    <button
+	                      type="button"
+	                      onClick={() => updateNodeData(id, { firstFrameImage: null })}
+	                      className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/65"
+	                      onMouseDown={(e) => e.stopPropagation()}
+	                    >
+	                      <X size={10} />
+	                    </button>
+	                  </div>
+	                ) : (
+	                  <div className="rounded-[12px] border border-dashed border-[var(--node-border)] px-2 py-3 text-[8px] text-[var(--node-text-secondary)]">
+	                    未设置首帧。
+	                  </div>
+	                )}
+	              </div>
+	              <div className="rounded-[14px] border border-white/10 bg-black/20 p-2">
+	                <div className="mb-2 text-[8px] font-bold uppercase tracking-[0.16em] text-white/60">reference voice</div>
+	                {effectiveVoiceCount > 0 ? (
+	                  <div className="space-y-2">
+	                    <div className="flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/5 px-2 py-2 text-[9px] text-[var(--node-text-primary)]">
+	                      <Mic size={12} className="text-emerald-300" />
+	                      <span className="min-w-0 flex-1 truncate">
+	                        {referenceAudios.length > 0 ? "manual voice -> first reference role" : "linked audio -> first reference role"}
+	                      </span>
+	                      {referenceAudios.length > 0 ? (
+	                        <button
+	                          type="button"
+	                          onClick={() => updateNodeData(id, { referenceAudios: [] })}
+	                          className="flex h-5 w-5 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/65"
+	                          onMouseDown={(e) => e.stopPropagation()}
+	                        >
+	                          <X size={10} />
+	                        </button>
+	                      ) : null}
+	                    </div>
+	                  </div>
+	                ) : (
+	                  <div className="rounded-[12px] border border-dashed border-[var(--node-border)] px-2 py-3 text-[8px] text-[var(--node-text-secondary)]">
+	                    未设置参考音色。
+	                  </div>
+	                )}
+	              </div>
+	            </div>
+	          )}
 
           {manualRefs.length > 0 && (
             <div className="grid grid-cols-3 gap-2">

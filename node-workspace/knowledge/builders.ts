@@ -1,29 +1,29 @@
 import type {
   KnowledgeAnchor,
-  KnowledgeEntry,
-  KnowledgeEntryConfidence,
-  KnowledgeEntryStatus,
-  KnowledgeRelation,
+  KnowledgeLink,
+  KnowledgeNode,
+  KnowledgeNodeConfidence,
+  KnowledgeNodeStatus,
 } from "./types";
 
-type CreateKnowledgeEntryInput = {
+type CreateKnowledgeNodeInput = {
   id: string;
   ref: string;
   kind: string;
   title: string;
-  payload?: Record<string, unknown>;
+  content?: Record<string, unknown>;
   meta?: Record<string, unknown>;
-  status?: KnowledgeEntryStatus;
-  confidence?: KnowledgeEntryConfidence;
+  status?: KnowledgeNodeStatus;
+  confidence?: KnowledgeNodeConfidence;
   anchors?: KnowledgeAnchor[];
   createdAt?: number;
   updatedAt?: number;
 };
 
-type CreateKnowledgeRelationInput = {
+type CreateKnowledgeLinkInput = {
   id: string;
-  fromEntryId: string;
-  toEntryId: string;
+  fromNodeId: string;
+  toNodeId: string;
   type: string;
   weight?: number;
   status?: "active" | "superseded";
@@ -31,45 +31,47 @@ type CreateKnowledgeRelationInput = {
   updatedAt?: number;
 };
 
-export const createKnowledgeEntry = ({
+export const createKnowledgeNode = ({
   id,
   ref,
   kind,
   title,
-  payload = {},
+  content = {},
   meta,
   status = "draft",
   confidence,
   anchors = [],
   createdAt = Date.now(),
   updatedAt = createdAt,
-}: CreateKnowledgeEntryInput): KnowledgeEntry => ({
+}: CreateKnowledgeNodeInput): KnowledgeNode => ({
   id,
   ref,
   kind,
-  title,
-  payload,
+  package: {
+    title,
+    status,
+    confidence,
+  },
+  content,
   meta,
-  status,
-  confidence,
   anchors,
   createdAt,
   updatedAt,
 });
 
-export const createKnowledgeRelation = ({
+export const createKnowledgeLink = ({
   id,
-  fromEntryId,
-  toEntryId,
+  fromNodeId,
+  toNodeId,
   type,
   weight,
   status = "active",
   createdAt = Date.now(),
   updatedAt = createdAt,
-}: CreateKnowledgeRelationInput): KnowledgeRelation => ({
+}: CreateKnowledgeLinkInput): KnowledgeLink => ({
   id,
-  fromEntryId,
-  toEntryId,
+  fromNodeId,
+  toNodeId,
   type,
   weight,
   status,

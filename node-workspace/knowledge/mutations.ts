@@ -1,124 +1,122 @@
-import type { KnowledgeEntry, KnowledgeRelation, KnowledgeSnapshot } from "./types";
+import type { KnowledgeLink, KnowledgeNode, KnowledgeSnapshot } from "./types";
 
-export const replaceKnowledgeEntries = (
+export const replaceKnowledgeNodes = (
   snapshot: KnowledgeSnapshot,
-  entries: KnowledgeEntry[]
+  nodes: KnowledgeNode[]
 ): KnowledgeSnapshot => ({
   ...snapshot,
   revision: snapshot.revision + 1,
-  entries,
+  nodes,
 });
 
-export const replaceKnowledgeRelations = (
+export const replaceKnowledgeLinks = (
   snapshot: KnowledgeSnapshot,
-  relations: KnowledgeRelation[]
+  links: KnowledgeLink[]
 ): KnowledgeSnapshot => ({
   ...snapshot,
   revision: snapshot.revision + 1,
-  relations,
+  links,
 });
 
-export const upsertKnowledgeEntry = (
+export const upsertKnowledgeNode = (
   snapshot: KnowledgeSnapshot,
-  entry: KnowledgeEntry
+  node: KnowledgeNode
 ): KnowledgeSnapshot => {
-  const existingIndex = snapshot.entries.findIndex((item) => item.id === entry.id);
+  const existingIndex = snapshot.nodes.findIndex((item) => item.id === node.id);
   if (existingIndex < 0) {
     return {
       ...snapshot,
       revision: snapshot.revision + 1,
-      entries: [...snapshot.entries, entry],
+      nodes: [...snapshot.nodes, node],
     };
   }
-  const nextEntries = snapshot.entries.slice();
-  nextEntries[existingIndex] = entry;
+  const nextNodes = snapshot.nodes.slice();
+  nextNodes[existingIndex] = node;
   return {
     ...snapshot,
     revision: snapshot.revision + 1,
-    entries: nextEntries,
+    nodes: nextNodes,
   };
 };
 
-export const upsertKnowledgeEntries = (
+export const upsertKnowledgeNodes = (
   snapshot: KnowledgeSnapshot,
-  entries: KnowledgeEntry[]
+  nodes: KnowledgeNode[]
 ): KnowledgeSnapshot => {
-  if (!entries.length) return snapshot;
-  const nextEntries = snapshot.entries.slice();
-  for (const entry of entries) {
-    const existingIndex = nextEntries.findIndex((item) => item.id === entry.id || item.ref === entry.ref);
+  if (!nodes.length) return snapshot;
+  const nextNodes = snapshot.nodes.slice();
+  for (const node of nodes) {
+    const existingIndex = nextNodes.findIndex((item) => item.id === node.id || item.ref === node.ref);
     if (existingIndex < 0) {
-      nextEntries.push(entry);
+      nextNodes.push(node);
     } else {
-      nextEntries[existingIndex] = entry;
+      nextNodes[existingIndex] = node;
     }
   }
   return {
     ...snapshot,
     revision: snapshot.revision + 1,
-    entries: nextEntries,
+    nodes: nextNodes,
   };
 };
 
-export const removeKnowledgeEntry = (
+export const removeKnowledgeNode = (
   snapshot: KnowledgeSnapshot,
-  entryId: string
+  nodeId: string
 ): KnowledgeSnapshot => ({
   ...snapshot,
   revision: snapshot.revision + 1,
-  entries: snapshot.entries.filter((entry) => entry.id !== entryId),
-  relations: snapshot.relations.filter(
-    (relation) => relation.fromEntryId !== entryId && relation.toEntryId !== entryId
-  ),
+  nodes: snapshot.nodes.filter((node) => node.id !== nodeId),
+  links: snapshot.links.filter((link) => link.fromNodeId !== nodeId && link.toNodeId !== nodeId),
 });
 
-export const upsertKnowledgeRelation = (
+export const upsertKnowledgeLink = (
   snapshot: KnowledgeSnapshot,
-  relation: KnowledgeRelation
+  link: KnowledgeLink
 ): KnowledgeSnapshot => {
-  const existingIndex = snapshot.relations.findIndex((item) => item.id === relation.id);
+  const existingIndex = snapshot.links.findIndex((item) => item.id === link.id);
   if (existingIndex < 0) {
     return {
       ...snapshot,
       revision: snapshot.revision + 1,
-      relations: [...snapshot.relations, relation],
+      links: [...snapshot.links, link],
     };
   }
-  const nextRelations = snapshot.relations.slice();
-  nextRelations[existingIndex] = relation;
+  const nextLinks = snapshot.links.slice();
+  nextLinks[existingIndex] = link;
   return {
     ...snapshot,
     revision: snapshot.revision + 1,
-    relations: nextRelations,
+    links: nextLinks,
   };
 };
 
-export const upsertKnowledgeRelations = (
+export const upsertKnowledgeLinks = (
   snapshot: KnowledgeSnapshot,
-  relations: KnowledgeRelation[]
+  links: KnowledgeLink[]
 ): KnowledgeSnapshot => {
-  if (!relations.length) return snapshot;
-  const nextRelations = snapshot.relations.slice();
-  for (const relation of relations) {
-    const existingIndex = nextRelations.findIndex((item) => item.id === relation.id);
+  if (!links.length) return snapshot;
+  const nextLinks = snapshot.links.slice();
+  for (const link of links) {
+    const existingIndex = nextLinks.findIndex((item) => item.id === link.id);
     if (existingIndex < 0) {
-      nextRelations.push(relation);
+      nextLinks.push(link);
     } else {
-      nextRelations[existingIndex] = relation;
+      nextLinks[existingIndex] = link;
     }
   }
   return {
     ...snapshot,
     revision: snapshot.revision + 1,
-    relations: nextRelations,
+    links: nextLinks,
   };
 };
 
-export const removeKnowledgeRelation = (
+export const removeKnowledgeLink = (
   snapshot: KnowledgeSnapshot,
-  relationId: string
+  linkId: string
 ): KnowledgeSnapshot => ({
   ...snapshot,
   revision: snapshot.revision + 1,
-  relations: snapshot.relations.filter((relation) => relation.id !== relationId),
+  links: snapshot.links.filter((link) => link.id !== linkId),
 });

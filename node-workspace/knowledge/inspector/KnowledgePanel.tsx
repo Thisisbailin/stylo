@@ -3,7 +3,7 @@ import { BookOpen, Database, GitBranch, Network } from "lucide-react";
 import { useKnowledgeStore } from "../../store/knowledgeStore";
 import type { ProjectData } from "../../../types";
 
-export type KnowledgeSectionKey = "overview" | "entries" | "relations" | "maps";
+export type KnowledgeSectionKey = "overview" | "nodes" | "links" | "maps";
 
 type Props = {
   projectData: ProjectData;
@@ -33,9 +33,9 @@ export const KnowledgePanel: React.FC<Props> = ({
   showSidebar = true,
 }) => {
   const revision = useKnowledgeStore((state) => state.revision);
-  const entries = useKnowledgeStore((state) => state.entries);
-  const relations = useKnowledgeStore((state) => state.relations);
-  const mapView = useKnowledgeStore((state) => state.getKnowledgeMapView());
+  const nodes = useKnowledgeStore((state) => state.nodes);
+  const links = useKnowledgeStore((state) => state.links);
+  const map = useKnowledgeStore((state) => state.getKnowledgeMap());
   const seedCanonicalSource = useKnowledgeStore((state) => state.seedCanonicalSource);
   const sections: SectionItem[] = [
     {
@@ -45,22 +45,22 @@ export const KnowledgePanel: React.FC<Props> = ({
       subtitle: "Knowledge Core is the agent long-term memory layer.",
     },
     {
-      key: "entries",
-      label: "Entries",
+      key: "nodes",
+      label: "Nodes",
       icon: Database,
-      subtitle: `${entries.length} atomic knowledge entries`,
+      subtitle: `${nodes.length} atomic knowledge nodes`,
     },
     {
-      key: "relations",
-      label: "Relations",
+      key: "links",
+      label: "Links",
       icon: GitBranch,
-      subtitle: `${relations.length} lightweight knowledge relations`,
+      subtitle: `${links.length} lightweight knowledge links`,
     },
     {
       key: "maps",
       label: "Maps",
       icon: Network,
-      subtitle: `${mapView.entries.length} entries / ${mapView.relations.length} relations in current debug projection`,
+      subtitle: `${map.nodes.length} nodes / ${map.links.length} links in current debug projection`,
     },
   ];
 
@@ -100,18 +100,18 @@ export const KnowledgePanel: React.FC<Props> = ({
           </div>
           <div className="mt-2 text-lg font-semibold">Long-Term Memory Layer</div>
           <div className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--app-text-secondary)]">
-            旧的 Understanding 面板已停用。这里不再直接承接用户可读资产视图，而是为新的
-            Knowledge 模块预留调试与开发承接位。Knowledge 的本体将作为 Qalam Agent
-            的长期记忆数据层独立落地，未来这里只显示它的调试投影，而不是定义其本体。
+            Knowledge 的本体现在被定义为 Qalam Agent 的长期记忆数据层。这里不再承接旧的
+            understanding 心智，而是只负责调试观察 knowledge node、knowledge link
+            和 knowledge map 的底层真相。
           </div>
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
               <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]">
                 Current Step
               </div>
-              <div className="mt-2 text-[15px] font-semibold">Retire Understanding Surface</div>
+              <div className="mt-2 text-[15px] font-semibold">Build Knowledge Core</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                先退出旧 understanding 命名和面板形态，再为独立的 knowledge 数据模型搭建代码骨架。
+                先把长期记忆层的 node、link、map 真相立住，再逐步补 source links、agent 写入与局部地图。
               </div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
@@ -120,7 +120,7 @@ export const KnowledgePanel: React.FC<Props> = ({
               </div>
               <div className="mt-2 text-[15px] font-semibold">Knowledge Inspector</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                未来这里只用于 entry、relation、map 的调试观察，不承担用户资料库或工作流主界面的职责。
+                这里只用于 knowledge node、knowledge link、knowledge map 的调试观察，不承担用户资料库或工作流主界面的职责。
               </div>
             </div>
           </div>
@@ -139,56 +139,56 @@ export const KnowledgePanel: React.FC<Props> = ({
               <div className="mt-2 text-[18px] font-semibold">{revision}</div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Entries</div>
-              <div className="mt-2 text-[18px] font-semibold">{entries.length}</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Nodes</div>
+              <div className="mt-2 text-[18px] font-semibold">{nodes.length}</div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Relations</div>
-              <div className="mt-2 text-[18px] font-semibold">{relations.length}</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Links</div>
+              <div className="mt-2 text-[18px] font-semibold">{links.length}</div>
             </div>
           </div>
 
-          {activeSection === "entries" ? (
+          {activeSection === "nodes" ? (
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Entry Registry</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Node Registry</div>
               <div className="mt-3 space-y-3">
-                {entries.length ? (
-                  entries.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
+                {nodes.length ? (
+                  nodes.map((node) => (
+                    <div key={node.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-[13px] font-semibold">{entry.title}</div>
+                        <div className="text-[13px] font-semibold">{node.package.title}</div>
                         <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                          {entry.kind}
+                          {node.kind}
                         </div>
                       </div>
-                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">{entry.ref}</div>
+                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">{node.ref}</div>
                     </div>
                   ))
                 ) : (
                   <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                    No knowledge entries yet.
+                    No knowledge nodes yet.
                   </div>
                 )}
               </div>
             </div>
           ) : null}
 
-          {activeSection === "relations" ? (
+          {activeSection === "links" ? (
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Relation Registry</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Link Registry</div>
               <div className="mt-3 space-y-3">
-                {relations.length ? (
-                  relations.map((relation) => (
-                    <div key={relation.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
-                      <div className="text-[13px] font-semibold">{relation.type}</div>
+                {links.length ? (
+                  links.map((link) => (
+                    <div key={link.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
+                      <div className="text-[13px] font-semibold">{link.type}</div>
                       <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                        {relation.fromEntryId} {"->"} {relation.toEntryId}
+                        {link.fromNodeId} {"->"} {link.toNodeId}
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                    No knowledge relations yet.
+                    No knowledge links yet.
                   </div>
                 )}
               </div>
@@ -199,8 +199,7 @@ export const KnowledgePanel: React.FC<Props> = ({
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
               <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Knowledge Map Debug View</div>
               <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                Current debug projection includes {mapView.entries.length} entries and {mapView.relations.length} relations.
-                This is a data-level map view, not a user workflow canvas.
+                Current debug projection includes {map.nodes.length} nodes and {map.links.length} links. This is a data-level knowledge map, not a user workflow canvas.
               </div>
             </div>
           ) : null}

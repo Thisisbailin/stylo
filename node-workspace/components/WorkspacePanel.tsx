@@ -83,10 +83,10 @@ export const WorkspacePanel: React.FC<Props> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
   const { globalAssetHistory } = useNodeFlowStore();
-  const knowledgeEntryCount = useKnowledgeStore((state) => state.entries.length);
-  const knowledgeRelationCount = useKnowledgeStore((state) => state.relations.length);
-  const knowledgeMapEntryCount = useKnowledgeStore((state) => state.getKnowledgeMapView().entries.length);
-  const knowledgeMapRelationCount = useKnowledgeStore((state) => state.getKnowledgeMapView().relations.length);
+  const knowledgeNodeCount = useKnowledgeStore((state) => state.nodes.length);
+  const knowledgeLinkCount = useKnowledgeStore((state) => state.links.length);
+  const knowledgeMapNodeCount = useKnowledgeStore((state) => state.getKnowledgeMap().nodes.length);
+  const knowledgeMapLinkCount = useKnowledgeStore((state) => state.getKnowledgeMap().links.length);
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -118,23 +118,23 @@ export const WorkspacePanel: React.FC<Props> = ({
           tone: "text-amber-300",
         },
         {
-          key: "knowledge:entries",
-          label: "Entries",
-          description: `${knowledgeEntryCount} memory entries`,
+          key: "knowledge:nodes",
+          label: "Nodes",
+          description: `${knowledgeNodeCount} memory nodes`,
           icon: Network,
           tone: "text-emerald-300",
         },
         {
-          key: "knowledge:relations",
-          label: "Relations",
-          description: `${knowledgeRelationCount} memory relations`,
+          key: "knowledge:links",
+          label: "Links",
+          description: `${knowledgeLinkCount} memory links`,
           icon: Sparkles,
           tone: "text-sky-300",
         },
         {
           key: "knowledge:maps",
           label: "Maps",
-          description: `${knowledgeMapEntryCount} entries / ${knowledgeMapRelationCount} relations`,
+          description: `${knowledgeMapNodeCount} nodes / ${knowledgeMapLinkCount} links`,
           icon: Layers3,
           tone: "text-violet-300",
         },

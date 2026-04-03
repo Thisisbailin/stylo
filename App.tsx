@@ -735,11 +735,11 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      openWorkspacePanel("knowledge:entries");
+      openWorkspacePanel("knowledge:nodes");
       return;
     }
     if (key === 'scenes') {
-      openWorkspacePanel("knowledge:entries");
+      openWorkspacePanel("knowledge:nodes");
       return;
     }
     if (key === 'workspace') {

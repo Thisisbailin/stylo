@@ -82,7 +82,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "soraVideoGen":
       return { inputs: ["multi", "image", "text"], outputs: [] };
     case "wanReferenceVideoGen":
-      return { inputs: ["multi", "image", "video", "text"], outputs: [] };
+      return { inputs: ["multi", "image", "video", "audio", "text"], outputs: [] };
     case "viduVideoGen":
       return { inputs: ["multi", "image", "text"], outputs: [] };
     case "seedanceVideoGen":

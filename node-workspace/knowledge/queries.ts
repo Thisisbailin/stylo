@@ -1,12 +1,12 @@
 import type { KnowledgeSnapshot } from "./types";
 
-export const getKnowledgeEntryById = (snapshot: KnowledgeSnapshot, entryId: string) =>
-  snapshot.entries.find((entry) => entry.id === entryId);
+export const getKnowledgeNodeById = (snapshot: KnowledgeSnapshot, nodeId: string) =>
+  snapshot.nodes.find((node) => node.id === nodeId);
 
-export const getKnowledgeEntryByRef = (snapshot: KnowledgeSnapshot, entryRef: string) =>
-  snapshot.entries.find((entry) => entry.ref === entryRef);
+export const getKnowledgeNodeByRef = (snapshot: KnowledgeSnapshot, nodeRef: string) =>
+  snapshot.nodes.find((node) => node.ref === nodeRef);
 
-export const getKnowledgeRelationsForEntry = (snapshot: KnowledgeSnapshot, entryId: string) => ({
-  incoming: snapshot.relations.filter((relation) => relation.toEntryId === entryId),
-  outgoing: snapshot.relations.filter((relation) => relation.fromEntryId === entryId),
+export const getKnowledgeLinksForNode = (snapshot: KnowledgeSnapshot, nodeId: string) => ({
+  incoming: snapshot.links.filter((link) => link.toNodeId === nodeId),
+  outgoing: snapshot.links.filter((link) => link.fromNodeId === nodeId),
 });

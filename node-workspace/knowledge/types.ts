@@ -1,11 +1,11 @@
-export type KnowledgeEntryStatus =
+export type KnowledgeNodeStatus =
   | "draft"
   | "working"
   | "accepted"
   | "superseded"
   | "rejected";
 
-export type KnowledgeEntryConfidence = "low" | "medium" | "high";
+export type KnowledgeNodeConfidence = "low" | "medium" | "high";
 
 export type KnowledgeAnchorType =
   | "script"
@@ -21,24 +21,28 @@ export type KnowledgeAnchor = {
   span?: string;
 };
 
-export type KnowledgeEntry = {
+export type KnowledgeNodePackage = {
+  title: string;
+  status: KnowledgeNodeStatus;
+  confidence?: KnowledgeNodeConfidence;
+};
+
+export type KnowledgeNode = {
   id: string;
   ref: string;
   kind: string;
-  title: string;
-  payload: Record<string, unknown>;
+  package: KnowledgeNodePackage;
+  content: Record<string, unknown>;
   meta?: Record<string, unknown>;
-  status: KnowledgeEntryStatus;
-  confidence?: KnowledgeEntryConfidence;
   anchors: KnowledgeAnchor[];
   createdAt: number;
   updatedAt: number;
 };
 
-export type KnowledgeRelation = {
+export type KnowledgeLink = {
   id: string;
-  fromEntryId: string;
-  toEntryId: string;
+  fromNodeId: string;
+  toNodeId: string;
   type: string;
   weight?: number;
   status?: "active" | "superseded";
@@ -46,14 +50,23 @@ export type KnowledgeRelation = {
   updatedAt: number;
 };
 
-export type KnowledgeMapView = {
+export type KnowledgeMapLens = {
+  id: string;
+  kind: "full" | "local" | "anchor" | "kind" | "focus";
+  focusNodeRefs?: string[];
+  anchorRefs?: string[];
+  nodeKinds?: string[];
+  depth?: number;
+};
+
+export type KnowledgeMap = {
   revision: number;
-  entries: KnowledgeEntry[];
-  relations: KnowledgeRelation[];
+  nodes: KnowledgeNode[];
+  links: KnowledgeLink[];
 };
 
 export type KnowledgeSnapshot = {
   revision: number;
-  entries: KnowledgeEntry[];
-  relations: KnowledgeRelation[];
+  nodes: KnowledgeNode[];
+  links: KnowledgeLink[];
 };

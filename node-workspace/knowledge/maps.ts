@@ -1,7 +1,7 @@
-import type { KnowledgeMapView, KnowledgeSnapshot } from "./types";
+import type { KnowledgeMap, KnowledgeSnapshot } from "./types";
 
-export const buildKnowledgeMapView = (snapshot: KnowledgeSnapshot): KnowledgeMapView => ({
+export const buildKnowledgeMap = (snapshot: KnowledgeSnapshot): KnowledgeMap => ({
   revision: snapshot.revision,
-  entries: snapshot.entries,
-  relations: snapshot.relations,
+  nodes: snapshot.nodes,
+  links: snapshot.links,
 });

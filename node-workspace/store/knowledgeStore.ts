@@ -1,53 +1,53 @@
 import { create } from "zustand";
 import type { ProjectData } from "../../types";
-import { buildCanonicalKnowledgeEntries } from "../knowledge/canonicalSource";
+import { buildCanonicalKnowledgeNodes } from "../knowledge/canonicalSource";
 import { createEmptyKnowledgeSnapshot } from "../knowledge/defaults";
 import {
-  removeKnowledgeEntry,
-  removeKnowledgeRelation,
-  replaceKnowledgeEntries,
-  replaceKnowledgeRelations,
-  upsertKnowledgeEntry,
-  upsertKnowledgeEntries,
-  upsertKnowledgeRelation,
-  upsertKnowledgeRelations,
+  removeKnowledgeLink,
+  removeKnowledgeNode,
+  replaceKnowledgeLinks,
+  replaceKnowledgeNodes,
+  upsertKnowledgeLink,
+  upsertKnowledgeLinks,
+  upsertKnowledgeNode,
+  upsertKnowledgeNodes,
 } from "../knowledge/mutations";
 import type {
-  KnowledgeEntry,
-  KnowledgeMapView,
-  KnowledgeRelation,
+  KnowledgeLink,
+  KnowledgeMap,
+  KnowledgeNode,
   KnowledgeSnapshot,
 } from "../knowledge/types";
-import { buildKnowledgeMapView } from "../knowledge/maps";
+import { buildKnowledgeMap } from "../knowledge/maps";
 
 type KnowledgeStore = {
   revision: number;
-  entries: KnowledgeEntry[];
-  relations: KnowledgeRelation[];
+  nodes: KnowledgeNode[];
+  links: KnowledgeLink[];
   setKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
-  replaceEntries: (entries: KnowledgeEntry[]) => void;
-  replaceRelations: (relations: KnowledgeRelation[]) => void;
-  upsertEntry: (entry: KnowledgeEntry) => void;
-  upsertEntries: (entries: KnowledgeEntry[]) => void;
-  removeEntry: (entryId: string) => void;
-  upsertRelation: (relation: KnowledgeRelation) => void;
-  upsertRelations: (relations: KnowledgeRelation[]) => void;
-  removeRelation: (relationId: string) => void;
+  replaceNodes: (nodes: KnowledgeNode[]) => void;
+  replaceLinks: (links: KnowledgeLink[]) => void;
+  upsertNode: (node: KnowledgeNode) => void;
+  upsertNodes: (nodes: KnowledgeNode[]) => void;
+  removeNode: (nodeId: string) => void;
+  upsertLink: (link: KnowledgeLink) => void;
+  upsertLinks: (links: KnowledgeLink[]) => void;
+  removeLink: (linkId: string) => void;
   seedCanonicalSource: (projectData: ProjectData) => void;
   clearKnowledge: () => void;
-  getKnowledgeMapView: () => KnowledgeMapView;
+  getKnowledgeMap: () => KnowledgeMap;
 };
 
-const toSnapshot = (state: Pick<KnowledgeStore, "revision" | "entries" | "relations">): KnowledgeSnapshot => ({
+const toSnapshot = (state: Pick<KnowledgeStore, "revision" | "nodes" | "links">): KnowledgeSnapshot => ({
   revision: state.revision,
-  entries: state.entries,
-  relations: state.relations,
+  nodes: state.nodes,
+  links: state.links,
 });
 
 const applySnapshot = (snapshot: KnowledgeSnapshot) => ({
   revision: snapshot.revision,
-  entries: snapshot.entries,
-  relations: snapshot.relations,
+  nodes: snapshot.nodes,
+  links: snapshot.links,
 });
 
 export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
@@ -55,38 +55,38 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
 
   setKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
 
-  replaceEntries: (entries) =>
-    set((state) => applySnapshot(replaceKnowledgeEntries(toSnapshot(state), entries))),
+  replaceNodes: (nodes) =>
+    set((state) => applySnapshot(replaceKnowledgeNodes(toSnapshot(state), nodes))),
 
-  replaceRelations: (relations) =>
-    set((state) => applySnapshot(replaceKnowledgeRelations(toSnapshot(state), relations))),
+  replaceLinks: (links) =>
+    set((state) => applySnapshot(replaceKnowledgeLinks(toSnapshot(state), links))),
 
-  upsertEntry: (entry) =>
-    set((state) => applySnapshot(upsertKnowledgeEntry(toSnapshot(state), entry))),
+  upsertNode: (node) =>
+    set((state) => applySnapshot(upsertKnowledgeNode(toSnapshot(state), node))),
 
-  upsertEntries: (entries) =>
-    set((state) => applySnapshot(upsertKnowledgeEntries(toSnapshot(state), entries))),
+  upsertNodes: (nodes) =>
+    set((state) => applySnapshot(upsertKnowledgeNodes(toSnapshot(state), nodes))),
 
-  removeEntry: (entryId) =>
-    set((state) => applySnapshot(removeKnowledgeEntry(toSnapshot(state), entryId))),
+  removeNode: (nodeId) =>
+    set((state) => applySnapshot(removeKnowledgeNode(toSnapshot(state), nodeId))),
 
-  upsertRelation: (relation) =>
-    set((state) => applySnapshot(upsertKnowledgeRelation(toSnapshot(state), relation))),
+  upsertLink: (link) =>
+    set((state) => applySnapshot(upsertKnowledgeLink(toSnapshot(state), link))),
 
-  upsertRelations: (relations) =>
-    set((state) => applySnapshot(upsertKnowledgeRelations(toSnapshot(state), relations))),
+  upsertLinks: (links) =>
+    set((state) => applySnapshot(upsertKnowledgeLinks(toSnapshot(state), links))),
 
-  removeRelation: (relationId) =>
-    set((state) => applySnapshot(removeKnowledgeRelation(toSnapshot(state), relationId))),
+  removeLink: (linkId) =>
+    set((state) => applySnapshot(removeKnowledgeLink(toSnapshot(state), linkId))),
 
   seedCanonicalSource: (projectData) =>
     set((state) =>
       applySnapshot(
-        upsertKnowledgeEntries(toSnapshot(state), buildCanonicalKnowledgeEntries(projectData))
+        upsertKnowledgeNodes(toSnapshot(state), buildCanonicalKnowledgeNodes(projectData))
       )
     ),
 
   clearKnowledge: () => set(createEmptyKnowledgeSnapshot()),
 
-  getKnowledgeMapView: () => buildKnowledgeMapView(toSnapshot(get())),
+  getKnowledgeMap: () => buildKnowledgeMap(toSnapshot(get())),
 }));

@@ -1002,9 +1002,12 @@ body.qalam-resizing * {
 }
 
 .writing-paper-layout {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: min(calc(100vw - 40px), 1280px);
+  min-height: 72dvh;
 }
 
 .writing-paper {
@@ -1041,11 +1044,22 @@ body.qalam-resizing * {
 
 .writing-paper--peek {
   cursor: pointer;
-  margin-left: -4px;
   opacity: 0.72;
   box-shadow:
     0 10px 24px rgba(20, 12, 6, 0.05),
     0 1px 2px rgba(20, 12, 6, 0.04);
+}
+
+.writing-paper--peek-left {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.writing-paper--peek-right {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .writing-paper-peek__ghost {

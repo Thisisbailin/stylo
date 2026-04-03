@@ -1,29 +1,29 @@
 import type { ProjectData } from "../../types";
 import { createKnowledgeAnchor } from "./anchors";
-import { createKnowledgeEntry } from "./builders";
-import type { KnowledgeEntry } from "./types";
+import { createKnowledgeNode } from "./builders";
+import type { KnowledgeNode } from "./types";
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-export const buildCanonicalKnowledgeEntries = (
+export const buildCanonicalKnowledgeNodes = (
   projectData: ProjectData,
   {
     createdAt = Date.now(),
   }: {
     createdAt?: number;
   } = {}
-): KnowledgeEntry[] => {
-  const entries: KnowledgeEntry[] = [];
+): KnowledgeNode[] => {
+  const nodes: KnowledgeNode[] = [];
 
   const rawScript = trim(projectData.rawScript);
   if (rawScript) {
-    entries.push(
-      createKnowledgeEntry({
+    nodes.push(
+      createKnowledgeNode({
         id: "knowledge-source-script",
         ref: "source:script",
         kind: "source.script",
         title: trim(projectData.fileName) || "Project Script",
-        payload: {
+        content: {
           content: rawScript,
           episodeCount: Array.isArray(projectData.episodes) ? projectData.episodes.length : 0,
         },
@@ -42,13 +42,13 @@ export const buildCanonicalKnowledgeEntries = (
 
   for (const episode of projectData.episodes || []) {
     const episodeRef = `ep:${episode.id}`;
-    entries.push(
-      createKnowledgeEntry({
+    nodes.push(
+      createKnowledgeNode({
         id: `knowledge-source-episode-${episode.id}`,
         ref: `source:episode:${episode.id}`,
         kind: "source.episode",
         title: trim(episode.title) || `第${episode.id}集`,
-        payload: {
+        content: {
           episodeId: episode.id,
           content: trim(episode.content),
           summary: trim(episode.summary),
@@ -69,13 +69,13 @@ export const buildCanonicalKnowledgeEntries = (
 
     for (const scene of episode.scenes || []) {
       const sceneRef = `scene:${scene.id}`;
-      entries.push(
-        createKnowledgeEntry({
+      nodes.push(
+        createKnowledgeNode({
           id: `knowledge-source-scene-${scene.id}`,
           ref: `source:scene:${scene.id}`,
           kind: "source.scene",
           title: trim(scene.title) || `场景 ${scene.id}`,
-          payload: {
+          content: {
             episodeId: episode.id,
             sceneId: scene.id,
             content: trim(scene.content),
@@ -111,13 +111,13 @@ export const buildCanonicalKnowledgeEntries = (
   for (const [key, title, content] of guides) {
     const text = trim(content);
     if (!text) continue;
-    entries.push(
-      createKnowledgeEntry({
+    nodes.push(
+      createKnowledgeNode({
         id: `knowledge-source-guide-${key}`,
         ref: `source:guide:${key}`,
         kind: "source.guide",
         title,
-        payload: {
+        content: {
           key,
           content: text,
         },
@@ -134,5 +134,5 @@ export const buildCanonicalKnowledgeEntries = (
     );
   }
 
-  return entries;
+  return nodes;
 };

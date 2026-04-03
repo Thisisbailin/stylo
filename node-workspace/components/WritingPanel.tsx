@@ -703,14 +703,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   const selectedEpisodeIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
   const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
+  const previousEpisode = selectedEpisodeIndex > 0 ? draft[selectedEpisodeIndex - 1] : null;
   const nextEpisode = selectedEpisodeIndex < draft.length - 1 ? draft[selectedEpisodeIndex + 1] : null;
   const isCompactLayout = viewportSize.width < 1180;
   const sidePeekWidth = isCompactLayout ? 26 : 34;
-  const visibleRailGap = isCompactLayout ? 6 : 8;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
-  const availableStageWidth = viewportSize.width - (isWritingQalamOpen && !isCompactLayout ? qalamPanelWidth + 104 : 72);
+  const availableStageWidth = viewportSize.width - (isWritingQalamOpen && !isCompactLayout ? qalamPanelWidth + 104 : 48);
   const targetPaperHeight = clamp(
     viewportSize.height - (isCompactLayout ? (isWritingQalamOpen ? 420 : 360) : 320),
     520,
@@ -727,11 +727,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const screenplayPaperHeight = Math.round(screenplayPaperWidth * (11 / 8.5));
   const screenplayPageLines = 55;
   const initialViewportWidthRatio = 0.7;
-  const initialTargetVisibleWidth = Math.max(
-    screenplayPaperWidth * 1.12,
-    viewportSize.width * initialViewportWidthRatio
-  );
-  const initialPerspectiveScale = clamp(initialTargetVisibleWidth / screenplayPaperWidth, 1.12, 1.96);
+  const initialTargetVisibleWidth = availableStageWidth * initialViewportWidthRatio;
+  const initialPerspectiveScale = clamp(initialTargetVisibleWidth / screenplayPaperWidth, 1.12, 2.4);
   const screenplayLineCount = useMemo(
     () => Math.max(1, selectedScene.body.split(/\r?\n/).length),
     [selectedScene.body]
@@ -835,7 +832,22 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                 <div className="writing-guide-copy__text">{activeGuide.text}</div>
               </div>
 
-              <div className="writing-paper-layout" style={{ gap: `${visibleRailGap}px` }}>
+              <div className="writing-paper-layout">
+                {previousEpisode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEpisodeId(previousEpisode.id);
+                      setSelectedSceneId(previousEpisode.scenes[0]?.id || `${previousEpisode.id}-1`);
+                    }}
+                    className="writing-paper writing-paper--peek writing-paper--peek-left absolute"
+                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
+                    title={previousEpisode.title}
+                  >
+                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
+                  </button>
+                ) : null}
+
                 <article
                   ref={(node) => {
                     episodeRefs.current[selectedEpisode.id] = node;
@@ -1023,23 +1035,13 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       setSelectedEpisodeId(nextEpisode.id);
                       setSelectedSceneId(nextEpisode.scenes[0]?.id || `${nextEpisode.id}-1`);
                     }}
-                    className="writing-paper writing-paper--peek relative shrink-0"
+                    className="writing-paper writing-paper--peek writing-paper--peek-right absolute"
                     style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
                     title={nextEpisode.title}
                   >
                     <div className="writing-paper-peek__ghost" aria-hidden="true" />
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={addEpisode}
-                    className="writing-paper writing-paper--peek writing-paper--add relative shrink-0"
-                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
-                    title="New Episode"
-                  >
-                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
-                  </button>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
