@@ -319,14 +319,13 @@ export const submitWanReferenceVideoTask = async (
   prompt: string,
   config: VideoServiceConfig,
   options?: {
-    referenceUrls: string[];
-    size?: string;
+    media: Array<{ url: string; kind: "image" | "video" }>;
+    aspectRatio?: string;
+    resolution?: string;
     duration?: string;
-    negativePrompt?: string;
     seed?: number;
     watermark?: boolean;
-    shotType?: "single" | "multi";
-    audioEnabled?: boolean;
+    promptExtend?: boolean;
   }
 ): Promise<WanTaskSubmissionResult> => {
   const apiKey = resolveQwenApiKey();
@@ -337,31 +336,30 @@ export const submitWanReferenceVideoTask = async (
     throw new Error("Missing Wan reference video model. 请先选择模型。");
   }
 
-  const referenceUrls = (options?.referenceUrls || []).filter(Boolean);
-  if (referenceUrls.length === 0) {
-    throw new Error("Wan 参考生视频需要至少 1 个参考视频 URL。");
+  const media = (options?.media || []).filter((item) => item?.url && (item.kind === "image" || item.kind === "video"));
+  if (media.length === 0) {
+    throw new Error("Wan 参考生视频需要至少 1 个图像或视频参考素材。");
   }
 
   const endpoint = config.baseUrl || QWEN_WAN_VIDEO_ENDPOINT;
   const duration = options?.duration ? Number.parseInt(options.duration.replace("s", ""), 10) : undefined;
   const parameters: Record<string, any> = {
-    shot_type: options?.shotType || "single",
+    prompt_extend: options?.promptExtend ?? true,
+    resolution: options?.resolution || "720P",
+    ratio: options?.aspectRatio || "16:9",
     watermark: options?.watermark ?? false,
-    ...(options?.negativePrompt ? { negative_prompt: options.negativePrompt } : {}),
     ...(Number.isFinite(options?.seed) ? { seed: options?.seed } : {}),
     ...(Number.isFinite(duration) ? { duration } : {}),
-    ...(options?.size ? { size: options.size } : {}),
-  };
-
-  if (config.model === "wan2.6-r2v-flash" && typeof options?.audioEnabled === "boolean") {
-    parameters.audio = options.audioEnabled;
   }
 
   const payload: Record<string, any> = {
     model: config.model,
     input: {
       prompt,
-      reference_urls: referenceUrls,
+      media: media.map((item) => ({
+        type: item.kind,
+        url: item.url,
+      })),
     },
     parameters,
   };

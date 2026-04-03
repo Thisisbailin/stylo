@@ -701,10 +701,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     }, 260);
   }, [agentLine, closeAgentLine]);
 
-  const selectedEpisodeLineCount = selectedEpisode.scenes.reduce(
-    (sum, scene) => sum + Math.max(1, scene.body.split(/\r?\n/).length),
-    0
-  );
   const selectedEpisodeIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
   const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
   const nextEpisode = selectedEpisodeIndex < draft.length - 1 ? draft[selectedEpisodeIndex + 1] : null;
@@ -730,6 +726,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   );
   const screenplayPaperHeight = Math.round(screenplayPaperWidth * (11 / 8.5));
   const screenplayPageLines = 55;
+  const initialViewportWidthRatio = 0.7;
+  const initialTargetVisibleWidth = Math.max(
+    screenplayPaperWidth * 1.12,
+    viewportSize.width * initialViewportWidthRatio
+  );
+  const initialPerspectiveScale = clamp(initialTargetVisibleWidth / screenplayPaperWidth, 1.12, 1.96);
   const screenplayLineCount = useMemo(
     () => Math.max(1, selectedScene.body.split(/\r?\n/).length),
     [selectedScene.body]
@@ -739,31 +741,21 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const overflowLineStep = (screenplayPaperHeight * 0.48) / screenplayPageLines;
   const revealLineIndex = Math.min(Math.max(screenplayLineCount - 1, 0), screenplayPageLines);
   const overflowLineIndex = Math.max(screenplayLineCount - screenplayPageLines, 0);
-  const paperRevealProgress = clamp(revealLineIndex / screenplayPageLines, 0, 1);
-  const paperOverflowProgress = clamp(overflowLineIndex / screenplayPageLines, 0, 1);
-  const revealScaleStep = 0.18 / screenplayPageLines;
+  const revealScaleStep = (initialPerspectiveScale - 1) / screenplayPageLines;
   const overflowScaleStep = 0.12 / screenplayPageLines;
   const paperScale = overflowLineIndex > 0
     ? 1 + Math.min(0.12, overflowLineIndex * overflowScaleStep)
-    : 1 + (screenplayPageLines - revealLineIndex) * revealScaleStep;
+    : initialPerspectiveScale - revealLineIndex * revealScaleStep;
   const paperTranslateY = overflowLineIndex > 0
     ? -(overflowLineIndex * overflowLineStep)
     : initialPaperOffset - revealLineIndex * revealLineStep;
   const guideOpacity = clamp(1 - (screenplayLineCount - 1) / 14, 0, 1);
-  const pageMoodLabel =
-    screenplayLineCount <= 4
-      ? "Opening lines"
-      : screenplayLineCount < screenplayPageLines - 6
-        ? "Building the page"
-        : screenplayLineCount <= screenplayPageLines + 6
-          ? "This page feels full"
-          : "Natural page rollover";
   const writingGuides = useMemo(
     () => [
-      { title: "Open on action", text: "Start with a clean action line or slugline. The page rises one line at a time." },
-      { title: "Triple return for Qalam", text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
-      { title: "About 55 lines per page", text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
-      { title: "Keep writing past the page", text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
+      { text: "Start with a clean action line or slugline. The page rises one line at a time." },
+      { text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
+      { text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
+      { text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
     ],
     []
   );
@@ -840,7 +832,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                   transform: `translateY(${paperTranslateY * 0.18}px)`,
                 }}
               >
-                <div className="writing-guide-copy__eyebrow">{pageMoodLabel}</div>
                 <div className="writing-guide-copy__text">{activeGuide.text}</div>
               </div>
 
@@ -880,7 +871,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                             +
                           </button>
                         </div>
-                        <div className="writing-paper-head__count">{selectedEpisodeLineCount} lines</div>
                       </div>
                       <input
                         value={selectedEpisode.title}

@@ -5,7 +5,7 @@ const NODE_DEFAULT_FIELDS: Partial<Record<NodeType, readonly string[]>> = {
   nanoBananaImageGen: ["aspectRatio", "model", "size"],
   wanImageGen: ["aspectRatio", "model", "enableInterleave", "outputCount", "seed", "watermark"],
   soraVideoGen: ["aspectRatio", "duration", "model", "quality"],
-  wanReferenceVideoGen: ["aspectRatio", "duration", "model", "quality", "resolution", "shotType", "watermark", "audioEnabled", "seed"],
+  wanReferenceVideoGen: ["aspectRatio", "duration", "model", "resolution", "watermark", "seed"],
   viduVideoGen: ["mode", "useCharacters", "autoSubjects", "aspectRatio", "resolution", "duration", "audioEnabled", "bgm", "offPeak", "watermark", "model", "seed"],
   seedanceVideoGen: ["model", "mode", "resolution", "ratio", "duration", "generateAudio", "watermark"],
 };

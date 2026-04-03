@@ -14,7 +14,6 @@ import {
   QWEN_WAN_IMAGE_ENDPOINT,
   QWEN_WAN_IMAGE_MODEL,
   QWEN_WAN_VIDEO_ENDPOINT,
-  QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL,
   QWEN_WAN_REFERENCE_VIDEO_MODEL,
   SEEDANCE_DEFAULT_BASE_URL,
   SEEDANCE_DEFAULT_MODEL,
@@ -534,7 +533,7 @@ const resolvePromptProjectReferences = (
 ) => {
   const refs: ProjectReferenceAsset[] = [];
   const slotByKey = new Map<string, number>();
-  let rewrittenPrompt = prompt;
+  const replacements: Array<{ rawText: string; refKey: string }> = [];
 
   const candidates = (entityBindings?.length
     ? entityBindings.filter((binding) => binding.status === "resolved" && binding.entityType === "identity")
@@ -552,13 +551,37 @@ const resolvePromptProjectReferences = (
         slotByKey.set(key, slot);
       }
       const rawText = "rawText" in mention ? mention.rawText : `@${mention.name}`;
-      rewrittenPrompt = rewrittenPrompt.replace(
-        new RegExp(escapeRegex(rawText), "g"),
-        `character${slot}`
-      );
+      replacements.push({ rawText, refKey: key });
     });
 
-  return { rewrittenPrompt, refs };
+  return { refs, replacements };
+};
+
+const rewriteWanReferencePrompt = (
+  prompt: string,
+  options: {
+    replacements?: Array<{ rawText: string; refKey: string }>;
+    imageSlotByRefKey?: Map<string, number>;
+    imageCount: number;
+    videoCount: number;
+  }
+) => {
+  let rewrittenPrompt = prompt;
+  (options.replacements || []).forEach((item) => {
+    const imageIndex = options.imageSlotByRefKey?.get(item.refKey);
+    if (!imageIndex) return;
+    rewrittenPrompt = rewrittenPrompt.replace(new RegExp(escapeRegex(item.rawText), "g"), `图片${imageIndex}`);
+  });
+
+  const referenceHints: string[] = [];
+  if (options.videoCount > 0) {
+    referenceHints.push(`视频参考按输入顺序编号为 视频1${options.videoCount > 1 ? ` 到 视频${options.videoCount}` : ""}`);
+  }
+  if (options.imageCount > 0) {
+    referenceHints.push(`图片参考按输入顺序编号为 图片1${options.imageCount > 1 ? ` 到 图片${options.imageCount}` : ""}`);
+  }
+  if (!referenceHints.length) return rewrittenPrompt;
+  return `参考素材编号规则：${referenceHints.join("；")}。若提示词提到“图片1 / 视频1”等编号，请严格按对应输入顺序理解。\n\n${rewrittenPrompt}`;
 };
 
 const resolveBoundIdentities = (
@@ -1473,40 +1496,71 @@ export const useNodeFlowExecutor = () => {
       if (isWanReferenceVideoNode) {
         const latestProjectRefs = buildProjectReferenceIndex(store.nodeFlowContext.context.roles || [], store.nodeFlowContext.designAssets || []);
         const roles = store.nodeFlowContext.context.roles || [];
-        const { rewrittenPrompt, refs: promptDrivenRefs } = resolvePromptProjectReferences(
+        const { refs: promptDrivenRefs, replacements: promptDrivenReplacements } = resolvePromptProjectReferences(
           prompt,
           atMentions as MentionData[] | undefined,
           entityBindings,
           roles,
           latestProjectRefs
         );
-        promptForRequest = rewrittenPrompt;
         const normalizedVideos = await normalizeWanReferenceVideos(referenceVideos);
         const normalizedReferenceImages = await normalizeWanImages(referenceImages);
         const explicitProjectRefs = projectReferenceTargets
           .map((target) => latestProjectRefs.get(makeProjectRefKey(target.category, target.refId)))
           .filter((item): item is ProjectReferenceAsset => !!item);
-        const dedupedProjectRefUrls = Array.from(
-          new Set([
-            ...promptDrivenRefs.map((item) => item.url),
-            ...explicitProjectRefs.map((item) => item.url),
-          ])
+        const orderedProjectRefs = Array.from(
+          [...promptDrivenRefs, ...explicitProjectRefs].reduce((map, item) => {
+            map.set(makeProjectRefKey(item.category, item.refId), item);
+            return map;
+          }, new Map<string, ProjectReferenceAsset>()).values()
         );
         const cappedVideos = normalizedVideos.slice(0, 3);
         const imageSlotBudget = Math.max(0, 5 - cappedVideos.length);
-        const combinedImageReferences = [
-          ...dedupedProjectRefUrls,
-          ...normalizedReferenceImages,
-          ...normalizedImages,
-        ];
-        const cappedImageReferences = Array.from(new Set(combinedImageReferences)).slice(0, imageSlotBudget);
-        params.size = mapWanVideoSize(data.aspectRatio, data.resolution || "720P");
-        params.shotType = data.shotType;
+        if (promptDrivenRefs.length > imageSlotBudget) {
+          throw new Error(`Wan 2.7 参考生视频最多还能容纳 ${imageSlotBudget} 张图片参考，当前提示词身份引用过多。`);
+        }
+        const imageMedia: Array<{ kind: "image"; url: string; refKey?: string }> = [];
+        const seenImageUrls = new Set<string>();
+        orderedProjectRefs.forEach((item) => {
+          if (!item.url || seenImageUrls.has(item.url) || imageMedia.length >= imageSlotBudget) return;
+          seenImageUrls.add(item.url);
+          imageMedia.push({
+            kind: "image",
+            url: item.url,
+            refKey: makeProjectRefKey(item.category, item.refId),
+          });
+        });
+        normalizedReferenceImages.forEach((url) => {
+          if (!url || seenImageUrls.has(url) || imageMedia.length >= imageSlotBudget) return;
+          seenImageUrls.add(url);
+          imageMedia.push({ kind: "image", url });
+        });
+        normalizedImages.forEach((url) => {
+          if (!url || seenImageUrls.has(url) || imageMedia.length >= imageSlotBudget) return;
+          seenImageUrls.add(url);
+          imageMedia.push({ kind: "image", url });
+        });
+        const imageSlotByRefKey = new Map<string, number>();
+        imageMedia.forEach((item, index) => {
+          if (item.refKey) {
+            imageSlotByRefKey.set(item.refKey, index + 1);
+          }
+        });
+        promptForRequest = rewriteWanReferencePrompt(prompt, {
+          replacements: promptDrivenReplacements,
+          imageSlotByRefKey,
+          imageCount: imageMedia.length,
+          videoCount: cappedVideos.length,
+        });
+        params.aspectRatio = data.aspectRatio || "16:9";
+        params.resolution = data.resolution || "720P";
         params.watermark = data.watermark;
         params.seed = data.seed;
-        params.audioEnabled = data.model === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL ? data.audioEnabled !== false : undefined;
-        params.referenceUrls = [...cappedVideos, ...cappedImageReferences];
-        if (params.referenceUrls.length === 0) {
+        params.media = [
+          ...cappedVideos.map((url) => ({ kind: "video" as const, url })),
+          ...imageMedia.map((item) => ({ kind: "image" as const, url: item.url })),
+        ];
+        if (params.media.length === 0) {
           throw new Error("Wan 参考生视频未找到可用的项目卡片或引用素材。");
         }
       }
@@ -1518,10 +1572,7 @@ export const useNodeFlowExecutor = () => {
       };
       if (isWanReferenceVideoNode) {
         configToUse.baseUrl = QWEN_WAN_VIDEO_ENDPOINT;
-        configToUse.model =
-          data.model === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-            ? QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-            : QWEN_WAN_REFERENCE_VIDEO_MODEL;
+        configToUse.model = data.model || QWEN_WAN_REFERENCE_VIDEO_MODEL;
         configToUse.apiKey = "";
       }
 

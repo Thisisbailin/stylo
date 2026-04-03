@@ -3,11 +3,8 @@ import { BaseNode } from "./BaseNode";
 import { VideoGenNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import { RefreshCw, Film, AlertCircle, Download, Upload, X, Video, Image as ImageIcon } from "lucide-react";
-import {
-  QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL,
-  QWEN_WAN_REFERENCE_VIDEO_MODEL,
-} from "../../constants";
+import { RefreshCw, Film, AlertCircle, Download, X, Video, Image as ImageIcon } from "lucide-react";
+import { QWEN_WAN_REFERENCE_VIDEO_MODEL } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
 
 type Props = {
@@ -77,11 +74,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
   const hasConnectedImages = connectedImages.length > 0;
   const totalReferenceCount = manualRefs.length + connectedImages.length + projectReferenceTargets.length;
   const isLoading = data.status === "loading";
-  const currentModel =
-    data.model === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-      ? QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-      : QWEN_WAN_REFERENCE_VIDEO_MODEL;
-  const supportsAudioToggle = currentModel === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL;
+  const currentModel = QWEN_WAN_REFERENCE_VIDEO_MODEL;
   const currentResolution = (data.resolution || "720P").toUpperCase();
   const aspectRatioOptions: Record<string, { value: string; label: string }[]> = {
     "720P": [
@@ -322,7 +315,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
 
   return (
     <BaseNode
-      title={data.title || "WAN Role Video"}
+      title={data.title || "WAN Ref Vid"}
       onTitleChange={(title) => updateNodeData(id, { title })}
       inputs={["image", "text"]}
       selected={selected}
@@ -371,7 +364,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black transition-all duration-500 text-white">GENERATE</span>
                   <span className="text-[8px] opacity-20 uppercase tracking-[0.1em] font-bold transition-all duration-500">
-                    Role-referenced Wan 2.6 video
+                    Wan 2.7 reference video
                   </span>
                 </div>
               </>
@@ -423,7 +416,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
             </label>
             <div className="text-[9px] leading-5 text-[var(--node-text-secondary)]">
               支持图像或视频。执行时会优先把 prompt 里的 <span className="text-[var(--node-text-primary)] font-semibold">@身份证</span> 自动映射成
-              <span className="text-[var(--node-text-primary)] font-semibold"> character1 / character2 / ...</span>，并从项目卡片设计图中取图。
+              <span className="text-[var(--node-text-primary)] font-semibold"> 图片1 / 图片2 / ...</span>，并从项目卡片设计图中取图。
             </div>
           </div>
 
@@ -441,7 +434,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
           ) : (
             <div className="rounded-[16px] border border-dashed border-[var(--node-border)] px-3 py-2 text-[9px] leading-5 text-[var(--node-text-secondary)]">
               提示词里插入 <span className="text-[var(--node-text-primary)] font-semibold">@男主</span> 或 <span className="text-[var(--node-text-primary)] font-semibold">@男主_受伤形态</span> 这类身份证，
-              会自动使用项目卡片中的设计图作为引用。
+              会自动使用项目卡片中的设计图作为引用，并改写成对应的 <span className="text-[var(--node-text-primary)] font-semibold">图片编号</span>。
             </div>
           )}
 
@@ -626,31 +619,18 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
             <select
               className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
               value={currentModel}
-              onChange={(e) => {
-                const nextModel =
-                  e.target.value === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-                    ? QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL
-                    : QWEN_WAN_REFERENCE_VIDEO_MODEL;
-                updateNodeData(id, {
-                  model: nextModel,
-                  audioEnabled: nextModel === QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL ? data.audioEnabled !== false : true,
-                });
-              }}
+              onChange={(e) => updateNodeData(id, { model: e.target.value })}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <option value={QWEN_WAN_REFERENCE_VIDEO_MODEL}>wan2.6-r2v</option>
-              <option value={QWEN_WAN_REFERENCE_VIDEO_FLASH_MODEL}>wan2.6-r2v-flash</option>
+              <option value={QWEN_WAN_REFERENCE_VIDEO_MODEL}>wan2.7-r2v</option>
             </select>
 
-            <select
-              className="node-control node-control--tight text-[9px] font-bold px-2 text-[var(--node-text-secondary)] outline-none appearance-none cursor-pointer transition-colors w-full nodrag"
-              value={data.shotType || "single"}
-              onChange={(e) => updateNodeData(id, { shotType: e.target.value as "single" | "multi" })}
+            <div
+              className="node-control node-control--tight flex items-center justify-center px-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--node-text-secondary)]"
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <option value="single">Single Shot</option>
-              <option value="multi">Multi Shot</option>
-            </select>
+              图片N / 视频N
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-1.5 nodrag">
@@ -734,17 +714,10 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
               onMouseDown={(e) => e.stopPropagation()}
             />
           </div>
-          {supportsAudioToggle && (
-            <div className="flex items-center justify-between text-[9px] font-semibold text-[var(--node-text-secondary)]">
-              <span>有声输出</span>
-              <button
-                className={`h-5 w-9 rounded-full border transition-all ${data.audioEnabled !== false ? "bg-emerald-500/20 border-emerald-400/40" : "bg-white/5 border-white/10"}`}
-                onClick={() => updateNodeData(id, { audioEnabled: data.audioEnabled === false })}
-              >
-                <span className={`block h-4 w-4 rounded-full bg-white/70 transition-all ${data.audioEnabled !== false ? "translate-x-4" : "translate-x-1"}`} />
-              </button>
-            </div>
-          )}
+          <div className="rounded-[14px] border border-dashed border-[var(--node-border)] px-3 py-2 text-[9px] leading-5 text-[var(--node-text-secondary)]">
+            Wan 2.7 会按输入顺序理解参考素材。视频按 <span className="text-[var(--node-text-primary)] font-semibold">视频1 / 视频2</span> 编号，图片按
+            <span className="text-[var(--node-text-primary)] font-semibold"> 图片1 / 图片2</span> 编号。
+          </div>
         </div>
 
         {data.error && (

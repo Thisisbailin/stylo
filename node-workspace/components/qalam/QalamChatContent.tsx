@@ -1187,7 +1187,9 @@ export const QalamChatContent: React.FC<Props> = ({
   const messagesRef = useRef<HTMLDivElement>(null);
   const currentItemRef = useRef<HTMLDivElement | null>(null);
   const previousItemCountRef = useRef(0);
+  const previousCurrentKeyRef = useRef<string | null>(null);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
+  const [currentShiftTick, setCurrentShiftTick] = useState(0);
   const displayMessages = useMemo(() => {
     const consumed = new Set<number>();
     const items: Array<
@@ -1268,7 +1270,7 @@ export const QalamChatContent: React.FC<Props> = ({
 
   const latestRevealItem = useMemo(() => {
     if (!displayMessages.length) return null;
-    return [...displayMessages].reverse().find((item) => item.kind === "status" || item.kind === "tool" || item.kind === "approval") || displayMessages[displayMessages.length - 1];
+    return displayMessages[displayMessages.length - 1];
   }, [displayMessages]);
 
   const getCurrentAnchorScrollTop = useMemo(
@@ -1282,6 +1284,19 @@ export const QalamChatContent: React.FC<Props> = ({
   );
 
   useEffect(() => {
+    const nextKey = latestRevealItem?.key ?? null;
+    if (!nextKey) {
+      previousCurrentKeyRef.current = null;
+      return;
+    }
+    if (previousCurrentKeyRef.current !== nextKey) {
+      previousCurrentKeyRef.current = nextKey;
+      setIsPinnedToCurrent(true);
+      setCurrentShiftTick((value) => value + 1);
+    }
+  }, [latestRevealItem?.key]);
+
+  useEffect(() => {
     if (revealMode !== "scroll" && revealMode !== "latest") return;
     const node = messagesRef.current;
     const currentNode = currentItemRef.current;
@@ -1293,7 +1308,7 @@ export const QalamChatContent: React.FC<Props> = ({
       const targetTop = getCurrentAnchorScrollTop(node, currentNode);
       node.scrollTo({ top: targetTop, behavior });
     });
-  }, [messages, displayMessages.length, getCurrentAnchorScrollTop, isPinnedToCurrent, isSending, revealMode]);
+  }, [messages, currentShiftTick, displayMessages.length, getCurrentAnchorScrollTop, isPinnedToCurrent, isSending, revealMode]);
 
   useEffect(() => {
     if (revealMode !== "scroll" && revealMode !== "latest") return;

@@ -1151,7 +1151,7 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
         <div
-          className={`px-4 pb-4 pt-[46px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`px-4 pb-4 pt-[38px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             effectiveCollapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
           }`}
         >

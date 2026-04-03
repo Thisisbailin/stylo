@@ -22,11 +22,7 @@ import {
   KnowledgePanel,
   type KnowledgeSectionKey,
 } from "../knowledge/inspector/KnowledgePanel";
-import {
-  buildGraphNodesFromWorkflow,
-  buildProjectedSourceNodes,
-  buildProjectGraphMaps,
-} from "../nodeflow/projectGraph";
+import { useKnowledgeStore } from "../store/knowledgeStore";
 
 export type WorkspaceSection =
   | `knowledge:${KnowledgeSectionKey}`
@@ -86,34 +82,16 @@ export const WorkspacePanel: React.FC<Props> = ({
   initialSection = "knowledge:overview",
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
-  const { globalAssetHistory, revision, nodes, links, activeView } = useNodeFlowStore();
+  const { globalAssetHistory } = useNodeFlowStore();
+  const knowledgeEntryCount = useKnowledgeStore((state) => state.entries.length);
+  const knowledgeRelationCount = useKnowledgeStore((state) => state.relations.length);
+  const knowledgeMapEntryCount = useKnowledgeStore((state) => state.getKnowledgeMapView().entries.length);
+  const knowledgeMapRelationCount = useKnowledgeStore((state) => state.getKnowledgeMapView().relations.length);
 
   useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
 
-  const workflow = useMemo(
-    () => ({
-      version: 2,
-      revision,
-      name: projectData.fileName || "Qalam NodeFlow",
-      nodes,
-      links,
-      activeView,
-    }),
-    [activeView, links, nodes, projectData.fileName, revision]
-  );
-  const sourceNodeCount = useMemo(() => buildProjectedSourceNodes(projectData).length, [projectData]);
-  const graphNodes = useMemo(() => buildGraphNodesFromWorkflow(workflow), [workflow]);
-  const semanticNodeCount = useMemo(
-    () => graphNodes.filter((node) => node.plane === "semantic").length,
-    [graphNodes]
-  );
-  const designNodeCount = useMemo(
-    () => graphNodes.filter((node) => node.plane === "design").length,
-    [graphNodes]
-  );
-  const mapCount = useMemo(() => buildProjectGraphMaps(workflow).length, [workflow]);
   const imageCount = useMemo(
     () => globalAssetHistory.filter((item) => item.type === "image").length,
     [globalAssetHistory]
@@ -142,21 +120,21 @@ export const WorkspacePanel: React.FC<Props> = ({
         {
           key: "knowledge:entries",
           label: "Entries",
-          description: `${sourceNodeCount + semanticNodeCount + designNodeCount} future migration candidates`,
+          description: `${knowledgeEntryCount} memory entries`,
           icon: Network,
           tone: "text-emerald-300",
         },
         {
           key: "knowledge:relations",
           label: "Relations",
-          description: "Knowledge relation and anchor layer scaffold",
+          description: `${knowledgeRelationCount} memory relations`,
           icon: Sparkles,
           tone: "text-sky-300",
         },
         {
           key: "knowledge:maps",
           label: "Maps",
-          description: `${mapCount} projections`,
+          description: `${knowledgeMapEntryCount} entries / ${knowledgeMapRelationCount} relations`,
           icon: Layers3,
           tone: "text-violet-300",
         },
@@ -306,6 +284,7 @@ export const WorkspacePanel: React.FC<Props> = ({
 
           {group === "knowledge" ? (
             <KnowledgePanel
+              projectData={projectData}
               activeSection={key as KnowledgeSectionKey}
               showSidebar={false}
             />

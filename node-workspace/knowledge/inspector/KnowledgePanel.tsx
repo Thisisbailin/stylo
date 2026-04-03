@@ -1,9 +1,12 @@
 import React from "react";
 import { BookOpen, Database, GitBranch, Network } from "lucide-react";
+import { useKnowledgeStore } from "../../store/knowledgeStore";
+import type { ProjectData } from "../../../types";
 
 export type KnowledgeSectionKey = "overview" | "entries" | "relations" | "maps";
 
 type Props = {
+  projectData: ProjectData;
   activeSection?: KnowledgeSectionKey;
   onActiveSectionChange?: (section: KnowledgeSectionKey) => void;
   showSidebar?: boolean;
@@ -24,34 +27,40 @@ const sectionCardClass = (isActive: boolean) =>
   }`;
 
 export const KnowledgePanel: React.FC<Props> = ({
+  projectData,
   activeSection = "overview",
   onActiveSectionChange,
   showSidebar = true,
 }) => {
+  const revision = useKnowledgeStore((state) => state.revision);
+  const entries = useKnowledgeStore((state) => state.entries);
+  const relations = useKnowledgeStore((state) => state.relations);
+  const mapView = useKnowledgeStore((state) => state.getKnowledgeMapView());
+  const seedCanonicalSource = useKnowledgeStore((state) => state.seedCanonicalSource);
   const sections: SectionItem[] = [
     {
       key: "overview",
       label: "Overview",
       icon: BookOpen,
-      subtitle: "Knowledge Core is now the agent long-term memory layer.",
+      subtitle: "Knowledge Core is the agent long-term memory layer.",
     },
     {
       key: "entries",
       label: "Entries",
       icon: Database,
-      subtitle: "Future home of atomic knowledge entries.",
+      subtitle: `${entries.length} atomic knowledge entries`,
     },
     {
       key: "relations",
       label: "Relations",
       icon: GitBranch,
-      subtitle: "Future home of knowledge relations and anchors.",
+      subtitle: `${relations.length} lightweight knowledge relations`,
     },
     {
       key: "maps",
       label: "Maps",
       icon: Network,
-      subtitle: "Future debug views projected from the knowledge graph.",
+      subtitle: `${mapView.entries.length} entries / ${mapView.relations.length} relations in current debug projection`,
     },
   ];
 
@@ -115,6 +124,86 @@ export const KnowledgePanel: React.FC<Props> = ({
               </div>
             </div>
           </div>
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => seedCanonicalSource(projectData)}
+              className="inline-flex items-center rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)]"
+            >
+              Seed Canonical Sources
+            </button>
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Revision</div>
+              <div className="mt-2 text-[18px] font-semibold">{revision}</div>
+            </div>
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Entries</div>
+              <div className="mt-2 text-[18px] font-semibold">{entries.length}</div>
+            </div>
+            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Relations</div>
+              <div className="mt-2 text-[18px] font-semibold">{relations.length}</div>
+            </div>
+          </div>
+
+          {activeSection === "entries" ? (
+            <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Entry Registry</div>
+              <div className="mt-3 space-y-3">
+                {entries.length ? (
+                  entries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[13px] font-semibold">{entry.title}</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                          {entry.kind}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">{entry.ref}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                    No knowledge entries yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {activeSection === "relations" ? (
+            <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Relation Registry</div>
+              <div className="mt-3 space-y-3">
+                {relations.length ? (
+                  relations.map((relation) => (
+                    <div key={relation.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-3">
+                      <div className="text-[13px] font-semibold">{relation.type}</div>
+                      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                        {relation.fromEntryId} {"->"} {relation.toEntryId}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                    No knowledge relations yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {activeSection === "maps" ? (
+            <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Knowledge Map Debug View</div>
+              <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                Current debug projection includes {mapView.entries.length} entries and {mapView.relations.length} relations.
+                This is a data-level map view, not a user workflow canvas.
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

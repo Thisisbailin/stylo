@@ -153,12 +153,9 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         error: null,
         aspectRatio: "16:9",
         duration: "5s",
-        model: "wan2.6-r2v",
-        quality: "standard",
+        model: "wan2.7-r2v",
         resolution: "720P",
-        shotType: "single",
         watermark: false,
-        audioEnabled: true,
       } as VideoGenNodeData;
     case "viduVideoGen":
       return {
