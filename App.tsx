@@ -675,7 +675,7 @@ const App: React.FC = () => {
   const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<ModuleKey | null>(null);
-  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("understanding:overview");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("knowledge:overview");
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -701,7 +701,7 @@ const App: React.FC = () => {
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
 
-  const openWorkspacePanel = useCallback((section: WorkspaceSection = "understanding:overview") => {
+  const openWorkspacePanel = useCallback((section: WorkspaceSection = "knowledge:overview") => {
     setWorkspaceSection(section);
     setOpenLabModal("workspace");
   }, []);
@@ -735,15 +735,15 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      openWorkspacePanel("understanding:characters");
+      openWorkspacePanel("knowledge:entries");
       return;
     }
     if (key === 'scenes') {
-      openWorkspacePanel("understanding:scenes");
+      openWorkspacePanel("knowledge:entries");
       return;
     }
     if (key === 'workspace') {
-      openWorkspacePanel("understanding:overview");
+      openWorkspacePanel("knowledge:overview");
       return;
     }
     setOpenLabModal(key);

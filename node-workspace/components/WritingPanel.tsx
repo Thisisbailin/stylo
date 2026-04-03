@@ -660,7 +660,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     }
   };
 
-  const applyToProject = () => {
+  const applyToProject = useCallback(() => {
     const generatedScript = exportDraft(draft);
     const parsedEpisodes = parseScriptToEpisodes(generatedScript);
     setProjectData((prev) => ({
@@ -674,7 +674,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         ),
       },
     }));
-  };
+  }, [draft, setProjectData]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      applyToProject();
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [applyToProject]);
 
   const submitAgentLine = useCallback(() => {
     const text = agentLine?.text.trim();
@@ -771,9 +778,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
       : { paddingLeft: `${qalamPanelWidth + 44}px` }
     : undefined;
+  const handleClose = () => {
+    applyToProject();
+    onClose?.();
+  };
 
   return (
     <div className="writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)]">
+      <div className="writing-canvas-backdrop absolute inset-0" aria-hidden="true" />
       {isWritingQalamOpen ? (
         <QalamAgent
           projectData={projectData}
@@ -810,14 +822,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
           >
             {isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
           </button>
-          <button
-            type="button"
-            onClick={applyToProject}
-            className="writing-floating-chip"
-          >
-            Sync
-          </button>
-          <button type="button" onClick={onClose} className="writing-floating-chip">
+          <button type="button" onClick={handleClose} className="writing-floating-chip">
             Close
           </button>
         </div>
@@ -836,7 +841,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                 }}
               >
                 <div className="writing-guide-copy__eyebrow">{pageMoodLabel}</div>
-                <div className="writing-guide-copy__title">{activeGuide.title}</div>
                 <div className="writing-guide-copy__text">{activeGuide.text}</div>
               </div>
 
@@ -860,9 +864,9 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       <div className="writing-paper-head__row">
                         <div className="writing-paper-head__meta">
                           <button type="button" onClick={() => navigateScene(-1)} className="writing-text-button" disabled={selectedSceneIndex === 0}>
-                            Prev
+                            ←
                           </button>
-                          <span>{selectedEpisode.title}</span>
+                          <span>{selectedEpisode.id.toString().padStart(2, "0")}</span>
                           <span>{selectedSceneIndex + 1}/{selectedEpisode.scenes.length}</span>
                           <button
                             type="button"
@@ -870,10 +874,10 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                             className="writing-text-button"
                             disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
                           >
-                            Next
+                            →
                           </button>
                           <button type="button" onClick={addScene} className="writing-text-button">
-                            + Scene
+                            +
                           </button>
                         </div>
                         <div className="writing-paper-head__count">{selectedEpisodeLineCount} lines</div>

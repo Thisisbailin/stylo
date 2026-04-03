@@ -1365,7 +1365,7 @@ export const QalamChatContent: React.FC<Props> = ({
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
+      className={`qalam-scrollbar qalam-scroll-fade min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
       style={{
         ...style,
         maxHeight: revealMode === "latest" && latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : style?.maxHeight,

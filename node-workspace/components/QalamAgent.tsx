@@ -1028,7 +1028,7 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.mist,
-      curve: 4.55,
+      curve: 5.8,
     }),
     []
   );
@@ -1040,7 +1040,7 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const qalamUnifiedBaseHeight = qalamGlassBaseHeight + qalamTitleBandHeight;
   const qalamGlassSafeInsetX = qalamGlassConfig.fadeInsetX + 12;
-  const qalamGlassSafeInsetTop = qalamGlassConfig.fadeInsetY + 8;
+  const qalamGlassSafeInsetTop = qalamGlassConfig.fadeInsetY + 24;
   const qalamGlassSafeInsetBottom = qalamGlassConfig.fadeInsetY + 14;
   const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth + qalamGlassSafeInsetX * 2));
   const qalamGlassHeight = Math.max(

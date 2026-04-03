@@ -19,9 +19,9 @@ import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
 import {
-  UnderstandingPanel,
-  type UnderstandingSectionKey,
-} from "./UnderstandingPanel";
+  KnowledgePanel,
+  type KnowledgeSectionKey,
+} from "../knowledge/inspector/KnowledgePanel";
 import {
   buildGraphNodesFromWorkflow,
   buildProjectedSourceNodes,
@@ -29,7 +29,7 @@ import {
 } from "../nodeflow/projectGraph";
 
 export type WorkspaceSection =
-  | `understanding:${UnderstandingSectionKey}`
+  | `knowledge:${KnowledgeSectionKey}`
   | `assets:${MaterialsSectionKey}`
   | `sync:${SyncSectionKey}`
   | `info:${InfoSectionKey}`;
@@ -65,7 +65,7 @@ type NavGroup = {
 
 const splitSection = (section: WorkspaceSection) => {
   const [group, key] = section.split(":") as [
-    "understanding" | "assets" | "sync" | "info",
+    "knowledge" | "assets" | "sync" | "info",
     string,
   ];
   return { group, key };
@@ -83,7 +83,7 @@ export const WorkspacePanel: React.FC<Props> = ({
   syncRollout,
   onResetProject,
   onOpenLanding,
-  initialSection = "understanding:source",
+  initialSection = "knowledge:overview",
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
   const { globalAssetHistory, revision, nodes, links, activeView } = useNodeFlowStore();
@@ -129,32 +129,32 @@ export const WorkspacePanel: React.FC<Props> = ({
 
   const navGroups: NavGroup[] = [
     {
-      title: "Understanding",
+      title: "Knowledge",
       icon: BookOpen,
       items: [
         {
-          key: "understanding:source",
-          label: "Source",
-          description: `${sourceNodeCount} canonical nodes`,
+          key: "knowledge:overview",
+          label: "Overview",
+          description: "Knowledge Core positioning and migration status",
           icon: BookOpen,
           tone: "text-amber-300",
         },
         {
-          key: "understanding:semantic",
-          label: "Semantic",
-          description: `${semanticNodeCount} assets`,
+          key: "knowledge:entries",
+          label: "Entries",
+          description: `${sourceNodeCount + semanticNodeCount + designNodeCount} future migration candidates`,
           icon: Network,
           tone: "text-emerald-300",
         },
         {
-          key: "understanding:design",
-          label: "Design",
-          description: `${designNodeCount} assets`,
+          key: "knowledge:relations",
+          label: "Relations",
+          description: "Knowledge relation and anchor layer scaffold",
           icon: Sparkles,
           tone: "text-sky-300",
         },
         {
-          key: "understanding:maps",
+          key: "knowledge:maps",
           label: "Maps",
           description: `${mapCount} projections`,
           icon: Layers3,
@@ -304,11 +304,9 @@ export const WorkspacePanel: React.FC<Props> = ({
             </div>
           </div>
 
-          {group === "understanding" ? (
-            <UnderstandingPanel
-              projectData={projectData}
-              setProjectData={setProjectData}
-              activeSection={key as UnderstandingSectionKey}
+          {group === "knowledge" ? (
+            <KnowledgePanel
+              activeSection={key as KnowledgeSectionKey}
               showSidebar={false}
             />
           ) : null}
