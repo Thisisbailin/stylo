@@ -833,10 +833,15 @@ body.qalam-resizing * {
 }
 
 .writing-editor {
-  resize: vertical;
+  resize: none;
   color: transparent;
-  caret-color: var(--app-text-primary);
+  caret-color: #1b1612;
   -webkit-text-fill-color: transparent;
+}
+
+.writing-editor::placeholder {
+  color: rgba(87, 73, 60, 0.42);
+  -webkit-text-fill-color: rgba(87, 73, 60, 0.42);
 }
 
 .writing-editor::selection {
@@ -845,7 +850,29 @@ body.qalam-resizing * {
 
 .writing-editor-highlight {
   background: transparent;
-  color: var(--app-text-primary);
+  color: #1b1612;
+}
+
+.writing-editor-highlight .text-mention {
+  display: inline;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1b1612;
+  font-weight: 600;
+  box-shadow: none;
+  text-decoration: underline;
+  text-decoration-color: rgba(122, 105, 87, 0.28);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.14em;
+}
+
+.writing-editor-highlight .text-mention::before,
+.writing-editor-highlight .text-mention::after {
+  display: none;
 }
 
 .writing-line-empty {
@@ -930,7 +957,7 @@ body.qalam-resizing * {
   display: grid;
   gap: 16px;
   justify-items: center;
-  width: min(calc(100vw - 32px), 1080px);
+  width: min(calc(100vw - 24px), 920px);
 }
 
 .writing-guide-copy {
@@ -969,158 +996,23 @@ body.qalam-resizing * {
   justify-content: center;
 }
 
-.writing-nav-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 58px;
-  height: 132px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--app-border-strong) 62%, transparent);
-  background: color-mix(in srgb, var(--app-panel) 72%, transparent);
-  color: var(--app-text-secondary);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: transform 180ms ease, color 180ms ease, border-color 180ms ease;
-  pointer-events: auto;
-}
-
-.writing-nav-pill:hover {
-  transform: translateY(-1px);
-  color: var(--app-text-primary);
-  border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-border-strong));
-}
-
-.writing-nav-pill.is-empty {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.writing-episode-rail {
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-}
-
-.writing-episode-rail::-webkit-scrollbar {
-  display: none;
-}
-
 .writing-paper {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, #d7c4ab 78%, var(--app-accent) 22%);
-  border-radius: 34px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, rgba(255, 252, 247, 0.98) 92%, var(--app-accent) 8%),
-      color-mix(in srgb, rgba(245, 236, 224, 0.98) 86%, var(--app-accent) 14%)
-    ),
-    repeating-linear-gradient(
-      180deg,
-      rgba(125, 104, 82, 0.02) 0px,
-      rgba(125, 104, 82, 0.02) 36px,
-      rgba(125, 104, 82, 0.07) 36px,
-      rgba(125, 104, 82, 0.07) 37px
-    );
+  border: 1px solid rgba(220, 213, 202, 0.96);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 253, 0.998), rgba(248, 246, 241, 0.998));
   box-shadow:
-    0 28px 60px rgba(20, 12, 6, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    0 20px 48px rgba(22, 14, 9, 0.1),
+    0 2px 6px rgba(22, 14, 9, 0.05);
   transition:
     transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1),
     filter 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.writing-paper::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(173, 135, 96, 0.12), transparent 24%);
-  pointer-events: none;
-}
-
-.writing-paper::after {
-  content: "";
-  position: absolute;
-  inset: 12px;
-  border-radius: 24px;
-  border: 1px solid rgba(188, 166, 141, 0.18);
-  pointer-events: none;
-}
-
-.writing-paper.is-active {
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 42%),
-    linear-gradient(180deg, rgba(15, 18, 22, 0.26), rgba(9, 12, 16, 0.18));
-  transform: translateY(-4px);
-  box-shadow:
-    0 38px 90px rgba(14, 10, 8, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-}
-
-.writing-paper:not(.is-active) {
-  filter: saturate(0.94);
-}
-
-.writing-paper.is-peek {
-  cursor: pointer;
-  box-shadow:
-    0 18px 40px rgba(20, 12, 6, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.54);
-}
-
-.writing-paper.is-peek::after {
-  inset: 10px;
-  opacity: 0.42;
-}
-
-.writing-paper.is-peek > .relative {
-  min-width: 340px;
-}
-
-.writing-paper.is-peek .writing-paper__perforation {
-  opacity: 0.74;
-}
-
-.writing-paper.is-active .writing-paper__perforation {
-  opacity: 0.22;
-}
-
 .writing-paper--add {
   border-style: dashed;
-  background:
-    linear-gradient(180deg, rgba(253, 247, 238, 0.92), rgba(245, 234, 220, 0.92)),
-    repeating-linear-gradient(
-      180deg,
-      rgba(125, 104, 82, 0.015) 0px,
-      rgba(125, 104, 82, 0.015) 36px,
-      rgba(125, 104, 82, 0.05) 36px,
-      rgba(125, 104, 82, 0.05) 37px
-    );
-}
-
-.writing-paper__perforation {
-  position: absolute;
-  top: 20px;
-  bottom: 20px;
-  right: 0;
-  width: 26px;
-  background:
-    radial-gradient(circle at right center, transparent 0 9px, rgba(245, 236, 224, 0.98) 9.5px),
-    linear-gradient(180deg, rgba(168, 141, 111, 0.18), rgba(168, 141, 111, 0.08));
-  background-size: 26px 24px, 1px 100%;
-  background-repeat: repeat-y, no-repeat;
-  background-position: right top, 8px 0;
-  opacity: 0.84;
-  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 253, 0.98), rgba(246, 242, 235, 0.98));
 }
 
 .writing-paper--hero {
@@ -1137,124 +1029,23 @@ body.qalam-resizing * {
 
 .writing-paper--peek {
   cursor: pointer;
+  margin-left: -4px;
+  opacity: 0.9;
   box-shadow:
-    0 20px 44px rgba(20, 12, 6, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+    0 14px 32px rgba(20, 12, 6, 0.08),
+    0 1px 3px rgba(20, 12, 6, 0.05);
 }
 
-.writing-paper-peek__label {
-  position: absolute;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%) rotate(90deg);
-  transform-origin: center;
-  white-space: nowrap;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--app-text-secondary) 90%, #6c5b47 10%);
-}
-
-.writing-guide-band {
-  display: grid;
-  gap: 14px;
-}
-
-.writing-guide-band__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: rgba(223, 227, 232, 0.58);
-}
-
-.writing-guide-band__window {
-  position: relative;
-  min-height: 112px;
-}
-
-.writing-guide-card {
+.writing-paper-peek__ghost {
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: start;
-  gap: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015)),
-    rgba(10, 13, 16, 0.28);
-  padding: 18px 18px 16px;
-  opacity: 0;
-  transform: translateY(8px);
-  pointer-events: none;
-  transition:
-    opacity 280ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.writing-guide-card.is-active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.writing-guide-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 44px;
-  width: 44px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 249, 240, 0.14), rgba(255, 249, 240, 0.04));
-  color: rgba(255, 244, 230, 0.82);
-}
-
-.writing-guide-card__title {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  color: rgba(255, 251, 246, 0.96);
-}
-
-.writing-guide-card__text {
-  margin-top: 6px;
-  max-width: 42ch;
-  font-size: 12px;
-  line-height: 1.7;
-  color: rgba(214, 220, 228, 0.72);
-}
-
-.writing-typewriter-viewport {
-  position: relative;
-  overflow: hidden;
-  border-radius: 28px;
-}
-
-.writing-typewriter-viewport::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 34%;
-  background: linear-gradient(180deg, rgba(7, 10, 14, 0.12), transparent);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.writing-typewriter-viewport::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 18%;
-  background: linear-gradient(180deg, transparent, rgba(7, 10, 14, 0.08));
-  pointer-events: none;
-  z-index: 2;
+    linear-gradient(180deg, rgba(255, 255, 253, 0.998), rgba(248, 246, 241, 0.998)),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 35px,
+      rgba(124, 108, 90, 0.035) 35px 36px
+    );
 }
 
 .writing-typewriter-sheet {
@@ -1262,24 +1053,12 @@ body.qalam-resizing * {
   display: flex;
   flex-direction: column;
   margin: 0 auto;
-  border: 1px solid color-mix(in srgb, #dbc6aa 78%, var(--app-accent) 22%);
-  border-radius: 34px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, rgba(255, 253, 249, 0.98) 92%, var(--app-accent) 8%),
-      color-mix(in srgb, rgba(246, 238, 227, 0.98) 86%, var(--app-accent) 14%)
-    ),
-    repeating-linear-gradient(
-      180deg,
-      rgba(125, 104, 82, 0.02) 0px,
-      rgba(125, 104, 82, 0.02) 36px,
-      rgba(125, 104, 82, 0.07) 36px,
-      rgba(125, 104, 82, 0.07) 37px
-    );
+  border: 1px solid rgba(222, 214, 202, 0.98);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 253, 0.999), rgba(249, 246, 241, 0.999));
   box-shadow:
-    0 30px 70px rgba(20, 12, 6, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    0 24px 60px rgba(20, 12, 6, 0.12),
+    0 2px 6px rgba(20, 12, 6, 0.04);
   transform-origin: center top;
   transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1303,7 +1082,7 @@ body.qalam-resizing * {
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--app-text-secondary) 84%, #6c5b47 16%);
+  color: rgba(98, 85, 72, 0.64);
 }
 
 .writing-paper-head__count {
@@ -1311,7 +1090,7 @@ body.qalam-resizing * {
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--app-text-secondary) 84%, #6c5b47 16%);
+  color: rgba(98, 85, 72, 0.64);
 }
 
 .writing-paper-head__title {
@@ -1323,7 +1102,7 @@ body.qalam-resizing * {
   font-size: 34px;
   font-weight: 600;
   letter-spacing: -0.06em;
-  color: color-mix(in srgb, var(--app-text-primary) 86%, #2a2017 14%);
+  color: #1c1712;
   outline: none;
 }
 
@@ -1341,7 +1120,7 @@ body.qalam-resizing * {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--app-text-secondary) 84%, #6c5b47 16%);
+  color: rgba(88, 76, 64, 0.76);
 }
 
 .writing-paper-head__slug-input {
@@ -1354,12 +1133,12 @@ body.qalam-resizing * {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--app-text-primary) 82%, #3b3128 18%);
+  color: #27201a;
   outline: none;
 }
 
 .writing-paper-head__slug-input::placeholder {
-  color: color-mix(in srgb, var(--app-text-secondary) 72%, transparent);
+  color: rgba(118, 103, 89, 0.52);
 }
 
 .writing-paper-head__slug-input--short {
@@ -1372,19 +1151,19 @@ body.qalam-resizing * {
 
 .writing-paper-head__dot {
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--app-text-secondary) 68%, transparent);
+  color: rgba(120, 104, 89, 0.52);
 }
 
 .writing-paper-head__tear {
   margin-top: 18px;
-  height: 16px;
+  height: 15px;
   background:
-    radial-gradient(circle at 0 50%, transparent 0 8px, color-mix(in srgb, #e9ddcf 90%, var(--app-accent) 10%) 8.5px),
-    linear-gradient(180deg, rgba(165, 137, 103, 0.16), rgba(165, 137, 103, 0.08));
-  background-size: 24px 16px, 100% 1px;
+    radial-gradient(circle at 0 50%, transparent 0 7px, rgba(224, 216, 205, 0.96) 7.5px),
+    linear-gradient(180deg, rgba(144, 123, 100, 0.12), rgba(144, 123, 100, 0.08));
+  background-size: 22px 15px, 100% 1px;
   background-position: 0 0, 0 7px;
   background-repeat: repeat-x, no-repeat;
-  opacity: 0.92;
+  opacity: 0.88;
 }
 
 .writing-text-button {
@@ -1408,8 +1187,8 @@ body.qalam-resizing * {
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  margin: 8px 24px 24px;
-  border-radius: 0 0 26px 26px;
+  margin: 8px 26px 26px;
+  border-radius: 0 0 18px 18px;
 }
 
 .writing-paper-body::before {
@@ -1420,7 +1199,7 @@ body.qalam-resizing * {
     repeating-linear-gradient(
       180deg,
       transparent 0 35px,
-      color-mix(in srgb, #8f7a66 16%, transparent) 35px 36px
+      rgba(145, 128, 111, 0.14) 35px 36px
     );
   pointer-events: none;
 }
@@ -1429,95 +1208,9 @@ body.qalam-resizing * {
   content: "";
   position: absolute;
   inset: 12px;
-  border-radius: 24px;
-  border: 1px solid rgba(188, 166, 141, 0.16);
-  pointer-events: none;
-}
-
-.writing-typewriter-sheet__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 34px 34px 0;
-}
-
-.writing-sheet-badge {
-  display: grid;
-  gap: 4px;
-  justify-items: end;
-  padding-top: 4px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(111, 96, 82, 0.78);
-}
-
-.writing-sheet-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 20px 34px 0;
-}
-
-.writing-sheet-meta {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 18px 34px 0;
-}
-
-.writing-sheet-meta__field {
-  display: grid;
-  gap: 6px;
-}
-
-.writing-sheet-meta__field--wide {
-  grid-column: span 2;
-}
-
-.writing-sheet-meta__input {
-  width: 100%;
-  border: 1px solid rgba(222, 207, 188, 0.92);
   border-radius: 16px;
-  background: rgba(255, 250, 242, 0.88);
-  padding: 11px 14px;
-  font-size: 12px;
-  color: #2f2620;
-  outline: none;
-  transition: border-color 160ms ease;
-}
-
-.writing-sheet-meta__input:focus {
-  border-color: #b18d69;
-}
-
-.writing-sheet-footer {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px 20px 20px;
-}
-
-.writing-sheet-footer__item {
-  min-width: 0;
-  border-top: 1px solid rgba(188, 166, 141, 0.22);
-  padding-top: 12px;
-}
-
-@media (max-width: 900px) {
-  .writing-sheet-meta {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .writing-sheet-meta__field--wide {
-    grid-column: span 2;
-  }
-
-  .writing-sheet-footer {
-    grid-template-columns: 1fr;
-  }
+  border: 1px solid rgba(205, 194, 178, 0.18);
+  pointer-events: none;
 }
 
 .writing-agent-line {

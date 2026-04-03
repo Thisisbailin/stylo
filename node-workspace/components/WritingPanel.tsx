@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Compass, FileText, Sparkles } from "lucide-react";
 import type { Character, Episode, ProjectData } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -33,8 +32,6 @@ type AgentLineState = {
   text: string;
   phase: "active" | "sent";
 };
-
-const titleClass = "text-[10px] font-black uppercase tracking-[0.28em] text-[var(--app-text-secondary)]";
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -555,129 +552,37 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
       const mentionRegex = /@([\w\u4e00-\u9fa5-]+)/g;
       const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
 
-      const pushMentions = (text: string, keyPrefix: string) => {
-        const inner: React.ReactNode[] = [];
-        let localLastIndex = 0;
-        mentionRegex.lastIndex = 0;
-        let innerMatch: RegExpExecArray | null;
-        while ((innerMatch = mentionRegex.exec(text))) {
-          const full = innerMatch[0];
-          const name = innerMatch[1];
-          const start = innerMatch.index;
-          const end = start + full.length;
-          if (start > localLastIndex) {
-            inner.push(text.slice(localLastIndex, start));
-          }
-          const character = characterMap.get(name);
-          inner.push(
-            <span
-              key={`${keyPrefix}-${name}-${start}`}
-              className="text-mention"
-              data-kind="character"
-              data-status={character ? "match" : "missing"}
-              data-tooltip={buildCharacterDetail(character) || undefined}
-            >
-              @{name}
-            </span>
-          );
-          localLastIndex = end;
+      mentionRegex.lastIndex = 0;
+      while ((match = mentionRegex.exec(line))) {
+        const [full, name] = match;
+        const start = match.index;
+        const end = start + full.length;
+        if (start > lastIndex) {
+          parts.push(line.slice(lastIndex, start));
         }
-        if (localLastIndex < text.length) {
-          inner.push(text.slice(localLastIndex));
-        }
-        return inner;
-      };
-
-      const actionMatch = line.match(/^\s*#\s*(.*)$/);
-      if (actionMatch) {
+        const character = characterMap.get(name);
         parts.push(
-          <span key={`action-${lineIndex}`} className="writing-token writing-token-action">
-            #{" "}
+          <span
+            key={`mention-${lineIndex}-${name}-${start}`}
+            className="text-mention"
+            data-kind="character"
+            data-status={character ? "match" : "missing"}
+            data-tooltip={buildCharacterDetail(character) || undefined}
+          >
+            @{name}
           </span>
         );
-        parts.push(...pushMentions(actionMatch[1], `action-body-${lineIndex}`));
-        return <>{parts}</>;
+        lastIndex = end;
       }
 
-      const trimmed = line.trim();
-      const isSlugline = /^(INT\.|EXT\.|INT\/EXT\.|EST\.|I\/E\.)/i.test(trimmed);
-      if (isSlugline) {
-        return (
-          <>
-            <span key={`slug-${lineIndex}`} className="writing-token writing-token-slugline">
-              SLUGLINE
-            </span>
-            {pushMentions(trimmed.toUpperCase(), `slug-body-${lineIndex}`)}
-          </>
-        );
+      if (lastIndex < line.length) {
+        parts.push(line.slice(lastIndex));
       }
 
-      const isTransition = /^[A-Z0-9 .'\-]+TO:$/.test(trimmed);
-      if (isTransition) {
-        return (
-          <>
-            <span key={`transition-${lineIndex}`} className="writing-token writing-token-transition">
-              TRANSITION
-            </span>
-            {pushMentions(trimmed, `transition-body-${lineIndex}`)}
-          </>
-        );
-      }
-
-      const isParenthetical = /^\(.+\)$/.test(trimmed);
-      if (isParenthetical) {
-        return (
-          <>
-            <span key={`paren-${lineIndex}`} className="writing-token writing-token-parenthetical">
-              NOTE
-            </span>
-            {pushMentions(trimmed, `paren-body-${lineIndex}`)}
-          </>
-        );
-      }
-
-      const isCharacterCue =
-        /^[A-Z0-9 .'\-()]+$/.test(trimmed) &&
-        !isSlugline &&
-        trimmed.length <= 32 &&
-        trimmed === trimmed.toUpperCase() &&
-        !/[.:]$/.test(trimmed);
-      if (isCharacterCue) {
-        return (
-          <>
-            <span key={`character-${lineIndex}`} className="writing-token writing-token-character">
-              CHARACTER
-            </span>
-            {pushMentions(trimmed, `character-body-${lineIndex}`)}
-          </>
-        );
-      }
-
-      const osVoMatch = line.match(/^(\s*@[\w\u4e00-\u9fa5-]+)(\s+\/\s*(os|vo)\b)(.*)$/i);
-      if (osVoMatch) {
-        parts.push(...pushMentions(osVoMatch[1], `speaker-${lineIndex}`));
-        parts.push(
-          <span key={`mode-${lineIndex}`} className="writing-token writing-token-mode">
-            {osVoMatch[2]}
-          </span>
-        );
-        if (osVoMatch[4]) {
-          parts.push(...pushMentions(osVoMatch[4], `tail-${lineIndex}`));
-        }
-        return <>{parts}</>;
-      }
-
-      const dialogueMatch = line.match(/^(\s*@[\w\u4e00-\u9fa5-]+\s*[：:])(.*)$/);
-      if (dialogueMatch) {
-        parts.push(...pushMentions(dialogueMatch[1], `dialogue-head-${lineIndex}`));
-        if (dialogueMatch[2]) {
-          parts.push(...pushMentions(dialogueMatch[2], `dialogue-tail-${lineIndex}`));
-        }
-        return <>{parts}</>;
-      }
-
-      return <>{pushMentions(line, `plain-${lineIndex}`)}</>;
+      return <>{parts}</>;
     },
     [characterMap]
   );
@@ -789,19 +694,16 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     }, 260);
   }, [agentLine, closeAgentLine]);
 
-  const sceneCharacterCount = countCharactersInBody(selectedScene.body);
   const selectedEpisodeLineCount = selectedEpisode.scenes.reduce(
     (sum, scene) => sum + Math.max(1, scene.body.split(/\r?\n/).length),
     0
   );
-  const totalSceneCount = parserPreview.reduce((sum, episode) => sum + (episode.scenes?.length || 0), 0);
   const selectedEpisodeIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
   const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
-  const previousEpisode = selectedEpisodeIndex > 0 ? draft[selectedEpisodeIndex - 1] : null;
   const nextEpisode = selectedEpisodeIndex < draft.length - 1 ? draft[selectedEpisodeIndex + 1] : null;
   const isCompactLayout = viewportSize.width < 1180;
-  const sidePeekWidth = isCompactLayout ? 54 : 68;
-  const visibleRailGap = isCompactLayout ? 10 : 14;
+  const sidePeekWidth = isCompactLayout ? 26 : 34;
+  const visibleRailGap = isCompactLayout ? 6 : 8;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
@@ -828,14 +730,18 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const initialPaperOffset = screenplayPaperHeight * 0.5;
   const revealLineStep = initialPaperOffset / screenplayPageLines;
   const overflowLineStep = (screenplayPaperHeight * 0.48) / screenplayPageLines;
-  const paperRevealProgress = clamp((screenplayLineCount - 1) / screenplayPageLines, 0, 1);
-  const paperOverflowProgress = clamp((screenplayLineCount - screenplayPageLines) / screenplayPageLines, 0, 1);
-  const paperScale = paperRevealProgress < 1
-    ? 1.18 - paperRevealProgress * 0.18
-    : 1 + paperOverflowProgress * 0.16;
-  const paperTranslateY = paperRevealProgress < 1
-    ? initialPaperOffset - Math.min(screenplayLineCount - 1, screenplayPageLines) * revealLineStep
-    : -(screenplayLineCount - screenplayPageLines) * overflowLineStep;
+  const revealLineIndex = Math.min(Math.max(screenplayLineCount - 1, 0), screenplayPageLines);
+  const overflowLineIndex = Math.max(screenplayLineCount - screenplayPageLines, 0);
+  const paperRevealProgress = clamp(revealLineIndex / screenplayPageLines, 0, 1);
+  const paperOverflowProgress = clamp(overflowLineIndex / screenplayPageLines, 0, 1);
+  const revealScaleStep = 0.18 / screenplayPageLines;
+  const overflowScaleStep = 0.12 / screenplayPageLines;
+  const paperScale = overflowLineIndex > 0
+    ? 1 + Math.min(0.12, overflowLineIndex * overflowScaleStep)
+    : 1 + (screenplayPageLines - revealLineIndex) * revealScaleStep;
+  const paperTranslateY = overflowLineIndex > 0
+    ? -(overflowLineIndex * overflowLineStep)
+    : initialPaperOffset - revealLineIndex * revealLineStep;
   const guideOpacity = clamp(1 - (screenplayLineCount - 1) / 14, 0, 1);
   const pageMoodLabel =
     screenplayLineCount <= 4
@@ -847,10 +753,10 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
           : "Natural page rollover";
   const writingGuides = useMemo(
     () => [
-      { icon: Compass, title: "Open on action", text: "Start with a clean action line or slugline. The page rises one line at a time." },
-      { icon: Bot, title: "Triple return for Qalam", text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
-      { icon: FileText, title: "About 55 lines per page", text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
-      { icon: Sparkles, title: "Keep writing past the page", text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
+      { title: "Open on action", text: "Start with a clean action line or slugline. The page rises one line at a time." },
+      { title: "Triple return for Qalam", text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
+      { title: "About 55 lines per page", text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
+      { title: "Keep writing past the page", text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
     ],
     []
   );
@@ -868,9 +774,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   return (
     <div className="writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)]">
-      <div className="pointer-events-none absolute left-[18%] top-[10%] h-64 w-64 rounded-full bg-[color-mix(in_srgb,var(--app-accent)_10%,transparent)] blur-[120px] opacity-70" />
-      <div className="pointer-events-none absolute bottom-[8%] right-[16%] h-56 w-56 rounded-full bg-[color-mix(in_srgb,var(--app-accent-strong)_8%,transparent)] blur-[120px] opacity-55" />
-
       {isWritingQalamOpen ? (
         <QalamAgent
           projectData={projectData}
@@ -938,22 +841,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
               </div>
 
               <div className="writing-paper-layout" style={{ gap: `${visibleRailGap}px` }}>
-                {previousEpisode ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEpisodeId(previousEpisode.id);
-                      setSelectedSceneId(previousEpisode.scenes[0]?.id || `${previousEpisode.id}-1`);
-                    }}
-                    className="writing-nav-pill"
-                    title={previousEpisode.title}
-                  >
-                    Episode {previousEpisode.id}
-                  </button>
-                ) : (
-                  <div className="writing-nav-pill is-empty" aria-hidden="true" />
-                )}
-
                 <article
                   ref={(node) => {
                     episodeRefs.current[selectedEpisode.id] = node;
@@ -961,7 +848,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                   className="writing-paper writing-paper--hero relative shrink-0"
                   style={{ width: `${screenplayPaperWidth}px`, height: `${screenplayPaperHeight}px` }}
                 >
-                  <div className="writing-paper__perforation" aria-hidden="true" />
                   <div
                     className="writing-typewriter-sheet"
                     style={{
@@ -1147,8 +1033,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
                     title={nextEpisode.title}
                   >
-                    <div className="writing-paper__perforation" aria-hidden="true" />
-                    <div className="writing-paper-peek__label">{nextEpisode.title}</div>
+                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
                   </button>
                 ) : (
                   <button
@@ -1158,8 +1043,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
                     title="New Episode"
                   >
-                    <div className="writing-paper__perforation" aria-hidden="true" />
-                    <div className="writing-paper-peek__label">New Episode</div>
+                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
                   </button>
                 )}
               </div>

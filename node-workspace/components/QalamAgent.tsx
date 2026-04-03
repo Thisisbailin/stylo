@@ -1028,10 +1028,10 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.mist,
+      curve: 4.55,
     }),
     []
   );
-  const qalamGlassScale = 1.3;
   const qalamTitleBandHeight = titleOrigin.y + titleOrigin.height + 10;
   const qalamUnifiedBaseWidth = Math.max(0, messagePanelSize.width);
   const qalamGlassBaseHeight = Math.min(
@@ -1039,11 +1039,16 @@ export const QalamAgent: React.FC<Props> = ({
     Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)
   );
   const qalamUnifiedBaseHeight = qalamGlassBaseHeight + qalamTitleBandHeight;
-  const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth * qalamGlassScale));
-  const qalamGlassHeight = Math.max(0, Math.round(qalamUnifiedBaseHeight * qalamGlassScale));
-  const qalamGlassOffsetX = Math.round((qalamGlassWidth - qalamUnifiedBaseWidth) / -2);
-  const qalamGlassOffsetY =
-    -qalamTitleBandHeight - Math.round((qalamGlassHeight - qalamUnifiedBaseHeight) / 2);
+  const qalamGlassSafeInsetX = qalamGlassConfig.fadeInsetX + 12;
+  const qalamGlassSafeInsetTop = qalamGlassConfig.fadeInsetY + 8;
+  const qalamGlassSafeInsetBottom = qalamGlassConfig.fadeInsetY + 14;
+  const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth + qalamGlassSafeInsetX * 2));
+  const qalamGlassHeight = Math.max(
+    0,
+    Math.round(qalamUnifiedBaseHeight + qalamGlassSafeInsetTop + qalamGlassSafeInsetBottom)
+  );
+  const qalamGlassOffsetX = -qalamGlassSafeInsetX;
+  const qalamGlassOffsetY = -qalamTitleBandHeight - qalamGlassSafeInsetTop;
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,
