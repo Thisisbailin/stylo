@@ -962,6 +962,26 @@ body.qalam-resizing * {
   filter: saturate(0.94);
 }
 
+.writing-paper.is-peek {
+  cursor: pointer;
+  box-shadow:
+    0 18px 40px rgba(20, 12, 6, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.54);
+}
+
+.writing-paper.is-peek::after {
+  inset: 10px;
+  opacity: 0.42;
+}
+
+.writing-paper.is-peek > .relative {
+  min-width: 340px;
+}
+
+.writing-paper.is-peek .writing-paper__perforation {
+  opacity: 0.74;
+}
+
 .writing-paper.is-active .writing-paper__perforation {
   opacity: 0.22;
 }

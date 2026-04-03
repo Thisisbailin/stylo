@@ -795,7 +795,13 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     0
   );
   const totalSceneCount = parserPreview.reduce((sum, episode) => sum + (episode.scenes?.length || 0), 0);
+  const selectedEpisodeIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
+  const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
+  const previousEpisode = selectedEpisodeIndex > 0 ? draft[selectedEpisodeIndex - 1] : null;
+  const nextEpisode = selectedEpisodeIndex < draft.length - 1 ? draft[selectedEpisodeIndex + 1] : null;
   const isCompactLayout = viewportSize.width < 1180;
+  const sidePeekWidth = isCompactLayout ? 54 : 68;
+  const visibleRailGap = isCompactLayout ? 10 : 14;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
@@ -848,6 +854,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     ],
     []
   );
+  const activeGuide = writingGuides[activeGuideIndex % writingGuides.length];
+  const navigateScene = (delta: number) => {
+    const nextIndex = selectedSceneIndex + delta;
+    if (nextIndex < 0 || nextIndex >= selectedEpisode.scenes.length) return;
+    setSelectedSceneId(selectedEpisode.scenes[nextIndex].id);
+  };
   const paperShiftStyle = isWritingQalamOpen
     ? isCompactLayout
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
@@ -937,9 +949,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
             <div className="min-h-0 flex-1 overflow-hidden">
               <div className="writing-stage h-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]" style={paperShiftStyle}>
                 <div className="writing-episode-rail h-full overflow-x-auto overflow-y-hidden px-4 py-5 md:px-6 md:py-6">
-                  <div className="flex h-full min-w-max items-stretch gap-6">
-                    {draft.map((episode) => {
+                  <div className="flex h-full items-stretch justify-center" style={{ gap: `${visibleRailGap}px` }}>
+                    {draft.map((episode, index) => {
+                      const distanceFromActive = Math.abs(index - selectedEpisodeIndex);
+                      if (distanceFromActive > 1) return null;
                       const isActive = episode.id === selectedEpisode.id;
+                      const isPeek = !isActive;
                       return (
                         <article
                           key={episode.id}
@@ -947,12 +962,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                             episodeRefs.current[episode.id] = node;
                           }}
                           className={`writing-paper relative h-full min-h-[620px] shrink-0 snap-center ${
-                            isActive ? "is-active" : ""
+                            isActive ? "is-active" : "is-peek"
                           }`}
                           style={{
                             width: isActive
                               ? `${Math.max(screenplayPaperWidth + 112, isCompactLayout ? Math.min(viewportSize.width - 32, 680) : 820)}px`
-                              : "360px",
+                              : `${sidePeekWidth}px`,
                           }}
                         >
                           <div className="writing-paper__perforation" aria-hidden="true" />
@@ -1257,19 +1272,22 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       );
                     })}
 
-                    <button
-                      type="button"
-                      onClick={addEpisode}
-                      className="writing-paper writing-paper--add relative flex h-full min-h-[620px] w-[min(360px,calc(100vw-2rem))] shrink-0 snap-center items-center justify-center"
-                    >
-                      <div className="relative z-10 text-center">
-                        <div className={titleClass}>New Episode</div>
-                        <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#2d241d]">Add another page to the right</div>
-                        <div className="mt-3 text-[13px] leading-7 text-[#6e6257]">
-                          A new episode becomes a new sheet in the rail, extending the writing run one page farther.
+                    {selectedEpisodeIndex === draft.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={addEpisode}
+                        className="writing-paper writing-paper--add is-peek relative flex h-full min-h-[620px] shrink-0 snap-center items-center justify-center"
+                        style={{ width: `${sidePeekWidth}px` }}
+                      >
+                        <div className="relative z-10 text-center">
+                          <div className={titleClass}>New Episode</div>
+                          <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#2d241d]">Add another page to the right</div>
+                          <div className="mt-3 text-[13px] leading-7 text-[#6e6257]">
+                            A new episode becomes a new sheet in the rail, extending the writing run one page farther.
+                          </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>

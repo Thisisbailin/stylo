@@ -31,6 +31,15 @@ const toolStatusClass: Record<ToolStatus, string> = {
 const lineSummaryClass =
   "w-full px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
+const qalamBodyTextClass =
+  "text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed";
+
+const qalamSecondaryTextClass =
+  "text-[14px] leading-6 text-[var(--app-text-secondary)] md:text-[12px] md:leading-relaxed";
+
+const qalamMetaTextClass =
+  "text-[13px] leading-6 text-[var(--app-text-muted)] md:text-[11px] md:leading-relaxed";
+
 const formatWorkedDuration = (durationMs: number) => {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -125,7 +134,7 @@ const renderInlineMarkdown = (text: string) => {
         nodes.push(
           <code
             key={`c-${i}`}
-            className="px-1.5 py-0.5 rounded bg-[var(--app-panel-soft)] border border-[var(--app-border)] text-[12px]"
+            className="rounded border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-1.5 py-0.5 text-[13px] md:text-[12px]"
           >
             {text.slice(i + 1, end)}
           </code>
@@ -170,12 +179,12 @@ const renderLinkCard = (url: string, idx: number) => {
       rel="noreferrer"
       className="block rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 hover:border-[var(--app-border-strong)] transition"
     >
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[var(--app-text-secondary)]">
+      <div className="flex items-center gap-2 text-[12px] uppercase tracking-widest text-[var(--app-text-secondary)] md:text-[11px]">
         <Globe size={12} className="text-sky-300" />
         Link
       </div>
-      <div className="mt-1 text-[13px] text-[var(--app-text-primary)]">{host}{path ? ` · ${path}` : ""}</div>
-      <div className="mt-1 text-[11px] text-[var(--app-text-secondary)] truncate">{url}</div>
+      <div className="mt-1 text-[15px] text-[var(--app-text-primary)] md:text-[13px]">{host}{path ? ` · ${path}` : ""}</div>
+      <div className="mt-1 truncate text-[12px] text-[var(--app-text-secondary)] md:text-[11px]">{url}</div>
     </a>
   );
 };
@@ -210,9 +219,9 @@ const renderMarkdownLite = (text: string) => {
       blocks.push(
         <pre
           key={`code-${i}`}
-          className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 overflow-x-auto text-[12px] leading-relaxed"
+          className="overflow-x-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 text-[13px] leading-6 md:text-[12px] md:leading-relaxed"
         >
-          {fenceLang ? <div className="text-[10px] text-[var(--app-text-secondary)] mb-1">{fenceLang}</div> : null}
+          {fenceLang ? <div className="mb-1 text-[11px] text-[var(--app-text-secondary)]">{fenceLang}</div> : null}
           <code>{codeLines.join("\n")}</code>
         </pre>
       );
@@ -224,7 +233,13 @@ const renderMarkdownLite = (text: string) => {
       const level = headingMatch[1].length;
       const title = headingMatch[2];
       const size =
-        level === 1 ? "text-[16px]" : level === 2 ? "text-[14px]" : level === 3 ? "text-[13px]" : "text-[12px]";
+        level === 1
+          ? "text-[19px] md:text-[16px]"
+          : level === 2
+            ? "text-[17px] md:text-[14px]"
+            : level === 3
+              ? "text-[16px] md:text-[13px]"
+              : "text-[15px] md:text-[12px]";
       blocks.push(
         <div key={`h-${i}`} className={`font-semibold ${size} text-[var(--app-text-primary)]`}>
           {renderInlineMarkdown(title)}
@@ -243,7 +258,7 @@ const renderMarkdownLite = (text: string) => {
       blocks.push(
         <blockquote
           key={`q-${i}`}
-          className="border-l-2 border-[var(--app-border-strong)] pl-3 text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap"
+          className={`whitespace-pre-wrap border-l-2 border-[var(--app-border-strong)] pl-3 ${qalamSecondaryTextClass}`}
         >
           {renderInlineMarkdown(quoteLines.join("\n"))}
         </blockquote>
@@ -264,7 +279,7 @@ const renderMarkdownLite = (text: string) => {
       blocks.push(
         <ul key={`t-${i}`} className="space-y-1">
           {tasks.map((task, idx) => (
-            <li key={`${idx}-${task.text.slice(0, 8)}`} className="flex items-start gap-2 text-[12px]">
+            <li key={`${idx}-${task.text.slice(0, 8)}`} className={`flex items-start gap-2 ${qalamSecondaryTextClass}`}>
               <span
                 className={`mt-0.5 h-3.5 w-3.5 rounded border ${
                   task.checked ? "bg-emerald-500/70 border-emerald-400" : "border-[var(--app-border)]"
@@ -302,7 +317,7 @@ const renderMarkdownLite = (text: string) => {
         }
         blocks.push(
           <div key={`tbl-${i}`} className="overflow-x-auto">
-            <table className="min-w-full text-[12px] border-collapse">
+            <table className="min-w-full border-collapse text-[14px] md:text-[12px]">
               <thead>
                 <tr>
                   {headers.map((h, idx) => (
@@ -348,7 +363,7 @@ const renderMarkdownLite = (text: string) => {
       }
       const ListTag = ordered ? "ol" : "ul";
       blocks.push(
-        <ListTag key={`l-${i}`} className={`pl-5 text-[12px] space-y-1 ${ordered ? "list-decimal" : "list-disc"}`}>
+        <ListTag key={`l-${i}`} className={`space-y-1 pl-5 text-[14px] leading-6 md:text-[12px] md:leading-relaxed ${ordered ? "list-decimal" : "list-disc"}`}>
           {items.map((item, idx) => (
             <li key={`${idx}-${item.slice(0, 8)}`}>{renderInlineMarkdown(item)}</li>
           ))}
@@ -372,7 +387,7 @@ const renderMarkdownLite = (text: string) => {
     const stripped = stripUrls(paragraphText);
     if (stripped) {
       blocks.push(
-        <div key={`p-${i}`} className="text-[13px] leading-relaxed text-[var(--app-text-primary)] whitespace-pre-wrap">
+        <div key={`p-${i}`} className={`whitespace-pre-wrap ${qalamBodyTextClass}`}>
           {renderInlineMarkdown(paragraphText)}
         </div>
       );
@@ -400,7 +415,7 @@ const renderToolOutput = (tool: ToolPayload) => {
 
   if (!parsed || typeof parsed === "string") {
     return (
-      <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
+      <div className={`whitespace-pre-wrap ${qalamSecondaryTextClass}`}>
         {String(parsed || "")}
       </div>
     );
@@ -861,7 +876,7 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
   if (!lines.length) return null;
   return (
     <div className="mt-2 border-l-2 border-[var(--app-border)] pl-4">
-      <div className="space-y-2 text-[12px] leading-7 text-[var(--app-text-secondary)]">
+      <div className={`space-y-2 ${qalamSecondaryTextClass}`}>
         {lines.map((line, index) => (
           <div key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap">
             {line}
@@ -1001,13 +1016,13 @@ const renderAssistantPanel = (message: ChatMessage) => {
         </div>
       )}
       {searchQueries.length > 0 && (
-        <details className="text-[12px] text-[var(--app-text-secondary)]">
+        <details className={qalamSecondaryTextClass}>
           <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">
             搜索记录
           </summary>
           {renderFoldoutSurface(
             "搜索记录",
-            <ul className="list-disc space-y-1 pl-5 text-[12px] text-[var(--app-text-secondary)]">
+            <ul className={`list-disc space-y-1 pl-5 ${qalamSecondaryTextClass}`}>
               {searchQueries.map((q, idx) => (
                 <li key={`${idx}-${q.slice(0, 8)}`}>{q}</li>
               ))}
@@ -1016,11 +1031,11 @@ const renderAssistantPanel = (message: ChatMessage) => {
         </details>
       )}
       {planItems.length > 0 ? (
-        <details className="text-[12px] text-[var(--app-text-secondary)]">
+        <details className={qalamSecondaryTextClass}>
           <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">查看计划</summary>
           {renderFoldoutSurface(
             "计划",
-            <ul className="list-decimal space-y-1 pl-5 text-[12px] leading-relaxed text-[var(--app-text-primary)]">
+            <ul className={`list-decimal space-y-1 pl-5 ${qalamBodyTextClass}`}>
               {planItems.map((item, idx) => (
                 <li key={`${idx}-${item.slice(0, 8)}`}>{renderInlineMarkdown(item)}</li>
               ))}
@@ -1328,13 +1343,13 @@ export const QalamChatContent: React.FC<Props> = ({
         ) : item.kind === "approval" ? (
           renderApprovalPanel(item.message, onApprovalChoice)
         ) : isUser ? (
-          <div className="max-w-[82%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3 text-[13px] leading-relaxed text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)]">
+          <div className="max-w-[88%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3.5 text-[15px] leading-7 text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)] md:max-w-[82%] md:py-3 md:text-[13px] md:leading-relaxed">
             {item.message.text}
           </div>
         ) : (
           <div className="w-full space-y-3">
             {workedDuration ? (
-              <div className="flex items-center gap-4 px-1 text-[11px] text-[var(--app-text-muted)]">
+              <div className={`flex items-center gap-4 px-1 ${qalamMetaTextClass}`}>
                 <div className="h-px flex-1 bg-[var(--app-border)]" />
                 <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
                 <div className="h-px flex-1 bg-[var(--app-border)]" />
@@ -1350,7 +1365,7 @@ export const QalamChatContent: React.FC<Props> = ({
   return (
     <div
       ref={messagesRef}
-      className={`qalam-scrollbar min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-1 pb-4" : "px-4 py-4"} ${className}`}
+      className={`qalam-scrollbar min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
       style={{
         ...style,
         maxHeight: revealMode === "latest" && latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : style?.maxHeight,
