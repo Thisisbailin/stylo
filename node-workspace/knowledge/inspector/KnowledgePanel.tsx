@@ -111,7 +111,7 @@ export const KnowledgePanel: React.FC<Props> = ({
               </div>
               <div className="mt-2 text-[15px] font-semibold">Build Knowledge Core</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                先把长期记忆层的 node、link、map 真相立住，再逐步补 source links、agent 写入与局部地图。
+                当前先围绕剧本正文三层 script、episode、scene 立住长期记忆层的 node、link、map 真相，再逐步补 agent 写入与局部地图。
               </div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
@@ -130,7 +130,7 @@ export const KnowledgePanel: React.FC<Props> = ({
               onClick={() => seedCanonicalSource(projectData)}
               className="inline-flex items-center rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)]"
             >
-              Seed Canonical Sources
+              Seed Script Sources
             </button>
           </div>
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">

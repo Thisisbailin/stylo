@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { ProjectData } from "../../types";
-import { buildCanonicalKnowledgeNodes } from "../knowledge/canonicalSource";
+import { buildCanonicalKnowledgeSnapshot } from "../knowledge/canonicalSource";
 import { createEmptyKnowledgeSnapshot } from "../knowledge/defaults";
 import {
   removeKnowledgeLink,
@@ -80,11 +80,11 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
     set((state) => applySnapshot(removeKnowledgeLink(toSnapshot(state), linkId))),
 
   seedCanonicalSource: (projectData) =>
-    set((state) =>
-      applySnapshot(
-        upsertKnowledgeNodes(toSnapshot(state), buildCanonicalKnowledgeNodes(projectData))
-      )
-    ),
+    set((state) => {
+      const seeded = buildCanonicalKnowledgeSnapshot(projectData);
+      const withNodes = upsertKnowledgeNodes(toSnapshot(state), seeded.nodes);
+      return applySnapshot(upsertKnowledgeLinks(withNodes, seeded.links));
+    }),
 
   clearKnowledge: () => set(createEmptyKnowledgeSnapshot()),
 

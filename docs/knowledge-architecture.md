@@ -82,8 +82,12 @@ Qalam 的相关底层应理解为以下层级：
 - 原始剧本文本
 - episode
 - scene
-- guide / reference
-- 其他明确的项目源资料
+
+当前第一阶段只围绕剧本正文三层展开：
+
+- `script`
+- `episode`
+- `scene`
 
 这一层的职责是：
 
@@ -303,7 +307,7 @@ Knowledge 必须可追溯。
 
 ```ts
 type KnowledgeAnchor = {
-  type: "script" | "episode" | "scene" | "guide" | "nodeflow" | "asset";
+  type: "script" | "episode" | "scene" | "nodeflow" | "asset";
   ref: string;
   span?: string;
 };
@@ -410,7 +414,6 @@ Knowledge 的底层真相也遵循：
 
 - 剧本片段
 - episode / scene
-- guide
 - NodeFlow 节点
 - 已生成资产
 
@@ -587,11 +590,14 @@ knowledge/
 
 ### 第二阶段
 
-补第一批 source links，让知识网真正开始形成：
+补第一批 source links，让知识网真正开始形成。
+
+当前第一批只围绕剧本三层关系：
 
 - script -> episode
 - episode -> scene
-- guide -> source node
+
+不引入 guide 作为核心圈数据起点。
 
 ### 第三阶段
 

@@ -1,7 +1,7 @@
 import type { ProjectData } from "../../types";
 import { createKnowledgeAnchor } from "./anchors";
-import { createKnowledgeNode } from "./builders";
-import type { KnowledgeNode } from "./types";
+import { createKnowledgeLink, createKnowledgeNode } from "./builders";
+import type { KnowledgeLink, KnowledgeNode, KnowledgeSnapshot } from "./types";
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -100,39 +100,60 @@ export const buildCanonicalKnowledgeNodes = (
     }
   }
 
-  const guides = [
-    ["globalStyleGuide", "全局风格指南", projectData.globalStyleGuide],
-    ["shotGuide", "镜头指南", projectData.shotGuide],
-    ["soraGuide", "Sora 指南", projectData.soraGuide],
-    ["storyboardGuide", "分镜指南", projectData.storyboardGuide],
-    ["dramaGuide", "戏剧指南", projectData.dramaGuide],
-  ] as const;
-
-  for (const [key, title, content] of guides) {
-    const text = trim(content);
-    if (!text) continue;
-    nodes.push(
-      createKnowledgeNode({
-        id: `knowledge-source-guide-${key}`,
-        ref: `source:guide:${key}`,
-        kind: "source.guide",
-        title,
-        content: {
-          key,
-          content: text,
-        },
-        meta: {
-          origin: "canonical-source",
-          locked: true,
-        },
-        status: "accepted",
-        confidence: "high",
-        anchors: [createKnowledgeAnchor("guide", `guide:${key}`)],
-        createdAt,
-        updatedAt: createdAt,
-      })
-    );
-  }
-
   return nodes;
 };
+
+export const buildCanonicalKnowledgeLinks = (
+  projectData: ProjectData,
+  {
+    createdAt = Date.now(),
+  }: {
+    createdAt?: number;
+  } = {}
+): KnowledgeLink[] => {
+  const links: KnowledgeLink[] = [];
+  const hasScript = trim(projectData.rawScript).length > 0;
+
+  for (const episode of projectData.episodes || []) {
+    if (hasScript) {
+      links.push(
+        createKnowledgeLink({
+          id: `knowledge-link-script-episode-${episode.id}`,
+          fromNodeId: "knowledge-source-script",
+          toNodeId: `knowledge-source-episode-${episode.id}`,
+          type: "contains",
+          createdAt,
+          updatedAt: createdAt,
+        })
+      );
+    }
+
+    for (const scene of episode.scenes || []) {
+      links.push(
+        createKnowledgeLink({
+          id: `knowledge-link-episode-${episode.id}-scene-${scene.id}`,
+          fromNodeId: `knowledge-source-episode-${episode.id}`,
+          toNodeId: `knowledge-source-scene-${scene.id}`,
+          type: "contains",
+          createdAt,
+          updatedAt: createdAt,
+        })
+      );
+    }
+  }
+
+  return links;
+};
+
+export const buildCanonicalKnowledgeSnapshot = (
+  projectData: ProjectData,
+  {
+    createdAt = Date.now(),
+  }: {
+    createdAt?: number;
+  } = {}
+): KnowledgeSnapshot => ({
+  revision: 0,
+  nodes: buildCanonicalKnowledgeNodes(projectData, { createdAt }),
+  links: buildCanonicalKnowledgeLinks(projectData, { createdAt }),
+});
