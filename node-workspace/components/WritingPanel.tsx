@@ -868,8 +868,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   return (
     <div className="writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,rgba(7,10,15,0.78),rgba(7,10,15,0.92))]" />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.014)_1px,transparent_1px)] bg-[size:32px_32px] opacity-50" />
+      <div className="pointer-events-none absolute left-[18%] top-[10%] h-64 w-64 rounded-full bg-[color-mix(in_srgb,var(--app-accent)_10%,transparent)] blur-[120px] opacity-70" />
+      <div className="pointer-events-none absolute bottom-[8%] right-[16%] h-56 w-56 rounded-full bg-[color-mix(in_srgb,var(--app-accent-strong)_8%,transparent)] blur-[120px] opacity-55" />
 
       {isWritingQalamOpen ? (
         <QalamAgent
@@ -891,405 +891,277 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         />
       ) : null}
 
-      <div className="relative flex min-h-[100dvh] flex-col">
-        <header className="relative z-20 flex items-start justify-between gap-6 px-4 pb-4 pt-5 md:px-6 md:pt-6">
-          <div className="max-w-[560px]">
-            <div className={titleClass}>Writing Room</div>
-            <div className="mt-2 text-[32px] font-semibold tracking-[-0.06em] text-white">Fountain Screenwriting</div>
-            <div className="mt-2 text-[13px] leading-7 text-[var(--app-text-secondary)]">
-              Built for the screenwriting workflow first. English by default, Fountain on the page, and Qalam available without the bottom composer.
-            </div>
-          </div>
+      <div className="relative min-h-[100dvh]">
+        <div className="writing-floating-controls pointer-events-auto absolute right-4 top-4 z-30 flex items-center gap-2 md:right-6 md:top-6">
+          <button
+            type="button"
+            onClick={() => {
+              if (isWritingQalamOpen) {
+                setIsWritingQalamOpen(false);
+                setAgentLine(null);
+              } else {
+                openWritingQalam(true);
+              }
+            }}
+            className="writing-floating-chip"
+          >
+            {isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
+          </button>
+          <button
+            type="button"
+            onClick={applyToProject}
+            className="writing-floating-chip"
+          >
+            Sync
+          </button>
+          <button type="button" onClick={onClose} className="writing-floating-chip">
+            Close
+          </button>
+        </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (isWritingQalamOpen) {
-                  setIsWritingQalamOpen(false);
-                  setAgentLine(null);
-                } else {
-                  openWritingQalam(true);
-                }
-              }}
-              className="inline-flex h-11 items-center rounded-full border border-white/10 bg-white/6 px-4 text-[12px] font-semibold text-[var(--app-text-primary)] backdrop-blur-md transition hover:-translate-y-px hover:border-white/18 hover:bg-white/10"
-            >
-              {isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
-            </button>
-            <button
-              type="button"
-              onClick={applyToProject}
-              className="inline-flex h-11 items-center rounded-full border border-white/10 bg-[linear-gradient(180deg,rgba(255,248,234,0.18),rgba(255,248,234,0.08))] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:-translate-y-px hover:border-white/20"
-            >
-              Sync to Project
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-11 items-center rounded-full border border-white/10 bg-black/24 px-4 text-[12px] font-semibold text-[var(--app-text-secondary)] backdrop-blur-md transition hover:-translate-y-px hover:border-white/18 hover:text-[var(--app-text-primary)]"
-            >
-              Close
-            </button>
-          </div>
-        </header>
-
-        <main className="relative min-h-0 flex-1 px-4 pb-4 md:px-6 md:pb-6">
-          <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[34px] border border-white/8 bg-[rgba(12,14,18,0.34)] shadow-[0_28px_90px_rgba(0,0,0,0.34)] backdrop-blur-[18px]">
-            <div className="flex items-center justify-between gap-4 border-b border-white/8 px-5 py-4">
-              <div className="flex flex-wrap items-center gap-4 text-[12px] text-[var(--app-text-secondary)]">
-                <span>{draft.length} episodes</span>
-                <span>{totalSceneCount} scenes</span>
-                <span>{parserIssues.length ? `${parserIssues.length} format notes` : "format stable"}</span>
+        <main className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 py-6 md:px-6 md:py-8">
+          <div
+            className="writing-stage flex h-full w-full items-center justify-center transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={paperShiftStyle}
+          >
+            <div className="writing-composer-stage pointer-events-auto">
+              <div
+                className="writing-guide-copy"
+                style={{
+                  opacity: guideOpacity,
+                  transform: `translateY(${paperTranslateY * 0.18}px)`,
+                }}
+              >
+                <div className="writing-guide-copy__eyebrow">{pageMoodLabel}</div>
+                <div className="writing-guide-copy__title">{activeGuide.title}</div>
+                <div className="writing-guide-copy__text">{activeGuide.text}</div>
               </div>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-text-muted)]">
-                Start on the selected page
-              </div>
-            </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <div className="writing-stage h-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]" style={paperShiftStyle}>
-                <div className="writing-episode-rail h-full overflow-x-auto overflow-y-hidden px-4 py-5 md:px-6 md:py-6">
-                  <div className="flex h-full items-stretch justify-center" style={{ gap: `${visibleRailGap}px` }}>
-                    {draft.map((episode, index) => {
-                      const distanceFromActive = Math.abs(index - selectedEpisodeIndex);
-                      if (distanceFromActive > 1) return null;
-                      const isActive = episode.id === selectedEpisode.id;
-                      const isPeek = !isActive;
-                      return (
-                        <article
-                          key={episode.id}
-                          ref={(node) => {
-                            episodeRefs.current[episode.id] = node;
-                          }}
-                          className={`writing-paper relative h-full min-h-[620px] shrink-0 snap-center ${
-                            isActive ? "is-active" : "is-peek"
-                          }`}
-                          style={{
-                            width: isActive
-                              ? `${Math.max(screenplayPaperWidth + 112, isCompactLayout ? Math.min(viewportSize.width - 32, 680) : 820)}px`
-                              : `${sidePeekWidth}px`,
-                          }}
-                        >
-                          <div className="writing-paper__perforation" aria-hidden="true" />
+              <div className="writing-paper-layout" style={{ gap: `${visibleRailGap}px` }}>
+                {previousEpisode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEpisodeId(previousEpisode.id);
+                      setSelectedSceneId(previousEpisode.scenes[0]?.id || `${previousEpisode.id}-1`);
+                    }}
+                    className="writing-nav-pill"
+                    title={previousEpisode.title}
+                  >
+                    Episode {previousEpisode.id}
+                  </button>
+                ) : (
+                  <div className="writing-nav-pill is-empty" aria-hidden="true" />
+                )}
 
-                          {isActive ? (
-                            <div className="relative z-10 flex h-full flex-col px-6 pb-6 pt-6 md:px-7">
-                              <div
-                                className="writing-guide-band transition-opacity duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                                style={{
-                                  opacity: guideOpacity,
-                                  maxHeight: `${56 + guideOpacity * 92}px`,
-                                  marginBottom: `${8 + guideOpacity * 10}px`,
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <div className="writing-guide-band__meta">
-                                  <span>Typewriter Motion</span>
-                                  <span>{pageMoodLabel}</span>
-                                </div>
-                                <div className="writing-guide-band__window">
-                                  {writingGuides.map((guide, index) => {
-                                    const Icon = guide.icon;
-                                    const isGuideActive = index === activeGuideIndex;
-                                    return (
-                                      <div
-                                        key={guide.title}
-                                        className={`writing-guide-card ${isGuideActive ? "is-active" : ""}`}
-                                      >
-                                        <div className="writing-guide-card__icon">
-                                          <Icon size={16} />
-                                        </div>
-                                        <div>
-                                          <div className="writing-guide-card__title">{guide.title}</div>
-                                          <div className="writing-guide-card__text">{guide.text}</div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                <article
+                  ref={(node) => {
+                    episodeRefs.current[selectedEpisode.id] = node;
+                  }}
+                  className="writing-paper writing-paper--hero relative shrink-0"
+                  style={{ width: `${screenplayPaperWidth}px`, height: `${screenplayPaperHeight}px` }}
+                >
+                  <div className="writing-paper__perforation" aria-hidden="true" />
+                  <div
+                    className="writing-typewriter-sheet"
+                    style={{
+                      width: `${screenplayPaperWidth}px`,
+                      height: `${screenplayPaperHeight}px`,
+                      transform: `translate3d(0, ${paperTranslateY}px, 0) scale(${paperScale})`,
+                    }}
+                  >
+                    <div className="writing-paper-head">
+                      <div className="writing-paper-head__row">
+                        <div className="writing-paper-head__meta">
+                          <button type="button" onClick={() => navigateScene(-1)} className="writing-text-button" disabled={selectedSceneIndex === 0}>
+                            Prev
+                          </button>
+                          <span>{selectedEpisode.title}</span>
+                          <span>{selectedSceneIndex + 1}/{selectedEpisode.scenes.length}</span>
+                          <button
+                            type="button"
+                            onClick={() => navigateScene(1)}
+                            className="writing-text-button"
+                            disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
+                          >
+                            Next
+                          </button>
+                          <button type="button" onClick={addScene} className="writing-text-button">
+                            + Scene
+                          </button>
+                        </div>
+                        <div className="writing-paper-head__count">{selectedEpisodeLineCount} lines</div>
+                      </div>
+                      <input
+                        value={selectedEpisode.title}
+                        onChange={(event) =>
+                          patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
+                        }
+                        className="writing-paper-head__title"
+                        placeholder={`Episode ${selectedEpisode.id}`}
+                      />
+                      <div className="writing-paper-head__slugline">
+                        <input
+                          value={selectedScene.id}
+                          onChange={(event) =>
+                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
+                          }
+                          className="writing-paper-head__slug-input writing-paper-head__slug-input--short"
+                          placeholder={`${selectedEpisode.id}-1`}
+                        />
+                        <span className="writing-paper-head__dot">/</span>
+                        <input
+                          value={selectedScene.location}
+                          onChange={(event) =>
+                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
+                          }
+                          className="writing-paper-head__slug-input writing-paper-head__slug-input--tiny"
+                          placeholder="INT."
+                        />
+                        <span className="writing-paper-head__dot">.</span>
+                        <input
+                          value={selectedScene.title}
+                          onChange={(event) =>
+                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
+                          }
+                          className="writing-paper-head__slug-input"
+                          placeholder="APARTMENT"
+                        />
+                        <span className="writing-paper-head__dot">-</span>
+                        <input
+                          value={selectedScene.timeOfDay}
+                          onChange={(event) =>
+                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
+                          }
+                          className="writing-paper-head__slug-input writing-paper-head__slug-input--tiny"
+                          placeholder="NIGHT"
+                        />
+                      </div>
+                      <div className="writing-paper-head__tear" aria-hidden="true" />
+                    </div>
 
-                              <div className="writing-typewriter-viewport mt-4 flex-1">
-                                <div
-                                  className="writing-typewriter-sheet"
-                                  style={{
-                                    width: `${screenplayPaperWidth}px`,
-                                    minHeight: `${screenplayPaperHeight}px`,
-                                    height: `${screenplayPaperHeight}px`,
-                                    transform: `translate3d(0, ${paperTranslateY}px, 0) scale(${paperScale})`,
-                                  }}
-                                >
-                                  <div className="writing-typewriter-sheet__header">
-                                    <div className="min-w-0 flex-1">
-                                      <div className={titleClass}>Episode {selectedEpisode.id}</div>
-                                      <input
-                                        value={selectedEpisode.title}
-                                        onChange={(event) =>
-                                          patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
-                                        }
-                                        className="mt-2 w-full border-none bg-transparent p-0 text-[34px] font-semibold tracking-[-0.06em] text-[#1d1a17] outline-none placeholder:text-[#8d877f]"
-                                        placeholder={`Episode ${selectedEpisode.id}`}
-                                      />
-                                    </div>
-                                    <div className="writing-sheet-badge">
-                                      <span>{selectedEpisodeLineCount} lines</span>
-                                      <span>{pageMoodLabel}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="writing-sheet-toolbar">
-                                    {selectedEpisode.scenes.map((scene, index) => (
-                                      <button
-                                        key={scene.id}
-                                        type="button"
-                                        onClick={() => setSelectedSceneId(scene.id)}
-                                        className={`inline-flex h-9 items-center rounded-full border px-3.5 text-[11px] font-semibold transition ${
-                                          scene.id === selectedScene.id
-                                            ? "border-[#a98967] bg-[#f0e0ca] text-[#3a2d20]"
-                                            : "border-[#decfbc] bg-[#fbf5ed] text-[#7b7065] hover:border-[#bda083] hover:text-[#4e4338]"
-                                        }`}
-                                      >
-                                        {index + 1}. {scene.title}
-                                      </button>
-                                    ))}
-                                    <button
-                                      type="button"
-                                      onClick={addScene}
-                                      className="inline-flex h-9 items-center rounded-full border border-dashed border-[#ceb79c] px-3.5 text-[11px] font-semibold text-[#7b6a58] transition hover:border-[#a98967] hover:text-[#473b31]"
-                                    >
-                                      New Scene
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={addEpisode}
-                                      className="inline-flex h-9 items-center rounded-full border border-[#d8cbbb] bg-white/72 px-3.5 text-[11px] font-semibold text-[#574f46] transition hover:-translate-y-px hover:border-[#bfa58d]"
-                                    >
-                                      New Episode
-                                    </button>
-                                  </div>
-
-                                  <div className="writing-sheet-meta">
-                                    <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Scene No.</span>
-                                      <input
-                                        value={selectedScene.id}
-                                        onChange={(event) =>
-                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
-                                        }
-                                        className="writing-sheet-meta__input"
-                                        placeholder={`${selectedEpisode.id}-1`}
-                                      />
-                                    </label>
-                                    <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Slugline</span>
-                                      <input
-                                        value={selectedScene.title}
-                                        onChange={(event) =>
-                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
-                                        }
-                                        className="writing-sheet-meta__input"
-                                        placeholder="APARTMENT"
-                                      />
-                                    </label>
-                                    <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>Time of Day</span>
-                                      <input
-                                        value={selectedScene.timeOfDay}
-                                        onChange={(event) =>
-                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
-                                        }
-                                        className="writing-sheet-meta__input"
-                                        placeholder="NIGHT"
-                                      />
-                                    </label>
-                                    <label className="writing-sheet-meta__field">
-                                      <span className={titleClass}>INT./EXT.</span>
-                                      <input
-                                        value={selectedScene.location}
-                                        onChange={(event) =>
-                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
-                                        }
-                                        className="writing-sheet-meta__input"
-                                        placeholder="INT."
-                                      />
-                                    </label>
-                                    <label className="writing-sheet-meta__field writing-sheet-meta__field--wide">
-                                      <span className={titleClass}>Cast</span>
-                                      <input
-                                        value={selectedScene.castLine}
-                                        onChange={(event) =>
-                                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
-                                        }
-                                        placeholder="Optional cast line. Fountain pages can still stay clean and character-first."
-                                        className="writing-sheet-meta__input"
-                                      />
-                                    </label>
-                                  </div>
-
-                                  <div className="relative mt-5 flex-1 rounded-[30px] border border-[#dccab6] bg-[linear-gradient(180deg,rgba(255,252,246,0.94),rgba(247,240,231,0.98))] shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
-                                <div
-                                  ref={highlightRef}
-                                  aria-hidden="true"
-                                  className="writing-editor-highlight pointer-events-none absolute inset-0 z-0 overflow-auto whitespace-pre-wrap rounded-[30px] px-6 py-6 font-sans text-[16px] leading-9 text-[#231b16]"
-                                >
-                                  {highlightedDraftBody}
-                                </div>
-                                <textarea
-                                  ref={editorRef}
-                                  value={selectedScene.body}
-                                  onChange={(event) =>
-                                    patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: event.target.value }))
-                                  }
-                                  onScroll={syncEditorScroll}
-                                  onMouseDown={() => {
-                                    if (agentLine) setAgentLine(null);
-                                  }}
-                                  onClick={(event) => {
-                                    setDismissedMentionStart(null);
-                                    setCursorPos(event.currentTarget.selectionStart || 0);
-                                  }}
-                                  onSelect={(event) => {
-                                    setDismissedMentionStart(null);
-                                    setCursorPos(event.currentTarget.selectionStart || 0);
-                                  }}
-                                  onKeyUp={(event) => {
-                                    if (event.key !== "Escape") setDismissedMentionStart(null);
-                                    setCursorPos(event.currentTarget.selectionStart || 0);
-                                  }}
-                                  onKeyDown={handleEditorKeyDown}
-                                  rows={18}
-                                  placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
-                                  className="writing-editor relative z-10 h-full w-full rounded-[30px] border-none bg-transparent px-6 py-6 font-sans text-[16px] leading-9 outline-none"
-                                />
-
-                                {agentLine ? (
-                                  <div
-                                    className={`writing-agent-line absolute left-5 right-5 z-20 ${
-                                      agentLine.phase === "sent" ? "is-sent" : ""
-                                    }`}
-                                    style={{ top: `${agentLine.top}px` }}
-                                  >
-                                    <div className="writing-agent-line__label">Qalam Dialogue</div>
-                                    <textarea
-                                      ref={agentComposerRef}
-                                      value={agentLine.text}
-                                      onChange={(event) =>
-                                        setAgentLine((current) =>
-                                          current ? { ...current, text: event.target.value, phase: "active" } : current
-                                        )
-                                      }
-                                      onKeyDown={(event) => {
-                                        if (event.key === "Enter" && !event.shiftKey) {
-                                          event.preventDefault();
-                                          submitAgentLine();
-                                          return;
-                                        }
-                                        if (event.key === "Escape") {
-                                          event.preventDefault();
-                                          closeAgentLine();
-                                        }
-                                      }}
-                                      placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
-                                      className="writing-agent-line__input"
-                                    />
-                                  </div>
-                                ) : null}
-
-                                {mentionState && filteredCharacters.length > 0 ? (
-                                  <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-6 top-6 z-30 w-[320px]">
-                                      <div className="mention-picker-header">
-                                      <div className="mention-picker-title">Character Mentions</div>
-                                      <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter / Tab insert, Esc dismiss</div>
-                                    </div>
-                                    <div className="mention-picker-grid">
-                                      {filteredCharacters.map((character, index) => (
-                                        <button
-                                          key={character.id}
-                                          type="button"
-                                          onMouseDown={(event) => {
-                                            event.preventDefault();
-                                            insertMention(character.name);
-                                          }}
-                                          className={`mention-picker-item ${index === activeMentionIndex ? "is-active" : ""}`}
-                                          title={buildCharacterDetail(character)}
-                                        >
-                                          <span className="font-semibold">@{character.name}</span>
-                                          <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-
-                                  <div className="writing-sheet-footer">
-                                    <div className="writing-sheet-footer__item">
-                                      <span className={titleClass}>Fountain Preview</span>
-                                      <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-[11px] leading-6 text-[#5e554c]">
-                                        {renderBoundText(compactText(selectedScenePreview, 110))}
-                                      </div>
-                                    </div>
-                                    <div className="writing-sheet-footer__item">
-                                      <span className={titleClass}>Fountain Check</span>
-                                      <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
-                                        {parserIssues.length ? compactText(parserIssues[0], 72) : "Fountain flow looks stable."}
-                                      </div>
-                                    </div>
-                                    <div className="writing-sheet-footer__item">
-                                      <span className={titleClass}>Mentions</span>
-                                      <div className="mt-1 text-[11px] leading-6 text-[#5e554c]">
-                                        {sceneCharacterCount.length ? sceneCharacterCount.join(", ") : "No character mentions yet"}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedEpisodeId(episode.id);
-                                setSelectedSceneId(episode.scenes[0]?.id || `${episode.id}-1`);
-                              }}
-                              className="relative z-10 flex h-full w-full flex-col px-6 pb-6 pt-6 text-left md:px-7"
-                            >
-                              <div className={titleClass}>Episode {episode.id}</div>
-                              <div className="mt-3 text-[30px] font-semibold tracking-[-0.05em] text-[#2b2119]">
-                                {episode.title}
-                              </div>
-                              <div className="mt-2 text-[12px] text-[#766b61]">{episode.scenes.length} scenes</div>
-                              <div className="mt-8 text-[13px] leading-8 text-[#5f554b]">
-                                {summarizeEpisode(episode)}
-                              </div>
-                              <div className="mt-auto flex items-center justify-between pt-8 text-[12px] font-semibold text-[#6f6458]">
-                                <span>{episode.scenes[0]?.id || `Episode ${episode.id}`}</span>
-                                <span>Open page</span>
-                              </div>
-                            </button>
-                          )}
-                        </article>
-                      );
-                    })}
-
-                    {selectedEpisodeIndex === draft.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={addEpisode}
-                        className="writing-paper writing-paper--add is-peek relative flex h-full min-h-[620px] shrink-0 snap-center items-center justify-center"
-                        style={{ width: `${sidePeekWidth}px` }}
+                    <div className="writing-paper-body relative flex-1">
+                      <div
+                        ref={highlightRef}
+                        aria-hidden="true"
+                        className="writing-editor-highlight pointer-events-none absolute inset-0 z-0 overflow-auto whitespace-pre-wrap px-8 pb-8 pt-6 font-sans text-[16px] leading-9"
                       >
-                        <div className="relative z-10 text-center">
-                          <div className={titleClass}>New Episode</div>
-                          <div className="mt-3 text-[28px] font-semibold tracking-[-0.05em] text-[#2d241d]">Add another page to the right</div>
-                          <div className="mt-3 text-[13px] leading-7 text-[#6e6257]">
-                            A new episode becomes a new sheet in the rail, extending the writing run one page farther.
+                        {highlightedDraftBody}
+                      </div>
+                      <textarea
+                        ref={editorRef}
+                        value={selectedScene.body}
+                        onChange={(event) =>
+                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: event.target.value }))
+                        }
+                        onScroll={syncEditorScroll}
+                        onMouseDown={() => {
+                          if (agentLine) setAgentLine(null);
+                        }}
+                        onClick={(event) => {
+                          setDismissedMentionStart(null);
+                          setCursorPos(event.currentTarget.selectionStart || 0);
+                        }}
+                        onSelect={(event) => {
+                          setDismissedMentionStart(null);
+                          setCursorPos(event.currentTarget.selectionStart || 0);
+                        }}
+                        onKeyUp={(event) => {
+                          if (event.key !== "Escape") setDismissedMentionStart(null);
+                          setCursorPos(event.currentTarget.selectionStart || 0);
+                        }}
+                        onKeyDown={handleEditorKeyDown}
+                        rows={18}
+                        placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
+                        className="writing-editor relative z-10 h-full w-full border-none bg-transparent px-8 pb-8 pt-6 font-sans text-[16px] leading-9 outline-none"
+                      />
+
+                      {agentLine ? (
+                        <div
+                          className={`writing-agent-line absolute left-6 right-6 z-20 ${agentLine.phase === "sent" ? "is-sent" : ""}`}
+                          style={{ top: `${agentLine.top}px` }}
+                        >
+                          <div className="writing-agent-line__label">Qalam Dialogue</div>
+                          <textarea
+                            ref={agentComposerRef}
+                            value={agentLine.text}
+                            onChange={(event) =>
+                              setAgentLine((current) =>
+                                current ? { ...current, text: event.target.value, phase: "active" } : current
+                              )
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && !event.shiftKey) {
+                                event.preventDefault();
+                                submitAgentLine();
+                                return;
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                closeAgentLine();
+                              }
+                            }}
+                            placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
+                            className="writing-agent-line__input"
+                          />
+                        </div>
+                      ) : null}
+
+                      {mentionState && filteredCharacters.length > 0 ? (
+                        <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-8 top-6 z-30 w-[320px]">
+                          <div className="mention-picker-header">
+                            <div className="mention-picker-title">Character Mentions</div>
+                            <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter / Tab insert, Esc dismiss</div>
+                          </div>
+                          <div className="mention-picker-grid">
+                            {filteredCharacters.map((character, index) => (
+                              <button
+                                key={character.id}
+                                type="button"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  insertMention(character.name);
+                                }}
+                                className={`mention-picker-item ${index === activeMentionIndex ? "is-active" : ""}`}
+                                title={buildCharacterDetail(character)}
+                              >
+                                <span className="font-semibold">@{character.name}</span>
+                                <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
+                              </button>
+                            ))}
                           </div>
                         </div>
-                      </button>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                </article>
+
+                {nextEpisode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedEpisodeId(nextEpisode.id);
+                      setSelectedSceneId(nextEpisode.scenes[0]?.id || `${nextEpisode.id}-1`);
+                    }}
+                    className="writing-paper writing-paper--peek relative shrink-0"
+                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
+                    title={nextEpisode.title}
+                  >
+                    <div className="writing-paper__perforation" aria-hidden="true" />
+                    <div className="writing-paper-peek__label">{nextEpisode.title}</div>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={addEpisode}
+                    className="writing-paper writing-paper--peek writing-paper--add relative shrink-0"
+                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
+                    title="New Episode"
+                  >
+                    <div className="writing-paper__perforation" aria-hidden="true" />
+                    <div className="writing-paper-peek__label">New Episode</div>
+                  </button>
+                )}
               </div>
             </div>
           </div>

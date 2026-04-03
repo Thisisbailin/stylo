@@ -280,11 +280,14 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
-  const agentSettingModules = [
+  const agentSettingTopModules = [
     { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },
     { key: "workspace" as ModuleKey, label: "Workspace", desc: "理解 / 素材 / Sync / Info", Icon: SquareStack, tone: "text-blue-200", surface: "bg-blue-500/10" },
-    { key: "projector" as ModuleKey, label: "放映机", desc: "视听实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
-    { key: "glassLab" as ModuleKey, label: "Glass Lab", desc: "视觉语言实验", Icon: ScanSearch, tone: "text-zinc-200", surface: "bg-white/5" },
+    { key: "provider", label: "Agent Setting", desc: "模型 / tools / dashboard", Icon: BarChart2, tone: "text-sky-300", surface: "bg-sky-500/10" },
+  ];
+  const agentSettingBottomModules = [
+    { key: "projector" as ModuleKey, label: "Voice Lab", desc: "声音实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
+    { key: "glassLab" as ModuleKey, label: "Visual Lab", desc: "视觉语言实验", Icon: ScanSearch, tone: "text-zinc-200", surface: "bg-white/5" },
   ];
 
   const accountLoaded = accountInfo?.isLoaded ?? true;
@@ -330,28 +333,55 @@ export const FloatingActionBar: React.FC<Props> = ({
     <div className="space-y-2">
       <div className="flex items-center justify-between px-1">
         <div className={sectionEyebrowClass}>Agent Setting</div>
-        <div className="text-[10px] text-[var(--app-text-muted)]">{agentSettingModules.length} modules</div>
+        <div className="text-[10px] text-[var(--app-text-muted)]">{agentSettingTopModules.length + agentSettingBottomModules.length} modules</div>
       </div>
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-        {agentSettingModules.map(({ key, label, desc, Icon, tone, surface }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => {
-              onOpenModule?.(key);
-              closeMenus();
-            }}
-            className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
-          >
-            <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
-              <Icon size={16} />
-            </span>
-            <span className="block min-w-0">
-              <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
-              <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
-            </span>
-          </button>
-        ))}
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          {agentSettingTopModules.map(({ key, label, desc, Icon, tone, surface }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                if (key === "provider") {
+                  onOpenStats?.();
+                } else {
+                  onOpenModule?.(key);
+                }
+                closeMenus();
+              }}
+              className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+            >
+              <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                <Icon size={16} />
+              </span>
+              <span className="block min-w-0">
+                <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {agentSettingBottomModules.map(({ key, label, desc, Icon, tone, surface }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                onOpenModule?.(key);
+                closeMenus();
+              }}
+              className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+            >
+              <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                <Icon size={16} />
+              </span>
+              <span className="block min-w-0">
+                <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -837,62 +867,19 @@ export const FloatingActionBar: React.FC<Props> = ({
                         </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {onOpenStats && (
-                        <button
-                          type="button"
-                          className={utilityButtonClass}
-                          onClick={() => {
-                            onOpenStats();
-                            closeMenus();
-                          }}
-                        >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
-                            <BarChart2 size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">模型 / tools / dashboard</span>
-                          </span>
-                        </button>
-                      )}
+                    <div className="flex flex-wrap gap-2">
                       {handleUploadAvatar ? (
                         <button
                           type="button"
-                          className={utilityButtonClass}
+                          className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
                           onClick={() => {
                             handleUploadAvatar();
                             closeMenus();
                           }}
                         >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[rgba(255,255,255,0.06)] text-[var(--app-text-secondary)]">
-                            <Upload size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Avatar</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">更新头像</span>
-                          </span>
+                          Avatar
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={utilityButtonClass}
-                          onClick={() => {
-                            handleSignOut?.();
-                            closeMenus();
-                          }}
-                        >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-rose-500/10 text-rose-300">
-                            <LogOut size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sign Out</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">退出账户</span>
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                    {handleUploadAvatar && (
+                      ) : null}
                       <button
                         type="button"
                         className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
@@ -900,13 +887,13 @@ export const FloatingActionBar: React.FC<Props> = ({
                           handleSignOut?.();
                           closeMenus();
                         }}
-                        >
-                          Sign Out
-                        </button>
-                      )}
-                      <div className="border-t border-[var(--app-border)] pt-3">
-                        {renderAgentSettingModules()}
-                      </div>
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                    <div className="border-t border-[var(--app-border)] pt-3">
+                      {renderAgentSettingModules()}
+                    </div>
                     </div>
                   ) : (
                     <div className="space-y-3">

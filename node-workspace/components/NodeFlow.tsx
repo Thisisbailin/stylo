@@ -423,6 +423,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [isQalamSending, setIsQalamSending] = useState(false);
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
+  const [qalamCloseRequest, setQalamCloseRequest] = useState(0);
   const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
   const [windowWidth, setWindowWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
@@ -507,10 +508,26 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const toggleQalamFirstMode = useCallback(() => {
     if (isAutoQalamFirst) {
-      setDismissedAutoQalamFirst((prev) => !prev);
+      setDismissedAutoQalamFirst((prev) => {
+        const next = !prev;
+        if (next) {
+          setQalamCloseRequest((count) => count + 1);
+        } else {
+          setQalamOpenRequest((count) => count + 1);
+        }
+        return next;
+      });
       return;
     }
-    setIsQalamFirstManual((prev) => !prev);
+    setIsQalamFirstManual((prev) => {
+      const next = !prev;
+      if (next) {
+        setQalamOpenRequest((count) => count + 1);
+      } else {
+        setQalamCloseRequest((count) => count + 1);
+      }
+      return next;
+    });
   }, [isAutoQalamFirst]);
 
   /* New: Sync global style guide to store so executors can use it */
@@ -1052,9 +1069,23 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             onOpenStats={() => openAgentSettingsPanel("provider")}
             settingsOpen={showAgentSettings}
             openRequest={qalamOpenRequest}
+            closeRequest={qalamCloseRequest}
             submitRequest={qalamSubmitRequest}
             cancelRequest={qalamCancelRequest}
-            onCollapsedChange={setIsQalamCollapsed}
+            onCollapsedChange={(collapsed) => {
+              setIsQalamCollapsed(collapsed);
+              if (collapsed) {
+                if (isAutoQalamFirst) {
+                  setDismissedAutoQalamFirst(true);
+                } else if (isQalamFirstMode) {
+                  setIsQalamFirstManual(false);
+                }
+                return;
+              }
+              if (isAutoQalamFirst) {
+                setDismissedAutoQalamFirst(false);
+              }
+            }}
             onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
             onSendingChange={setIsQalamSending}
             renderCollapsedTrigger
@@ -1134,9 +1165,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onOpenQalam={() => {
                 if (isAutoQalamFirst) {
                   setDismissedAutoQalamFirst(false);
+                  setQalamOpenRequest((prev) => prev + 1);
                   return;
                 }
                 setIsQalamFirstManual(true);
+                setQalamOpenRequest((prev) => prev + 1);
               }}
               variant="embedded"
             />

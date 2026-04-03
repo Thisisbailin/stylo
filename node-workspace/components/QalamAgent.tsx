@@ -24,6 +24,7 @@ type Props = {
   onOpenStats?: () => void;
   settingsOpen?: boolean;
   openRequest?: number;
+  closeRequest?: number;
   submitRequest?: { id: number; text: string } | null;
   cancelRequest?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
@@ -366,6 +367,7 @@ export const QalamAgent: React.FC<Props> = ({
   onOpenStats,
   settingsOpen = false,
   openRequest = 0,
+  closeRequest = 0,
   submitRequest = null,
   cancelRequest = 0,
   onCollapsedChange,
@@ -495,7 +497,7 @@ export const QalamAgent: React.FC<Props> = ({
   const approvalSyncRef = useRef<string[]>([]);
   const handledConversationResetRef = useRef<number | null>(null);
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
-  const effectiveCollapsed = agentFirstMode ? false : collapsed;
+  const effectiveCollapsed = collapsed;
   const bridge = useMemo<QalamAgentBridge>(
     () => createQalamAgentBridge({
       getProjectData: () => projectData,
@@ -725,20 +727,6 @@ export const QalamAgent: React.FC<Props> = ({
   }, [isSending, onSendingChange]);
 
   useEffect(() => {
-    if (phaseTimerRef.current) {
-      window.clearTimeout(phaseTimerRef.current);
-      phaseTimerRef.current = null;
-    }
-    if (agentFirstMode) {
-      setCollapsed(false);
-      setPanelPhase("open");
-      return;
-    }
-    setCollapsed(true);
-    setPanelPhase("collapsed");
-  }, [agentFirstMode]);
-
-  useEffect(() => {
     return () => {
       if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
     };
@@ -769,6 +757,15 @@ export const QalamAgent: React.FC<Props> = ({
       phaseTimerRef.current = null;
     }, PANEL_ANIMATION_MS);
   }, []);
+
+  useEffect(() => {
+    if (phaseTimerRef.current) {
+      window.clearTimeout(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
+    if (!agentFirstMode || !collapsed) return;
+    openPanel();
+  }, [agentFirstMode, collapsed, openPanel]);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -1092,6 +1089,11 @@ export const QalamAgent: React.FC<Props> = ({
   }, [openPanel, openRequest]);
 
   useEffect(() => {
+    if (!closeRequest) return;
+    closePanel();
+  }, [closePanel, closeRequest]);
+
+  useEffect(() => {
     if (!submitRequest?.id || !submitRequest.text.trim()) return;
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
@@ -1124,10 +1126,10 @@ export const QalamAgent: React.FC<Props> = ({
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              onClick={agentFirstMode ? undefined : collapsed ? openPanel : closePanel}
+              onClick={collapsed ? openPanel : closePanel}
               className="pointer-events-auto inline-flex items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
-              aria-label={agentFirstMode ? "Qalam" : collapsed ? "Open Qalam" : "Close Qalam"}
-              title={agentFirstMode ? "Qalam" : collapsed ? "Open Qalam" : "Close Qalam"}
+              aria-label={collapsed ? "Open Qalam" : "Close Qalam"}
+              title={collapsed ? "Open Qalam" : "Close Qalam"}
             >
               {qalamMark}
             </button>
