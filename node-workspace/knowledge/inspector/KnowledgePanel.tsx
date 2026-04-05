@@ -41,9 +41,12 @@ export const KnowledgePanel: React.FC<Props> = ({
 }) => {
   const [focusNodeRef, setFocusNodeRef] = React.useState<string>("");
   const [focusAnchorRef, setFocusAnchorRef] = React.useState<string>("");
+  const [debugActionNote, setDebugActionNote] = React.useState<string>("");
   const revision = useKnowledgeStore((state) => state.revision);
   const nodes = useKnowledgeStore((state) => state.nodes);
   const links = useKnowledgeStore((state) => state.links);
+  const createDerivedNodeForAnchor = useKnowledgeStore((state) => state.createDerivedNodeForAnchor);
+  const supersedeDerivedNodeForAnchor = useKnowledgeStore((state) => state.supersedeDerivedNodeForAnchor);
   const canonicalNodeCount = nodes.filter((node) => node.origin === "canonical-source").length;
   const derivedNodeCount = nodes.filter((node) => node.origin === "agent-derived").length;
   const canonicalLinkCount = links.filter((link) => link.origin === "canonical-source").length;
@@ -106,6 +109,10 @@ export const KnowledgePanel: React.FC<Props> = ({
     },
     effectiveAnchor
   );
+  const latestActiveDerivedNode =
+    anchorTimeline.nodes.find(
+      (node) => node.origin === "agent-derived" && node.package.status !== "superseded"
+    ) || null;
   const seedCanonicalSource = useKnowledgeStore((state) => state.seedCanonicalSource);
   const sections: SectionItem[] = [
     {
@@ -135,6 +142,40 @@ export const KnowledgePanel: React.FC<Props> = ({
   ];
 
   const active = sections.find((section) => section.key === activeSection) || sections[0];
+  const handleCreateDerivedForAnchor = React.useCallback(() => {
+    if (!effectiveAnchor) return;
+    const created = createDerivedNodeForAnchor({
+      anchorType: effectiveAnchor.type,
+      anchorRef: effectiveAnchor.ref,
+      anchorSpan: effectiveAnchor.span,
+      kind: "derived.note",
+      title: `${effectiveAnchor.type}:${effectiveAnchor.ref} note`,
+      status: "working",
+      content: {
+        note: "Debug seeded derived knowledge node.",
+        anchor: `${effectiveAnchor.type}:${effectiveAnchor.ref}`,
+      },
+    });
+    setDebugActionNote(`Created derived node ${created.ref}`);
+  }, [createDerivedNodeForAnchor, effectiveAnchor]);
+
+  const handleSupersedeDerivedForAnchor = React.useCallback(() => {
+    if (!effectiveAnchor || !latestActiveDerivedNode) return;
+    const created = supersedeDerivedNodeForAnchor({
+      anchorType: effectiveAnchor.type,
+      anchorRef: effectiveAnchor.ref,
+      anchorSpan: effectiveAnchor.span,
+      nodeId: latestActiveDerivedNode.id,
+      title: `${latestActiveDerivedNode.package.title} revision`,
+      content: {
+        ...latestActiveDerivedNode.content,
+        note: "Debug superseded revision.",
+        revisedFrom: latestActiveDerivedNode.ref,
+      },
+      status: "working",
+    });
+    setDebugActionNote(`Superseded ${latestActiveDerivedNode.ref} with ${created.ref}`);
+  }, [effectiveAnchor, latestActiveDerivedNode, supersedeDerivedNodeForAnchor]);
 
   return (
     <div className="min-w-0 space-y-4 text-[var(--app-text-primary)]">
@@ -567,6 +608,28 @@ export const KnowledgePanel: React.FC<Props> = ({
                       <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
                         {anchorTimeline.nodes.length} nodes · {anchorTimeline.supersedeChains.length} supersede chains
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCreateDerivedForAnchor}
+                          className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)]"
+                        >
+                          Create Derived
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSupersedeDerivedForAnchor}
+                          disabled={!latestActiveDerivedNode}
+                          className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Supersede Latest Derived
+                        </button>
+                      </div>
+                      {debugActionNote ? (
+                        <div className="mt-2 text-[10px] text-[var(--app-text-secondary)]">
+                          {debugActionNote}
+                        </div>
+                      ) : null}
                       <div className="mt-3 space-y-2">
                         {anchorTimeline.nodes.length ? (
                           anchorTimeline.nodes.map((node) => (

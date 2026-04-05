@@ -130,6 +130,9 @@ interface NodeFlowProps {
   isDarkMode?: boolean;
   onOpenSyncPanel?: () => void;
   onOpenInfoPanel?: () => void;
+  onOpenKnowledgePanel?: (
+    section?: "knowledge:overview" | "knowledge:nodes" | "knowledge:links" | "knowledge:maps"
+  ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: {
@@ -405,6 +408,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   isDarkMode,
   onOpenSyncPanel,
   onOpenInfoPanel,
+  onOpenKnowledgePanel,
   onResetProject,
   onSignOut,
   accountInfo,
@@ -1157,6 +1161,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onOpenSyncPanel={onOpenSyncPanel}
               syncIndicator={syncIndicator}
               onOpenInfoPanel={onOpenInfoPanel}
+              onOpenKnowledgePanel={onOpenKnowledgePanel}
               onResetProject={onResetProject}
               onSignOut={onSignOut}
               onAssetLoad={onAssetLoad}

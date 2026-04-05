@@ -70,6 +70,9 @@ type Props = {
   onOpenSyncPanel?: () => void;
   syncIndicator?: { label: string; color: string } | null;
   onOpenInfoPanel?: () => void;
+  onOpenKnowledgePanel?: (
+    section?: "knowledge:overview" | "knowledge:nodes" | "knowledge:links" | "knowledge:maps"
+  ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
@@ -120,6 +123,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onOpenTheme,
   isDarkMode,
   syncIndicator,
+  onOpenKnowledgePanel,
   onResetProject,
   onSignOut,
   accountInfo,
@@ -135,7 +139,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [showTemplate, setShowTemplate] = useState(false);
   const [showWip, setShowWip] = useState(false);
   const [ioPane, setIoPane] = useState<"project" | "guides" | "export">("project");
-  const [nodePaletteMode, setNodePaletteMode] = useState<"panel" | "workflow">("workflow");
+  const [nodePaletteMode, setNodePaletteMode] = useState<"knowledge" | "workflow">("workflow");
   const scriptInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const understandingInputRef = useRef<HTMLInputElement>(null);
@@ -268,6 +272,44 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "剧本面板", hint: "按集与场景浏览剧本", meta: "Panel", onClick: onAddScriptBoard, Icon: BookOpen, tone: "text-sky-300", surface: "bg-sky-500/12" },
     { label: "分镜表面板", hint: "可调列宽和行高的表格", meta: "Table", onClick: onAddStoryboardBoard, Icon: List, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "Library", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
+  ];
+  const knowledgeDebugActions = [
+    {
+      label: "Knowledge Overview",
+      hint: "进入长期记忆层总览，查看当前 Knowledge Core 的定位与整体状态。",
+      meta: "Debug",
+      onClick: () => onOpenKnowledgePanel?.("knowledge:overview"),
+      Icon: SquareStack,
+      tone: "text-violet-300",
+      surface: "bg-violet-500/12",
+    },
+    {
+      label: "Knowledge Nodes",
+      hint: "直接查看长期记忆节点 registry，检查 canonical-source 与 agent-derived。",
+      meta: "Nodes",
+      onClick: () => onOpenKnowledgePanel?.("knowledge:nodes"),
+      Icon: Layers,
+      tone: "text-emerald-300",
+      surface: "bg-emerald-500/12",
+    },
+    {
+      label: "Knowledge Links",
+      hint: "直接查看知识关系链，检查 link 结构和局部连接是否正确。",
+      meta: "Links",
+      onClick: () => onOpenKnowledgePanel?.("knowledge:links"),
+      Icon: Share,
+      tone: "text-sky-300",
+      surface: "bg-sky-500/12",
+    },
+    {
+      label: "Knowledge Maps",
+      hint: "直接进入 maps、anchor lens 和 timeline 调试视图。",
+      meta: "Maps",
+      onClick: () => onOpenKnowledgePanel?.("knowledge:maps"),
+      Icon: Network,
+      tone: "text-amber-300",
+      surface: "bg-amber-500/12",
+    },
   ];
   const nodeActions = [
     { label: "Text", hint: "Draft prompts, notes, and structure", meta: "Writing", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
@@ -718,22 +760,22 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
                   <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
-                    {nodePaletteMode === "panel"
-                      ? "浏览项目面板类节点，整理剧本、分镜和身份信息。"
+                    {nodePaletteMode === "knowledge"
+                      ? "浏览项目面板类节点，并进入 Knowledge 长期记忆层调试入口。"
                       : "浏览 flow 节点，搭建输入、生成和引用链路。"}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
                   <button
                     type="button"
-                    onClick={() => setNodePaletteMode("panel")}
+                    onClick={() => setNodePaletteMode("knowledge")}
                     className={`${compactTabClass} ${
-                      nodePaletteMode === "panel"
+                      nodePaletteMode === "knowledge"
                         ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
                         : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
                     }`}
                   >
-                    Panel
+                    Knowledge
                   </button>
                   <button
                     type="button"
@@ -750,36 +792,81 @@ export const FloatingActionBar: React.FC<Props> = ({
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panel" ? "Panel Nodes" : "Flow Nodes"}</div>
+                  <div className={sectionEyebrowClass}>{nodePaletteMode === "knowledge" ? "Knowledge" : "Flow Nodes"}</div>
                   <div className="text-[10px] text-[var(--app-text-muted)]">
-                    {nodePaletteMode === "panel" ? `${panelActions.length} custom types` : `${nodeActions.length} actions`}
+                    {nodePaletteMode === "knowledge" ? `${panelActions.length + knowledgeDebugActions.length} entries` : `${nodeActions.length} actions`}
                   </div>
                 </div>
-                {nodePaletteMode === "panel" ? (
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
-                      <button
-                        key={label}
-                        onClick={() => {
-                          onClick();
-                          closeMenus();
-                        }}
-                        className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
-                      >
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                          <Icon size={18} />
-                        </div>
-                        <div className="mt-4">
-                          <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                          <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
-                        </div>
-                        <div className="mt-4">
-                          <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                            {meta}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                {nodePaletteMode === "knowledge" ? (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <div className={sectionEyebrowClass}>Panel Nodes</div>
+                        <div className="text-[10px] text-[var(--app-text-muted)]">{panelActions.length} custom types</div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                        {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
+                          <button
+                            key={label}
+                            onClick={() => {
+                              onClick();
+                              closeMenus();
+                            }}
+                            className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                          >
+                            <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                              <Icon size={18} />
+                            </div>
+                            <div className="mt-4">
+                              <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                              <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                            </div>
+                            <div className="mt-4">
+                              <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                                {meta}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <div className={sectionEyebrowClass}>Knowledge Debug</div>
+                        <div className="text-[10px] text-[var(--app-text-muted)]">{knowledgeDebugActions.length} entry</div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        {knowledgeDebugActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => {
+                              onClick?.();
+                              closeMenus();
+                            }}
+                            className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                                  <Icon size={18} />
+                                </div>
+                                <div className="mt-4">
+                                  <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                                  <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                                </div>
+                              </div>
+                              <ChevronRight size={14} className="mt-1 shrink-0 text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
+                            </div>
+                            <div className="mt-4">
+                              <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                                {meta}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-4">

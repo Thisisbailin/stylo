@@ -2339,6 +2339,7 @@ const App: React.FC = () => {
               isDarkMode={isDarkMode}
               onOpenSyncPanel={() => openWorkspacePanel("sync:status")}
               onOpenInfoPanel={() => openWorkspacePanel("info:about")}
+              onOpenKnowledgePanel={(section = "knowledge:overview") => openWorkspacePanel(section)}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
               accountInfo={{
