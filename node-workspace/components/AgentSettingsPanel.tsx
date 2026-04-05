@@ -134,7 +134,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "asset-library" | "workflow-builder";
+type ToolKey = "project-data" | "knowledge-memory" | "workflow-builder";
 
 type ToolItem = {
   key: ToolKey;
@@ -156,7 +156,7 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的目录、读取与搜索接口查阅项目资料，包括剧本、理解资产、内部 skill 包，以及当前节点工作流。",
+    description: "Agent 通过统一的目录、读取与搜索接口查阅项目资料，包括剧本、Knowledge 长期记忆、内部 skill 包，以及当前 NodeFlow 工作流。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     surfaces: ["skill package", "episode script", "episode storyboard", "project summary", "character profile", "scene profile", "workflow node", "workflow connection"],
     boundary: "只读，不允许直接修改项目状态。",
@@ -165,16 +165,16 @@ const TOOL_ITEMS: ToolItem[] = [
     Icon: Eye,
   },
   {
-    key: "asset-library",
+    key: "knowledge-memory",
     capability: "edit",
     title: "edit",
-    description: "Agent 通过统一编辑接口写回项目摘要、分集摘要、角色档案、场景档案与整集分镜表，不再暴露多套专用写入工具。",
-    tools: ["edit_project_resource"],
-    surfaces: ["project summary", "episode summary", "character profile", "scene profile", "episode storyboard"],
-    boundary: "只允许通过结构化 resource write 写入，不允许绕过 schema 直接改项目状态。",
-    artifact: "形成可持续迭代的长期事实层，供后续查阅、分镜和 workflow 创建继续使用。",
-    note: "负责把结构化理解写回项目资产。",
-    Icon: Layers,
+    description: "Agent 通过命令式 Knowledge 写入口创建派生记忆节点、创建知识关系，或以 supersede 方式修正已有派生记忆。",
+    tools: ["edit_knowledge_resource"],
+    surfaces: ["knowledge node", "knowledge link"],
+    boundary: "只允许写入 agent-derived Knowledge；不允许直接覆写 canonical-source。",
+    artifact: "输出新的 Knowledge 节点、Knowledge 关系或 supersede 生命周期链，作为长期记忆层的正式写入结果。",
+    note: "负责写入和修正长期记忆，不回写 NodeFlow。",
+    Icon: Sparkles,
   },
   {
     key: "workflow-builder",
@@ -1904,13 +1904,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              `operate_project_resource` 负责创建 text、script board、storyboard board、character card。
+                              `operate_project_resource` 负责创建 NodeFlow 的 text、script board、storyboard board、character card。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Connection</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              同一个 `operate_project_resource` 也负责连接已存在节点，形成最小工作流骨架。
+                              同一个 `operate_project_resource` 也负责连接已存在的 NodeFlow 节点，形成最小工作流骨架。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">

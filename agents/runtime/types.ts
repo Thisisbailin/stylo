@@ -1,5 +1,6 @@
 import type { Session } from "@openai/agents";
 import type { ProjectData, QalamToolSettings } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile } from "../../node-workspace/types";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 
@@ -19,6 +20,7 @@ export type AgentUiContext = {
 export type AgentEnvironmentProjectDigest = {
   fileName?: string;
   episodeCount: number;
+  sceneCount: number;
   projectSummary?: string;
   episodeSummaries: Array<{
     episodeId: number;
@@ -44,6 +46,25 @@ export type AgentEnvironmentProjectDigest = {
     episodeSummaryCount: number;
     primaryRoleCount: number;
     sceneRoleCount: number;
+  };
+  readingLayers: {
+    source: {
+      scriptAvailable: boolean;
+      episodeCount: number;
+      sceneCount: number;
+      canonicalBackbone: string;
+    };
+    knowledge: {
+      nodeCount: number;
+      linkCount: number;
+      canonicalNodeCount: number;
+      derivedNodeCount: number;
+    };
+    nodeflow: {
+      nodeCount: number;
+      linkCount: number;
+      graphLinkCount: number;
+    };
   };
 };
 
@@ -153,6 +174,7 @@ export type QalamRunResult = {
   outputItems: AgentOutputItem[];
   toolCalls: AgentExecutedToolCall[];
   updatedProjectData?: ProjectData;
+  updatedKnowledge?: KnowledgeSnapshot;
   updatedNodeFlow?: NodeFlowFile;
   updatedExecutionApprovals?: NodeFlowExecutionApprovalProposal[];
   tracing?: {

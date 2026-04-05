@@ -74,14 +74,22 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
     }
   }
   if (call.name === "operate_project_resource") {
-    if (output.resource_type === "execution_node" && typeof output.title === "string") {
-      return `Execution node · ${output.title}`;
+    if (output.resource_type === "nodeflow_node" && typeof output.title === "string") {
+      return `NodeFlow node · ${output.title}`;
     }
-    if (output.resource_type === "execution_link") {
-      return `Execution link · ${output.source_ref || output.source_node_id || "source"} -> ${output.target_ref || output.target_node_id || "target"}`;
+    if (output.resource_type === "nodeflow_link") {
+      return `NodeFlow link · ${output.source_ref || output.source_node_id || "source"} -> ${output.target_ref || output.target_node_id || "target"}`;
     }
-    if (output.resource_type === "graph_link") {
-      return `Graph link · ${output.source_ref || "source"} -> ${output.target_ref || "target"}`;
+    if (output.resource_type === "nodeflow_graph_link") {
+      return `NodeFlow graph link · ${output.source_ref || "source"} -> ${output.target_ref || "target"}`;
+    }
+  }
+  if (call.name === "edit_knowledge_resource") {
+    if (output.resource_type === "knowledge_node" && typeof output.title === "string") {
+      return `Knowledge node · ${output.title}`;
+    }
+    if (output.resource_type === "knowledge_link") {
+      return `Knowledge link · ${output.link_type || "link"}`;
     }
   }
   return undefined;

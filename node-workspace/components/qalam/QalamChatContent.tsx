@@ -794,7 +794,7 @@ const renderToolOutput = (tool: ToolPayload) => {
 };
 
 const READ_TOOL_NAMES = new Set(["list_project_resources", "read_project_resource", "search_project_resource"]);
-const WRITE_TOOL_NAMES = new Set(["edit_project_resource"]);
+const WRITE_TOOL_NAMES = new Set(["edit_knowledge_resource"]);
 const OPERATE_TOOL_NAMES = new Set(["operate_project_resource"]);
 
 const trimToolSummary = (summary?: string, fallback?: string) => {

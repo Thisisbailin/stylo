@@ -32,7 +32,7 @@ import type {
 } from "./types";
 
 const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
-  "edit_project_resource",
+  "edit_knowledge_resource",
   "operate_project_resource",
 ]);
 
@@ -328,6 +328,8 @@ export const runQalamAgentCore = async ({
     runtimeMode,
     agentEnvironment: buildAgentEnvironment({
       projectData: bridge.getProjectData(),
+      knowledgeSnapshot: bridge.getKnowledgeSnapshot(),
+      nodeFlowSnapshot: bridge.getNodeFlowSnapshot(),
       executionApprovals: bridge.getPendingNodeFlowExecutionApprovals(),
       runtimeMode,
       enabledTools: tools.map((tool) => tool.name),

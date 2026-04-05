@@ -2,8 +2,6 @@ import React from "react";
 import { BookOpen, Database, GitBranch, Network } from "lucide-react";
 import { useKnowledgeStore } from "../../store/knowledgeStore";
 import { KnowledgeFlowProjection } from "./KnowledgeFlowProjection";
-import { KnowledgeMutationLab } from "./KnowledgeMutationLab";
-import type { ProjectData } from "../../../types";
 import {
   buildKnowledgeAnchorMapProjection,
   buildKnowledgeAnchorTimelineProjection,
@@ -12,12 +10,12 @@ import {
   buildKnowledgeMap,
   buildKnowledgeScriptMapProjection,
 } from "../maps";
+import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
 import type { KnowledgeSurfaceFocusRequest } from "./focus";
 
-export type KnowledgeCanvasSection = "overview" | "nodes" | "links" | "maps" | "lab";
+export type KnowledgeCanvasSection = "overview" | "nodes" | "links" | "maps";
 
 type Props = {
-  projectData: ProjectData;
   section: KnowledgeCanvasSection;
   onSectionChange: (section: KnowledgeCanvasSection) => void;
   focusRequest?: KnowledgeSurfaceFocusRequest | null;
@@ -34,7 +32,6 @@ const infoCardClass =
   "rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3";
 
 export const KnowledgeCanvasSurface: React.FC<Props> = ({
-  projectData,
   section,
   onSectionChange,
   focusRequest,
@@ -43,7 +40,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
   const nodes = useKnowledgeStore((state) => state.nodes);
   const links = useKnowledgeStore((state) => state.links);
   const readNodeDetail = useKnowledgeStore((state) => state.readNodeDetail);
-  const seedCanonicalSource = useKnowledgeStore((state) => state.seedCanonicalSource);
   const [focusNodeRef, setFocusNodeRef] = React.useState<string>("");
   const [focusAnchorRef, setFocusAnchorRef] = React.useState<string>("");
 
@@ -153,13 +149,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
             links: map.links,
           };
     }
-    if (section === "lab") {
-      return {
-        title: "Full Knowledge Map",
-        nodes: map.nodes,
-        links: map.links,
-      };
-    }
     const scriptNodes = scriptMap.scripts.flatMap((script) => [
       script.node,
       ...script.episodes.flatMap((episode) => [episode.node, ...episode.scenes.map((scene) => scene.node)]),
@@ -217,9 +206,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
               <button type="button" className={tabClass(section === "maps")} onClick={() => onSectionChange("maps")}>
                 Anchor
               </button>
-              <button type="button" className={tabClass(section === "lab")} onClick={() => onSectionChange("lab")}>
-                Lab
-              </button>
             </div>
           </div>
 
@@ -231,6 +217,17 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
               selectedNodeRef={effectiveFocusNodeRef}
               onSelectNodeRef={setFocusNodeRef}
               variant="canvas"
+              layoutMode={
+                section === "overview"
+                  ? "backbone"
+                  : section === "nodes"
+                    ? "focus"
+                    : section === "links"
+                      ? "revisions"
+                      : section === "maps"
+                        ? "anchor"
+                        : "full"
+              }
             />
           </div>
 
@@ -286,13 +283,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => seedCanonicalSource(projectData)}
-                    className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)]"
-                  >
-                    Seed Script Sources
-                  </button>
                   {recentDerivedNodes.length ? (
                     <div className="space-y-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-secondary)]">
@@ -310,7 +300,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                               {node.package.title}
                             </div>
                             <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-secondary)]">
-                              {node.kind}
+                              {formatKnowledgeKindLabel(node.kind)}
                             </div>
                           </div>
                           <div className="text-[10px] text-[var(--app-text-muted)]">
@@ -320,24 +310,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                       ))}
                     </div>
                   ) : null}
-                </div>
-              ) : section === "lab" ? (
-                <div className="space-y-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Mutation Lab
-                  </div>
-                  <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                    这里是开发期的单独实验区，用于验证 derived knowledge 的 create / supersede。
-                    它和正式的只读 Knowledge Surface 使用同一张背面画布。
-                  </div>
-                  <KnowledgeMutationLab
-                    anchor={anchorTimeline.anchor}
-                    latestActiveDerivedNode={
-                      anchorTimeline.nodes.find(
-                        (node) => node.origin === "agent-derived" && node.package.status !== "superseded"
-                      ) || null
-                    }
-                  />
                 </div>
               ) : selectedNodeDetail ? (
                 <div className="space-y-2 text-[12px] text-[var(--app-text-secondary)]">
@@ -350,7 +322,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                   </div>
                   <div>{selectedNodeDetail.ref}</div>
                   <div>
-                    {selectedNodeDetail.kind} · {selectedNodeDetail.origin} · {selectedNodeDetail.package.status}
+                    {formatKnowledgeKindLabel(selectedNodeDetail.kind)} · {formatKnowledgeOriginLabel(selectedNodeDetail.origin)} · {selectedNodeDetail.package.status}
                   </div>
                   <div>
                     anchors {selectedNodeDetail.anchors.length} · incoming {selectedNodeDetail.incomingLinks.length} · outgoing {selectedNodeDetail.outgoingLinks.length}
@@ -442,10 +414,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                       这个视角只观察知识被修正、替代和演化的路径，不强调整张网，而强调时间性的变化。
                     </div>
                   </div>
-                </div>
-              ) : section === "lab" ? (
-                <div className="mt-3 text-[12px] text-[var(--app-text-secondary)]">
-                  当前仍然停留在同一张 Nodes 背面画布上。Lab 只是在这张画布上临时打开开发实验能力，不改变 Knowledge 作为长期记忆观测面的本质。
                 </div>
               ) : section === "overview" ? (
                 <div className="mt-3 space-y-3 text-[12px] text-[var(--app-text-secondary)]">

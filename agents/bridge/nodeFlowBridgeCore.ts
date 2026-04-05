@@ -1,6 +1,13 @@
 import type { Connection } from "@xyflow/react";
 import type { ProjectData } from "../../types";
-import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
+import type {
+  KnowledgeAnchor,
+  KnowledgeLink,
+  KnowledgeNode,
+  KnowledgeNodeConfidence,
+  KnowledgeNodeStatus,
+  KnowledgeSnapshot,
+} from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
@@ -36,6 +43,51 @@ type NodeFlowBridgeDeps = {
   getNodeFlowSnapshot: () => NodeFlowFile;
   getKnowledgeSnapshot: () => KnowledgeSnapshot;
   getPendingExecutionApprovals?: () => NodeFlowExecutionApprovalProposal[];
+  createDerivedKnowledgeNode: (input: {
+    id?: string;
+    ref?: string;
+    kind: string;
+    title: string;
+    content?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+    status?: KnowledgeNodeStatus;
+    confidence?: KnowledgeNodeConfidence;
+    anchors?: KnowledgeAnchor[];
+    anchorType?: KnowledgeAnchor["type"];
+    anchorRef?: string;
+    anchorSpan?: string;
+    createdAt?: number;
+    updatedAt?: number;
+  }) => KnowledgeNode;
+  createDerivedKnowledgeLink: (input: {
+    id?: string;
+    fromNodeId: string;
+    toNodeId: string;
+    type: string;
+    weight?: number;
+    status?: "active" | "superseded";
+    createdAt?: number;
+    updatedAt?: number;
+  }) => KnowledgeLink;
+  supersedeDerivedKnowledgeNode: (input: {
+    nodeId?: string;
+    nodeRef?: string;
+    id?: string;
+    ref?: string;
+    kind?: string;
+    title?: string;
+    content?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+    status?: KnowledgeNodeStatus;
+    confidence?: KnowledgeNodeConfidence;
+    anchors?: KnowledgeAnchor[];
+    anchorType?: KnowledgeAnchor["type"];
+    anchorRef?: string;
+    anchorSpan?: string;
+    relationType?: string;
+    createdAt?: number;
+    updatedAt?: number;
+  }) => { previousNode: KnowledgeNode; node: KnowledgeNode; link: KnowledgeLink };
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
@@ -407,6 +459,9 @@ export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBrid
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
   getKnowledgeSnapshot: deps.getKnowledgeSnapshot,
   getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],
+  createDerivedKnowledgeNode: (input) => deps.createDerivedKnowledgeNode(input),
+  createDerivedKnowledgeLink: (input) => deps.createDerivedKnowledgeLink(input),
+  supersedeDerivedKnowledgeNode: (input) => deps.supersedeDerivedKnowledgeNode(input),
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),

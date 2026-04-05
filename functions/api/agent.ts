@@ -16,6 +16,13 @@ import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace
 import type { ProjectData } from "../../types";
 import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import { createEmptyKnowledgeSnapshot } from "../../node-workspace/knowledge/defaults";
+import {
+  createAnchoredDerivedKnowledgeNodeCommand,
+  createDerivedKnowledgeLinkCommand,
+  createDerivedKnowledgeNodeCommand,
+  supersedeAnchoredDerivedKnowledgeNodeCommand,
+  supersedeDerivedKnowledgeNodeCommand,
+} from "../../node-workspace/knowledge/commands";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
@@ -88,6 +95,7 @@ const createNodeFlowBridgeState = (
   let currentKnowledge: KnowledgeSnapshot = structuredClone(
     knowledge || createEmptyKnowledgeSnapshot()
   );
+  let knowledgeUpdated = false;
   let currentExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal> = {};
   let executionApprovalsUpdated = false;
   let nodeIdCounter = (currentNodeFlow.nodes || []).reduce((max, node) => {
@@ -144,12 +152,46 @@ const createNodeFlowBridgeState = (
     nodeFlowUpdated = true;
   };
 
+  const createDerivedKnowledgeNode = (input: Parameters<typeof createDerivedKnowledgeNodeCommand>[1]) => {
+    const result =
+      input.anchorType && input.anchorRef
+        ? createAnchoredDerivedKnowledgeNodeCommand(currentKnowledge, input as Parameters<typeof createAnchoredDerivedKnowledgeNodeCommand>[1])
+        : createDerivedKnowledgeNodeCommand(currentKnowledge, input);
+    currentKnowledge = result.snapshot;
+    knowledgeUpdated = true;
+    return result.node;
+  };
+
+  const createDerivedKnowledgeLink = (input: Parameters<typeof createDerivedKnowledgeLinkCommand>[1]) => {
+    const result = createDerivedKnowledgeLinkCommand(currentKnowledge, input);
+    currentKnowledge = result.snapshot;
+    knowledgeUpdated = true;
+    return result.link;
+  };
+
+  const supersedeDerivedKnowledgeNode = (input: Parameters<typeof supersedeDerivedKnowledgeNodeCommand>[1]) => {
+    const result =
+      input.anchorType && input.anchorRef
+        ? supersedeAnchoredDerivedKnowledgeNodeCommand(currentKnowledge, input as Parameters<typeof supersedeAnchoredDerivedKnowledgeNodeCommand>[1])
+        : supersedeDerivedKnowledgeNodeCommand(currentKnowledge, input);
+    currentKnowledge = result.snapshot;
+    knowledgeUpdated = true;
+    return {
+      previousNode: result.previousNode,
+      node: result.node,
+      link: result.link,
+    };
+  };
+
   return {
     bridge: createQalamAgentBridge({
       getProjectData: () => currentProjectData,
       getNodeFlowSnapshot: () => currentNodeFlow,
       getKnowledgeSnapshot: () => currentKnowledge,
       getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
+      createDerivedKnowledgeNode,
+      createDerivedKnowledgeLink,
+      supersedeDerivedKnowledgeNode,
       updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
         currentProjectData = updater(currentProjectData);
         projectDataUpdated = true;
@@ -181,6 +223,8 @@ const createNodeFlowBridgeState = (
     hasUpdatedNodeFlow: () => nodeFlowUpdated,
     getExecutionApprovals: () => Object.values(currentExecutionApprovals),
     hasUpdatedExecutionApprovals: () => executionApprovalsUpdated,
+    getKnowledge: () => currentKnowledge,
+    hasUpdatedKnowledge: () => knowledgeUpdated,
   };
 };
 
@@ -401,6 +445,7 @@ export const onRequestPost = async (context: any) => {
           traceIncludeSensitiveData: false,
           getExtraResult: () => ({
             updatedProjectData: bridgeState.hasUpdatedProjectData() ? bridgeState.getProjectData() : undefined,
+            updatedKnowledge: bridgeState.hasUpdatedKnowledge() ? bridgeState.getKnowledge() : undefined,
             updatedNodeFlow: bridgeState.hasUpdatedNodeFlow() ? bridgeState.getNodeFlow() : undefined,
             updatedExecutionApprovals: bridgeState.hasUpdatedExecutionApprovals()
               ? bridgeState.getExecutionApprovals()

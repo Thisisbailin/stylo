@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { ProjectData } from "../../types";
-import { buildCanonicalKnowledgeSnapshot } from "../knowledge/canonicalSource";
+import { syncCanonicalKnowledgeSnapshot } from "../knowledge/canonicalSource";
 import {
   createAnchoredDerivedKnowledgeNodeCommand,
   createDerivedKnowledgeLinkCommand,
@@ -9,10 +9,6 @@ import {
   supersedeDerivedKnowledgeNodeCommand,
 } from "../knowledge/commands";
 import { createEmptyKnowledgeSnapshot } from "../knowledge/defaults";
-import {
-  upsertKnowledgeLinks,
-  upsertKnowledgeNodes,
-} from "../knowledge/mutations";
 import {
   listKnowledgeNodeIdentities,
   readKnowledgeNodeDetail,
@@ -45,6 +41,7 @@ type KnowledgeStore = {
   revision: number;
   nodes: KnowledgeNode[];
   links: KnowledgeLink[];
+  applyKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
   devReplaceKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
   createDerivedNode: (input: {
     id?: string;
@@ -120,7 +117,7 @@ type KnowledgeStore = {
     createdAt?: number;
     updatedAt?: number;
   }) => KnowledgeNode;
-  seedCanonicalSource: (projectData: ProjectData) => void;
+  syncCanonicalSource: (projectData: ProjectData) => void;
   devClearKnowledge: () => void;
   getKnowledgeMap: () => KnowledgeMap;
   getKnowledgeLocalMap: (args: {
@@ -157,6 +154,7 @@ const applySnapshot = (snapshot: KnowledgeSnapshot) => ({
 export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
   ...createEmptyKnowledgeSnapshot(),
 
+  applyKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
   devReplaceKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
 
   createDerivedNode: (input) => {
@@ -209,12 +207,8 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
     return created;
   },
 
-  seedCanonicalSource: (projectData) =>
-    set((state) => {
-      const seeded = buildCanonicalKnowledgeSnapshot(projectData);
-      const withNodes = upsertKnowledgeNodes(toSnapshot(state), seeded.nodes);
-      return applySnapshot(upsertKnowledgeLinks(withNodes, seeded.links));
-    }),
+  syncCanonicalSource: (projectData) =>
+    set((state) => applySnapshot(syncCanonicalKnowledgeSnapshot(toSnapshot(state), projectData))),
 
   devClearKnowledge: () => set(createEmptyKnowledgeSnapshot()),
 

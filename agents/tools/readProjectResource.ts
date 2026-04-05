@@ -22,14 +22,24 @@ export const READ_PROJECT_RESOURCE_TYPES = [
   "knowledge_lifecycle",
   "knowledge_anchor_timeline",
   "source_node",
-  "graph_node",
-  "graph_node_identity",
-  "graph_node_detail",
-  "execution_approval",
-  "execution_link",
-  "graph_link",
-  "map",
+  "nodeflow_node",
+  "nodeflow_node_identity",
+  "nodeflow_node_detail",
+  "nodeflow_execution_approval",
+  "nodeflow_link",
+  "nodeflow_graph_link",
+  "nodeflow_map",
 ] as const;
+
+const READ_PROJECT_RESOURCE_TYPE_ALIASES: Record<string, ResourceType> = {
+  graph_node: "nodeflow_node",
+  graph_node_identity: "nodeflow_node_identity",
+  graph_node_detail: "nodeflow_node_detail",
+  execution_approval: "nodeflow_execution_approval",
+  execution_link: "nodeflow_link",
+  graph_link: "nodeflow_graph_link",
+  map: "nodeflow_map",
+};
 
 const readProjectResourceParameters = {
   type: "object",
@@ -37,35 +47,35 @@ const readProjectResourceParameters = {
     resource_type: {
       type: "string",
       enum: [...READ_PROJECT_RESOURCE_TYPES],
-      description: "Which graph resource to read.",
+      description: "Which Source, Knowledge, or NodeFlow resource to read.",
     },
     item_id: {
       type: "string",
-      description: "Item id for skill_package or graph_link.",
+      description: "Item id for skill_package or nodeflow_graph_link.",
     },
     name: {
       type: "string",
-      description: "Name for skill_package, source_node, or map lookup.",
+      description: "Name for skill_package, source_node, or nodeflow_map lookup.",
     },
     source_ref: {
       type: "string",
-      description: "Projected source ref, for example source:scene:1-3 or scene:1-3.",
+      description: "Projected source ref, for example scene:1-3.",
     },
     node_id: {
       type: "string",
-      description: "Concrete node id for graph_node, graph_node_identity, or graph_node_detail.",
+      description: "Concrete node id for nodeflow_node, nodeflow_node_identity, or nodeflow_node_detail.",
     },
     node_ref: {
       type: "string",
-      description: "Stable node ref for graph_node, graph_node_identity, or graph_node_detail.",
+      description: "Stable node ref for nodeflow_node, nodeflow_node_identity, or nodeflow_node_detail.",
     },
     link_id: {
       type: "string",
-      description: "Link id for execution_link, graph_link, or execution_approval lookup by approval id.",
+      description: "Link id for nodeflow_link, nodeflow_graph_link, or nodeflow_execution_approval lookup by approval id.",
     },
     map_id: {
       type: "string",
-      description: "Map id such as map:workspace or map:view:xxx.",
+      description: "NodeFlow map id such as map:workspace or map:view:xxx.",
     },
     view: {
       type: "string",
@@ -125,30 +135,46 @@ const parseArgs = (input: unknown) => {
   const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
 
   if (!resourceType) throw new Error("read_project_resource 需要 resource_type。");
-  if (!(READ_PROJECT_RESOURCE_TYPES as readonly string[]).includes(resourceType)) {
+  const normalizedResourceType = ((READ_PROJECT_RESOURCE_TYPES as readonly string[]).includes(resourceType)
+    ? resourceType
+    : READ_PROJECT_RESOURCE_TYPE_ALIASES[resourceType]) as ResourceType | undefined;
+  if (!normalizedResourceType) {
     throw new Error(`read_project_resource 不支持 resource_type=${resourceType}`);
   }
   if (resourceType === "skill_package" && !itemId && !name) {
     throw new Error("skill_package 需要 item_id 或 name。");
   }
-  if (resourceType === "source_node" && !sourceRef && !name) {
+  if (normalizedResourceType === "source_node" && !sourceRef && !name) {
     throw new Error("source_node 需要 source_ref 或 name。");
   }
-  if (resourceType.startsWith("knowledge_node") && !nodeId && !nodeRef) {
-    throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
+  if (normalizedResourceType.startsWith("knowledge_node") && !nodeId && !nodeRef) {
+    throw new Error(`${normalizedResourceType} 需要 node_id 或 node_ref。`);
   }
-  if ((resourceType === "graph_node" || resourceType === "graph_node_identity" || resourceType === "graph_node_detail") && !nodeId && !nodeRef) {
-    throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
+  if (
+    (normalizedResourceType === "nodeflow_node" ||
+      normalizedResourceType === "nodeflow_node_identity" ||
+      normalizedResourceType === "nodeflow_node_detail") &&
+    !nodeId &&
+    !nodeRef
+  ) {
+    throw new Error(`${normalizedResourceType} 需要 node_id 或 node_ref。`);
   }
-    if ((resourceType === "graph_link" || resourceType === "execution_link" || resourceType === "execution_approval") && !linkId && !nodeId && !nodeRef) {
-      throw new Error(`${resourceType} 需要 link_id。`);
+    if (
+      (normalizedResourceType === "nodeflow_graph_link" ||
+        normalizedResourceType === "nodeflow_link" ||
+        normalizedResourceType === "nodeflow_execution_approval") &&
+      !linkId &&
+      !nodeId &&
+      !nodeRef
+    ) {
+      throw new Error(`${normalizedResourceType} 需要 link_id。`);
     }
-  if (resourceType === "map" && !mapId && !view && !name) {
-    throw new Error("map 需要 map_id、view 或 name。");
+  if (normalizedResourceType === "nodeflow_map" && !mapId && !view && !name) {
+    throw new Error("nodeflow_map 需要 map_id、view 或 name。");
   }
 
   return {
-    resourceType: resourceType as ResourceType,
+    resourceType: normalizedResourceType,
     itemId,
     name,
     sourceRef,
@@ -183,7 +209,7 @@ const clipStructuredValue = (value: unknown, maxChars?: number): unknown => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete graph resource from the current project. Supports skill packages, projected source nodes, graph nodes, pending execution approvals, graph links, and map views.",
+    "Read a concrete project resource from the current project. Use Source resources for canonical script facts, Knowledge resources for long-term memory, and NodeFlow resources for current canvas structure, links, approvals, and maps.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -273,7 +299,7 @@ export const readProjectResourceToolDef = {
           };
     }
 
-    if (args.resourceType === "graph_node") {
+    if (args.resourceType === "nodeflow_node") {
       const rawNode = findNodeFlowNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
@@ -288,7 +314,7 @@ export const readProjectResourceToolDef = {
           : { incomingLinks: [], outgoingLinks: [] };
       return node
         ? {
-            resource_type: "graph_node",
+            resource_type: "nodeflow_node",
             found: true,
             node_id: node.nodeId,
             node_ref: node.ref,
@@ -303,21 +329,21 @@ export const readProjectResourceToolDef = {
             meta: clipStructuredValue(node.meta || {}, args.maxChars),
           }
         : {
-            resource_type: "graph_node",
+            resource_type: "nodeflow_node",
             found: false,
             node_id: args.nodeId || null,
             node_ref: args.nodeRef || null,
           };
     }
 
-    if (args.resourceType === "graph_node_identity") {
+    if (args.resourceType === "nodeflow_node_identity") {
       const rawNode = findNodeFlowNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
       });
       if (!rawNode) {
         return {
-          resource_type: "graph_node_identity",
+          resource_type: "nodeflow_node_identity",
           found: false,
           node_id: args.nodeId || null,
           node_ref: args.nodeRef || null,
@@ -328,7 +354,7 @@ export const readProjectResourceToolDef = {
         : null;
       const linkRelations = getNodeFlowLinkRelationsForNode(workflow, rawNode.id);
       return {
-        resource_type: "graph_node_identity",
+        resource_type: "nodeflow_node_identity",
         found: true,
         node_id: rawNode.id,
         node_ref: getNodeFlowNodeRef(rawNode),
@@ -341,14 +367,14 @@ export const readProjectResourceToolDef = {
       };
     }
 
-    if (args.resourceType === "graph_node_detail") {
+    if (args.resourceType === "nodeflow_node_detail") {
       const node = findGraphNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
       });
       return node
         ? {
-            resource_type: "graph_node_detail",
+            resource_type: "nodeflow_node_detail",
             found: true,
             node_id: node.nodeId,
             node_ref: node.ref,
@@ -361,14 +387,14 @@ export const readProjectResourceToolDef = {
             meta: clipStructuredValue(node.meta || {}, args.maxChars),
           }
         : {
-            resource_type: "graph_node_detail",
+            resource_type: "nodeflow_node_detail",
             found: false,
             node_id: args.nodeId || null,
             node_ref: args.nodeRef || null,
           };
     }
 
-    if (args.resourceType === "execution_approval") {
+    if (args.resourceType === "nodeflow_execution_approval") {
       const approvals = bridge.getPendingNodeFlowExecutionApprovals();
       const approval =
         approvals.find((item) => item.id === args.linkId) ||
@@ -376,7 +402,7 @@ export const readProjectResourceToolDef = {
         approvals.find((item) => item.nodeRef && item.nodeRef === args.nodeRef);
       return approval
         ? {
-            resource_type: "execution_approval",
+            resource_type: "nodeflow_execution_approval",
             found: true,
             approval_id: approval.id,
             node_id: approval.nodeId,
@@ -392,7 +418,7 @@ export const readProjectResourceToolDef = {
             approval_status: "pending",
           }
         : {
-            resource_type: "execution_approval",
+            resource_type: "nodeflow_execution_approval",
             found: false,
             approval_id: args.linkId || null,
             node_id: args.nodeId || null,
@@ -400,11 +426,11 @@ export const readProjectResourceToolDef = {
           };
     }
 
-    if (args.resourceType === "execution_link") {
+    if (args.resourceType === "nodeflow_link") {
       const link = findExecutionLink(workflow, args.linkId!);
       return link
         ? {
-            resource_type: "execution_link",
+            resource_type: "nodeflow_link",
             found: true,
             link_id: link.id,
             from_node_id: link.fromNodeId,
@@ -414,24 +440,24 @@ export const readProjectResourceToolDef = {
             paused: link.paused,
           }
         : {
-            resource_type: "execution_link",
+            resource_type: "nodeflow_link",
             found: false,
             link_id: args.linkId || null,
           };
     }
 
-    if (args.resourceType === "graph_link") {
+    if (args.resourceType === "nodeflow_graph_link") {
       const link = findGraphLink(workflow, args.linkId!);
       return link
         ? {
-            resource_type: "graph_link",
+            resource_type: "nodeflow_graph_link",
             found: true,
             link_id: link.id,
             source_ref: link.sourceRef,
             target_ref: link.targetRef,
           }
         : {
-            resource_type: "graph_link",
+            resource_type: "nodeflow_graph_link",
             found: false,
             link_id: args.linkId || null,
           };
@@ -445,7 +471,7 @@ export const readProjectResourceToolDef = {
       maps.find((item) => needle && item.name.trim().toLowerCase() === needle);
     return map
       ? {
-          resource_type: "map",
+          resource_type: "nodeflow_map",
           found: true,
           map_id: map.mapId,
           name: map.name,
@@ -455,7 +481,7 @@ export const readProjectResourceToolDef = {
           link_count: map.linkCount,
         }
       : {
-          resource_type: "map",
+          resource_type: "nodeflow_map",
           found: false,
           map_id: args.mapId || null,
           view: args.view || null,
@@ -465,21 +491,21 @@ export const readProjectResourceToolDef = {
   summarize: (output: any) => {
     if (output?.found === false) return `未找到 ${output?.resource_type || "resource"}`;
     if (output.resource_type === "skill_package") return `读取技能包 ${output.title || output.item_id}`;
-    if (output.resource_type === "knowledge_node_identity") return `读取 knowledge 节点识别层 ${output.item?.title || output.item?.ref || ""}`;
-    if (output.resource_type === "knowledge_node_detail") return `读取 knowledge 节点细节层 ${output.item?.package?.title || output.item?.ref || ""}`;
-    if (output.resource_type === "knowledge_map") return `读取 knowledge 全图`;
-    if (output.resource_type === "knowledge_local_map") return `读取 knowledge 局部地图`;
-    if (output.resource_type === "knowledge_anchor_map") return `读取 knowledge anchor 地图`;
-    if (output.resource_type === "knowledge_map_lens") return `读取 knowledge lens 地图`;
-    if (output.resource_type === "knowledge_lifecycle") return `读取 knowledge 生命周期视图`;
-    if (output.resource_type === "knowledge_anchor_timeline") return `读取 knowledge anchor 时间线`;
-    if (output.resource_type === "source_node") return `读取 source 节点 ${output.title || output.ref}`;
-    if (output.resource_type === "graph_node") return `读取 graph 节点 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "graph_node_identity") return `读取 graph 节点识别层 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "graph_node_detail") return `读取 graph 节点细节层 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "execution_approval") return `读取待审批执行请求 ${output.node_title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "execution_link") return `读取执行连线 ${output.link_id}`;
-    if (output.resource_type === "graph_link") return `读取 graph 连线 ${output.link_id}`;
-    return `读取地图 ${output.name || output.map_id}`;
+    if (output.resource_type === "knowledge_node_identity") return `读取 Knowledge 节点识别层 ${output.item?.title || output.item?.ref || ""}`;
+    if (output.resource_type === "knowledge_node_detail") return `读取 Knowledge 节点细节层 ${output.item?.package?.title || output.item?.ref || ""}`;
+    if (output.resource_type === "knowledge_map") return `读取 Knowledge 全图`;
+    if (output.resource_type === "knowledge_local_map") return `读取 Knowledge 局部地图`;
+    if (output.resource_type === "knowledge_anchor_map") return `读取 Knowledge anchor 地图`;
+    if (output.resource_type === "knowledge_map_lens") return `读取 Knowledge lens 地图`;
+    if (output.resource_type === "knowledge_lifecycle") return `读取 Knowledge 生命周期视图`;
+    if (output.resource_type === "knowledge_anchor_timeline") return `读取 Knowledge anchor 时间线`;
+    if (output.resource_type === "source_node") return `读取 Source 节点 ${output.title || output.ref}`;
+    if (output.resource_type === "nodeflow_node") return `读取 NodeFlow 节点 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "nodeflow_node_identity") return `读取 NodeFlow 节点识别层 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "nodeflow_node_detail") return `读取 NodeFlow 节点细节层 ${output.title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "nodeflow_execution_approval") return `读取 NodeFlow 待审批执行请求 ${output.node_title || output.node_ref || output.node_id}`;
+    if (output.resource_type === "nodeflow_link") return `读取 NodeFlow 连线 ${output.link_id}`;
+    if (output.resource_type === "nodeflow_graph_link") return `读取 NodeFlow 图引用连线 ${output.link_id}`;
+    return `读取 NodeFlow 地图 ${output.name || output.map_id}`;
   },
 };

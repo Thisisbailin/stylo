@@ -2,12 +2,12 @@ import { tool } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import type { AgentExecutedToolCall, AgentRuntimeEvent } from "../runtime/types";
 import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
+import { editKnowledgeResourceToolDef } from "./editKnowledgeResource";
 import { listProjectResourcesToolDef } from "./listProjectResources";
 import { operateProjectResourceToolDef } from "./operateProjectResource";
 import { pingToolDef } from "./ping";
 import { readProjectResourceToolDef } from "./readProjectResource";
 import { searchProjectResourceToolDef } from "./searchProjectResource";
-import { editUnderstandingResourceToolDef } from "./editUnderstandingResource";
 import { prepareGenerationExecutionToolDef } from "./prepareGenerationExecution";
 import { cancelGenerationExecutionToolDef } from "./cancelGenerationExecution";
 
@@ -17,7 +17,7 @@ const LOOKUP_TOOL_NAMES = new Set([
   "search_project_resource",
 ]);
 const MUTATING_TOOL_NAMES = new Set([
-  "edit_project_resource",
+  "edit_knowledge_resource",
   "operate_project_resource",
   "prepare_generation_execution",
   "cancel_generation_execution",
@@ -28,7 +28,7 @@ const TOOL_DEFS = [
   listProjectResourcesToolDef,
   readProjectResourceToolDef,
   searchProjectResourceToolDef,
-  editUnderstandingResourceToolDef,
+  editKnowledgeResourceToolDef,
   operateProjectResourceToolDef,
   prepareGenerationExecutionToolDef,
   cancelGenerationExecutionToolDef,

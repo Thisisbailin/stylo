@@ -13,13 +13,22 @@ export const LIST_PROJECT_RESOURCE_TYPES = [
   "knowledge_node_identities",
   "knowledge_anchors",
   "source_nodes",
-  "graph_nodes",
-  "graph_node_identities",
-  "execution_approvals",
-  "execution_links",
-  "graph_links",
-  "maps",
+  "nodeflow_nodes",
+  "nodeflow_node_identities",
+  "nodeflow_execution_approvals",
+  "nodeflow_links",
+  "nodeflow_graph_links",
+  "nodeflow_maps",
 ] as const;
+
+const LIST_PROJECT_RESOURCE_TYPE_ALIASES: Record<string, ResourceType> = {
+  graph_nodes: "nodeflow_nodes",
+  graph_node_identities: "nodeflow_node_identities",
+  execution_approvals: "nodeflow_execution_approvals",
+  execution_links: "nodeflow_links",
+  graph_links: "nodeflow_graph_links",
+  maps: "nodeflow_maps",
+};
 
 const listProjectResourcesParameters = {
   type: "object",
@@ -27,12 +36,12 @@ const listProjectResourcesParameters = {
     resource_type: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_TYPES],
-      description: "Which graph resource directory to inspect.",
+      description: "Which Source, Knowledge, or NodeFlow resource directory to inspect.",
     },
     plane: {
       type: "string",
       enum: ["source", "semantic", "design", "execution"],
-      description: "Optional plane filter when resource_type=graph_nodes or graph_node_identities.",
+      description: "Optional plane filter when resource_type=nodeflow_nodes or nodeflow_node_identities.",
     },
     max_items: {
       type: "integer",
@@ -65,11 +74,14 @@ const parseArgs = (input: unknown) => {
   const plane = trim(raw.plane) || undefined;
   const maxItems = toPositiveInteger(raw.max_items ?? raw.maxItems);
   if (!resourceType) throw new Error("list_project_resources 需要 resource_type。");
-  if (!(LIST_PROJECT_RESOURCE_TYPES as readonly string[]).includes(resourceType)) {
+  const normalizedResourceType = ((LIST_PROJECT_RESOURCE_TYPES as readonly string[]).includes(resourceType)
+    ? resourceType
+    : LIST_PROJECT_RESOURCE_TYPE_ALIASES[resourceType]) as ResourceType | undefined;
+  if (!normalizedResourceType) {
     throw new Error(`list_project_resources 不支持 resource_type=${resourceType}`);
   }
   return {
-    resourceType: resourceType as ResourceType,
+    resourceType: normalizedResourceType,
     plane,
     maxItems: Math.max(1, Math.min(200, maxItems || 50)),
   };
@@ -78,7 +90,7 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List available project resources before reading them. Supports skill packages, knowledge resources, projected source nodes, graph nodes, pending execution approvals, graph links, and maps.",
+    "List available project resources before reading them. Use it across the three project-reading layers: Source for canonical script facts, Knowledge for long-term memory, and NodeFlow resources for current canvas structure and execution state.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -124,7 +136,7 @@ export const listProjectResourcesToolDef = {
       };
     }
 
-    if (args.resourceType === "graph_nodes" || args.resourceType === "graph_node_identities") {
+    if (args.resourceType === "nodeflow_nodes" || args.resourceType === "nodeflow_node_identities") {
       const allNodes = buildGraphNodesFromWorkflow(workflow);
       const filteredNodes = args.plane ? allNodes.filter((node) => node.plane === args.plane) : allNodes;
       const items = filteredNodes.slice(0, args.maxItems).map((node) => ({
@@ -147,7 +159,7 @@ export const listProjectResourcesToolDef = {
       };
     }
 
-    if (args.resourceType === "execution_links") {
+    if (args.resourceType === "nodeflow_links") {
       const items = workflow.links.slice(0, args.maxItems).map((link) => ({
         link_id: link.id,
         from_node_id: link.source,
@@ -157,13 +169,13 @@ export const listProjectResourcesToolDef = {
         paused: Boolean(link.data?.hasPause),
       }));
       return {
-        resource_type: "execution_links",
+        resource_type: "nodeflow_links",
         total: workflow.links.length,
         items,
       };
     }
 
-    if (args.resourceType === "execution_approvals") {
+    if (args.resourceType === "nodeflow_execution_approvals") {
       const approvals = bridge.getPendingNodeFlowExecutionApprovals();
       const items = approvals.slice(0, args.maxItems).map((approval) => ({
         approval_id: approval.id,
@@ -177,20 +189,20 @@ export const listProjectResourcesToolDef = {
         created_at: approval.createdAt,
       }));
       return {
-        resource_type: "execution_approvals",
+        resource_type: "nodeflow_execution_approvals",
         total: approvals.length,
         items,
       };
     }
 
-    if (args.resourceType === "graph_links") {
+    if (args.resourceType === "nodeflow_graph_links") {
       const items = (workflow.graphLinks || []).slice(0, args.maxItems).map((link) => ({
         link_id: link.id,
         source_ref: link.sourceRef,
         target_ref: link.targetRef,
       }));
       return {
-        resource_type: "graph_links",
+        resource_type: "nodeflow_graph_links",
         total: (workflow.graphLinks || []).length,
         items,
       };
@@ -198,7 +210,7 @@ export const listProjectResourcesToolDef = {
 
     const maps = buildProjectGraphMaps(workflow);
       return {
-        resource_type: "maps",
+        resource_type: "nodeflow_maps",
       total: maps.length,
       items: maps.slice(0, args.maxItems).map((map) => ({
         map_id: map.mapId,
@@ -212,14 +224,14 @@ export const listProjectResourcesToolDef = {
   },
   summarize: (output: any) => {
     if (output?.resource_type === "skill_packages") return `列出 ${output.items?.length || 0} 个技能包`;
-    if (output?.resource_type === "knowledge_node_identities") return `列出 ${output.items?.length || 0} 个 knowledge 节点识别视图`;
-    if (output?.resource_type === "knowledge_anchors") return `列出 ${output.items?.length || 0} 个 knowledge anchors`;
-    if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 source 节点`;
-    if (output?.resource_type === "graph_nodes") return `列出 ${output.items?.length || 0} 个 graph 节点`;
-    if (output?.resource_type === "graph_node_identities") return `列出 ${output.items?.length || 0} 个 graph 节点识别视图`;
-    if (output?.resource_type === "execution_approvals") return `列出 ${output.items?.length || 0} 个待审批执行请求`;
-    if (output?.resource_type === "execution_links") return `列出 ${output.items?.length || 0} 条执行连线`;
-    if (output?.resource_type === "graph_links") return `列出 ${output.items?.length || 0} 条 graph 连线`;
-    return `列出 ${output?.items?.length || 0} 张地图`;
+    if (output?.resource_type === "knowledge_node_identities") return `列出 ${output.items?.length || 0} 个 Knowledge 节点识别视图`;
+    if (output?.resource_type === "knowledge_anchors") return `列出 ${output.items?.length || 0} 个 Knowledge anchors`;
+    if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 Source 节点`;
+    if (output?.resource_type === "nodeflow_nodes") return `列出 ${output.items?.length || 0} 个 NodeFlow 节点`;
+    if (output?.resource_type === "nodeflow_node_identities") return `列出 ${output.items?.length || 0} 个 NodeFlow 节点识别视图`;
+    if (output?.resource_type === "nodeflow_execution_approvals") return `列出 ${output.items?.length || 0} 个 NodeFlow 待审批执行请求`;
+    if (output?.resource_type === "nodeflow_links") return `列出 ${output.items?.length || 0} 条 NodeFlow 连线`;
+    if (output?.resource_type === "nodeflow_graph_links") return `列出 ${output.items?.length || 0} 条 NodeFlow 图引用连线`;
+    return `列出 ${output?.items?.length || 0} 张 NodeFlow 地图`;
   },
 };

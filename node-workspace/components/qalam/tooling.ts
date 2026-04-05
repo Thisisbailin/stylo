@@ -41,11 +41,11 @@ export const buildToolSummary = (name: string, args: any) => {
   if (name === "search_project_resource") {
     return `资源搜索：${String(args?.query || "").slice(0, 32)}`;
   }
-  if (name === "edit_project_resource") {
-    return `资源写入：${args?.resource_type || "resource"}`;
+  if (name === "edit_knowledge_resource") {
+    return `Knowledge 写入：${args?.resource_type || "knowledge"}`;
   }
   if (name === "operate_project_resource") {
-    return `图操作：${args?.resource_type || "graph"}`;
+    return `NodeFlow 操作：${args?.resource_type || "nodeflow"}`;
   }
   return "工具调用";
 };

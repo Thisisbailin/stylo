@@ -10,7 +10,7 @@ tags:
   - workflow
 preferredTools:
   - read_project_resource
-  - edit_project_resource
+  - search_project_resource
   - operate_project_resource
 disabledTools: []
 implicitInvocationHints:

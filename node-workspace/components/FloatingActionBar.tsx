@@ -77,7 +77,6 @@ type Props = {
       | "knowledge:nodes"
       | "knowledge:links"
       | "knowledge:maps"
-      | "knowledge:lab"
   ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
@@ -315,15 +314,6 @@ export const FloatingActionBar: React.FC<Props> = ({
       Icon: Network,
       tone: "text-amber-300",
       surface: "bg-amber-500/12",
-    },
-    {
-      label: "Mutation Lab",
-      hint: "进入单独的开发实验区，手工验证 derived create / supersede，不和只读观察混在一起。",
-      meta: "Lab",
-      onClick: () => onOpenKnowledgePanel?.("knowledge:lab"),
-      Icon: Sparkles,
-      tone: "text-rose-300",
-      surface: "bg-rose-500/12",
     },
   ];
   const nodeActions = [

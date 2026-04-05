@@ -9,6 +9,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import type { KnowledgeLink, KnowledgeNode } from "../types";
+import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
 
 type Props = {
   title?: string;
@@ -17,13 +18,7 @@ type Props = {
   selectedNodeRef?: string | null;
   onSelectNodeRef?: (nodeRef: string) => void;
   variant?: "panel" | "canvas";
-};
-
-const formatKnowledgeKindLabel = (kind: string) => {
-  const trimmed = kind.trim();
-  if (!trimmed) return "knowledge";
-  const parts = trimmed.split(".");
-  return parts[parts.length - 1] || trimmed;
+  layoutMode?: "backbone" | "focus" | "revisions" | "anchor" | "full";
 };
 
 const buildNodeLevelMap = (nodes: KnowledgeNode[], links: KnowledgeLink[]) => {
@@ -67,11 +62,10 @@ const buildNodeLevelMap = (nodes: KnowledgeNode[], links: KnowledgeLink[]) => {
   return levels;
 };
 
-const toCanvasNodes = (
+const buildLayeredPositions = (
   nodes: KnowledgeNode[],
-  links: KnowledgeLink[],
-  selectedNodeRef?: string | null
-): Node[] => {
+  links: KnowledgeLink[]
+) => {
   const levels = buildNodeLevelMap(nodes, links);
   const columns = new Map<number, KnowledgeNode[]>();
 
@@ -94,10 +88,118 @@ const toCanvasNodes = (
     columnNodes.forEach((node, index) => {
       positioned.set(node.id, {
         x: level * 280,
-        y: index * 140,
+        y: index * 160,
       });
     });
   });
+
+  return positioned;
+};
+
+const buildFocusPositions = (
+  nodes: KnowledgeNode[],
+  links: KnowledgeLink[],
+  selectedNodeRef?: string | null
+) => {
+  const positioned = new Map<string, { x: number; y: number }>();
+  const focusNode = selectedNodeRef ? nodes.find((node) => node.ref === selectedNodeRef) : null;
+  if (!focusNode) return buildLayeredPositions(nodes, links);
+
+  positioned.set(focusNode.id, { x: 0, y: 0 });
+
+  const incoming = links
+    .filter((link) => link.toNodeId === focusNode.id)
+    .map((link) => nodes.find((node) => node.id === link.fromNodeId))
+    .filter((node): node is KnowledgeNode => Boolean(node));
+  const outgoing = links
+    .filter((link) => link.fromNodeId === focusNode.id)
+    .map((link) => nodes.find((node) => node.id === link.toNodeId))
+    .filter((node): node is KnowledgeNode => Boolean(node));
+
+  incoming.forEach((node, index) => {
+    positioned.set(node.id, { x: -300, y: index * 160 - ((incoming.length - 1) * 80) });
+  });
+  outgoing.forEach((node, index) => {
+    positioned.set(node.id, { x: 300, y: index * 160 - ((outgoing.length - 1) * 80) });
+  });
+
+  const remaining = nodes.filter((node) => !positioned.has(node.id));
+  remaining.forEach((node, index) => {
+    positioned.set(node.id, {
+      x: (index % 3) * 260 - 260,
+      y: 260 + Math.floor(index / 3) * 160,
+    });
+  });
+
+  return positioned;
+};
+
+const buildRevisionPositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) => {
+  const positioned = new Map<string, { x: number; y: number }>();
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const supersedeLinks = links.filter((link) => link.type === "supersedes");
+  const incoming = new Map<string, number>();
+  supersedeLinks.forEach((link) => {
+    incoming.set(link.toNodeId, (incoming.get(link.toNodeId) || 0) + 1);
+  });
+
+  const heads = nodes.filter((node) =>
+    supersedeLinks.some((link) => link.fromNodeId === node.id) && !incoming.get(node.id)
+  );
+
+  heads.forEach((head, rowIndex) => {
+    let cursor: KnowledgeNode | undefined = head;
+    let column = 0;
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor.id)) {
+      seen.add(cursor.id);
+      positioned.set(cursor.id, { x: column * 280, y: rowIndex * 180 });
+      const nextLink = supersedeLinks
+        .filter((link) => link.fromNodeId === cursor!.id)
+        .slice()
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      cursor = nextLink ? nodesById.get(nextLink.toNodeId) : undefined;
+      column += 1;
+    }
+  });
+
+  const remaining = nodes.filter((node) => !positioned.has(node.id));
+  remaining.forEach((node, index) => {
+    positioned.set(node.id, {
+      x: (index % 3) * 260,
+      y: (heads.length + 1) * 180 + Math.floor(index / 3) * 150,
+    });
+  });
+
+  return positioned;
+};
+
+const buildPositionsByMode = (
+  nodes: KnowledgeNode[],
+  links: KnowledgeLink[],
+  layoutMode: NonNullable<Props["layoutMode"]>,
+  selectedNodeRef?: string | null
+) => {
+  switch (layoutMode) {
+    case "focus":
+      return buildFocusPositions(nodes, links, selectedNodeRef);
+    case "revisions":
+      return buildRevisionPositions(nodes, links);
+    case "anchor":
+    case "backbone":
+    case "full":
+    default:
+      return buildLayeredPositions(nodes, links);
+  }
+};
+
+const toCanvasNodes = (
+  nodes: KnowledgeNode[],
+  links: KnowledgeLink[],
+  selectedNodeRef?: string | null,
+  layoutMode: NonNullable<Props["layoutMode"]> = "full"
+): Node[] => {
+  const positioned = buildPositionsByMode(nodes, links, layoutMode, selectedNodeRef);
 
   return nodes.map((node) => ({
     id: node.id,
@@ -124,7 +226,7 @@ const toCanvasNodes = (
               </span>
             </div>
             <div className="text-[10px] leading-5 text-[var(--app-text-muted)]">
-              {node.origin} · anchors {node.anchors.length}
+              {formatKnowledgeOriginLabel(node.origin)} · anchors {node.anchors.length}
             </div>
           </div>
         </div>
@@ -175,10 +277,11 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   selectedNodeRef,
   onSelectNodeRef,
   variant = "panel",
+  layoutMode = "full",
 }) => {
   const canvasNodes = React.useMemo(
-    () => toCanvasNodes(nodes, links, selectedNodeRef),
-    [links, nodes, selectedNodeRef]
+    () => toCanvasNodes(nodes, links, selectedNodeRef, layoutMode),
+    [layoutMode, links, nodes, selectedNodeRef]
   );
   const canvasLinks = React.useMemo(() => toCanvasLinks(links), [links]);
 

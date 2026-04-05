@@ -11,7 +11,7 @@ tags:
 preferredTools:
   - read_project_resource
   - search_project_resource
-  - edit_project_resource
+  - list_project_resources
 disabledTools: []
 implicitInvocationHints:
   - 形象设计

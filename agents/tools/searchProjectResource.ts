@@ -17,20 +17,29 @@ export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "knowledge_anchors",
   "knowledge_links",
   "source",
-  "graph_identity",
-  "graph_detail",
-  "graph",
-  "approvals",
-  "links",
-  "maps",
+  "nodeflow_identity",
+  "nodeflow_detail",
+  "nodeflow",
+  "nodeflow_approvals",
+  "nodeflow_links",
+  "nodeflow_maps",
 ] as const;
+
+const SEARCH_PROJECT_RESOURCE_SCOPE_ALIASES: Record<string, Scope> = {
+  graph_identity: "nodeflow_identity",
+  graph_detail: "nodeflow_detail",
+  graph: "nodeflow",
+  approvals: "nodeflow_approvals",
+  links: "nodeflow_links",
+  maps: "nodeflow_maps",
+};
 
 const searchProjectResourceParameters = {
   type: "object",
   properties: {
     query: {
       type: "string",
-      description: "Search query in Chinese or any exact term to locate graph resources.",
+      description: "Search query in Chinese or any exact term to locate Source, Knowledge, or NodeFlow resources.",
     },
     resource_scopes: {
       type: "array",
@@ -38,7 +47,7 @@ const searchProjectResourceParameters = {
         type: "string",
         enum: [...SEARCH_PROJECT_RESOURCE_SCOPES],
       },
-      description: "Optional scopes to search. graph_identity searches first-layer node identity; graph_detail searches deeper node details. Defaults to all supported scopes.",
+      description: "Optional scopes to search. nodeflow_identity searches first-layer NodeFlow node identity; nodeflow_detail searches deeper NodeFlow node details. Defaults to all supported scopes.",
     },
     max_matches: {
       type: "integer",
@@ -94,12 +103,24 @@ const parseArgs = (input: unknown) => {
     ? raw.resource_scopes.map((item) => String(item))
     : Array.isArray(raw.resourceScopes)
       ? (raw.resourceScopes as unknown[]).map((item) => String(item))
-      : (["skills", "knowledge_identity", "source", "graph_identity", "approvals", "links", "maps"] as Scope[]);
+      : ([
+          "skills",
+          "knowledge_identity",
+          "source",
+          "nodeflow_identity",
+          "nodeflow_approvals",
+          "nodeflow_links",
+          "nodeflow_maps",
+        ] as Scope[]);
       
 
-  const normalizedScopes = scopes.filter((scope): scope is Scope =>
-    (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
-  );
+  const normalizedScopes = scopes
+    .map((scope) =>
+      (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
+        ? scope
+        : SEARCH_PROJECT_RESOURCE_SCOPE_ALIASES[scope]
+    )
+    .filter((scope): scope is Scope => Boolean(scope));
 
   return {
     query,
@@ -131,7 +152,7 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search knowledge resources, projected source nodes, graph nodes, graph links, maps, and skill packages when the exact locator is unknown.",
+    "Search across the three project-reading layers when the exact locator is unknown: Source resources, Knowledge long-term memory resources, and NodeFlow resources, plus skill packages.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -185,13 +206,13 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("graph_identity")) {
+    if (args.scopes.includes("nodeflow_identity")) {
       for (const node of buildGraphNodesFromWorkflow(workflow)) {
         if (matches.length >= args.maxMatches) break;
         const haystack = buildProjectGraphIdentitySearchText(node);
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "graph_node_identity",
+            scope: "nodeflow_node_identity",
             node_id: node.nodeId,
             node_ref: node.ref,
             plane: node.plane,
@@ -203,13 +224,13 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("graph") || args.scopes.includes("graph_detail")) {
+    if (args.scopes.includes("nodeflow") || args.scopes.includes("nodeflow_detail")) {
       for (const node of buildGraphNodesFromWorkflow(workflow)) {
         if (matches.length >= args.maxMatches) break;
         const haystack = buildProjectGraphSearchText(node);
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: args.scopes.includes("graph_detail") ? "graph_node_detail" : "graph_node",
+            scope: args.scopes.includes("nodeflow_detail") ? "nodeflow_node_detail" : "nodeflow_node",
             node_id: node.nodeId,
             node_ref: node.ref,
             plane: node.plane,
@@ -221,7 +242,7 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("links")) {
+    if (args.scopes.includes("nodeflow_links")) {
       for (const link of workflow.links) {
         if (matches.length >= args.maxMatches) break;
         const haystack = [
@@ -236,7 +257,7 @@ export const searchProjectResourceToolDef = {
           .join(" ");
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "execution_link",
+            scope: "nodeflow_link",
             link_id: link.id,
             snippet: buildSnippet(haystack, args.query, radius),
           });
@@ -247,7 +268,7 @@ export const searchProjectResourceToolDef = {
         const haystack = [link.id, link.sourceRef, link.targetRef].filter(Boolean).join(" ");
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "graph_link",
+            scope: "nodeflow_graph_link",
             link_id: link.id,
             snippet: buildSnippet(haystack, args.query, radius),
           });
@@ -255,7 +276,7 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("approvals")) {
+    if (args.scopes.includes("nodeflow_approvals")) {
       for (const approval of bridge.getPendingNodeFlowExecutionApprovals()) {
         if (matches.length >= args.maxMatches) break;
         const haystack = [
@@ -274,7 +295,7 @@ export const searchProjectResourceToolDef = {
           .join(" ");
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "execution_approval",
+            scope: "nodeflow_execution_approval",
             approval_id: approval.id,
             node_id: approval.nodeId,
             node_ref: approval.nodeRef,
@@ -286,13 +307,13 @@ export const searchProjectResourceToolDef = {
       }
     }
 
-    if (args.scopes.includes("maps")) {
+    if (args.scopes.includes("nodeflow_maps")) {
       for (const map of buildProjectGraphMaps(workflow)) {
         if (matches.length >= args.maxMatches) break;
         const haystack = [map.mapId, map.name, map.view || ""].filter(Boolean).join(" ");
         if (haystack && includesQuery(haystack, args.query)) {
           matches.push({
-            scope: "map",
+            scope: "nodeflow_map",
             map_id: map.mapId,
             name: map.name,
             snippet: buildSnippet(haystack, args.query, radius),

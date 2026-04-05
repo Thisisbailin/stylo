@@ -150,3 +150,143 @@ export const buildCanonicalKnowledgeSnapshot = (
   nodes: buildCanonicalKnowledgeNodes(projectData, { createdAt }),
   links: buildCanonicalKnowledgeLinks(projectData, { createdAt }),
 });
+
+const stableSerialize = (value: unknown): string => {
+  if (value == null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+      left.localeCompare(right)
+    );
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(String(value));
+};
+
+const normalizeKnowledgeNodeComparable = (node: KnowledgeNode) =>
+  stableSerialize({
+    id: node.id,
+    ref: node.ref,
+    kind: node.kind,
+    origin: node.origin,
+    package: node.package,
+    content: node.content,
+    meta: node.meta || null,
+    anchors: node.anchors
+      .map((anchor) => ({
+        type: anchor.type,
+        ref: anchor.ref,
+        span: anchor.span || null,
+      }))
+      .sort((left, right) =>
+        `${left.type}:${left.ref}:${left.span || ""}`.localeCompare(
+          `${right.type}:${right.ref}:${right.span || ""}`
+        )
+      ),
+  });
+
+const normalizeKnowledgeLinkComparable = (link: KnowledgeLink) =>
+  stableSerialize({
+    id: link.id,
+    origin: link.origin,
+    fromNodeId: link.fromNodeId,
+    toNodeId: link.toNodeId,
+    type: link.type,
+    weight: link.weight ?? null,
+    status: link.status ?? "active",
+  });
+
+const areKnowledgeNodeSetsEqual = (left: KnowledgeNode[], right: KnowledgeNode[]) =>
+  stableSerialize(
+    left
+      .map((node) => normalizeKnowledgeNodeComparable(node))
+      .sort((a, b) => a.localeCompare(b))
+  ) ===
+  stableSerialize(
+    right
+      .map((node) => normalizeKnowledgeNodeComparable(node))
+      .sort((a, b) => a.localeCompare(b))
+  );
+
+const areKnowledgeLinkSetsEqual = (left: KnowledgeLink[], right: KnowledgeLink[]) =>
+  stableSerialize(
+    left
+      .map((link) => normalizeKnowledgeLinkComparable(link))
+      .sort((a, b) => a.localeCompare(b))
+  ) ===
+  stableSerialize(
+    right
+      .map((link) => normalizeKnowledgeLinkComparable(link))
+      .sort((a, b) => a.localeCompare(b))
+  );
+
+export const syncCanonicalKnowledgeSnapshot = (
+  snapshot: KnowledgeSnapshot,
+  projectData: ProjectData,
+  {
+    timestamp = Date.now(),
+  }: {
+    timestamp?: number;
+  } = {}
+): KnowledgeSnapshot => {
+  const desired = buildCanonicalKnowledgeSnapshot(projectData, { createdAt: timestamp });
+  const existingCanonicalNodes = snapshot.nodes.filter((node) => node.origin === "canonical-source");
+  const existingCanonicalLinks = snapshot.links.filter((link) => link.origin === "canonical-source");
+  const canonicalNodesById = new Map(existingCanonicalNodes.map((node) => [node.id, node]));
+  const canonicalLinksById = new Map(existingCanonicalLinks.map((link) => [link.id, link]));
+
+  const nextCanonicalNodes = desired.nodes.map((node) => {
+    const existing = canonicalNodesById.get(node.id);
+    if (!existing) return node;
+    if (normalizeKnowledgeNodeComparable(existing) === normalizeKnowledgeNodeComparable(node)) {
+      return existing;
+    }
+    return {
+      ...node,
+      createdAt: existing.createdAt,
+      updatedAt: timestamp,
+    };
+  });
+
+  const nextCanonicalLinks = desired.links.map((link) => {
+    const existing = canonicalLinksById.get(link.id);
+    if (!existing) return link;
+    if (normalizeKnowledgeLinkComparable(existing) === normalizeKnowledgeLinkComparable(link)) {
+      return existing;
+    }
+    return {
+      ...link,
+      createdAt: existing.createdAt,
+      updatedAt: timestamp,
+    };
+  });
+
+  const nextNodes = [
+    ...snapshot.nodes.filter((node) => node.origin !== "canonical-source"),
+    ...nextCanonicalNodes,
+  ];
+  const validNodeIds = new Set(nextNodes.map((node) => node.id));
+  const nextLinks = [
+    ...snapshot.links.filter((link) => link.origin !== "canonical-source"),
+    ...nextCanonicalLinks,
+  ].filter((link) => validNodeIds.has(link.fromNodeId) && validNodeIds.has(link.toNodeId));
+
+  if (
+    areKnowledgeNodeSetsEqual(snapshot.nodes, nextNodes) &&
+    areKnowledgeLinkSetsEqual(snapshot.links, nextLinks)
+  ) {
+    return snapshot;
+  }
+
+  return {
+    revision: snapshot.revision + 1,
+    nodes: nextNodes,
+    links: nextLinks,
+  };
+};

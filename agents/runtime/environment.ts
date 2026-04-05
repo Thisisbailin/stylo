@@ -1,5 +1,7 @@
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
+import type { NodeFlowFile } from "../../node-workspace/types";
 import type {
   AgentEnvironmentCapabilityManifest,
   AgentEnvironmentRecentAction,
@@ -9,8 +11,8 @@ import type {
 import { LIST_PROJECT_RESOURCE_TYPES } from "../tools/listProjectResources";
 import { READ_PROJECT_RESOURCE_TYPES } from "../tools/readProjectResource";
 import { SEARCH_PROJECT_RESOURCE_SCOPES } from "../tools/searchProjectResource";
-import { EDIT_PROJECT_RESOURCE_TYPES } from "../tools/editUnderstandingResource";
-import { OPERATE_PROJECT_RESOURCE_TYPES, OPERATE_WORKFLOW_NODE_KINDS } from "../tools/operateProjectResource";
+import { EDIT_KNOWLEDGE_RESOURCE_TYPES } from "../tools/editKnowledgeResource";
+import { OPERATE_PROJECT_RESOURCE_TYPES, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
 
 const PROJECT_SUMMARY_LIMIT = 480;
 const EPISODE_SUMMARY_LIMIT = 200;
@@ -47,13 +49,13 @@ const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
     scopes: [...SEARCH_PROJECT_RESOURCE_SCOPES],
   },
   edit: {
-    tools: ["edit_project_resource"],
-    resources: [...EDIT_PROJECT_RESOURCE_TYPES],
+    tools: ["edit_knowledge_resource"],
+    resources: [...EDIT_KNOWLEDGE_RESOURCE_TYPES],
   },
   operate: {
     tools: ["operate_project_resource"],
     resources: [...OPERATE_PROJECT_RESOURCE_TYPES],
-    nodeKinds: [...OPERATE_WORKFLOW_NODE_KINDS],
+    nodeKinds: [...OPERATE_NODEFLOW_NODE_KINDS],
   },
 });
 
@@ -75,12 +77,16 @@ export const summarizeRecentSuccessfulActions = (messages: AgentSessionMessage[]
 
 export const buildAgentEnvironment = ({
   projectData,
+  knowledgeSnapshot,
+  nodeFlowSnapshot,
   executionApprovals,
   runtimeMode,
   enabledTools,
   sessionMessages,
 }: {
   projectData: ProjectData;
+  knowledgeSnapshot: KnowledgeSnapshot;
+  nodeFlowSnapshot: NodeFlowFile;
   executionApprovals?: NodeFlowExecutionApprovalProposal[];
   runtimeMode: "browser" | "edge_full";
   enabledTools: string[];
@@ -106,6 +112,16 @@ export const buildAgentEnvironment = ({
         summary: clipText(entry.summary, EPISODE_SUMMARY_LIMIT),
       };
     });
+  const sceneCount = (projectData.episodes || []).reduce(
+    (count, episode) => count + (episode.scenes || []).length,
+    0
+  );
+  const canonicalKnowledgeNodeCount = knowledgeSnapshot.nodes.filter(
+    (node) => node.origin === "canonical-source"
+  ).length;
+  const derivedKnowledgeNodeCount = knowledgeSnapshot.nodes.filter(
+    (node) => node.origin === "agent-derived"
+  ).length;
 
   const capabilityManifest = buildCapabilityManifest();
   const enabledToolSet = new Set(enabledTools);
@@ -114,6 +130,7 @@ export const buildAgentEnvironment = ({
     project: {
       fileName: projectData.fileName?.trim() || undefined,
       episodeCount: (projectData.episodes || []).length,
+      sceneCount,
       projectSummary: clipText(projectData.context?.projectSummary, PROJECT_SUMMARY_LIMIT) || undefined,
       episodeSummaries,
       primaryRoles,
@@ -123,6 +140,25 @@ export const buildAgentEnvironment = ({
         episodeSummaryCount: (projectData.context?.episodeSummaries || []).filter((item) => item.summary?.trim()).length,
         primaryRoleCount: roles.filter((role) => role.kind === "person").length,
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
+      },
+      readingLayers: {
+        source: {
+          scriptAvailable: Boolean(projectData.rawScript?.trim()),
+          episodeCount: (projectData.episodes || []).length,
+          sceneCount,
+          canonicalBackbone: "script -> episode -> scene",
+        },
+        knowledge: {
+          nodeCount: knowledgeSnapshot.nodes.length,
+          linkCount: knowledgeSnapshot.links.length,
+          canonicalNodeCount: canonicalKnowledgeNodeCount,
+          derivedNodeCount: derivedKnowledgeNodeCount,
+        },
+        nodeflow: {
+          nodeCount: nodeFlowSnapshot.nodes.length,
+          linkCount: nodeFlowSnapshot.links.length,
+          graphLinkCount: (nodeFlowSnapshot.graphLinks || []).length,
+        },
       },
     },
     capabilityManifest,

@@ -524,6 +524,34 @@ export const QalamAgent: React.FC<Props> = ({
         };
       },
       getPendingExecutionApprovals: () => Object.values(pendingExecutionApprovals),
+      createDerivedKnowledgeNode: (input) => {
+        const state = useKnowledgeStore.getState();
+        if (input.anchorType && input.anchorRef) {
+          return state.createDerivedNodeForAnchor(input);
+        }
+        return state.createDerivedNode(input);
+      },
+      createDerivedKnowledgeLink: (input) => useKnowledgeStore.getState().createDerivedLink(input),
+      supersedeDerivedKnowledgeNode: (input) => {
+        const state = useKnowledgeStore.getState();
+        if (input.anchorType && input.anchorRef) {
+          return state.supersedeDerivedNodeForAnchor(input);
+        }
+        const node = state.supersedeDerivedNode(input);
+        const nextState = useKnowledgeStore.getState();
+        const previousNode = nextState.nodes.find((item) => item.id === input.nodeId || item.ref === input.nodeRef);
+        const supersedeLink = [...nextState.links]
+          .reverse()
+          .find((link) => link.type === (input.relationType || "supersedes") && link.fromNodeId === node.id);
+        if (!previousNode || !supersedeLink) {
+          throw new Error("Knowledge supersede completed but the resulting lifecycle chain could not be resolved.");
+        }
+        return {
+          previousNode,
+          node,
+          link: supersedeLink,
+        };
+      },
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
       updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
@@ -912,6 +940,9 @@ export const QalamAgent: React.FC<Props> = ({
       });
       if (runResult.updatedProjectData) {
         setProjectData(runResult.updatedProjectData);
+      }
+      if (runResult.updatedKnowledge) {
+        useKnowledgeStore.getState().applyKnowledgeSnapshot(runResult.updatedKnowledge);
       }
       if (runResult.updatedNodeFlow) {
         importNodeFlow(runResult.updatedNodeFlow);

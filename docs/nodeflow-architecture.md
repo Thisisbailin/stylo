@@ -67,6 +67,31 @@ Qalam 的 `Nodes` 模块最终会形成两个平面：
 
 与之对应，`Knowledge` 平面不是用户编辑流，而是用户对 Agent 长期记忆现状的查阅流。
 
+当前 `Flow -> Knowledge` 的跨平面联动仍应保持保守：
+
+- 只做剧本主链相关的确定性映射
+- 当前优先围绕 `scriptBoard / storyboardBoard`
+- 仅落到 `script / episode / scene` 这些稳定 anchor
+
+不在这一阶段对其它节点类型做主观推断式联动。
+
+在 Agent 工具分层上，也应保持清晰边界：
+
+- `Source`：
+  负责 canonical script facts 的读取
+- `Knowledge`：
+  负责长期记忆的读取，未来 `edit` 若重新开放也应落在这一层
+- `NodeFlow`：
+  负责当前工作流结构、画布节点、连线、审批与操作
+
+因此，正式资源命名与工具心智应统一收敛为：
+
+- `source_*`
+- `knowledge_*`
+- `nodeflow_*`
+
+其中 `operate` 明确属于 `NodeFlow` 层，而不是项目通用图操作层。
+
 ## 领域模型
 
 ## 1. Node

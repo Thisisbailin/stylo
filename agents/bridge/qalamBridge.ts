@@ -1,5 +1,12 @@
 import type { ProjectData } from "../../types";
-import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
+import type {
+  KnowledgeAnchor,
+  KnowledgeLink,
+  KnowledgeNode,
+  KnowledgeNodeConfidence,
+  KnowledgeNodeStatus,
+  KnowledgeSnapshot,
+} from "../../node-workspace/knowledge/types";
 import type {
   NodeAssetConfidence,
   NodeAssetPlane,
@@ -155,6 +162,55 @@ export interface QalamAgentBridge {
   getNodeFlowSnapshot(): NodeFlowFile;
   getKnowledgeSnapshot(): KnowledgeSnapshot;
   getPendingNodeFlowExecutionApprovals(): NodeFlowExecutionApprovalProposal[];
+  createDerivedKnowledgeNode(input: {
+    id?: string;
+    ref?: string;
+    kind: string;
+    title: string;
+    content?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+    status?: KnowledgeNodeStatus;
+    confidence?: KnowledgeNodeConfidence;
+    anchors?: KnowledgeAnchor[];
+    anchorType?: KnowledgeAnchor["type"];
+    anchorRef?: string;
+    anchorSpan?: string;
+    createdAt?: number;
+    updatedAt?: number;
+  }): KnowledgeNode;
+  createDerivedKnowledgeLink(input: {
+    id?: string;
+    fromNodeId: string;
+    toNodeId: string;
+    type: string;
+    weight?: number;
+    status?: "active" | "superseded";
+    createdAt?: number;
+    updatedAt?: number;
+  }): KnowledgeLink;
+  supersedeDerivedKnowledgeNode(input: {
+    nodeId?: string;
+    nodeRef?: string;
+    id?: string;
+    ref?: string;
+    kind?: string;
+    title?: string;
+    content?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+    status?: KnowledgeNodeStatus;
+    confidence?: KnowledgeNodeConfidence;
+    anchors?: KnowledgeAnchor[];
+    anchorType?: KnowledgeAnchor["type"];
+    anchorRef?: string;
+    anchorSpan?: string;
+    relationType?: string;
+    createdAt?: number;
+    updatedAt?: number;
+  }): {
+    previousNode: KnowledgeNode;
+    node: KnowledgeNode;
+    link: KnowledgeLink;
+  };
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;

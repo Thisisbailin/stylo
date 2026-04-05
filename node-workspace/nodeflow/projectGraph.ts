@@ -10,7 +10,7 @@ import {
 } from "./model";
 
 export type ProjectGraphNodeRecord = {
-  resourceType: "source_node" | "graph_node";
+  resourceType: "source_node" | "nodeflow_node";
   nodeId?: string;
   ref: string;
   plane: "source" | "semantic" | "design" | "execution";
@@ -129,7 +129,7 @@ export const buildGraphNodesFromWorkflow = (workflow: NodeFlowFile): ProjectGrap
     const record = toNodeFlowNodeRecord(node, workflow.nodeFlowContext);
     const rawData = (node.data || {}) as Record<string, unknown>;
     return {
-      resourceType: "graph_node",
+      resourceType: "nodeflow_node",
       nodeId: record.id,
       ref: record.ref,
       plane: record.plane,
@@ -182,7 +182,7 @@ export const findGraphNode = (
   if (!node) return null;
   const record = toNodeFlowNodeRecord(node, workflow.nodeFlowContext);
   return {
-    resourceType: "graph_node" as const,
+    resourceType: "nodeflow_node" as const,
     nodeId: record.id,
     ref: record.ref,
     plane: getNodeFlowNodePlane(node),

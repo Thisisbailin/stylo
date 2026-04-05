@@ -123,10 +123,10 @@ const humanizeToolName = (name: string) => {
       return "查阅项目内容";
     case "search_project_resource":
       return "搜索项目内容";
-    case "edit_project_resource":
-      return "编辑项目资产";
+    case "edit_knowledge_resource":
+      return "编辑 Knowledge";
     case "operate_project_resource":
-      return "操作工作流资源";
+      return "操作 NodeFlow";
     default:
       return name;
   }

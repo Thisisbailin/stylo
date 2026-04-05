@@ -32,11 +32,18 @@ const capabilityBlocks = [
     Icon: FileMagnifyingGlass,
   },
   {
-    eyebrow: "Understand",
-    title: "写回知识层",
-    description: "summary、profile、storyboard 不留在聊天里，而是通过统一资源写接口进入长期事实层。",
-    tools: ["edit_project_resource"],
+    eyebrow: "Remember",
+    title: "读取长期记忆",
+    description: "在 source 之外继续查阅 Knowledge 长期记忆层，理解 Agent 已经沉淀下来的项目知识网络。",
+    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     Icon: Database,
+  },
+  {
+    eyebrow: "Refine",
+    title: "修正长期记忆",
+    description: "通过专用 Knowledge 写口创建派生记忆节点、建立知识关系，或用 supersede 方式修正已有派生记忆。",
+    tools: ["edit_knowledge_resource"],
+    Icon: Graph,
   },
   {
     eyebrow: "Operate",

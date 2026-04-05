@@ -16,8 +16,7 @@ export const buildDisabledTools = (
     disabledTools.push(
       "list_project_resources",
       "read_project_resource",
-      "search_project_resource",
-      "edit_project_resource"
+      "search_project_resource"
     );
   }
   if (!toolSettings.workflowBuilder.enabled) {

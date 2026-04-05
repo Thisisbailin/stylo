@@ -14,6 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useKnowledgeStore } from "../store/knowledgeStore";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection, nodeSupportsHandle } from "../utils/handles";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
@@ -480,6 +481,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   } = useNodeFlowStore();
   const { setViewport, screenToFlowPosition, getViewport, fitView } = useReactFlow();
   const { show: showToast } = useToast();
+  const syncKnowledgeCanonicalSource = useKnowledgeStore((state) => state.syncCanonicalSource);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
 
   const minZoom = 0.25;
@@ -500,6 +502,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     () => deriveKnowledgeSurfaceFocusFromFlowNode(selectedFlowNode),
     [selectedFlowNode]
   );
+
+  useEffect(() => {
+    syncKnowledgeCanonicalSource(projectData);
+  }, [projectData, syncKnowledgeCanonicalSource]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -839,7 +845,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const openKnowledgePlane = useCallback(
     (section: KnowledgeCanvasSection) => {
       setKnowledgeSection(section);
-      if (selectedKnowledgeFocus && section !== "lab") {
+      if (selectedKnowledgeFocus) {
         setKnowledgeFocusRequest({
           ...selectedKnowledgeFocus,
           section: selectedKnowledgeFocus.section === "overview" ? section : selectedKnowledgeFocus.section,
@@ -859,8 +865,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         | "knowledge:overview"
         | "knowledge:nodes"
         | "knowledge:links"
-        | "knowledge:maps"
-        | "knowledge:lab" = "knowledge:overview"
+        | "knowledge:maps" = "knowledge:overview"
     ) => {
       openKnowledgePlane(section.replace("knowledge:", "") as KnowledgeCanvasSection);
     },
@@ -1111,7 +1116,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           </ReactFlow>
         ) : (
           <KnowledgeCanvasSurface
-            projectData={projectData}
             section={knowledgeSection}
             onSectionChange={setKnowledgeSection}
             focusRequest={knowledgeFocusRequest}
