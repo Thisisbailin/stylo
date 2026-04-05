@@ -1,16 +1,30 @@
-import type { KnowledgeAnchor, KnowledgeNodeConfidence, KnowledgeNodeStatus } from "../../node-workspace/knowledge/types";
+import type {
+  KnowledgeAnchor,
+  KnowledgeNodeConfidence,
+  KnowledgeNodeStatus,
+} from "../../node-workspace/knowledge/types";
 import { parseKnowledgeAnchorRef } from "../../node-workspace/knowledge/anchors";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 
-export const EDIT_KNOWLEDGE_RESOURCE_TYPES = ["knowledge_node", "knowledge_link"] as const;
+export const EDIT_KNOWLEDGE_ENTITIES = ["node", "link"] as const;
+export const EDIT_KNOWLEDGE_ACTIONS = ["create", "supersede"] as const;
+export const EDIT_KNOWLEDGE_TARGETS = ["knowledge:node", "knowledge:link"] as const;
+
+type KnowledgeEditEntity = (typeof EDIT_KNOWLEDGE_ENTITIES)[number];
+type KnowledgeEditAction = (typeof EDIT_KNOWLEDGE_ACTIONS)[number];
 
 const editKnowledgeResourceParameters = {
   type: "object",
   properties: {
-    resource_type: {
+    entity: {
       type: "string",
-      enum: [...EDIT_KNOWLEDGE_RESOURCE_TYPES],
-      description: "Which Knowledge resource to edit.",
+      enum: [...EDIT_KNOWLEDGE_ENTITIES],
+      description: "Which Knowledge graph entity to edit.",
+    },
+    action: {
+      type: "string",
+      enum: [...EDIT_KNOWLEDGE_ACTIONS],
+      description: "Whether to create a new entity or supersede an existing derived knowledge node.",
     },
     node_id: {
       type: "string",
@@ -62,11 +76,11 @@ const editKnowledgeResourceParameters = {
     },
     from_node_id: {
       type: "string",
-      description: "Source node id for knowledge_link.",
+      description: "Source knowledge node id for link creation.",
     },
     to_node_id: {
       type: "string",
-      description: "Target node id for knowledge_link.",
+      description: "Target knowledge node id for link creation.",
     },
     link_type: {
       type: "string",
@@ -78,10 +92,8 @@ const editKnowledgeResourceParameters = {
     },
   },
   additionalProperties: false,
-  required: ["resource_type"],
+  required: ["entity", "action"],
 } as const;
-
-type ResourceType = (typeof EDIT_KNOWLEDGE_RESOURCE_TYPES)[number];
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -116,9 +128,13 @@ const parseArgs = (input: unknown) => {
     throw new Error("edit_knowledge_resource 需要对象参数。");
   }
   const raw = input as Record<string, unknown>;
-  const resourceType = trim(raw.resource_type) as ResourceType;
-  if (resourceType !== "knowledge_node" && resourceType !== "knowledge_link") {
-    throw new Error(`edit_knowledge_resource 不支持 resource_type=${trim(raw.resource_type)}`);
+  const entity = trim(raw.entity) as KnowledgeEditEntity;
+  const action = trim(raw.action) as KnowledgeEditAction;
+  if (!(EDIT_KNOWLEDGE_ENTITIES as readonly string[]).includes(entity)) {
+    throw new Error(`edit_knowledge_resource 不支持 entity=${trim(raw.entity)}`);
+  }
+  if (!(EDIT_KNOWLEDGE_ACTIONS as readonly string[]).includes(action)) {
+    throw new Error(`edit_knowledge_resource 不支持 action=${trim(raw.action)}`);
   }
 
   const nodeId = trim(raw.node_id ?? raw.nodeId) || undefined;
@@ -144,24 +160,22 @@ const parseArgs = (input: unknown) => {
   const weight = typeof raw.weight === "number" ? raw.weight : undefined;
   const anchor = parseAnchor(anchorRef, anchorSpan);
 
-  if (resourceType === "knowledge_node") {
-    const isSupersede = Boolean(nodeId || nodeRef);
-    if (!isSupersede && (!kind || !title)) {
-      throw new Error("新建 knowledge_node 至少需要 kind 和 title。");
-    }
-    if (isSupersede && !nodeId && !nodeRef) {
-      throw new Error("supersede knowledge_node 需要 node_id 或 node_ref。");
-    }
+  if (entity === "node" && action === "create" && (!kind || !title)) {
+    throw new Error("创建 Knowledge node 至少需要 kind 和 title。");
   }
-
-  if (resourceType === "knowledge_link") {
-    if (!fromNodeId || !toNodeId || !linkType) {
-      throw new Error("knowledge_link 需要 from_node_id、to_node_id 和 link_type。");
-    }
+  if (entity === "node" && action === "supersede" && !nodeId && !nodeRef) {
+    throw new Error("supersede Knowledge node 需要 node_id 或 node_ref。");
+  }
+  if (entity === "link" && action !== "create") {
+    throw new Error("Knowledge link 当前仅支持 create。");
+  }
+  if (entity === "link" && (!fromNodeId || !toNodeId || !linkType)) {
+    throw new Error("创建 Knowledge link 需要 from_node_id、to_node_id 和 link_type。");
   }
 
   return {
-    resourceType,
+    entity,
+    action,
     nodeId,
     nodeRef,
     kind,
@@ -182,12 +196,12 @@ const parseArgs = (input: unknown) => {
 export const editKnowledgeResourceToolDef = {
   name: "edit_knowledge_resource",
   description:
-    "Create or supersede agent-derived Knowledge nodes, or create agent-derived Knowledge links. This tool writes only to Knowledge Core. It must not directly rewrite canonical-source knowledge.",
+    "Edit the Knowledge graph by creating agent-derived knowledge nodes, creating knowledge links, or superseding existing derived knowledge nodes. This tool writes only to Knowledge Core and must not directly rewrite canonical-source knowledge.",
   parameters: editKnowledgeResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
-    if (args.resourceType === "knowledge_link") {
+    if (args.entity === "link") {
       const link = bridge.createDerivedKnowledgeLink({
         fromNodeId: args.fromNodeId!,
         toNodeId: args.toNodeId!,
@@ -195,18 +209,21 @@ export const editKnowledgeResourceToolDef = {
         weight: args.weight,
       });
       return {
+        layer: "knowledge",
+        entity: "link",
+        action: "create",
         updated: true,
-        resource_type: "knowledge_link",
-        operation: "created",
-        link_id: link.id,
-        from_node_id: link.fromNodeId,
-        to_node_id: link.toNodeId,
-        link_type: link.type,
-        origin: link.origin,
+        item: {
+          link_id: link.id,
+          from_node_id: link.fromNodeId,
+          to_node_id: link.toNodeId,
+          link_type: link.type,
+          origin: link.origin,
+        },
       };
     }
 
-    if (args.nodeId || args.nodeRef) {
+    if (args.action === "supersede") {
       const result = bridge.supersedeDerivedKnowledgeNode({
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
@@ -222,19 +239,22 @@ export const editKnowledgeResourceToolDef = {
         relationType: args.relationType,
       });
       return {
+        layer: "knowledge",
+        entity: "node",
+        action: "supersede",
         updated: true,
-        resource_type: "knowledge_node",
-        operation: "superseded",
-        previous_node_id: result.previousNode.id,
-        previous_node_ref: result.previousNode.ref,
-        node_id: result.node.id,
-        node_ref: result.node.ref,
-        kind: result.node.kind,
-        title: result.node.package.title,
-        origin: result.node.origin,
-        status: result.node.package.status,
-        supersede_link_id: result.link.id,
-        relation_type: result.link.type,
+        item: {
+          previous_node_id: result.previousNode.id,
+          previous_node_ref: result.previousNode.ref,
+          node_id: result.node.id,
+          node_ref: result.node.ref,
+          kind: result.node.kind,
+          title: result.node.package.title,
+          origin: result.node.origin,
+          status: result.node.package.status,
+          supersede_link_id: result.link.id,
+          relation_type: result.link.type,
+        },
       };
     }
 
@@ -250,24 +270,23 @@ export const editKnowledgeResourceToolDef = {
       anchorSpan: args.anchor?.span,
     });
     return {
+      layer: "knowledge",
+      entity: "node",
+      action: "create",
       updated: true,
-      resource_type: "knowledge_node",
-      operation: "created",
-      node_id: node.id,
-      node_ref: node.ref,
-      kind: node.kind,
-      title: node.package.title,
-      origin: node.origin,
-      status: node.package.status,
+      item: {
+        node_id: node.id,
+        node_ref: node.ref,
+        kind: node.kind,
+        title: node.package.title,
+        origin: node.origin,
+        status: node.package.status,
+      },
     };
   },
   summarize: (output: any) => {
-    if (output?.resource_type === "knowledge_link") {
-      return `创建 Knowledge 关系 ${output?.link_type || ""}`.trim();
-    }
-    if (output?.operation === "superseded") {
-      return `修正 Knowledge 节点 ${output?.title || output?.node_ref || output?.node_id || ""}`.trim();
-    }
-    return `创建 Knowledge 节点 ${output?.title || output?.node_ref || output?.node_id || ""}`.trim();
+    if (output?.entity === "link") return `创建 Knowledge 关系 ${output?.item?.link_type || ""}`.trim();
+    if (output?.action === "supersede") return `修正 Knowledge 节点 ${output?.item?.title || output?.item?.node_ref || ""}`.trim();
+    return `创建 Knowledge 节点 ${output?.item?.title || output?.item?.node_ref || ""}`.trim();
   },
 };

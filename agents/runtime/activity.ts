@@ -65,7 +65,7 @@ const writeActivityMap = (storageKey: string, map: Record<string, AgentToolActiv
 const summarizeArtifact = (call: AgentExecutedToolCall) => {
   const output = call.output as any;
   if (!output || typeof output !== "object") return undefined;
-  if (call.name === "read_project_resource" && output.resource_type === "skill_package") {
+  if (call.name === "read_project_resource" && output.layer === "skill" && output.entity === "package") {
     if (typeof output.title === "string" && output.title.trim()) {
       return `Skill package · ${output.title}`;
     }
@@ -74,22 +74,22 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
     }
   }
   if (call.name === "operate_project_resource") {
-    if (output.resource_type === "nodeflow_node" && typeof output.title === "string") {
-      return `NodeFlow node · ${output.title}`;
+    if (output.layer === "nodeflow" && output.entity === "node" && typeof output.item?.title === "string") {
+      return `NodeFlow node · ${output.item.title}`;
     }
-    if (output.resource_type === "nodeflow_link") {
-      return `NodeFlow link · ${output.source_ref || output.source_node_id || "source"} -> ${output.target_ref || output.target_node_id || "target"}`;
+    if (output.layer === "nodeflow" && output.entity === "link" && output.link_kind === "canvas") {
+      return `NodeFlow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
     }
-    if (output.resource_type === "nodeflow_graph_link") {
-      return `NodeFlow graph link · ${output.source_ref || "source"} -> ${output.target_ref || "target"}`;
+    if (output.layer === "nodeflow" && output.entity === "link" && output.link_kind === "graph") {
+      return `NodeFlow graph link · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
     }
   }
   if (call.name === "edit_knowledge_resource") {
-    if (output.resource_type === "knowledge_node" && typeof output.title === "string") {
-      return `Knowledge node · ${output.title}`;
+    if (output.layer === "knowledge" && output.entity === "node" && typeof output.item?.title === "string") {
+      return `Knowledge node · ${output.item.title}`;
     }
-    if (output.resource_type === "knowledge_link") {
-      return `Knowledge link · ${output.link_type || "link"}`;
+    if (output.layer === "knowledge" && output.entity === "link") {
+      return `Knowledge link · ${output.item?.link_type || "link"}`;
     }
   }
   return undefined;

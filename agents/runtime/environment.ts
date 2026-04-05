@@ -8,11 +8,11 @@ import type {
   AgentSessionMessage,
   QalamAgentEnvironment,
 } from "./types";
-import { LIST_PROJECT_RESOURCE_TYPES } from "../tools/listProjectResources";
-import { READ_PROJECT_RESOURCE_TYPES } from "../tools/readProjectResource";
-import { SEARCH_PROJECT_RESOURCE_SCOPES } from "../tools/searchProjectResource";
-import { EDIT_KNOWLEDGE_RESOURCE_TYPES } from "../tools/editKnowledgeResource";
-import { OPERATE_PROJECT_RESOURCE_TYPES, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
+import { LIST_PROJECT_RESOURCE_TARGETS } from "../tools/listProjectResources";
+import { READ_PROJECT_RESOURCE_TARGETS } from "../tools/readProjectResource";
+import { SEARCH_PROJECT_RESOURCE_FACETS, SEARCH_PROJECT_RESOURCE_LAYERS } from "../tools/searchProjectResource";
+import { EDIT_KNOWLEDGE_TARGETS } from "../tools/editKnowledgeResource";
+import { OPERATE_NODEFLOW_TARGETS, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
 
 const PROJECT_SUMMARY_LIMIT = 480;
 const EPISODE_SUMMARY_LIMIT = 200;
@@ -45,16 +45,16 @@ const sortRoles = (roles: ProjectRoleIdentity[]) =>
 const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
   read: {
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    resources: [...LIST_PROJECT_RESOURCE_TYPES, ...READ_PROJECT_RESOURCE_TYPES],
-    scopes: [...SEARCH_PROJECT_RESOURCE_SCOPES],
+    resources: [...LIST_PROJECT_RESOURCE_TARGETS, ...READ_PROJECT_RESOURCE_TARGETS],
+    scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS],
   },
   edit: {
     tools: ["edit_knowledge_resource"],
-    resources: [...EDIT_KNOWLEDGE_RESOURCE_TYPES],
+    resources: [...EDIT_KNOWLEDGE_TARGETS],
   },
   operate: {
     tools: ["operate_project_resource"],
-    resources: [...OPERATE_PROJECT_RESOURCE_TYPES],
+    resources: [...OPERATE_NODEFLOW_TARGETS],
     nodeKinds: [...OPERATE_NODEFLOW_NODE_KINDS],
   },
 });
@@ -142,22 +142,35 @@ export const buildAgentEnvironment = ({
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
       },
       readingLayers: {
-        source: {
-          scriptAvailable: Boolean(projectData.rawScript?.trim()),
-          episodeCount: (projectData.episodes || []).length,
-          sceneCount,
-          canonicalBackbone: "script -> episode -> scene",
-        },
         knowledge: {
           nodeCount: knowledgeSnapshot.nodes.length,
           linkCount: knowledgeSnapshot.links.length,
           canonicalNodeCount: canonicalKnowledgeNodeCount,
           derivedNodeCount: derivedKnowledgeNodeCount,
+          canonicalBackbone: "source.script -> source.episode -> source.scene",
         },
         nodeflow: {
           nodeCount: nodeFlowSnapshot.nodes.length,
           linkCount: nodeFlowSnapshot.links.length,
           graphLinkCount: (nodeFlowSnapshot.graphLinks || []).length,
+        },
+      },
+      graphWorld: {
+        centerSurface: "Nodes",
+        planes: {
+          front: "Flow",
+          back: "Knowledge",
+        },
+        actions: {
+          read: {
+            covers: ["knowledge", "nodeflow"],
+          },
+          edit: {
+            target: "knowledge",
+          },
+          operate: {
+            target: "nodeflow",
+          },
         },
       },
     },

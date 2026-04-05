@@ -48,22 +48,35 @@ export type AgentEnvironmentProjectDigest = {
     sceneRoleCount: number;
   };
   readingLayers: {
-    source: {
-      scriptAvailable: boolean;
-      episodeCount: number;
-      sceneCount: number;
-      canonicalBackbone: string;
-    };
     knowledge: {
       nodeCount: number;
       linkCount: number;
       canonicalNodeCount: number;
       derivedNodeCount: number;
+      canonicalBackbone: string;
     };
     nodeflow: {
       nodeCount: number;
       linkCount: number;
       graphLinkCount: number;
+    };
+  };
+  graphWorld: {
+    centerSurface: "Nodes";
+    planes: {
+      front: "Flow";
+      back: "Knowledge";
+    };
+    actions: {
+      read: {
+        covers: Array<"knowledge" | "nodeflow">;
+      };
+      edit: {
+        target: "knowledge";
+      };
+      operate: {
+        target: "nodeflow";
+      };
     };
   };
 };

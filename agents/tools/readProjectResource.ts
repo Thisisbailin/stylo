@@ -2,96 +2,105 @@ import { resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { parseKnowledgeAnchorRef } from "../../node-workspace/knowledge/anchors";
 import { readKnowledgeResource } from "../../node-workspace/knowledge/resources";
+import { getKnowledgeNodeById, getKnowledgeNodeByRef } from "../../node-workspace/knowledge/queries";
 import {
   buildProjectGraphMaps,
   findExecutionLink,
   findGraphLink,
   findGraphNode,
-  findProjectedSourceNode,
 } from "../../node-workspace/nodeflow/projectGraph";
-import { findNodeFlowNode, getNodeFlowLinkRelationsForNode, getNodeFlowNodeRef, getNodeFlowNodeTitle } from "../../node-workspace/nodeflow/model";
+import {
+  findNodeFlowNode,
+  getNodeFlowLinkRelationsForNode,
+  getNodeFlowNodeRef,
+  getNodeFlowNodeTitle,
+} from "../../node-workspace/nodeflow/model";
 
-export const READ_PROJECT_RESOURCE_TYPES = [
-  "skill_package",
-  "knowledge_node_identity",
-  "knowledge_node_detail",
-  "knowledge_map",
-  "knowledge_local_map",
-  "knowledge_anchor_map",
-  "knowledge_map_lens",
-  "knowledge_lifecycle",
-  "knowledge_anchor_timeline",
-  "source_node",
-  "nodeflow_node",
-  "nodeflow_node_identity",
-  "nodeflow_node_detail",
-  "nodeflow_execution_approval",
-  "nodeflow_link",
-  "nodeflow_graph_link",
-  "nodeflow_map",
+export const READ_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow", "skill"] as const;
+export const READ_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval", "package"] as const;
+export const READ_PROJECT_RESOURCE_VIEWS = [
+  "identity",
+  "detail",
+  "full",
+  "local",
+  "anchor",
+  "lens",
+  "lifecycle",
+  "timeline",
+] as const;
+export const READ_PROJECT_RESOURCE_TARGETS = [
+  "skill:package",
+  "knowledge:node",
+  "knowledge:link",
+  "knowledge:map",
+  "nodeflow:node",
+  "nodeflow:link",
+  "nodeflow:map",
+  "nodeflow:approval",
 ] as const;
 
-const READ_PROJECT_RESOURCE_TYPE_ALIASES: Record<string, ResourceType> = {
-  graph_node: "nodeflow_node",
-  graph_node_identity: "nodeflow_node_identity",
-  graph_node_detail: "nodeflow_node_detail",
-  execution_approval: "nodeflow_execution_approval",
-  execution_link: "nodeflow_link",
-  graph_link: "nodeflow_graph_link",
-  map: "nodeflow_map",
-};
+type ResourceLayer = (typeof READ_PROJECT_RESOURCE_LAYERS)[number];
+type ResourceEntity = (typeof READ_PROJECT_RESOURCE_ENTITIES)[number];
+type ResourceView = (typeof READ_PROJECT_RESOURCE_VIEWS)[number];
 
 const readProjectResourceParameters = {
   type: "object",
   properties: {
-    resource_type: {
+    layer: {
       type: "string",
-      enum: [...READ_PROJECT_RESOURCE_TYPES],
-      description: "Which Source, Knowledge, or NodeFlow resource to read.",
+      enum: [...READ_PROJECT_RESOURCE_LAYERS],
+      description: "Which graph layer to read from: knowledge, nodeflow, or skill.",
+    },
+    entity: {
+      type: "string",
+      enum: [...READ_PROJECT_RESOURCE_ENTITIES],
+      description: "Which graph entity to read in that layer.",
+    },
+    view: {
+      type: "string",
+      enum: [...READ_PROJECT_RESOURCE_VIEWS],
+      description: "Optional read view such as identity, detail, full, local, anchor, lens, lifecycle, or timeline.",
     },
     item_id: {
       type: "string",
-      description: "Item id for skill_package or nodeflow_graph_link.",
+      description: "Item id for skill package lookup.",
     },
     name: {
       type: "string",
-      description: "Name for skill_package, source_node, or nodeflow_map lookup.",
-    },
-    source_ref: {
-      type: "string",
-      description: "Projected source ref, for example scene:1-3.",
+      description: "Name for skill package or nodeflow map lookup.",
     },
     node_id: {
       type: "string",
-      description: "Concrete node id for nodeflow_node, nodeflow_node_identity, or nodeflow_node_detail.",
+      description: "Concrete node id for knowledge or nodeflow node reads.",
     },
     node_ref: {
       type: "string",
-      description: "Stable node ref for nodeflow_node, nodeflow_node_identity, or nodeflow_node_detail.",
+      description: "Stable node ref for knowledge or nodeflow node reads.",
     },
     link_id: {
       type: "string",
-      description: "Link id for nodeflow_link, nodeflow_graph_link, or nodeflow_execution_approval lookup by approval id.",
+      description: "Link id for knowledge or nodeflow link reads.",
+    },
+    link_kind: {
+      type: "string",
+      enum: ["canvas", "graph"],
+      description: "Which NodeFlow link space to read when entity=link.",
     },
     map_id: {
       type: "string",
       description: "NodeFlow map id such as map:workspace or map:view:xxx.",
     },
-    view: {
-      type: "string",
-      description: "Map view name.",
-    },
     lens_kind: {
       type: "string",
-      description: "Knowledge map lens kind such as full, local, anchor, kind, or focus.",
+      description: "Knowledge lens kind such as full, local, anchor, kind, or focus.",
     },
     anchor_ref: {
       type: "string",
-      description: "Knowledge anchor ref, for example script:raw, episode:1, or scene:1-3.",
+      description: "Knowledge anchor ref such as script:raw, episode:1, or scene:1-3.",
     },
     node_kind: {
       type: "string",
-      description: "Knowledge node kind filter for knowledge_map_lens.",
+      description: "Knowledge node kind filter for knowledge lens map reads.",
     },
     max_chars: {
       type: "integer",
@@ -99,10 +108,8 @@ const readProjectResourceParameters = {
     },
   },
   additionalProperties: false,
-  required: ["resource_type"],
+  required: ["layer", "entity"],
 } as const;
-
-type ResourceType = (typeof READ_PROJECT_RESOURCE_TYPES)[number];
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -115,81 +122,6 @@ const toPositiveInteger = (value: unknown) => {
   return undefined;
 };
 
-const parseArgs = (input: unknown) => {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new Error("read_project_resource 需要对象参数。");
-  }
-  const raw = input as Record<string, unknown>;
-  const resourceType = trim(raw.resource_type);
-  const itemId = trim(raw.item_id ?? raw.itemId) || undefined;
-  const name = trim(raw.name) || undefined;
-  const sourceRef = trim(raw.source_ref ?? raw.sourceRef) || undefined;
-  const nodeId = trim(raw.node_id ?? raw.nodeId) || undefined;
-  const nodeRef = trim(raw.node_ref ?? raw.nodeRef) || undefined;
-  const linkId = trim(raw.link_id ?? raw.linkId ?? raw.edge_id ?? raw.edgeId) || itemId;
-  const mapId = trim(raw.map_id ?? raw.mapId) || undefined;
-  const view = trim(raw.view) || undefined;
-  const lensKind = trim(raw.lens_kind ?? raw.lensKind) || undefined;
-  const anchorRef = trim(raw.anchor_ref ?? raw.anchorRef) || undefined;
-  const nodeKind = trim(raw.node_kind ?? raw.nodeKind) || undefined;
-  const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
-
-  if (!resourceType) throw new Error("read_project_resource 需要 resource_type。");
-  const normalizedResourceType = ((READ_PROJECT_RESOURCE_TYPES as readonly string[]).includes(resourceType)
-    ? resourceType
-    : READ_PROJECT_RESOURCE_TYPE_ALIASES[resourceType]) as ResourceType | undefined;
-  if (!normalizedResourceType) {
-    throw new Error(`read_project_resource 不支持 resource_type=${resourceType}`);
-  }
-  if (resourceType === "skill_package" && !itemId && !name) {
-    throw new Error("skill_package 需要 item_id 或 name。");
-  }
-  if (normalizedResourceType === "source_node" && !sourceRef && !name) {
-    throw new Error("source_node 需要 source_ref 或 name。");
-  }
-  if (normalizedResourceType.startsWith("knowledge_node") && !nodeId && !nodeRef) {
-    throw new Error(`${normalizedResourceType} 需要 node_id 或 node_ref。`);
-  }
-  if (
-    (normalizedResourceType === "nodeflow_node" ||
-      normalizedResourceType === "nodeflow_node_identity" ||
-      normalizedResourceType === "nodeflow_node_detail") &&
-    !nodeId &&
-    !nodeRef
-  ) {
-    throw new Error(`${normalizedResourceType} 需要 node_id 或 node_ref。`);
-  }
-    if (
-      (normalizedResourceType === "nodeflow_graph_link" ||
-        normalizedResourceType === "nodeflow_link" ||
-        normalizedResourceType === "nodeflow_execution_approval") &&
-      !linkId &&
-      !nodeId &&
-      !nodeRef
-    ) {
-      throw new Error(`${normalizedResourceType} 需要 link_id。`);
-    }
-  if (normalizedResourceType === "nodeflow_map" && !mapId && !view && !name) {
-    throw new Error("nodeflow_map 需要 map_id、view 或 name。");
-  }
-
-  return {
-    resourceType: normalizedResourceType,
-    itemId,
-    name,
-    sourceRef,
-    nodeId,
-    nodeRef,
-    linkId,
-    mapId,
-    view,
-    lensKind,
-    anchorRef,
-    nodeKind,
-    maxChars,
-  };
-};
-
 const clipText = (value: string, maxChars?: number) => {
   if (!maxChars || value.length <= maxChars) return value;
   return `${value.slice(0, maxChars)}...`;
@@ -200,63 +132,107 @@ const clipStructuredValue = (value: unknown, maxChars?: number): unknown => {
   if (Array.isArray(value)) return value.slice(0, 40).map((item) => clipStructuredValue(item, maxChars));
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).slice(0, 40).map(([key, item]) => [key, clipStructuredValue(item, maxChars)])
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 40)
+        .map(([key, item]) => [key, clipStructuredValue(item, maxChars)])
     );
   }
   return value;
 };
 
+const parseArgs = (input: unknown) => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("read_project_resource 需要对象参数。");
+  }
+  const raw = input as Record<string, unknown>;
+  const layer = trim(raw.layer) as ResourceLayer;
+  const entity = trim(raw.entity) as ResourceEntity;
+  const view = trim(raw.view) as ResourceView;
+  const itemId = trim(raw.item_id ?? raw.itemId) || undefined;
+  const name = trim(raw.name) || undefined;
+  const nodeId = trim(raw.node_id ?? raw.nodeId) || undefined;
+  const nodeRef = trim(raw.node_ref ?? raw.nodeRef) || undefined;
+  const linkId = trim(raw.link_id ?? raw.linkId) || undefined;
+  const linkKind = trim(raw.link_kind ?? raw.linkKind) as "canvas" | "graph" | "";
+  const mapId = trim(raw.map_id ?? raw.mapId) || undefined;
+  const lensKind = trim(raw.lens_kind ?? raw.lensKind) || undefined;
+  const anchorRef = trim(raw.anchor_ref ?? raw.anchorRef) || undefined;
+  const nodeKind = trim(raw.node_kind ?? raw.nodeKind) || undefined;
+  const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
+
+  if (!(READ_PROJECT_RESOURCE_LAYERS as readonly string[]).includes(layer)) {
+    throw new Error(`read_project_resource 不支持 layer=${trim(raw.layer)}`);
+  }
+  if (!(READ_PROJECT_RESOURCE_ENTITIES as readonly string[]).includes(entity)) {
+    throw new Error(`read_project_resource 不支持 entity=${trim(raw.entity)}`);
+  }
+  if (view && !(READ_PROJECT_RESOURCE_VIEWS as readonly string[]).includes(view)) {
+    throw new Error(`read_project_resource 不支持 view=${trim(raw.view)}`);
+  }
+
+  if (layer === "skill" && entity !== "package") {
+    throw new Error("skill 层仅支持 package。");
+  }
+  if (layer === "knowledge" && !["node", "link", "map"].includes(entity)) {
+    throw new Error("knowledge 层仅支持 node、link、map。");
+  }
+  if (layer === "nodeflow" && !["node", "link", "map", "approval"].includes(entity)) {
+    throw new Error("nodeflow 层仅支持 node、link、map 或 approval。");
+  }
+
+  if (layer === "skill" && entity === "package" && !itemId && !name) {
+    throw new Error("读取 skill package 需要 item_id 或 name。");
+  }
+  if (entity === "node" && !nodeId && !nodeRef) {
+    throw new Error("读取 node 需要 node_id 或 node_ref。");
+  }
+  if (entity === "link" && !linkId) {
+    throw new Error("读取 link 需要 link_id。");
+  }
+  if (layer === "nodeflow" && entity === "map" && !mapId && !name) {
+    throw new Error("读取 nodeflow map 需要 map_id 或 name。");
+  }
+  if (layer === "knowledge" && entity === "map" && (view === "anchor" || view === "timeline") && !anchorRef) {
+    throw new Error(`knowledge map 的 ${view} 视图需要 anchor_ref。`);
+  }
+  if (layer === "knowledge" && entity === "map" && view === "local" && !nodeId && !nodeRef) {
+    throw new Error("knowledge local map 需要 node_id 或 node_ref。");
+  }
+
+  return {
+    layer,
+    entity,
+    view: (view || (entity === "node" ? "detail" : entity === "map" ? "full" : "")) as ResourceView | "",
+    itemId,
+    name,
+    nodeId,
+    nodeRef,
+    linkId,
+    linkKind: linkKind || undefined,
+    mapId,
+    lensKind,
+    anchorRef,
+    nodeKind,
+    maxChars,
+  };
+};
+
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete project resource from the current project. Use Source resources for canonical script facts, Knowledge resources for long-term memory, and NodeFlow resources for current canvas structure, links, approvals, and maps.",
+    "Read a concrete entity from the shared project graph world. Public reads now focus on two main graph layers: Knowledge for long-term memory and NodeFlow for the visible working canvas. Skill packages remain auxiliary packages.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
-    const projectData = bridge.getProjectData();
     const workflow = bridge.getNodeFlowSnapshot();
     const knowledge = bridge.getKnowledgeSnapshot();
 
-    if (
-      args.resourceType === "knowledge_node_identity" ||
-      args.resourceType === "knowledge_node_detail" ||
-      args.resourceType === "knowledge_map" ||
-      args.resourceType === "knowledge_local_map" ||
-      args.resourceType === "knowledge_anchor_map" ||
-      args.resourceType === "knowledge_map_lens" ||
-      args.resourceType === "knowledge_lifecycle" ||
-      args.resourceType === "knowledge_anchor_timeline"
-    ) {
-      const anchor = args.anchorRef ? parseKnowledgeAnchorRef(args.anchorRef) : undefined;
-      if (args.anchorRef && !anchor) {
-        throw new Error("knowledge anchor_ref 格式无效。请使用 script:raw、episode:1 或 scene:1-3 这类形式。");
-      }
-      const lens =
-        args.resourceType === "knowledge_map_lens"
-          ? {
-              id: `lens:${args.lensKind || "full"}:${args.anchorRef || args.nodeRef || args.nodeKind || "default"}`,
-              kind: ((args.lensKind || "full") as "full" | "local" | "anchor" | "kind" | "focus"),
-              focusNodeRefs: args.nodeRef ? [args.nodeRef] : undefined,
-              anchorRefs: args.anchorRef ? [args.anchorRef] : undefined,
-              nodeKinds: args.nodeKind ? [args.nodeKind] : undefined,
-              depth: 1,
-            }
-          : undefined;
-      return readKnowledgeResource(knowledge, {
-        resourceType: args.resourceType,
-        nodeId: args.nodeId,
-        nodeRef: args.nodeRef,
-        anchor,
-        lens,
-        depth: 1,
-      });
-    }
-
-    if (args.resourceType === "skill_package") {
+    if (args.layer === "skill") {
       const skill = await resolveBuiltinSkill(args.itemId || args.name || "");
       return skill
         ? {
-            resource_type: "skill_package",
+            layer: "skill",
+            entity: "package",
             found: true,
             item_id: skill.id,
             title: skill.title,
@@ -266,44 +242,141 @@ export const readProjectResourceToolDef = {
             tags: skill.tags || [],
           }
         : {
-            resource_type: "skill_package",
+            layer: "skill",
+            entity: "package",
             found: false,
             item_id: args.itemId || null,
             name: args.name || null,
           };
     }
 
-    if (args.resourceType === "source_node") {
-      const node = findProjectedSourceNode(projectData, {
-        ref: args.sourceRef,
-        sourceRef: args.sourceRef,
-        title: args.name,
-      });
-      return node
-        ? {
-            resource_type: "source_node",
-            found: true,
-            ref: node.ref,
-            plane: node.plane,
-            node_type: node.type,
-            title: node.title,
-            locked: true,
-            source_ref: node.sourceRef || null,
-            body: clipStructuredValue(node.body, args.maxChars),
-          }
-        : {
-            resource_type: "source_node",
-            found: false,
-            source_ref: args.sourceRef || null,
-            name: args.name || null,
-          };
+    if (args.layer === "knowledge") {
+      if (args.entity === "node") {
+        const resourceType = args.view === "identity" ? "knowledge_node_identity" : "knowledge_node_detail";
+        return {
+          layer: "knowledge",
+          entity: "node",
+          view: args.view,
+          ...readKnowledgeResource(knowledge, {
+            resourceType,
+            nodeId: args.nodeId,
+            nodeRef: args.nodeRef,
+          }),
+        };
+      }
+
+      if (args.entity === "link") {
+        const link = knowledge.links.find((item) => item.id === args.linkId);
+        const fromNode = link ? getKnowledgeNodeById(knowledge, link.fromNodeId) : null;
+        const toNode = link ? getKnowledgeNodeById(knowledge, link.toNodeId) : null;
+        return link
+          ? {
+              layer: "knowledge",
+              entity: "link",
+              found: true,
+              item: {
+                link_id: link.id,
+                from_node_id: link.fromNodeId,
+                from_node_ref: fromNode?.ref || null,
+                from_title: fromNode?.package.title || null,
+                to_node_id: link.toNodeId,
+                to_node_ref: toNode?.ref || null,
+                to_title: toNode?.package.title || null,
+                link_type: link.type,
+                origin: link.origin,
+                status: link.status || "active",
+                weight: link.weight ?? null,
+              },
+            }
+          : {
+              layer: "knowledge",
+              entity: "link",
+              found: false,
+              link_id: args.linkId || null,
+            };
+      }
+
+      const anchor = args.anchorRef ? parseKnowledgeAnchorRef(args.anchorRef) : undefined;
+      if (args.anchorRef && !anchor) {
+        throw new Error("knowledge anchor_ref 格式无效。请使用 script:raw、episode:1 或 scene:1-3。");
+      }
+      const resourceType =
+        args.view === "local"
+          ? "knowledge_local_map"
+          : args.view === "anchor"
+            ? "knowledge_anchor_map"
+            : args.view === "lens"
+              ? "knowledge_map_lens"
+              : args.view === "lifecycle"
+                ? "knowledge_lifecycle"
+                : args.view === "timeline"
+                  ? "knowledge_anchor_timeline"
+                  : "knowledge_map";
+      const lens =
+        args.view === "lens"
+          ? {
+              id: `lens:${args.lensKind || "full"}:${args.anchorRef || args.nodeRef || args.nodeKind || "default"}`,
+              kind: ((args.lensKind || "full") as "full" | "local" | "anchor" | "kind" | "focus"),
+              focusNodeRefs: args.nodeRef ? [args.nodeRef] : undefined,
+              anchorRefs: args.anchorRef ? [args.anchorRef] : undefined,
+              nodeKinds: args.nodeKind ? [args.nodeKind] : undefined,
+              depth: 1,
+            }
+          : undefined;
+      return {
+        layer: "knowledge",
+        entity: "map",
+        view: args.view || "full",
+        ...readKnowledgeResource(knowledge, {
+          resourceType,
+          nodeId: args.nodeId,
+          nodeRef: args.nodeRef,
+          anchor,
+          lens,
+          depth: 1,
+        }),
+      };
     }
 
-    if (args.resourceType === "nodeflow_node") {
+    if (args.entity === "node") {
       const rawNode = findNodeFlowNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
       });
+      if (args.view === "identity") {
+        if (!rawNode) {
+          return {
+            layer: "nodeflow",
+            entity: "node",
+            view: "identity",
+            found: false,
+            node_id: args.nodeId || null,
+            node_ref: args.nodeRef || null,
+          };
+        }
+        const status =
+          typeof (rawNode.data as Record<string, unknown>)?.status === "string"
+            ? String((rawNode.data as Record<string, unknown>).status)
+            : null;
+        const linkRelations = getNodeFlowLinkRelationsForNode(workflow, rawNode.id);
+        return {
+          layer: "nodeflow",
+          entity: "node",
+          view: "identity",
+          found: true,
+          item: {
+            node_id: rawNode.id,
+            node_ref: getNodeFlowNodeRef(rawNode),
+            kind: rawNode.type,
+            title: getNodeFlowNodeTitle(rawNode, workflow.nodeFlowContext),
+            status,
+            parent_id: rawNode.parentId || null,
+            incoming_links: linkRelations.incomingLinks,
+            outgoing_links: linkRelations.outgoingLinks,
+          },
+        };
+      }
+
       const node = findGraphNode(workflow, {
         nodeId: args.nodeId,
         nodeRef: args.nodeRef,
@@ -314,87 +387,85 @@ export const readProjectResourceToolDef = {
           : { incomingLinks: [], outgoingLinks: [] };
       return node
         ? {
-            resource_type: "nodeflow_node",
+            layer: "nodeflow",
+            entity: "node",
+            view: "detail",
             found: true,
-            node_id: node.nodeId,
-            node_ref: node.ref,
-            plane: node.plane,
-            node_type: node.type,
-            title: node.title,
-            position: typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
-            parent_id: node.parentId || null,
-            incoming_links: linkRelations.incomingLinks,
-            outgoing_links: linkRelations.outgoingLinks,
-            body: clipStructuredValue(node.body, args.maxChars),
-            meta: clipStructuredValue(node.meta || {}, args.maxChars),
+            item: {
+              node_id: node.nodeId,
+              node_ref: node.ref,
+              plane: node.plane,
+              node_type: node.type,
+              title: node.title,
+              position:
+                typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
+              parent_id: node.parentId || null,
+              incoming_links: linkRelations.incomingLinks,
+              outgoing_links: linkRelations.outgoingLinks,
+              body: clipStructuredValue(node.body, args.maxChars),
+              meta: clipStructuredValue(node.meta || {}, args.maxChars),
+            },
           }
         : {
-            resource_type: "nodeflow_node",
+            layer: "nodeflow",
+            entity: "node",
+            view: "detail",
             found: false,
             node_id: args.nodeId || null,
             node_ref: args.nodeRef || null,
           };
     }
 
-    if (args.resourceType === "nodeflow_node_identity") {
-      const rawNode = findNodeFlowNode(workflow, {
-        nodeId: args.nodeId,
-        nodeRef: args.nodeRef,
-      });
-      if (!rawNode) {
-        return {
-          resource_type: "nodeflow_node_identity",
-          found: false,
-          node_id: args.nodeId || null,
-          node_ref: args.nodeRef || null,
-        };
+    if (args.entity === "link") {
+      if (args.linkKind === "graph") {
+        const link = findGraphLink(workflow, args.linkId!);
+        return link
+          ? {
+              layer: "nodeflow",
+              entity: "link",
+              link_kind: "graph",
+              found: true,
+              item: {
+                link_id: link.id,
+                source_ref: link.sourceRef,
+                target_ref: link.targetRef,
+              },
+            }
+          : {
+              layer: "nodeflow",
+              entity: "link",
+              link_kind: "graph",
+              found: false,
+              link_id: args.linkId || null,
+            };
       }
-      const status = typeof (rawNode.data as Record<string, unknown>)?.status === "string"
-        ? String((rawNode.data as Record<string, unknown>).status)
-        : null;
-      const linkRelations = getNodeFlowLinkRelationsForNode(workflow, rawNode.id);
-      return {
-        resource_type: "nodeflow_node_identity",
-        found: true,
-        node_id: rawNode.id,
-        node_ref: getNodeFlowNodeRef(rawNode),
-        kind: rawNode.type,
-        title: getNodeFlowNodeTitle(rawNode, workflow.nodeFlowContext),
-        status,
-        parent_id: rawNode.parentId || null,
-        incoming_links: linkRelations.incomingLinks,
-        outgoing_links: linkRelations.outgoingLinks,
-      };
-    }
 
-    if (args.resourceType === "nodeflow_node_detail") {
-      const node = findGraphNode(workflow, {
-        nodeId: args.nodeId,
-        nodeRef: args.nodeRef,
-      });
-      return node
+      const link = findExecutionLink(workflow, args.linkId!);
+      return link
         ? {
-            resource_type: "nodeflow_node_detail",
+            layer: "nodeflow",
+            entity: "link",
+            link_kind: "canvas",
             found: true,
-            node_id: node.nodeId,
-            node_ref: node.ref,
-            plane: node.plane,
-            node_type: node.type,
-            title: node.title,
-            position: typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
-            parent_id: node.parentId || null,
-            body: clipStructuredValue(node.body, args.maxChars),
-            meta: clipStructuredValue(node.meta || {}, args.maxChars),
+            item: {
+              link_id: link.id,
+              from_node_id: link.fromNodeId,
+              to_node_id: link.toNodeId,
+              from_port: link.fromPort,
+              to_port: link.toPort,
+              paused: link.paused,
+            },
           }
         : {
-            resource_type: "nodeflow_node_detail",
+            layer: "nodeflow",
+            entity: "link",
+            link_kind: "canvas",
             found: false,
-            node_id: args.nodeId || null,
-            node_ref: args.nodeRef || null,
+            link_id: args.linkId || null,
           };
     }
 
-    if (args.resourceType === "nodeflow_execution_approval") {
+    if (args.entity === "approval") {
       const approvals = bridge.getPendingNodeFlowExecutionApprovals();
       const approval =
         approvals.find((item) => item.id === args.linkId) ||
@@ -402,23 +473,27 @@ export const readProjectResourceToolDef = {
         approvals.find((item) => item.nodeRef && item.nodeRef === args.nodeRef);
       return approval
         ? {
-            resource_type: "nodeflow_execution_approval",
+            layer: "nodeflow",
+            entity: "approval",
             found: true,
-            approval_id: approval.id,
-            node_id: approval.nodeId,
-            node_ref: approval.nodeRef || null,
-            node_type: approval.nodeType,
-            node_title: approval.nodeTitle,
-            action: approval.action,
-            provider: approval.providerLabel,
-            model: approval.modelLabel,
-            prompt_preview: approval.promptPreview,
-            input_summary: approval.inputSummary,
-            created_at: approval.createdAt,
-            approval_status: "pending",
+            item: {
+              approval_id: approval.id,
+              node_id: approval.nodeId,
+              node_ref: approval.nodeRef || null,
+              node_type: approval.nodeType,
+              node_title: approval.nodeTitle,
+              action: approval.action,
+              provider: approval.providerLabel,
+              model: approval.modelLabel,
+              prompt_preview: approval.promptPreview,
+              input_summary: approval.inputSummary,
+              created_at: approval.createdAt,
+              approval_status: "pending",
+            },
           }
         : {
-            resource_type: "nodeflow_execution_approval",
+            layer: "nodeflow",
+            entity: "approval",
             found: false,
             approval_id: args.linkId || null,
             node_id: args.nodeId || null,
@@ -426,86 +501,54 @@ export const readProjectResourceToolDef = {
           };
     }
 
-    if (args.resourceType === "nodeflow_link") {
-      const link = findExecutionLink(workflow, args.linkId!);
-      return link
-        ? {
-            resource_type: "nodeflow_link",
-            found: true,
-            link_id: link.id,
-            from_node_id: link.fromNodeId,
-            to_node_id: link.toNodeId,
-            from_port: link.fromPort,
-            to_port: link.toPort,
-            paused: link.paused,
-          }
-        : {
-            resource_type: "nodeflow_link",
-            found: false,
-            link_id: args.linkId || null,
-          };
-    }
-
-    if (args.resourceType === "nodeflow_graph_link") {
-      const link = findGraphLink(workflow, args.linkId!);
-      return link
-        ? {
-            resource_type: "nodeflow_graph_link",
-            found: true,
-            link_id: link.id,
-            source_ref: link.sourceRef,
-            target_ref: link.targetRef,
-          }
-        : {
-            resource_type: "nodeflow_graph_link",
-            found: false,
-            link_id: args.linkId || null,
-          };
-    }
-
     const maps = buildProjectGraphMaps(workflow);
-    const needle = trim(args.name || args.view).toLowerCase();
+    const needle = trim(args.name).toLowerCase();
     const map =
       maps.find((item) => item.mapId === args.mapId) ||
-      maps.find((item) => item.view === args.view) ||
       maps.find((item) => needle && item.name.trim().toLowerCase() === needle);
     return map
       ? {
-          resource_type: "nodeflow_map",
+          layer: "nodeflow",
+          entity: "map",
           found: true,
-          map_id: map.mapId,
-          name: map.name,
-          view: map.view,
-          active: map.isActive,
-          node_count: map.nodeCount,
-          link_count: map.linkCount,
+          item: {
+            map_id: map.mapId,
+            name: map.name,
+            view: map.view,
+            active: map.isActive,
+            node_count: map.nodeCount,
+            link_count: map.linkCount,
+          },
         }
       : {
-          resource_type: "nodeflow_map",
+          layer: "nodeflow",
+          entity: "map",
           found: false,
           map_id: args.mapId || null,
-          view: args.view || null,
           name: args.name || null,
         };
   },
   summarize: (output: any) => {
-    if (output?.found === false) return `未找到 ${output?.resource_type || "resource"}`;
-    if (output.resource_type === "skill_package") return `读取技能包 ${output.title || output.item_id}`;
-    if (output.resource_type === "knowledge_node_identity") return `读取 Knowledge 节点识别层 ${output.item?.title || output.item?.ref || ""}`;
-    if (output.resource_type === "knowledge_node_detail") return `读取 Knowledge 节点细节层 ${output.item?.package?.title || output.item?.ref || ""}`;
-    if (output.resource_type === "knowledge_map") return `读取 Knowledge 全图`;
-    if (output.resource_type === "knowledge_local_map") return `读取 Knowledge 局部地图`;
-    if (output.resource_type === "knowledge_anchor_map") return `读取 Knowledge anchor 地图`;
-    if (output.resource_type === "knowledge_map_lens") return `读取 Knowledge lens 地图`;
-    if (output.resource_type === "knowledge_lifecycle") return `读取 Knowledge 生命周期视图`;
-    if (output.resource_type === "knowledge_anchor_timeline") return `读取 Knowledge anchor 时间线`;
-    if (output.resource_type === "source_node") return `读取 Source 节点 ${output.title || output.ref}`;
-    if (output.resource_type === "nodeflow_node") return `读取 NodeFlow 节点 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "nodeflow_node_identity") return `读取 NodeFlow 节点识别层 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "nodeflow_node_detail") return `读取 NodeFlow 节点细节层 ${output.title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "nodeflow_execution_approval") return `读取 NodeFlow 待审批执行请求 ${output.node_title || output.node_ref || output.node_id}`;
-    if (output.resource_type === "nodeflow_link") return `读取 NodeFlow 连线 ${output.link_id}`;
-    if (output.resource_type === "nodeflow_graph_link") return `读取 NodeFlow 图引用连线 ${output.link_id}`;
-    return `读取 NodeFlow 地图 ${output.name || output.map_id}`;
+    if (output?.found === false) return `未找到 ${output?.layer || "graph"} ${output?.entity || "resource"}`;
+    if (output?.layer === "skill") return `读取技能包 ${output.title || output.item_id}`;
+    if (output?.layer === "knowledge" && output?.entity === "node") {
+      return `读取 Knowledge 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.ref || ""}`;
+    }
+    if (output?.layer === "knowledge" && output?.entity === "link") {
+      return `读取 Knowledge 关系 ${output.item?.link_id || output.link_id || ""}`.trim();
+    }
+    if (output?.layer === "knowledge" && output?.entity === "map") {
+      return `读取 Knowledge 地图 ${output?.view || "full"}`;
+    }
+    if (output?.layer === "nodeflow" && output?.entity === "node") {
+      return `读取 NodeFlow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;
+    }
+    if (output?.layer === "nodeflow" && output?.entity === "link") {
+      return `读取 NodeFlow ${output?.link_kind === "graph" ? "图引用连线" : "连线"} ${output.item?.link_id || output.link_id || ""}`.trim();
+    }
+    if (output?.layer === "nodeflow" && output?.entity === "approval") {
+      return `读取 NodeFlow 待审批执行请求 ${output.item?.node_title || output.item?.node_ref || output.item?.node_id || ""}`;
+    }
+    return `读取 NodeFlow 地图 ${output.item?.name || output.map_id || ""}`.trim();
   },
 };

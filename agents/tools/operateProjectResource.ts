@@ -2,8 +2,13 @@ import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
 import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
 import { findProjectedSourceNode } from "../../node-workspace/nodeflow/projectGraph";
 
-export const OPERATE_PROJECT_RESOURCE_TYPES = ["nodeflow_node", "nodeflow_link", "nodeflow_graph_link"] as const;
+export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
+export const OPERATE_NODEFLOW_ACTIONS = ["create", "connect"] as const;
+export const OPERATE_NODEFLOW_TARGETS = ["nodeflow:node", "nodeflow:link"] as const;
 export const OPERATE_NODEFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
+
+type OperateEntity = (typeof OPERATE_NODEFLOW_ENTITIES)[number];
+type OperateAction = (typeof OPERATE_NODEFLOW_ACTIONS)[number];
 
 const slugifyRefToken = (value: string, fallback: string) =>
   value
@@ -17,14 +22,24 @@ const slugifyRefToken = (value: string, fallback: string) =>
 const operateProjectResourceParameters = {
   type: "object",
   properties: {
-    resource_type: {
+    entity: {
       type: "string",
-      enum: [...OPERATE_PROJECT_RESOURCE_TYPES],
-      description: "Which NodeFlow resource to operate on.",
+      enum: [...OPERATE_NODEFLOW_ENTITIES],
+      description: "Which NodeFlow graph entity to operate on.",
+    },
+    action: {
+      type: "string",
+      enum: [...OPERATE_NODEFLOW_ACTIONS],
+      description: "Whether to create a NodeFlow node or connect NodeFlow links.",
+    },
+    link_kind: {
+      type: "string",
+      enum: ["canvas", "graph"],
+      description: "Whether the connection is a visible canvas link or a graph-reference link.",
     },
     node_kind: {
       type: "string",
-      description: "NodeFlow node kind to create when resource_type=nodeflow_node. Supports text, script_board, storyboard_board, character_card, plus common aliases like script, storyboard, character.",
+      description: "NodeFlow node kind to create when entity=node and action=create. Supports text, script_board, storyboard_board, character_card, plus aliases script, storyboard, character.",
     },
     node_ref: {
       type: "string",
@@ -48,51 +63,31 @@ const operateProjectResourceParameters = {
     },
     source_ref: {
       type: "string",
-      description: "Source node ref for nodeflow_graph_link.",
+      description: "Source ref when connecting graph links or locating existing nodes by ref.",
     },
     target_ref: {
       type: "string",
-      description: "Target node ref for nodeflow_graph_link.",
+      description: "Target ref when connecting graph links or locating existing nodes by ref.",
     },
     source_node_id: {
       type: "string",
-      description: "Fallback source node id for nodeflow_graph_link.",
+      description: "Source node id for canvas or graph connections.",
     },
     target_node_id: {
       type: "string",
-      description: "Fallback target node id for nodeflow_graph_link.",
+      description: "Target node id for canvas or graph connections.",
     },
     source_handle: {
       type: "string",
-      description: "Optional explicit source handle for nodeflow_link.",
+      description: "Optional explicit source handle for canvas links.",
     },
     target_handle: {
       type: "string",
-      description: "Optional explicit target handle for nodeflow_link.",
+      description: "Optional explicit target handle for canvas links.",
     },
   },
   additionalProperties: false,
-  required: ["resource_type"],
-  oneOf: [
-    {
-      properties: {
-        resource_type: { enum: ["nodeflow_node"] },
-      },
-      required: ["resource_type", "node_kind"],
-    },
-    {
-      properties: {
-        resource_type: { enum: ["nodeflow_link", "nodeflow_graph_link"] },
-      },
-      required: ["resource_type"],
-      anyOf: [
-        { required: ["source_ref", "target_ref"] },
-        { required: ["source_ref", "target_node_id"] },
-        { required: ["source_node_id", "target_ref"] },
-        { required: ["source_node_id", "target_node_id"] },
-      ],
-    },
-  ],
+  required: ["entity", "action"],
 } as const;
 
 const normalizeString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
@@ -108,7 +103,8 @@ const toPositiveInteger = (value: unknown) => {
 
 type ParsedArgs =
   | {
-      resourceType: "nodeflow_node";
+      entity: "node";
+      action: "create";
       nodeKind: "text" | "script_board" | "storyboard_board" | "character_card";
       nodeRef?: string;
       title?: string;
@@ -117,16 +113,9 @@ type ParsedArgs =
       characterId?: string;
     }
   | {
-      resourceType: "nodeflow_link";
-      sourceRef?: string;
-      targetRef?: string;
-      sourceNodeId?: string;
-      targetNodeId?: string;
-      sourceHandle?: string;
-      targetHandle?: string;
-    }
-  | {
-      resourceType: "nodeflow_graph_link";
+      entity: "link";
+      action: "connect";
+      linkKind: "canvas" | "graph";
       sourceRef?: string;
       targetRef?: string;
       sourceNodeId?: string;
@@ -140,36 +129,43 @@ const parseArgs = (input: unknown): ParsedArgs => {
     throw new Error("operate_project_resource 需要对象参数。");
   }
   const raw = input as Record<string, unknown>;
-  const rawResourceType = normalizeString(raw.resource_type ?? raw.resourceType);
-  const resourceType = rawResourceType;
+  const entity = normalizeString(raw.entity) as OperateEntity;
+  const action = normalizeString(raw.action) as OperateAction;
 
-  const normalizedResourceType =
-    resourceType === "execution_node"
-      ? "nodeflow_node"
-      : resourceType === "execution_link"
-        ? "nodeflow_link"
-        : resourceType === "graph_link"
-          ? "nodeflow_graph_link"
-          : resourceType;
+  if (!(OPERATE_NODEFLOW_ENTITIES as readonly string[]).includes(entity)) {
+    throw new Error(`operate_project_resource 不支持 entity=${normalizeString(raw.entity)}`);
+  }
+  if (!(OPERATE_NODEFLOW_ACTIONS as readonly string[]).includes(action)) {
+    throw new Error(`operate_project_resource 不支持 action=${normalizeString(raw.action)}`);
+  }
 
-  if (normalizedResourceType === "nodeflow_node") {
+  if (entity === "node" && action !== "create") {
+    throw new Error("NodeFlow node 当前仅支持 create。");
+  }
+  if (entity === "link" && action !== "connect") {
+    throw new Error("NodeFlow link 当前仅支持 connect。");
+  }
+
+  if (entity === "node") {
     const rawNodeKind = normalizeString(raw.node_kind ?? raw.nodeKind);
     const nodeKind =
-      rawNodeKind === "script" ? "script_board" :
-      rawNodeKind === "storyboard" ? "storyboard_board" :
-      rawNodeKind === "character" ? "character_card" :
-      rawNodeKind;
+      rawNodeKind === "script"
+        ? "script_board"
+        : rawNodeKind === "storyboard"
+          ? "storyboard_board"
+          : rawNodeKind === "character"
+            ? "character_card"
+            : rawNodeKind;
     const nodeRef = normalizeString(raw.node_ref ?? raw.nodeRef) || undefined;
     const title = normalizeString(raw.title) || undefined;
     const text = normalizeString(raw.text) || undefined;
     const episodeId = toPositiveInteger(raw.episode_id ?? raw.episodeId);
     const characterId =
       normalizeString(raw.character_id ?? raw.characterId) ||
-      normalizeString(raw.item_id ?? raw.itemId) ||
       undefined;
 
     if (!(OPERATE_NODEFLOW_NODE_KINDS as readonly string[]).includes(nodeKind)) {
-      throw new Error("nodeflow_node 当前仅支持 text、script_board、storyboard_board、character_card。");
+      throw new Error("NodeFlow node 当前仅支持 text、script_board、storyboard_board、character_card。");
     }
     if (nodeKind === "text" && !text) {
       throw new Error("创建 text 节点时需要 text。");
@@ -182,7 +178,8 @@ const parseArgs = (input: unknown): ParsedArgs => {
     }
 
     return {
-      resourceType: "nodeflow_node",
+      entity: "node",
+      action: "create",
       nodeKind: nodeKind as "text" | "script_board" | "storyboard_board" | "character_card",
       nodeRef,
       title,
@@ -192,43 +189,44 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  if (normalizedResourceType === "nodeflow_link" || normalizedResourceType === "nodeflow_graph_link") {
-    const sourceRef = normalizeString(raw.source_ref ?? raw.sourceRef) || undefined;
-    const targetRef = normalizeString(raw.target_ref ?? raw.targetRef) || undefined;
-    const sourceNodeId = normalizeString(raw.source_node_id ?? raw.sourceNodeId) || undefined;
-    const targetNodeId = normalizeString(raw.target_node_id ?? raw.targetNodeId) || undefined;
-    const sourceHandle = normalizeString(raw.source_handle ?? raw.sourceHandle) || undefined;
-    const targetHandle = normalizeString(raw.target_handle ?? raw.targetHandle) || undefined;
+  const linkKind = normalizeString(raw.link_kind ?? raw.linkKind) as "canvas" | "graph" | "";
+  const sourceRef = normalizeString(raw.source_ref ?? raw.sourceRef) || undefined;
+  const targetRef = normalizeString(raw.target_ref ?? raw.targetRef) || undefined;
+  const sourceNodeId = normalizeString(raw.source_node_id ?? raw.sourceNodeId) || undefined;
+  const targetNodeId = normalizeString(raw.target_node_id ?? raw.targetNodeId) || undefined;
+  const sourceHandle = normalizeString(raw.source_handle ?? raw.sourceHandle) || undefined;
+  const targetHandle = normalizeString(raw.target_handle ?? raw.targetHandle) || undefined;
 
-    if ((!sourceRef && !sourceNodeId) || (!targetRef && !targetNodeId)) {
-      throw new Error(`${resourceType} 需要为两端分别提供 ref 或 node_id。`);
-    }
-    if ((sourceRef || sourceNodeId) === (targetRef || targetNodeId)) {
-      throw new Error(`${resourceType} 不能连接同一个节点到自己。`);
-    }
+  const effectiveLinkKind = (linkKind || "canvas") as "canvas" | "graph";
 
-    return {
-      resourceType: normalizedResourceType,
-      sourceRef,
-      targetRef,
-      sourceNodeId,
-      targetNodeId,
-      sourceHandle,
-      targetHandle,
-    };
+  if ((!sourceRef && !sourceNodeId) || (!targetRef && !targetNodeId)) {
+    throw new Error("连接 NodeFlow link 时需要为两端分别提供 ref 或 node_id。");
+  }
+  if ((sourceRef || sourceNodeId) === (targetRef || targetNodeId)) {
+    throw new Error("NodeFlow link 不能连接同一个节点到自己。");
   }
 
-  throw new Error("operate_project_resource 仅支持 nodeflow_node、nodeflow_link 或 nodeflow_graph_link。");
+  return {
+    entity: "link",
+    action: "connect",
+    linkKind: effectiveLinkKind,
+    sourceRef,
+    targetRef,
+    sourceNodeId,
+    targetNodeId,
+    sourceHandle,
+    targetHandle,
+  };
 };
 
-const resolveNodeType = (nodeKind: Extract<ParsedArgs, { resourceType: "nodeflow_node" }>["nodeKind"]) => {
+const resolveNodeType = (nodeKind: Extract<ParsedArgs, { entity: "node" }>["nodeKind"]) => {
   if (nodeKind === "script_board") return "scriptBoard" as const;
   if (nodeKind === "storyboard_board") return "storyboardBoard" as const;
   if (nodeKind === "character_card") return "identityCard" as const;
   return "text" as const;
 };
 
-const defaultTitle = (args: Extract<ParsedArgs, { resourceType: "nodeflow_node" }>) => {
+const defaultTitle = (args: Extract<ParsedArgs, { entity: "node" }>) => {
   if (args.title) return args.title;
   if (args.nodeKind === "script_board") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本";
   if (args.nodeKind === "storyboard_board") return args.episodeId ? `第 ${args.episodeId} 集分镜表` : "分镜表";
@@ -236,23 +234,25 @@ const defaultTitle = (args: Extract<ParsedArgs, { resourceType: "nodeflow_node" 
   return args.text?.slice(0, 24) || "文本";
 };
 
-const defaultNodeRef = (args: Extract<ParsedArgs, { resourceType: "nodeflow_node" }>) => {
+const defaultNodeRef = (args: Extract<ParsedArgs, { entity: "node" }>) => {
   if (args.nodeRef) return args.nodeRef;
   if (args.nodeKind === "script_board") return `ep${args.episodeId || "x"}_script_board`;
   if (args.nodeKind === "storyboard_board") return `ep${args.episodeId || "x"}_storyboard_board`;
-  if (args.nodeKind === "character_card") return `${slugifyRefToken(args.characterId || args.title || "character", "character")}_card`;
+  if (args.nodeKind === "character_card") {
+    return `${slugifyRefToken(args.characterId || args.title || "character", "character")}_card`;
+  }
   return `text_${slugifyRefToken(args.title || args.text || Date.now().toString(), "note")}`;
 };
 
 export const operateProjectResourceToolDef = {
   name: "operate_project_resource",
   description:
-    "Operate NodeFlow resources by creating nodes, connecting canvas links, or creating graph links between projected/source/graph nodes.",
+    "Operate the NodeFlow layer by creating working-canvas nodes or connecting links inside the visible workflow graph.",
   parameters: operateProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
 
-    if (args.resourceType === "nodeflow_node") {
+    if (args.entity === "node") {
       const nodeType = resolveNodeType(args.nodeKind);
       const expectedRevision = bridge.getNodeFlowSnapshot().revision;
       const created = bridge.createNodeFlowNode({
@@ -261,73 +261,97 @@ export const operateProjectResourceToolDef = {
         nodeRef: defaultNodeRef(args),
         title: defaultTitle(args),
         text: args.nodeKind === "text" ? args.text : undefined,
-        episodeId: args.nodeKind === "script_board" || args.nodeKind === "storyboard_board" ? args.episodeId : undefined,
+        episodeId:
+          args.nodeKind === "script_board" || args.nodeKind === "storyboard_board"
+            ? args.episodeId
+            : undefined,
         entityType: args.nodeKind === "character_card" ? "character" : undefined,
         entityId: args.nodeKind === "character_card" ? args.characterId : undefined,
       });
       return {
-        resource_type: "nodeflow_node",
-        node_kind: args.nodeKind,
-        node_id: created.nodeId,
-        node_ref: created.nodeRef || defaultNodeRef(args),
-        node_type: created.nodeType,
-        title: created.title,
+        layer: "nodeflow",
+        entity: "node",
+        action: "create",
+        item: {
+          node_kind: args.nodeKind,
+          node_id: created.nodeId,
+          node_ref: created.nodeRef || defaultNodeRef(args),
+          node_type: created.nodeType,
+          title: created.title,
+        },
       };
     }
 
-    if (args.resourceType === "nodeflow_link") {
+    if (args.linkKind === "canvas") {
       const expectedRevision = bridge.getNodeFlowSnapshot().revision;
       const connected = bridge.connectNodeFlowNodes({
         expectedRevision,
-        sourceRef: args.sourceRef,
-        targetRef: args.targetRef,
         sourceNodeId: args.sourceNodeId,
         targetNodeId: args.targetNodeId,
+        sourceRef: args.sourceRef,
+        targetRef: args.targetRef,
         sourceHandle: args.sourceHandle as NodeFlowHandle | undefined,
         targetHandle: args.targetHandle as NodeFlowHandle | undefined,
       });
       return {
-        resource_type: "nodeflow_link",
-        link_id: connected.linkId,
-        source_node_id: connected.sourceNodeId,
-        target_node_id: connected.targetNodeId,
-        source_ref: connected.sourceRef,
-        target_ref: connected.targetRef,
-        source_handle: connected.sourceHandle,
-        target_handle: connected.targetHandle,
+        layer: "nodeflow",
+        entity: "link",
+        action: "connect",
+        link_kind: "canvas",
+        item: {
+          link_id: connected.linkId,
+          source_node_id: connected.sourceNodeId,
+          target_node_id: connected.targetNodeId,
+          source_ref: connected.sourceRef,
+          target_ref: connected.targetRef,
+          source_handle: connected.sourceHandle,
+          target_handle: connected.targetHandle,
+        },
       };
     }
 
     const workflow = bridge.getNodeFlowSnapshot();
-    const projectData = bridge.getProjectData();
-    const resolveRef = (nodeId?: string, ref?: string) => {
-      if (ref) return ref;
-      if (!nodeId) return undefined;
-      const workflowNode = workflow.nodes.find((node) => node.id === nodeId);
-      if (workflowNode) return getNodeFlowRef(workflowNode) || workflowNode.id;
-      const projected = findProjectedSourceNode(projectData, { ref: nodeId, sourceRef: nodeId, title: nodeId });
-      return projected?.ref;
+    const resolveRef = (nodeId?: string, nodeRef?: string) => {
+      if (nodeRef) return nodeRef;
+      if (nodeId) {
+        const workflowNode = workflow.nodes.find((node) => node.id === nodeId);
+        if (workflowNode) return getNodeFlowRef(workflowNode) || workflowNode.id;
+        const projected = findProjectedSourceNode(bridge.getProjectData(), {
+          ref: nodeId,
+          sourceRef: nodeId,
+          title: nodeId,
+        });
+        if (projected) return projected.ref;
+      }
+      return undefined;
     };
+
     const sourceRef = resolveRef(args.sourceNodeId, args.sourceRef);
     const targetRef = resolveRef(args.targetNodeId, args.targetRef);
     if (!sourceRef || !targetRef) {
-      throw new Error("nodeflow_graph_link 需要可解析的 source_ref 和 target_ref。source 节点请使用 source_ref。");
+      throw new Error("创建 NodeFlow graph link 需要可解析的 source_ref 和 target_ref。");
     }
+
     const created = bridge.createNodeFlowGraphLink({
       expectedRevision: workflow.revision,
       sourceRef,
       targetRef,
     });
     return {
-      resource_type: "nodeflow_graph_link",
-      link_id: created.linkId,
-      source_ref: created.sourceRef,
-      target_ref: created.targetRef,
+      layer: "nodeflow",
+      entity: "link",
+      action: "connect",
+      link_kind: "graph",
+      item: {
+        link_id: created.linkId,
+        source_ref: created.sourceRef,
+        target_ref: created.targetRef,
+      },
     };
   },
   summarize: (output: any) => {
-    if (output?.resource_type === "nodeflow_node") return `创建 NodeFlow 节点 ${output.title || output.node_ref || output.node_id}`;
-    if (output?.resource_type === "nodeflow_link") return `创建 NodeFlow 连线 ${output?.link_id || ""}`.trim();
-    return `创建 NodeFlow 图链接 ${output?.link_id || ""}`.trim();
+    if (output?.entity === "node") return `创建 NodeFlow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+    if (output?.link_kind === "graph") return `创建 NodeFlow 图引用连线 ${output?.item?.link_id || ""}`.trim();
+    return `创建 NodeFlow 连线 ${output?.item?.link_id || ""}`.trim();
   },
 };

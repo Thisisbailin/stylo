@@ -118,11 +118,12 @@ export const createQalamToolInputGuardrails = (
         name: "read_locator_guardrail",
         run: async ({ toolCall }) => {
           const args = parseToolArguments((toolCall as any).arguments);
-          const resourceType = typeof args.resource_type === "string" ? args.resource_type.trim() : "";
-          if (!resourceType) {
-            return ToolGuardrailFunctionOutputFactory.rejectContent("read_project_resource 需要 resource_type。");
+          const layer = typeof args.layer === "string" ? args.layer.trim() : "";
+          const entity = typeof args.entity === "string" ? args.entity.trim() : "";
+          if (!layer || !entity) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent("read_project_resource 需要 layer 和 entity。");
           }
-          return ToolGuardrailFunctionOutputFactory.allow({ resourceType });
+          return ToolGuardrailFunctionOutputFactory.allow({ layer, entity });
         },
       }),
     ];
@@ -134,17 +135,18 @@ export const createQalamToolInputGuardrails = (
         name: "edit_knowledge_resource_guardrail",
         run: async ({ toolCall }) => {
           const args = parseToolArguments((toolCall as any).arguments);
-          const resourceType = typeof args.resource_type === "string" ? args.resource_type.trim() : "";
-          if (!resourceType) {
-            return ToolGuardrailFunctionOutputFactory.rejectContent("edit_knowledge_resource 需要 resource_type。");
+          const entity = typeof args.entity === "string" ? args.entity.trim() : "";
+          const action = typeof args.action === "string" ? args.action.trim() : "";
+          if (!entity || !action) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent("edit_knowledge_resource 需要 entity 和 action。");
           }
-          if (!["knowledge_node", "knowledge_link"].includes(resourceType)) {
+          if (!["node", "link"].includes(entity)) {
             return ToolGuardrailFunctionOutputFactory.rejectContent(
-              "edit_knowledge_resource 仅支持 knowledge_node 和 knowledge_link。",
-              { resourceType }
+              "edit_knowledge_resource 仅支持 Knowledge node 和 link。",
+              { entity }
             );
           }
-          return ToolGuardrailFunctionOutputFactory.allow({ resourceType });
+          return ToolGuardrailFunctionOutputFactory.allow({ entity, action });
         },
       }),
     ];
@@ -156,20 +158,10 @@ export const createQalamToolInputGuardrails = (
         name: "operate_project_resource_guardrail",
         run: async ({ toolCall }) => {
           const args = parseToolArguments((toolCall as any).arguments);
-          const resourceType =
-            typeof (args.resource_type ?? args.resourceType) === "string"
-              ? String(args.resource_type ?? args.resourceType).trim()
-              : "";
-          const effectiveResourceType =
-            resourceType === "execution_node"
-              ? "nodeflow_node"
-              : resourceType === "execution_link"
-                ? "nodeflow_link"
-                : resourceType === "graph_link"
-                  ? "nodeflow_graph_link"
-                  : resourceType;
+          const entity = typeof args.entity === "string" ? String(args.entity).trim() : "";
+          const action = typeof args.action === "string" ? String(args.action).trim() : "";
 
-          if (effectiveResourceType === "nodeflow_node") {
+          if (entity === "node" && action === "create") {
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
             const episodeId = Number(args.episode_id ?? args.episodeId);
 
@@ -184,16 +176,23 @@ export const createQalamToolInputGuardrails = (
                 episodeId,
               });
             }
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType: effectiveResourceType, nodeKind });
+            return ToolGuardrailFunctionOutputFactory.allow({ entity, action, nodeKind });
           }
 
-          if (effectiveResourceType === "nodeflow_link" || effectiveResourceType === "nodeflow_graph_link") {
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType: effectiveResourceType });
+          if (entity === "link" && action === "connect") {
+            return ToolGuardrailFunctionOutputFactory.allow({
+              entity,
+              action,
+              linkKind:
+                typeof (args.link_kind ?? args.linkKind) === "string"
+                  ? String(args.link_kind ?? args.linkKind).trim()
+                  : "canvas",
+            });
           }
 
           return ToolGuardrailFunctionOutputFactory.rejectContent(
-            "operate_project_resource 仅支持 nodeflow_node、nodeflow_link 和 nodeflow_graph_link。",
-            { resourceType }
+            "operate_project_resource 仅支持 NodeFlow node create 或 link connect。",
+            { entity, action }
           );
         },
       }),
@@ -210,18 +209,20 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
         name: "edit_knowledge_resource_output_guardrail",
         run: async ({ output }) => {
           const result = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
-          const resourceType = typeof result?.resource_type === "string" ? result.resource_type : "";
+          const layer = typeof result?.layer === "string" ? result.layer : "";
+          const entity = typeof result?.entity === "string" ? result.entity : "";
           if (
             !result ||
             result.updated !== true ||
-            (resourceType !== "knowledge_node" && resourceType !== "knowledge_link")
+            layer !== "knowledge" ||
+            (entity !== "node" && entity !== "link")
           ) {
             return ToolGuardrailFunctionOutputFactory.throwException({
               toolName,
               reason: "invalid_output_shape",
             });
           }
-          return ToolGuardrailFunctionOutputFactory.allow({ resourceType });
+          return ToolGuardrailFunctionOutputFactory.allow({ layer, entity });
         },
       }),
     ];
@@ -233,35 +234,41 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
         name: "operate_project_resource_output_guardrail",
         run: async ({ output }) => {
           const result = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
-          const resourceType = typeof result?.resource_type === "string" ? result.resource_type : "";
-          const effectiveResourceType =
-            resourceType === "execution_node"
-              ? "nodeflow_node"
-              : resourceType === "execution_link"
-                ? "nodeflow_link"
-                : resourceType === "graph_link"
-                  ? "nodeflow_graph_link"
-                  : resourceType;
-          if (effectiveResourceType === "nodeflow_node") {
-            const nodeId = typeof result?.node_id === "string" ? result.node_id : "";
-            const nodeRef = typeof result?.node_ref === "string" ? result.node_ref : "";
+          const layer = typeof result?.layer === "string" ? result.layer : "";
+          const entity = typeof result?.entity === "string" ? result.entity : "";
+          const item = result?.item && typeof result.item === "object" ? (result.item as Record<string, unknown>) : null;
+          if (layer === "nodeflow" && entity === "node") {
+            const nodeId = typeof item?.node_id === "string" ? item.node_id : "";
+            const nodeRef = typeof item?.node_ref === "string" ? item.node_ref : "";
             if (!nodeId || !nodeRef) {
               return ToolGuardrailFunctionOutputFactory.throwException({
                 toolName,
                 reason: "missing_node_identity",
               });
             }
-            return ToolGuardrailFunctionOutputFactory.allow({ resourceType: effectiveResourceType, nodeId, nodeRef });
+            return ToolGuardrailFunctionOutputFactory.allow({ layer, entity, nodeId, nodeRef });
           }
-          if (effectiveResourceType === "nodeflow_link") {
-            const linkId =
-              typeof result?.link_id === "string"
-                ? result.link_id
-                : typeof result?.edge_id === "string"
-                  ? result.edge_id
-                  : "";
-            const sourceNodeId = typeof result?.source_node_id === "string" ? result.source_node_id : "";
-            const targetNodeId = typeof result?.target_node_id === "string" ? result.target_node_id : "";
+          if (layer === "nodeflow" && entity === "link") {
+            const linkId = typeof item?.link_id === "string" ? item.link_id : "";
+            const sourceNodeId = typeof item?.source_node_id === "string" ? item.source_node_id : "";
+            const targetNodeId = typeof item?.target_node_id === "string" ? item.target_node_id : "";
+            const sourceRef = typeof item?.source_ref === "string" ? item.source_ref : "";
+            const targetRef = typeof item?.target_ref === "string" ? item.target_ref : "";
+            if (sourceRef && targetRef) {
+              if (!linkId) {
+                return ToolGuardrailFunctionOutputFactory.throwException({
+                  toolName,
+                  reason: "missing_graph_link_identity",
+                });
+              }
+              return ToolGuardrailFunctionOutputFactory.allow({
+                layer,
+                entity,
+                linkId,
+                sourceRef,
+                targetRef,
+              });
+            }
             if (!linkId || !sourceNodeId || !targetNodeId) {
               return ToolGuardrailFunctionOutputFactory.throwException({
                 toolName,
@@ -269,27 +276,11 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
               });
             }
             return ToolGuardrailFunctionOutputFactory.allow({
-              resourceType: effectiveResourceType,
+              layer,
+              entity,
               linkId,
               sourceNodeId,
               targetNodeId,
-            });
-          }
-          if (effectiveResourceType === "nodeflow_graph_link") {
-            const linkId = typeof result?.link_id === "string" ? result.link_id : "";
-            const sourceRef = typeof result?.source_ref === "string" ? result.source_ref : "";
-            const targetRef = typeof result?.target_ref === "string" ? result.target_ref : "";
-            if (!linkId || !sourceRef || !targetRef) {
-              return ToolGuardrailFunctionOutputFactory.throwException({
-                toolName,
-                reason: "missing_graph_link_identity",
-              });
-            }
-            return ToolGuardrailFunctionOutputFactory.allow({
-              resourceType: effectiveResourceType,
-              linkId,
-              sourceRef,
-              targetRef,
             });
           }
           return ToolGuardrailFunctionOutputFactory.throwException({

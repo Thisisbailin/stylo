@@ -2,19 +2,64 @@
 
 Qalam is a node-first creative workspace for script understanding, asset structuring, shot planning, and AI-assisted production flow design.
 
-The current product is no longer related to Google AI Studio. This repository now centers on three surfaces:
+The current product is no longer related to Google AI Studio. This repository now centers on one primary canvas system plus two supporting runtime surfaces:
 
-- `NodeFlow`: the main canvas for building and running node workflows
+- `Nodes`: the central infinite canvas with two planes
+  - `Flow`: the user-facing workflow surface
+  - `Knowledge`: the read-only long-term-memory surface for observing the agent's current knowledge network
 - `Qalam Agent`: a single general-purpose project agent built on `@openai/agents`
 - `Projector`: an audio and media lab for voice and multimodal generation
 
 ## What The App Does
 
 - Import and organize project/script data
-- Build visual workflows in `NodeFlow`
+- Build visual workflows in `Nodes / Flow`
+- Observe the agent's long-term memory graph in `Nodes / Knowledge`
 - Run image, video, audio, and reference-based generation flows
-- Use `Qalam Agent` to read project facts, update structured resources, and help create workflow operations
+- Use `Qalam Agent` to collaborate across the same graph world:
+  - read canonical source facts
+  - read and evolve long-term knowledge
+  - operate the visible workflow canvas
 - Persist project state locally, with optional cloud sync
+
+## Core Architecture
+
+Qalam no longer treats reading, editing, and operating as actions over three unrelated modules.
+
+The project now revolves around one shared graph philosophy:
+
+- `node`
+- `link`
+- `map`
+
+This philosophy lands in two tightly related but layered systems:
+
+- `Knowledge`
+  - the lower-level long-term memory data layer for the agent
+  - agent-first
+  - schema-light
+  - not user-editable
+- `NodeFlow`
+  - the upper-level workflow canvas for user work and execution
+  - user-facing on the front side
+  - able to visually carry the knowledge projection on the back side
+
+In tool terms, the runtime aims to stay aligned to three atomic actions:
+
+- `read`
+  - unified graph reading across `Source`, `Knowledge`, and `NodeFlow`
+- `edit`
+  - knowledge-layer mutation for the agent's long-term memory graph
+- `operate`
+  - nodeflow-layer mutation for the visible workflow canvas
+
+This means the agent and the user are no longer modeled as working in separate systems.
+
+They collaborate around the same central `Nodes` world:
+
+- the user works mainly on the `Flow` front side
+- the agent helps operate the front side
+- the agent also thinks, remembers, and accumulates long-term knowledge on the `Knowledge` back side
 
 ## Current Runtime Stack
 
@@ -170,11 +215,11 @@ The project sync endpoints create and evolve the required D1 tables in code, so 
 ## Product Structure
 
 - `App.tsx`: top-level application shell
-- `node-workspace/components/NodeFlow.tsx`: main node canvas
+- `node-workspace/components/NodeFlow.tsx`: central two-plane `Nodes` canvas
 - `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
 - `components/ProjectorModule.tsx`: projector/audio lab
 - `node-workspace/components/AgentSettingsPanel.tsx`: provider, tool, and runtime settings
-- `agents/`: Qalam agent runtime, tools, memory, bridge, and guardrails
+- `agents/`: Qalam agent runtime, unified graph tools, memory, bridge, and guardrails
 
 ## Repo Status
 

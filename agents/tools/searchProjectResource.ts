@@ -5,49 +5,46 @@ import {
   buildGraphNodesFromWorkflow,
   buildProjectGraphIdentitySearchText,
   buildProjectGraphLinks,
-  buildProjectedSourceNodes,
   buildProjectGraphMaps,
   buildProjectGraphSearchText,
 } from "../../node-workspace/nodeflow/projectGraph";
 
-export const SEARCH_PROJECT_RESOURCE_SCOPES = [
-  "skills",
-  "knowledge_identity",
-  "knowledge_content",
-  "knowledge_anchors",
-  "knowledge_links",
-  "source",
-  "nodeflow_identity",
-  "nodeflow_detail",
-  "nodeflow",
-  "nodeflow_approvals",
-  "nodeflow_links",
-  "nodeflow_maps",
+export const SEARCH_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow", "skill"] as const;
+export const SEARCH_PROJECT_RESOURCE_FACETS = [
+  "identity",
+  "content",
+  "anchors",
+  "links",
+  "detail",
+  "maps",
+  "approvals",
 ] as const;
 
-const SEARCH_PROJECT_RESOURCE_SCOPE_ALIASES: Record<string, Scope> = {
-  graph_identity: "nodeflow_identity",
-  graph_detail: "nodeflow_detail",
-  graph: "nodeflow",
-  approvals: "nodeflow_approvals",
-  links: "nodeflow_links",
-  maps: "nodeflow_maps",
-};
+type SearchLayer = (typeof SEARCH_PROJECT_RESOURCE_LAYERS)[number];
+type SearchFacet = (typeof SEARCH_PROJECT_RESOURCE_FACETS)[number];
 
 const searchProjectResourceParameters = {
   type: "object",
   properties: {
     query: {
       type: "string",
-      description: "Search query in Chinese or any exact term to locate Source, Knowledge, or NodeFlow resources.",
+      description: "Search query in Chinese or any exact term to locate entities inside the shared project graph world.",
     },
-    resource_scopes: {
+    layers: {
       type: "array",
       items: {
         type: "string",
-        enum: [...SEARCH_PROJECT_RESOURCE_SCOPES],
+        enum: [...SEARCH_PROJECT_RESOURCE_LAYERS],
       },
-      description: "Optional scopes to search. nodeflow_identity searches first-layer NodeFlow node identity; nodeflow_detail searches deeper NodeFlow node details. Defaults to all supported scopes.",
+      description: "Optional graph layers to search. Defaults to knowledge, nodeflow, and skill.",
+    },
+    facets: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: [...SEARCH_PROJECT_RESOURCE_FACETS],
+      },
+      description: "Optional facets to search, such as identity, content, anchors, links, detail, maps, or approvals.",
     },
     max_matches: {
       type: "integer",
@@ -61,8 +58,6 @@ const searchProjectResourceParameters = {
   additionalProperties: false,
   required: ["query"],
 } as const;
-
-type Scope = (typeof SEARCH_PROJECT_RESOURCE_SCOPES)[number];
 
 const toPositiveInteger = (value: unknown) => {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
@@ -99,32 +94,22 @@ const parseArgs = (input: unknown) => {
   const query = typeof raw.query === "string" ? raw.query.trim() : "";
   if (!query) throw new Error("search_project_resource 需要 query。");
 
-  const scopes = Array.isArray(raw.resource_scopes)
-    ? raw.resource_scopes.map((item) => String(item))
-    : Array.isArray(raw.resourceScopes)
-      ? (raw.resourceScopes as unknown[]).map((item) => String(item))
-      : ([
-          "skills",
-          "knowledge_identity",
-          "source",
-          "nodeflow_identity",
-          "nodeflow_approvals",
-          "nodeflow_links",
-          "nodeflow_maps",
-        ] as Scope[]);
-      
+  const layers = Array.isArray(raw.layers)
+    ? raw.layers.map((item) => String(item)).filter((item): item is SearchLayer =>
+        (SEARCH_PROJECT_RESOURCE_LAYERS as readonly string[]).includes(item)
+      )
+    : ([...SEARCH_PROJECT_RESOURCE_LAYERS] as SearchLayer[]);
 
-  const normalizedScopes = scopes
-    .map((scope) =>
-      (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
-        ? scope
-        : SEARCH_PROJECT_RESOURCE_SCOPE_ALIASES[scope]
-    )
-    .filter((scope): scope is Scope => Boolean(scope));
+  const facets = Array.isArray(raw.facets)
+    ? raw.facets.map((item) => String(item)).filter((item): item is SearchFacet =>
+        (SEARCH_PROJECT_RESOURCE_FACETS as readonly string[]).includes(item)
+      )
+    : (["identity", "anchors", "links", "maps", "approvals"] as SearchFacet[]);
 
   return {
     query,
-    scopes: normalizedScopes.length ? normalizedScopes : ([...SEARCH_PROJECT_RESOURCE_SCOPES] as Scope[]),
+    layers: layers.length ? layers : ([...SEARCH_PROJECT_RESOURCE_LAYERS] as SearchLayer[]),
+    facets: facets.length ? facets : (["identity", "anchors", "links", "maps", "approvals"] as SearchFacet[]),
     maxMatches: Math.max(1, Math.min(30, toPositiveInteger(raw.max_matches ?? raw.maxMatches) || 8)),
     maxChars: Math.max(120, Math.min(1200, toPositiveInteger(raw.max_chars ?? raw.maxChars) || 320)),
   };
@@ -140,7 +125,8 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
       .join(" ");
     if (haystack && includesQuery(haystack, query)) {
       matches.push({
-        scope: "skill_package",
+        layer: "skill",
+        entity: "package",
         item_id: manifest.id,
         title: manifest.title,
         snippet: buildSnippet(haystack, query, radius),
@@ -152,182 +138,182 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search across the three project-reading layers when the exact locator is unknown: Source resources, Knowledge long-term memory resources, and NodeFlow resources, plus skill packages.",
+    "Search across the shared project graph world when the exact locator is unknown. Public search now centers on Knowledge and NodeFlow, with skill packages kept as an auxiliary package layer.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
-    const projectData = bridge.getProjectData();
     const workflow = bridge.getNodeFlowSnapshot();
     const knowledge = bridge.getKnowledgeSnapshot();
     const matches: any[] = [];
     const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
 
-    if (args.scopes.includes("skills")) {
+    if (args.layers.includes("skill")) {
       await pushSkillMatches(matches, args.query, args.maxMatches, radius);
     }
 
-    const knowledgeScopes = [
-      args.scopes.includes("knowledge_identity") ? "identity" : null,
-      args.scopes.includes("knowledge_content") ? "content" : null,
-      args.scopes.includes("knowledge_anchors") ? "anchors" : null,
-      args.scopes.includes("knowledge_links") ? "links" : null,
-    ].filter(Boolean) as Array<"identity" | "content" | "anchors" | "links">;
-    if (knowledgeScopes.length) {
-      for (const item of searchKnowledgeResources(knowledge, {
-        query: args.query,
-        scopes: knowledgeScopes,
-      }).items) {
-        if (matches.length >= args.maxMatches) break;
-        matches.push({
-          scope: "knowledge_node_identity",
-          node_id: item.node.id,
-          node_ref: item.node.ref,
-          title: item.node.title,
-          node_kind: item.node.kind,
-          matched_scopes: item.matchedScopes,
-          snippet: item.matchedScopes.join(" · "),
-        });
-      }
-    }
+    if (args.layers.includes("knowledge")) {
+      const knowledgeFacets = [
+        args.facets.includes("identity") ? "identity" : null,
+        args.facets.includes("content") ? "content" : null,
+        args.facets.includes("anchors") ? "anchors" : null,
+        args.facets.includes("links") ? "links" : null,
+      ].filter(Boolean) as Array<"identity" | "content" | "anchors" | "links">;
 
-    if (args.scopes.includes("source")) {
-      for (const node of buildProjectedSourceNodes(projectData)) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = buildProjectGraphSearchText(node);
-        if (haystack && includesQuery(haystack, args.query)) {
+      if (knowledgeFacets.length) {
+        for (const item of searchKnowledgeResources(knowledge, {
+          query: args.query,
+          scopes: knowledgeFacets,
+        }).items) {
+          if (matches.length >= args.maxMatches) break;
           matches.push({
-            scope: "source_node",
-            ref: node.ref,
-            title: node.title,
-            node_type: node.type,
-            snippet: buildSnippet(haystack, args.query, radius),
+            layer: "knowledge",
+            entity: "node",
+            view: "identity",
+            node_id: item.node.id,
+            node_ref: item.node.ref,
+            title: item.node.title,
+            node_kind: item.node.kind,
+            matched_facets: item.matchedScopes,
+            snippet: item.matchedScopes.join(" · "),
           });
         }
       }
     }
 
-    if (args.scopes.includes("nodeflow_identity")) {
-      for (const node of buildGraphNodesFromWorkflow(workflow)) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = buildProjectGraphIdentitySearchText(node);
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: "nodeflow_node_identity",
-            node_id: node.nodeId,
-            node_ref: node.ref,
-            plane: node.plane,
-            node_type: node.type,
-            title: node.title,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
+    if (args.layers.includes("nodeflow")) {
+      if (args.facets.includes("identity")) {
+        for (const node of buildGraphNodesFromWorkflow(workflow)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = buildProjectGraphIdentitySearchText(node);
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "node",
+              view: "identity",
+              node_id: node.nodeId,
+              node_ref: node.ref,
+              plane: node.plane,
+              node_type: node.type,
+              title: node.title,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
         }
       }
-    }
 
-    if (args.scopes.includes("nodeflow") || args.scopes.includes("nodeflow_detail")) {
-      for (const node of buildGraphNodesFromWorkflow(workflow)) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = buildProjectGraphSearchText(node);
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: args.scopes.includes("nodeflow_detail") ? "nodeflow_node_detail" : "nodeflow_node",
-            node_id: node.nodeId,
-            node_ref: node.ref,
-            plane: node.plane,
-            node_type: node.type,
-            title: node.title,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
+      if (args.facets.includes("detail")) {
+        for (const node of buildGraphNodesFromWorkflow(workflow)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = buildProjectGraphSearchText(node);
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "node",
+              view: "detail",
+              node_id: node.nodeId,
+              node_ref: node.ref,
+              plane: node.plane,
+              node_type: node.type,
+              title: node.title,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
         }
       }
-    }
 
-    if (args.scopes.includes("nodeflow_links")) {
-      for (const link of workflow.links) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = [
-          link.id,
-          link.source,
-          link.target,
-          link.sourceHandle,
-          link.targetHandle,
-          link.data?.hasPause ? "pause paused 暂停" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: "nodeflow_link",
-            link_id: link.id,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
+      if (args.facets.includes("links")) {
+        for (const link of workflow.links) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [
+            link.id,
+            link.source,
+            link.target,
+            link.sourceHandle,
+            link.targetHandle,
+            link.data?.hasPause ? "pause paused 暂停" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "link",
+              link_kind: "canvas",
+              link_id: link.id,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
         }
-      }
-      for (const link of buildProjectGraphLinks(workflow)) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = [link.id, link.sourceRef, link.targetRef].filter(Boolean).join(" ");
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: "nodeflow_graph_link",
-            link_id: link.id,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
-        }
-      }
-    }
 
-    if (args.scopes.includes("nodeflow_approvals")) {
-      for (const approval of bridge.getPendingNodeFlowExecutionApprovals()) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = [
-          approval.id,
-          approval.nodeId,
-          approval.nodeRef,
-          approval.nodeType,
-          approval.nodeTitle,
-          approval.action,
-          approval.providerLabel,
-          approval.modelLabel,
-          approval.promptPreview || "",
-          ...(approval.inputSummary || []),
-        ]
-          .filter(Boolean)
-          .join(" ");
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: "nodeflow_execution_approval",
-            approval_id: approval.id,
-            node_id: approval.nodeId,
-            node_ref: approval.nodeRef,
-            title: approval.nodeTitle,
-            action: approval.action,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
+        for (const link of buildProjectGraphLinks(workflow)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [link.id, link.sourceRef, link.targetRef].filter(Boolean).join(" ");
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "link",
+              link_kind: "graph",
+              link_id: link.id,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
         }
       }
-    }
 
-    if (args.scopes.includes("nodeflow_maps")) {
-      for (const map of buildProjectGraphMaps(workflow)) {
-        if (matches.length >= args.maxMatches) break;
-        const haystack = [map.mapId, map.name, map.view || ""].filter(Boolean).join(" ");
-        if (haystack && includesQuery(haystack, args.query)) {
-          matches.push({
-            scope: "nodeflow_map",
-            map_id: map.mapId,
-            name: map.name,
-            snippet: buildSnippet(haystack, args.query, radius),
-          });
+      if (args.facets.includes("approvals")) {
+        for (const approval of bridge.getPendingNodeFlowExecutionApprovals()) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [
+            approval.id,
+            approval.nodeId,
+            approval.nodeRef,
+            approval.nodeType,
+            approval.nodeTitle,
+            approval.action,
+            approval.providerLabel,
+            approval.modelLabel,
+            approval.promptPreview || "",
+            ...(approval.inputSummary || []),
+          ]
+            .filter(Boolean)
+            .join(" ");
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "approval",
+              approval_id: approval.id,
+              node_id: approval.nodeId,
+              node_ref: approval.nodeRef,
+              title: approval.nodeTitle,
+              action: approval.action,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
+        }
+      }
+
+      if (args.facets.includes("maps")) {
+        for (const map of buildProjectGraphMaps(workflow)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [map.mapId, map.name, map.view || ""].filter(Boolean).join(" ");
+          if (haystack && includesQuery(haystack, args.query)) {
+            matches.push({
+              layer: "nodeflow",
+              entity: "map",
+              map_id: map.mapId,
+              name: map.name,
+              snippet: buildSnippet(haystack, args.query, radius),
+            });
+          }
         }
       }
     }
 
     return {
-      resource_type: "search_project_resource",
       query: args.query,
       total_matches: matches.length,
       matches,
     };
   },
-  summarize: (output: any) => `搜索到 ${output?.matches?.length || 0} 条资源匹配`,
+  summarize: (output: any) => `搜索到 ${output?.matches?.length || 0} 条图资源匹配`,
 };

@@ -202,6 +202,27 @@ Agent 通过 tools 或内部 memory 接口读写 Knowledge Core。
 - `knowledge_*`
 - `nodeflow_*`
 
+但这里要强调的是，这三层不再代表三个彼此割裂的模块，而是同一个图式世界中的三个作用层级。
+
+Qalam Agent 面对的不是“读文档系统 + 写知识系统 + 操作工作流系统”三套独立对象，而是同一个项目中心结构在不同层面的展开。
+
+因此工具心智应统一理解为：
+
+- `read`
+  - 是统一的图式读取动作
+  - 覆盖 `Source / Knowledge / NodeFlow`
+  - 读取的是同一项目世界在不同层级上的 `node / link / map` 事实
+- `edit`
+  - 属于 `Knowledge` 层
+  - 本质上是在底层长期记忆图上编辑 `knowledge node / knowledge link`
+  - 负责 Agent 的知识沉淀、修正与长期记忆演化
+- `operate`
+  - 属于 `NodeFlow` 层
+  - 本质上是在表层工作流画布上操作 `nodeflow node / nodeflow link / nodeflow map`
+  - 负责帮助用户推进当前工作流结构与执行流
+
+也就是说，Agent 与用户并不是各自在不同系统中协作，而是围绕同一个中心画布世界的不同平面与层级协同工作。
+
 未来如果重新开放 Agent 写入工具，`edit` 应属于 `Knowledge` 层，而不是回写到 `NodeFlow` 的旧知识节点心智。
 
 ### 3.4 Knowledge Surface Layer
@@ -227,6 +248,15 @@ Agent 通过 tools 或内部 memory 接口读写 Knowledge Core。
 
 - `Nodes / Flow`：正面，用户工作流
 - `Nodes / Knowledge`：背面，Agent 长期记忆只读观测面
+
+这意味着 `Nodes` 已经成为项目的中心区域，而 `Knowledge Surface` 不再是一个独立面板系统。
+
+在这个中心区域中：
+
+- 正面承托用户与 Agent 的工作流协同
+- 背面承托 Agent 长期记忆的可观测映射
+
+它们不是两个割裂系统，而是一体两面的同一张画布。
 
 也就是说，`Knowledge Surface` 不再作为一个独立长期面板存在，而是作为与 `Flow` 同一张无限画布的背面出现。
 

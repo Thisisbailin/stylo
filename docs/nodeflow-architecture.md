@@ -90,7 +90,29 @@ Qalam 的 `Nodes` 模块最终会形成两个平面：
 - `knowledge_*`
 - `nodeflow_*`
 
-其中 `operate` 明确属于 `NodeFlow` 层，而不是项目通用图操作层。
+但工具本身不再被理解成“分别服务三个互不相关模块”的工具。
+
+更准确地说，Qalam Agent 面对的是同一个统一图式世界，而工具只是这个世界中的三类原子动作：
+
+- `read`
+  - 统一读取动作
+  - 面向 `Source / Knowledge / NodeFlow`
+  - 读取的是同一项目世界在不同层级上的 `node / link / map` 事实
+- `edit`
+  - 面向 `Knowledge`
+  - 编辑底层长期记忆图
+- `operate`
+  - 面向 `NodeFlow`
+  - 操作表层工作流图
+
+因此 `operate` 明确属于 `NodeFlow` 层，而不是项目通用图操作层。
+
+从这个意义上说，`Nodes` 是项目的中心区域：
+
+- 正面承托用户和 Agent 在工作流上的协同
+- 背面承托 Agent 长期记忆的可观测映射
+
+它们不是两个割裂系统，而是一体两面的统一中心画布。
 
 ## 领域模型
 
