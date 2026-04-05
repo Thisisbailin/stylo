@@ -445,7 +445,7 @@ export const FloatingActionBar: React.FC<Props> = ({
             onClick={() => setIoPane("guides")}
             className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
           >
-            Understanding
+            Guides
           </button>
           <button
             type="button"
@@ -559,8 +559,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <BookOpen size={16} />
               </span>
               <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Knowledge</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">知识快照</span>
               </span>
             </div>
           </button>
@@ -713,8 +713,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                   <FileText size={16} />
                 </span>
                 <span>
-                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Understanding</span>
-                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">理解快照</span>
+                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Knowledge</span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">知识快照</span>
                 </span>
               </div>
             </button>

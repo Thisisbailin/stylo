@@ -610,7 +610,9 @@ const App: React.FC = () => {
         analysisStep: parsed.analysisStep ?? AnalysisSubStep.IDLE,
         currentEpIndex: parsed.currentEpIndex ?? 0,
         activeTab:
-          parsedActiveTab === 'understanding' ||
+          parsedActiveTab === 'understanding'
+            ? 'knowledge'
+            : parsedActiveTab === 'knowledge' ||
           parsedActiveTab === 'visuals' ||
           parsedActiveTab === 'video' ||
           parsedActiveTab === 'lab' ||
@@ -1230,10 +1232,10 @@ const App: React.FC = () => {
         phase1Usage: payload.phase1Usage ? { ...prev.phase1Usage, ...payload.phase1Usage } : prev.phase1Usage
       };
         });
-        alert('Successfully imported understanding data.');
-        setActiveTab('understanding');
+        alert('Successfully imported knowledge data.');
+        setActiveTab('knowledge');
       } catch (e: any) {
-        alert("Error importing understanding JSON: " + e.message);
+        alert("Error importing knowledge JSON: " + e.message);
       }
 
     } else if (type === 'globalStyleGuide') {
@@ -1292,7 +1294,7 @@ const App: React.FC = () => {
 
   // --- Workflow Logic ---
 
-  // === PHASE 1: DEEP UNDERSTANDING WORKFLOW (Batched) ===
+  // === PHASE 1: KNOWLEDGE EXTRACTION WORKFLOW (Batched) ===
 
   const startAnalysis = () => {
     setAnalysisError(null);
@@ -1305,7 +1307,7 @@ const App: React.FC = () => {
   const processProjectSummary = async () => {
     setAnalysisError(null);
     setProcessing(true, "Step 1/6: Analyzing Global Project Arc...");
-    setActiveTab('understanding');
+    setActiveTab('knowledge');
     try {
       const result = await ResponsesTextService.generateProjectSummary(config.textConfig, projectData.rawScript, projectData.globalStyleGuide);
 

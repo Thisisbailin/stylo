@@ -106,7 +106,7 @@ export interface Episode {
   storyboardGenUsage?: TokenUsage;
 }
 
-export type ActiveTab = 'understanding' | 'visuals' | 'video' | 'lab' | 'stats' | 'projector';
+export type ActiveTab = 'knowledge' | 'visuals' | 'video' | 'lab' | 'stats' | 'projector';
 
 // --- Unified Role Identity Types ---
 

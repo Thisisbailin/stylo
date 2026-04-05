@@ -805,8 +805,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                         <li className="flex items-start gap-3">
                                             <BrainCircuit size={16} className="text-emerald-500 shrink-0 mt-0.5" />
                                             <div>
-                                                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium block">Deep Script Understanding</span>
-                                                <span className="text-xs text-gray-500 block">Analyzes plot, characters, and themes.</span>
+                                                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium block">Script Knowledge Extraction</span>
+                                                <span className="text-xs text-gray-500 block">Builds script-grounded knowledge for characters, scenes, and story structure.</span>
                                             </div>
                                         </li>
                                         <li className="flex items-start gap-3">

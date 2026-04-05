@@ -216,8 +216,8 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
             
             {/* Phase 1 Detailed Breakdown */}
             <div className="bg-[var(--bg-panel)]/90 p-6 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)] flex flex-col h-[400px]">
-               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Phase 1: Deep Understanding Cost</h3>
-               <p className="text-sm text-[var(--text-secondary)] mb-6">Token usage breakdown by analysis task</p>
+               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Phase 1: Knowledge Extraction Cost</h3>
+               <p className="text-sm text-[var(--text-secondary)] mb-6">Token usage breakdown by script analysis and knowledge-building task</p>
                <div className="flex-1 w-full">
                  <ResponsiveContainer width="100%" height="100%">
                    <BarChart data={phase1BreakdownData} layout="vertical" margin={{ top: 0, right: 30, left: 40, bottom: 0 }}>

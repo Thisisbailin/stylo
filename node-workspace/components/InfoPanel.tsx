@@ -80,7 +80,7 @@ export const InfoPanel: React.FC<Props> = ({
                     <div className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">Qalam</div>
                     <div className="text-[12px] text-[var(--app-text-secondary)]">v0.3 · NodeFlow</div>
                     <div className="mt-3 max-w-xl text-[13px] leading-7 text-[var(--app-text-secondary)]">
-                      Node-first AIGC workflow for script understanding, asset structuring, shot planning, and production flow design.
+                      Node-first AIGC workflow for script-grounded knowledge building, asset structuring, shot planning, and production flow design.
                     </div>
                   </div>
                 </div>

@@ -970,7 +970,7 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
   const includeList = Array.isArray(args?.include) ? args.include : [];
   const include = new Set(includeList.map((item: any) => String(item)));
   const queryScopes = new Set(
-    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations", "understanding"]).map(
+    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations", "knowledge"]).map(
       (item: any) => String(item)
     )
   );
@@ -1151,7 +1151,7 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
       }
     }
 
-    if (matches.length < maxMatches && queryScopes.has("understanding")) {
+    if (matches.length < maxMatches && queryScopes.has("knowledge")) {
       const projectSummary = data.context?.projectSummary || "";
       if (projectSummary && toLower(projectSummary).includes(lowerQuery)) {
         matches.push({

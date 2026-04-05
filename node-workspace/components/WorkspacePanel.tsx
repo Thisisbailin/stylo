@@ -23,6 +23,7 @@ import {
   type KnowledgeSectionKey,
 } from "../knowledge/inspector/KnowledgePanel";
 import { useKnowledgeStore } from "../store/knowledgeStore";
+import { buildKnowledgeMap } from "../knowledge/maps";
 
 export type WorkspaceSection =
   | `knowledge:${KnowledgeSectionKey}`
@@ -83,10 +84,22 @@ export const WorkspacePanel: React.FC<Props> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
   const { globalAssetHistory } = useNodeFlowStore();
+  const knowledgeRevision = useKnowledgeStore((state) => state.revision);
   const knowledgeNodeCount = useKnowledgeStore((state) => state.nodes.length);
   const knowledgeLinkCount = useKnowledgeStore((state) => state.links.length);
-  const knowledgeMapNodeCount = useKnowledgeStore((state) => state.getKnowledgeMap().nodes.length);
-  const knowledgeMapLinkCount = useKnowledgeStore((state) => state.getKnowledgeMap().links.length);
+  const knowledgeNodes = useKnowledgeStore((state) => state.nodes);
+  const knowledgeLinks = useKnowledgeStore((state) => state.links);
+  const knowledgeMap = useMemo(
+    () =>
+      buildKnowledgeMap({
+        revision: knowledgeRevision,
+        nodes: knowledgeNodes,
+        links: knowledgeLinks,
+      }),
+    [knowledgeLinks, knowledgeNodes, knowledgeRevision]
+  );
+  const knowledgeMapNodeCount = knowledgeMap.nodes.length;
+  const knowledgeMapLinkCount = knowledgeMap.links.length;
 
   useEffect(() => {
     setActiveSection(initialSection);

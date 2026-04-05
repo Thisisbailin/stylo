@@ -118,14 +118,11 @@ export const buildAgentEnvironment = ({
       episodeSummaries,
       primaryRoles,
       sceneRoles,
-      understandingCoverage: {
+      knowledgeCoverage: {
         hasProjectSummary: Boolean(projectData.context?.projectSummary?.trim()),
         episodeSummaryCount: (projectData.context?.episodeSummaries || []).filter((item) => item.summary?.trim()).length,
         primaryRoleCount: roles.filter((role) => role.kind === "person").length,
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
-        guideCount: [projectData.shotGuide, projectData.storyboardGuide, projectData.soraGuide, projectData.dramaGuide, projectData.globalStyleGuide].filter(
-          (item) => typeof item === "string" && item.trim()
-        ).length,
       },
     },
     capabilityManifest,

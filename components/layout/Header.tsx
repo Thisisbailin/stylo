@@ -1046,7 +1046,7 @@ export const Header: React.FC<HeaderProps> = ({
       ? { key: "xls", label: "Export XLS", onClick: onExportXls }
       : null,
     hasUnderstandingData
-      ? { key: "understanding-json", label: "Export Understanding JSON", onClick: onExportUnderstandingJson }
+      ? { key: "knowledge-json", label: "Export Knowledge JSON", onClick: onExportUnderstandingJson }
       : null
   ].filter(
     (item): item is { key: string; label: string; onClick: () => void } => item !== null

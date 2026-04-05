@@ -2,6 +2,7 @@ import React from "react";
 import { BookOpen, Database, GitBranch, Network } from "lucide-react";
 import { useKnowledgeStore } from "../../store/knowledgeStore";
 import type { ProjectData } from "../../../types";
+import { KnowledgeFlowProjection } from "./KnowledgeFlowProjection";
 import {
   buildKnowledgeAnchorRegistryProjection,
   buildKnowledgeAnchorTimelineProjection,
@@ -9,6 +10,7 @@ import {
   buildKnowledgeKindMapProjection,
   buildKnowledgeLifecycleProjection,
   buildKnowledgeLocalMapProjection,
+  buildKnowledgeMap,
   buildKnowledgeScriptMapProjection,
 } from "../maps";
 
@@ -44,6 +46,9 @@ export const KnowledgePanel: React.FC<Props> = ({
   const [focusNodeRef, setFocusNodeRef] = React.useState<string>("");
   const [focusAnchorRef, setFocusAnchorRef] = React.useState<string>("");
   const [focusKind, setFocusKind] = React.useState<string>("");
+  const [flowProjectionMode, setFlowProjectionMode] = React.useState<
+    "full" | "script" | "local" | "anchor" | "kind" | "focus"
+  >("script");
   const [debugActionNote, setDebugActionNote] = React.useState<string>("");
   const revision = useKnowledgeStore((state) => state.revision);
   const nodes = useKnowledgeStore((state) => state.nodes);
@@ -54,7 +59,16 @@ export const KnowledgePanel: React.FC<Props> = ({
   const derivedNodeCount = nodes.filter((node) => node.origin === "agent-derived").length;
   const canonicalLinkCount = links.filter((link) => link.origin === "canonical-source").length;
   const derivedLinkCount = links.filter((link) => link.origin === "agent-derived").length;
-  const map = useKnowledgeStore((state) => state.getKnowledgeMap());
+  const readNodeDetail = useKnowledgeStore((state) => state.readNodeDetail);
+  const map = React.useMemo(
+    () =>
+      buildKnowledgeMap({
+        revision,
+        nodes,
+        links,
+      }),
+    [links, nodes, revision]
+  );
   const scriptMap = buildKnowledgeScriptMapProjection({
     revision,
     nodes,
@@ -72,6 +86,15 @@ export const KnowledgePanel: React.FC<Props> = ({
   });
   const effectiveFocusNodeRef =
     focusNodeRef || scriptMap.scripts[0]?.node.ref || nodes[0]?.ref || "";
+  const selectedNodeDetail = React.useMemo(
+    () =>
+      effectiveFocusNodeRef
+        ? readNodeDetail({
+            nodeRef: effectiveFocusNodeRef,
+          })
+        : null,
+    [effectiveFocusNodeRef, readNodeDetail]
+  );
   const localMap = buildKnowledgeLocalMapProjection(
     {
       revision,
@@ -123,11 +146,20 @@ export const KnowledgePanel: React.FC<Props> = ({
     availableAnchors.find((anchor) => `${anchor.type}:${anchor.ref}` === focusAnchorRef) ||
     availableAnchors[0] ||
     null;
-  const anchorMap = useKnowledgeStore((state) =>
-    state.getKnowledgeAnchorMap({
-      anchor: effectiveAnchor,
-      depth: 1,
-    })
+  const anchorMap = React.useMemo(
+    () =>
+      buildKnowledgeAnchorMapProjection(
+        {
+          revision,
+          nodes,
+          links,
+        },
+        {
+          anchor: effectiveAnchor,
+          depth: 1,
+        }
+      ),
+    [effectiveAnchor, links, nodes, revision]
   );
   const anchorTimeline = buildKnowledgeAnchorTimelineProjection(
     {
@@ -170,6 +202,55 @@ export const KnowledgePanel: React.FC<Props> = ({
   ];
 
   const active = sections.find((section) => section.key === activeSection) || sections[0];
+  const flowProjection = React.useMemo(() => {
+    switch (flowProjectionMode) {
+      case "full":
+        return {
+          title: "Full Knowledge Map",
+          nodes: map.nodes,
+          links: map.links,
+        };
+      case "local":
+        return {
+          title: `Local Lens · ${localMap.centerNode?.package.title || "No Focus"}`,
+          nodes: localMap.nodes,
+          links: localMap.links,
+        };
+      case "anchor":
+        return {
+          title: `Anchor Lens · ${anchorMap.anchor ? `${anchorMap.anchor.type}:${anchorMap.anchor.ref}` : "No Anchor"}`,
+          nodes: anchorMap.nodes,
+          links: anchorMap.links,
+        };
+      case "kind":
+        return {
+          title: `Kind Lens · ${effectiveKind || "No Kind"}`,
+          nodes: kindMap.nodes,
+          links: kindMap.links,
+        };
+      case "focus":
+        return {
+          title: `Focus Lens · ${effectiveFocusNodeRef || "No Focus"}`,
+          nodes: focusMap.nodes,
+          links: focusMap.links,
+        };
+      default: {
+        const scriptNodes = scriptMap.scripts.flatMap((script) => [
+          script.node,
+          ...script.episodes.flatMap((episode) => [episode.node, ...episode.scenes.map((scene) => scene.node)]),
+        ]);
+        const scriptNodeIds = new Set(scriptNodes.map((node) => node.id));
+        const scriptLinks = links.filter(
+          (link) => scriptNodeIds.has(link.fromNodeId) && scriptNodeIds.has(link.toNodeId)
+        );
+        return {
+          title: "Script Root Projection",
+          nodes: scriptNodes,
+          links: scriptLinks,
+        };
+      }
+    }
+  }, [anchorMap.anchor, anchorMap.links, anchorMap.nodes, effectiveFocusNodeRef, effectiveKind, focusMap.links, focusMap.nodes, flowProjectionMode, kindMap.links, kindMap.nodes, links, localMap.centerNode, localMap.links, localMap.nodes, map.links, map.nodes, scriptMap.scripts]);
   const handleCreateDerivedForAnchor = React.useCallback(() => {
     if (!effectiveAnchor) return;
     const created = createDerivedNodeForAnchor({
@@ -240,8 +321,8 @@ export const KnowledgePanel: React.FC<Props> = ({
           <div className="mt-2 text-lg font-semibold">Long-Term Memory Layer</div>
           <div className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--app-text-secondary)]">
             Knowledge 的本体现在被定义为 Qalam Agent 的长期记忆数据层。这里不再承接旧的
-            understanding 心智，而是只负责调试观察 knowledge node、knowledge link
-            和 knowledge map 的底层真相。
+            理解资产心智，而是只负责调试观察 knowledge node、knowledge link 和
+            knowledge map 的底层真相。
           </div>
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
@@ -481,6 +562,81 @@ export const KnowledgePanel: React.FC<Props> = ({
                   ) : (
                     <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
                       No supersede chains yet.
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                      Projection Lens
+                    </div>
+                    <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-1">
+                      {[
+                        ["script", "Script"],
+                        ["full", "Full"],
+                        ["local", "Local"],
+                        ["anchor", "Anchor"],
+                        ["kind", "Kind"],
+                        ["focus", "Focus"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setFlowProjectionMode(value as typeof flowProjectionMode)}
+                          className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                            flowProjectionMode === value
+                              ? "bg-[var(--app-panel)] text-[var(--app-text-primary)]"
+                              : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <KnowledgeFlowProjection
+                      title={flowProjection.title}
+                      nodes={flowProjection.nodes}
+                      links={flowProjection.links}
+                      selectedNodeRef={effectiveFocusNodeRef}
+                      onSelectNodeRef={(nodeRef) => {
+                        setFocusNodeRef(nodeRef);
+                        if (flowProjectionMode === "script" || flowProjectionMode === "full") {
+                          setFlowProjectionMode("focus");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                    Selected Node Detail
+                  </div>
+                  {selectedNodeDetail ? (
+                    <div className="mt-3 space-y-2 text-[11px]">
+                      <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">
+                        {selectedNodeDetail.package.title}
+                      </div>
+                      <div className="text-[var(--app-text-secondary)]">
+                        {selectedNodeDetail.ref}
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-secondary)]">
+                        <span>{selectedNodeDetail.kind}</span>
+                        <span>·</span>
+                        <span>{selectedNodeDetail.origin}</span>
+                        <span>·</span>
+                        <span>{selectedNodeDetail.package.status}</span>
+                      </div>
+                      <div className="text-[var(--app-text-secondary)]">
+                        anchors: {selectedNodeDetail.anchors.length} · incoming: {selectedNodeDetail.incomingLinks.length} · outgoing: {selectedNodeDetail.outgoingLinks.length}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
+                      No focused node selected.
                     </div>
                   )}
                 </div>

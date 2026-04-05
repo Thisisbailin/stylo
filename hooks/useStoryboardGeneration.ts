@@ -3,7 +3,7 @@ import { AppConfig, ProjectData, Shot, TokenUsage, WorkflowStep } from "../types
 import * as ResponsesTextService from "../services/responsesTextService";
 import { findNextStoryboardIndex, isEpisodeStoryboardComplete } from "../utils/episodes";
 
-type ActiveTab = "assets" | "script" | "understanding" | "table" | "visuals" | "video" | "stats";
+type ActiveTab = "assets" | "script" | "knowledge" | "table" | "visuals" | "video" | "stats";
 
 type StoryboardGenParams = {
   projectDataRef: React.MutableRefObject<ProjectData>;

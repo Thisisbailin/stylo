@@ -39,12 +39,11 @@ export type AgentEnvironmentProjectDigest = {
     summary: string;
     episodeUsage?: string;
   }>;
-  understandingCoverage: {
+  knowledgeCoverage: {
     hasProjectSummary: boolean;
     episodeSummaryCount: number;
     primaryRoleCount: number;
     sceneRoleCount: number;
-    guideCount: number;
   };
 };
 
