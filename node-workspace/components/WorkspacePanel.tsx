@@ -151,6 +151,13 @@ export const WorkspacePanel: React.FC<Props> = ({
           icon: Layers3,
           tone: "text-violet-300",
         },
+        {
+          key: "knowledge:lab",
+          label: "Mutation Lab",
+          description: "Dev-only write experiments",
+          icon: Sparkles,
+          tone: "text-rose-300",
+        },
       ],
     },
     {

@@ -34,7 +34,7 @@ export const buildCanonicalKnowledgeNodes = (
         },
         status: "accepted",
         confidence: "high",
-        anchors: [createKnowledgeAnchor("script", "source:script")],
+        anchors: [createKnowledgeAnchor("script", "raw")],
         createdAt,
         updatedAt: createdAt,
       })
@@ -42,7 +42,7 @@ export const buildCanonicalKnowledgeNodes = (
   }
 
   for (const episode of projectData.episodes || []) {
-    const episodeRef = `ep:${episode.id}`;
+    const episodeRef = String(episode.id);
     nodes.push(
       createCanonicalKnowledgeNode({
         id: `knowledge-source-episode-${episode.id}`,
@@ -65,7 +65,7 @@ export const buildCanonicalKnowledgeNodes = (
     );
 
     for (const scene of episode.scenes || []) {
-      const sceneRef = `scene:${scene.id}`;
+      const sceneRef = scene.id;
       nodes.push(
         createCanonicalKnowledgeNode({
           id: `knowledge-source-scene-${scene.id}`,

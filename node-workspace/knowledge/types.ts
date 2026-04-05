@@ -152,7 +152,16 @@ export type KnowledgeNodeDetail = {
 
 export type KnowledgeSearchScope = "identity" | "content" | "anchors" | "links";
 
+export type KnowledgeSearchContext = {
+  preferredAnchorRefs?: string[];
+  preferredNodeRefs?: string[];
+  preferredNodeKinds?: string[];
+  preferredOrigins?: KnowledgeNodeOrigin[];
+  preferredStatuses?: KnowledgeNodeStatus[];
+};
+
 export type KnowledgeSearchResult = {
   node: KnowledgeNodeIdentity;
   matchedScopes: KnowledgeSearchScope[];
+  score: number;
 };

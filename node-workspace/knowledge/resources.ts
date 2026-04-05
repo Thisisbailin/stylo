@@ -15,7 +15,10 @@ import {
 } from "./queries";
 import type {
   KnowledgeAnchor,
+  KnowledgeNodeOrigin,
+  KnowledgeNodeStatus,
   KnowledgeMapLens,
+  KnowledgeSearchContext,
   KnowledgeSearchScope,
   KnowledgeSnapshot,
 } from "./types";
@@ -95,18 +98,20 @@ export const readKnowledgeResource = (
   }
 ) => {
   if (resourceType === "knowledge_node_identity") {
+    const item = readKnowledgeNodeIdentity(snapshot, { nodeId, nodeRef });
     return {
       resource_type: resourceType,
-      found: true,
-      item: readKnowledgeNodeIdentity(snapshot, { nodeId, nodeRef }),
+      found: Boolean(item),
+      item,
     };
   }
 
   if (resourceType === "knowledge_node_detail") {
+    const item = readKnowledgeNodeDetail(snapshot, { nodeId, nodeRef });
     return {
       resource_type: resourceType,
-      found: true,
-      item: readKnowledgeNodeDetail(snapshot, { nodeId, nodeRef }),
+      found: Boolean(item),
+      item,
     };
   }
 
@@ -163,12 +168,17 @@ export const searchKnowledgeResources = (
   {
     query,
     scopes,
+    context,
   }: {
     query: string;
     scopes?: KnowledgeSearchScope[];
+    context?: KnowledgeSearchContext & {
+      preferredOrigins?: KnowledgeNodeOrigin[];
+      preferredStatuses?: KnowledgeNodeStatus[];
+    };
   }
 ) => ({
   resource_type: "knowledge_search",
-  total: searchKnowledgeNodes(snapshot, { query, scopes }).length,
-  items: searchKnowledgeNodes(snapshot, { query, scopes }),
+  total: searchKnowledgeNodes(snapshot, { query, scopes, context }).length,
+  items: searchKnowledgeNodes(snapshot, { query, scopes, context }),
 });

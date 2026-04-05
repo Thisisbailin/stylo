@@ -25,6 +25,7 @@ import type {
   KnowledgeLink,
   KnowledgeLocalMapProjection,
   KnowledgeMap,
+  KnowledgeSearchContext,
   KnowledgeNodeDetail,
   KnowledgeNodeIdentity,
   KnowledgeNode,
@@ -44,7 +45,7 @@ type KnowledgeStore = {
   revision: number;
   nodes: KnowledgeNode[];
   links: KnowledgeLink[];
-  setKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
+  devReplaceKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
   createDerivedNode: (input: {
     id?: string;
     ref?: string;
@@ -120,7 +121,7 @@ type KnowledgeStore = {
     updatedAt?: number;
   }) => KnowledgeNode;
   seedCanonicalSource: (projectData: ProjectData) => void;
-  clearKnowledge: () => void;
+  devClearKnowledge: () => void;
   getKnowledgeMap: () => KnowledgeMap;
   getKnowledgeLocalMap: (args: {
     nodeId?: string;
@@ -134,7 +135,11 @@ type KnowledgeStore = {
   listNodeIdentities: () => KnowledgeNodeIdentity[];
   readNodeIdentity: (args: { nodeId?: string; nodeRef?: string }) => KnowledgeNodeIdentity | null;
   readNodeDetail: (args: { nodeId?: string; nodeRef?: string }) => KnowledgeNodeDetail | null;
-  searchNodes: (args: { query: string; scopes?: KnowledgeSearchScope[] }) => KnowledgeSearchResult[];
+  searchNodes: (args: {
+    query: string;
+    scopes?: KnowledgeSearchScope[];
+    context?: KnowledgeSearchContext;
+  }) => KnowledgeSearchResult[];
 };
 
 const toSnapshot = (state: Pick<KnowledgeStore, "revision" | "nodes" | "links">): KnowledgeSnapshot => ({
@@ -152,7 +157,7 @@ const applySnapshot = (snapshot: KnowledgeSnapshot) => ({
 export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
   ...createEmptyKnowledgeSnapshot(),
 
-  setKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
+  devReplaceKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
 
   createDerivedNode: (input) => {
     let created!: KnowledgeNode;
@@ -211,7 +216,7 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
       return applySnapshot(upsertKnowledgeLinks(withNodes, seeded.links));
     }),
 
-  clearKnowledge: () => set(createEmptyKnowledgeSnapshot()),
+  devClearKnowledge: () => set(createEmptyKnowledgeSnapshot()),
 
   getKnowledgeMap: () => buildKnowledgeMap(toSnapshot(get())),
 

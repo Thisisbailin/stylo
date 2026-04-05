@@ -131,7 +131,12 @@ interface NodeFlowProps {
   onOpenSyncPanel?: () => void;
   onOpenInfoPanel?: () => void;
   onOpenKnowledgePanel?: (
-    section?: "knowledge:overview" | "knowledge:nodes" | "knowledge:links" | "knowledge:maps"
+    section?:
+      | "knowledge:overview"
+      | "knowledge:nodes"
+      | "knowledge:links"
+      | "knowledge:maps"
+      | "knowledge:lab"
   ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;

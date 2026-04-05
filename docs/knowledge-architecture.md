@@ -159,6 +159,7 @@ Knowledge Core 提供的是 **结构约束**，不是 **知识规范**。
 - derived knowledge 的修正默认走 `supersede`
 - link 不能指向不存在的 node
 - 对外公共写入口应优先暴露命令式生命周期入口，而不是通用 upsert / remove
+- 整快照替换与清空只应保留为显式 `dev-only` 调试入口，不应成为长期公共写接口
 
 ### 3.3 Agent Runtime Layer
 
@@ -374,6 +375,26 @@ type KnowledgeAnchor = {
 - 防止知识层漂移成“自我循环的幻觉仓库”
 
 Knowledge 不应只存“结论”，而不存任何来源。
+
+### Anchor Ref 约定
+
+`KnowledgeAnchor` 的传输和调试展示应统一遵守：
+
+- `script:raw`
+- `episode:1`
+- `scene:1-3`
+
+也就是说：
+
+- `type` 决定锚点类别
+- `ref` 只保存该类别内部的稳定引用值
+
+不要混用：
+
+- `source:script`
+- `ep:1`
+
+这类旧式临时表示。它们不是长期的 Knowledge anchor 协议。
 
 ## 4.3.1 生命周期边界
 
@@ -592,12 +613,26 @@ Knowledge 的搜索边界应尽量围绕：
 - anchors
 - links
 - 轻量 content 文本
+- origin / status
+- 当前局部上下文偏好
 
 而不是直接把整个结构化 content 粗暴 JSON 化后做全文检索。
 
 Agent-first 不等于噪声优先。检索应该帮助 Agent 快速命中相关知识，而不是把原始结构噪声混入搜索。
 
-## 5.12 No UI Leakage
+如果当前任务已经围绕某个 anchor、focus node 或 kind 展开，搜索排序也应尽量吸收这些局部上下文，而不是只做孤立的词法匹配。
+
+## 5.12 Inspector First, Mutation Lab Separate
+
+Knowledge Inspector 的长期职责应是：
+
+- 观测
+- 审查
+- 调试投影
+
+如果需要保留开发期写入实验能力，应将其隔离在单独的 Mutation Lab 中，而不是让 Inspector 本体长期混合承担观察与写入实验两种职责。
+
+## 5.13 No UI Leakage
 
 Knowledge Core 里不应出现这些字段作为本体：
 

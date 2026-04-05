@@ -12,6 +12,7 @@ import type {
   KnowledgeNodeStatus,
   KnowledgeSnapshot,
 } from "./types";
+import { parseKnowledgeAnchorRef } from "./anchors";
 
 export const buildKnowledgeMap = (snapshot: KnowledgeSnapshot): KnowledgeMap => ({
   revision: snapshot.revision,
@@ -310,9 +311,8 @@ export const buildKnowledgeLensProjection = (
   }
   if (lens.kind === "anchor") {
     const anchorRef = lens.anchorRefs?.[0];
-    const [type, ref] = anchorRef?.split(":") || [];
     const projection = buildKnowledgeAnchorMapProjection(snapshot, {
-      anchor: type && ref ? { type: type as KnowledgeAnchor["type"], ref } : null,
+      anchor: anchorRef ? parseKnowledgeAnchorRef(anchorRef) : null,
       depth: lens.depth,
     });
     return {

@@ -1,5 +1,6 @@
 import { resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { parseKnowledgeAnchorRef } from "../../node-workspace/knowledge/anchors";
 import { readKnowledgeResource } from "../../node-workspace/knowledge/resources";
 import {
   buildProjectGraphMaps,
@@ -200,13 +201,10 @@ export const readProjectResourceToolDef = {
       args.resourceType === "knowledge_lifecycle" ||
       args.resourceType === "knowledge_anchor_timeline"
     ) {
-      const anchor =
-        args.anchorRef && args.anchorRef.includes(":")
-          ? (() => {
-              const [type, ref] = args.anchorRef.split(":");
-              return type && ref ? ({ type: type as any, ref } as const) : null;
-            })()
-          : undefined;
+      const anchor = args.anchorRef ? parseKnowledgeAnchorRef(args.anchorRef) : undefined;
+      if (args.anchorRef && !anchor) {
+        throw new Error("knowledge anchor_ref 格式无效。请使用 script:raw、episode:1 或 scene:1-3 这类形式。");
+      }
       const lens =
         args.resourceType === "knowledge_map_lens"
           ? {

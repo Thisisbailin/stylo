@@ -1,4 +1,5 @@
 import type {
+  KnowledgeSearchContext,
   KnowledgeNode,
   KnowledgeNodeDetail,
   KnowledgeNodeIdentity,
@@ -112,14 +113,18 @@ const stringifyKnowledgeContent = (value: unknown): string => {
 
 const normalizeSearchText = (value: string) => value.trim().toLowerCase();
 
+const toAnchorRefs = (node: KnowledgeNode) => node.anchors.map((anchor) => `${anchor.type}:${anchor.ref}`);
+
 export const searchKnowledgeNodes = (
   snapshot: KnowledgeSnapshot,
   {
     query,
     scopes = ["identity", "content", "anchors", "links"],
+    context,
   }: {
     query: string;
     scopes?: KnowledgeSearchScope[];
+    context?: KnowledgeSearchContext;
   }
 ): KnowledgeSearchResult[] => {
   const normalizedQuery = normalizeSearchText(query);
@@ -130,24 +135,41 @@ export const searchKnowledgeNodes = (
   for (const node of snapshot.nodes) {
     const links = getKnowledgeLinksForNode(snapshot, node.id);
     const matchedScopes: KnowledgeSearchScope[] = [];
+    let score = 0;
+    const anchorRefs = toAnchorRefs(node);
+    const titleText = normalizeSearchText(node.package.title);
+    const refText = normalizeSearchText(node.ref);
+    const kindText = normalizeSearchText(node.kind);
+    const originText = normalizeSearchText(node.origin);
+    const statusText = normalizeSearchText(node.package.status);
 
     if (scopes.includes("identity")) {
-      const haystack = normalizeSearchText(
-        [node.ref, node.kind, node.package.title, node.origin, node.package.status].join(" ")
-      );
+      const haystack = normalizeSearchText([node.ref, node.kind, node.package.title, node.origin, node.package.status].join(" "));
       if (haystack.includes(normalizedQuery)) matchedScopes.push("identity");
+      if (titleText === normalizedQuery) score += 90;
+      else if (titleText.includes(normalizedQuery)) score += 52;
+      if (refText === normalizedQuery) score += 72;
+      else if (refText.includes(normalizedQuery)) score += 40;
+      if (kindText === normalizedQuery) score += 44;
+      else if (kindText.includes(normalizedQuery)) score += 24;
+      if (originText === normalizedQuery) score += 18;
+      if (statusText === normalizedQuery) score += 14;
     }
 
     if (scopes.includes("content")) {
       const haystack = normalizeSearchText(stringifyKnowledgeContent(node.content));
-      if (haystack.includes(normalizedQuery)) matchedScopes.push("content");
+      if (haystack.includes(normalizedQuery)) {
+        matchedScopes.push("content");
+        score += 28;
+      }
     }
 
     if (scopes.includes("anchors")) {
-      const haystack = normalizeSearchText(
-        node.anchors.map((anchor) => `${anchor.type} ${anchor.ref} ${anchor.span || ""}`).join(" ")
-      );
-      if (haystack.includes(normalizedQuery)) matchedScopes.push("anchors");
+      const haystack = normalizeSearchText(node.anchors.map((anchor) => `${anchor.type} ${anchor.ref} ${anchor.span || ""}`).join(" "));
+      if (haystack.includes(normalizedQuery)) {
+        matchedScopes.push("anchors");
+        score += 48;
+      }
     }
 
     if (scopes.includes("links")) {
@@ -163,16 +185,37 @@ export const searchKnowledgeNodes = (
           .concat(relatedNodeTitles)
           .join(" ")
       );
-      if (haystack.includes(normalizedQuery)) matchedScopes.push("links");
+      if (haystack.includes(normalizedQuery)) {
+        matchedScopes.push("links");
+        score += 20;
+      }
+    }
+
+    if (context?.preferredAnchorRefs?.length) {
+      const matchedAnchorCount = context.preferredAnchorRefs.filter((ref) => anchorRefs.includes(ref)).length;
+      score += matchedAnchorCount * 18;
+    }
+    if (context?.preferredNodeRefs?.includes(node.ref)) {
+      score += 36;
+    }
+    if (context?.preferredNodeKinds?.includes(node.kind)) {
+      score += 16;
+    }
+    if (context?.preferredOrigins?.includes(node.origin)) {
+      score += 10;
+    }
+    if (context?.preferredStatuses?.includes(node.package.status)) {
+      score += 8;
     }
 
     if (matchedScopes.length) {
       matches.push({
         node: toKnowledgeNodeIdentity(snapshot, node),
         matchedScopes,
+        score,
       });
     }
   }
 
-  return matches.sort((a, b) => b.node.updatedAt - a.node.updatedAt);
+  return matches.sort((a, b) => b.score - a.score || b.node.updatedAt - a.node.updatedAt);
 };
