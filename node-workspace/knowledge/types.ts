@@ -62,6 +62,12 @@ export type KnowledgeMapLens = {
   depth?: number;
 };
 
+export type KnowledgeMapLensProjection = {
+  lens: KnowledgeMapLens;
+  nodes: KnowledgeNode[];
+  links: KnowledgeLink[];
+};
+
 export type KnowledgeMap = {
   revision: number;
   nodes: KnowledgeNode[];

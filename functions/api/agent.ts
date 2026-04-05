@@ -14,6 +14,8 @@ import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/typ
 import { createAgentSessionKey, D1EdgeSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
+import { createEmptyKnowledgeSnapshot } from "../../node-workspace/knowledge/defaults";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
@@ -62,7 +64,11 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
   console.log(prefix, payload);
 };
 
-const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlowFile) => {
+const createNodeFlowBridgeState = (
+  projectData: ProjectData,
+  nodeFlow?: NodeFlowFile,
+  knowledge?: KnowledgeSnapshot
+) => {
   let currentProjectData = projectData;
   let projectDataUpdated = false;
   let currentNodeFlow: NodeFlowFile = structuredClone(
@@ -79,6 +85,9 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
     }
   );
   let nodeFlowUpdated = false;
+  let currentKnowledge: KnowledgeSnapshot = structuredClone(
+    knowledge || createEmptyKnowledgeSnapshot()
+  );
   let currentExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal> = {};
   let executionApprovalsUpdated = false;
   let nodeIdCounter = (currentNodeFlow.nodes || []).reduce((max, node) => {
@@ -139,6 +148,7 @@ const createNodeFlowBridgeState = (projectData: ProjectData, nodeFlow?: NodeFlow
     bridge: createQalamAgentBridge({
       getProjectData: () => currentProjectData,
       getNodeFlowSnapshot: () => currentNodeFlow,
+      getKnowledgeSnapshot: () => currentKnowledge,
       getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
       updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
         currentProjectData = updater(currentProjectData);
@@ -287,7 +297,7 @@ export const onRequestPost = async (context: any) => {
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Qalam Edge Agent";
       const groupId = sessionKey;
-      const bridgeState = createNodeFlowBridgeState(body.projectData, body.nodeFlow);
+      const bridgeState = createNodeFlowBridgeState(body.projectData, body.nodeFlow, body.knowledge);
       const skillLoader = new StaticSkillLoader();
       const requestAbortSignal = context.request.signal;
       const emitWrapperTrace = (

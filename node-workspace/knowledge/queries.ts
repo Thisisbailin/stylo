@@ -84,13 +84,30 @@ export const readKnowledgeNodeDetail = (
 };
 
 const stringifyKnowledgeContent = (value: unknown): string => {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  const chunks: string[] = [];
+  const visit = (candidate: unknown, depth = 0) => {
+    if (candidate == null || depth > 4 || chunks.length >= 64) return;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      if (trimmed) chunks.push(trimmed);
+      return;
+    }
+    if (typeof candidate === "number" || typeof candidate === "boolean") {
+      chunks.push(String(candidate));
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.slice(0, 24).forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof candidate === "object") {
+      Object.values(candidate as Record<string, unknown>)
+        .slice(0, 24)
+        .forEach((item) => visit(item, depth + 1));
+    }
+  };
+  visit(value);
+  return chunks.join(" ");
 };
 
 const normalizeSearchText = (value: string) => value.trim().toLowerCase();
@@ -134,8 +151,17 @@ export const searchKnowledgeNodes = (
     }
 
     if (scopes.includes("links")) {
+      const relatedNodeTitles = [...links.incoming, ...links.outgoing]
+        .map((link) => {
+          const relatedNodeId = link.fromNodeId === node.id ? link.toNodeId : link.fromNodeId;
+          return snapshot.nodes.find((candidate) => candidate.id === relatedNodeId)?.package.title || "";
+        })
+        .filter(Boolean);
       const haystack = normalizeSearchText(
-        [...links.incoming, ...links.outgoing].map((link) => link.type).join(" ")
+        [...links.incoming, ...links.outgoing]
+          .map((link) => link.type)
+          .concat(relatedNodeTitles)
+          .join(" ")
       );
       if (haystack.includes(normalizedQuery)) matchedScopes.push("links");
     }

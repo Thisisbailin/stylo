@@ -1,4 +1,5 @@
 import type { ProjectData } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type {
   NodeAssetConfidence,
   NodeAssetPlane,
@@ -152,6 +153,7 @@ export type CreateNodeFlowGraphLinkResult = {
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
+  getKnowledgeSnapshot(): KnowledgeSnapshot;
   getPendingNodeFlowExecutionApprovals(): NodeFlowExecutionApprovalProposal[];
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;

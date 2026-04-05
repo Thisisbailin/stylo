@@ -1,5 +1,6 @@
 import type { Connection } from "@xyflow/react";
 import type { ProjectData } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
@@ -33,6 +34,7 @@ import type {
 type NodeFlowBridgeDeps = {
   getProjectData: () => ProjectData;
   getNodeFlowSnapshot: () => NodeFlowFile;
+  getKnowledgeSnapshot: () => KnowledgeSnapshot;
   getPendingExecutionApprovals?: () => NodeFlowExecutionApprovalProposal[];
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
@@ -403,6 +405,7 @@ const clearNodeFlowExecutionApproval = (
 export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBridge => ({
   getProjectData: deps.getProjectData,
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
+  getKnowledgeSnapshot: deps.getKnowledgeSnapshot,
   getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),

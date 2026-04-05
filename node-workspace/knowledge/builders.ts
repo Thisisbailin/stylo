@@ -7,6 +7,10 @@ import type {
   KnowledgeNodeOrigin,
   KnowledgeNodeStatus,
 } from "./types";
+import {
+  assertKnowledgeLinkTypeIsValid,
+  assertKnowledgeNodeKindIsValid,
+} from "./lifecycle";
 
 type CreateKnowledgeNodeInput = {
   id: string;
@@ -48,22 +52,25 @@ export const createKnowledgeNode = ({
   anchors = [],
   createdAt = Date.now(),
   updatedAt = createdAt,
-}: CreateKnowledgeNodeInput): KnowledgeNode => ({
-  id,
-  ref,
-  kind,
-  origin,
-  package: {
-    title,
-    status,
-    confidence,
-  },
-  content,
-  meta,
-  anchors,
-  createdAt,
-  updatedAt,
-});
+}: CreateKnowledgeNodeInput): KnowledgeNode => {
+  assertKnowledgeNodeKindIsValid(kind, origin);
+  return {
+    id,
+    ref,
+    kind,
+    origin,
+    package: {
+      title,
+      status,
+      confidence,
+    },
+    content,
+    meta,
+    anchors,
+    createdAt,
+    updatedAt,
+  };
+};
 
 export const createKnowledgeLink = ({
   id,
@@ -75,17 +82,20 @@ export const createKnowledgeLink = ({
   status = "active",
   createdAt = Date.now(),
   updatedAt = createdAt,
-}: CreateKnowledgeLinkInput): KnowledgeLink => ({
-  id,
-  origin,
-  fromNodeId,
-  toNodeId,
-  type,
-  weight,
-  status,
-  createdAt,
-  updatedAt,
-});
+}: CreateKnowledgeLinkInput): KnowledgeLink => {
+  assertKnowledgeLinkTypeIsValid(type);
+  return {
+    id,
+    origin,
+    fromNodeId,
+    toNodeId,
+    type,
+    weight,
+    status,
+    createdAt,
+    updatedAt,
+  };
+};
 
 export const createCanonicalKnowledgeNode = (
   input: Omit<CreateKnowledgeNodeInput, "origin">

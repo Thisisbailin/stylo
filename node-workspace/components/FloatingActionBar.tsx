@@ -26,6 +26,7 @@ import {
   Upload,
   Share,
   ScanSearch,
+  Network,
 } from "lucide-react";
 import type { ModuleKey } from "./ModuleBar";
 

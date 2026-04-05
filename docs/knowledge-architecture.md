@@ -20,6 +20,13 @@
 
 这一层的设计目标不是替 Agent 预先规定“应该怎样理解剧本”，而是提供一套足够原子、足够抽象、足够开放的知识容器，让 Agent 能依据实际 source 自主沉淀、修正和扩展自己的知识网络。
 
+因此当前还需要同时坚持：
+
+- **Agent First, Schema Light**
+- **Protected Mutation Boundaries**
+- **Search Over Curated Signals, Not Raw JSON Noise**
+- **Inspector For Observation First, Mutation Lab Only As A Temporary Debug Aid**
+
 ## 2. 核心判断
 
 ## 2.1 Knowledge 是长期记忆，不是“理解结果”
@@ -146,6 +153,13 @@ Knowledge Core 提供的是 **结构约束**，不是 **知识规范**。
 
 知识内容本身应尽量由 Agent 在 source 驱动下自由生成。
 
+但这并不意味着接口边界可以松散。Knowledge Core 还必须提供最小但明确的保护：
+
+- canonical-source 不能被直接覆写
+- derived knowledge 的修正默认走 `supersede`
+- link 不能指向不存在的 node
+- 对外公共写入口应优先暴露命令式生命周期入口，而不是通用 upsert / remove
+
 ### 3.3 Agent Runtime Layer
 
 Agent 通过 tools 或内部 memory 接口读写 Knowledge Core。
@@ -223,6 +237,17 @@ type KnowledgeNode = {
 
   对于 Agent 后续沉淀出的 derived knowledge，不预设固定 ontology。
   `kind` 应保持开放，让 Agent 能根据实际需要形成自己的知识命名空间。
+
+  但“开放”不等于“无边界”。系统只施加极轻的命名约束：
+
+  - canonical source 必须使用 `source.*`
+  - derived kind 不得占用 `source.*`
+  - kind 应采用轻量 namespaced 形式，例如：
+    - `derived.note`
+    - `derived.observation`
+    - `memory.patch`
+
+  这不是在替 Agent 设计知识模板，只是为了防止长期运行后 `kind` 变脏。
 
 - `package`
   节点的略览层
@@ -424,6 +449,16 @@ type KnowledgeMapLens = {
 
 但这些都不是新的本体，只是同一知识网在不同视野下的投影。
 
+第一阶段应优先落下这些最小 lens：
+
+- `full`
+- `local`
+- `anchor`
+- `kind`
+- `focus`
+
+它们不需要一次做重，但不能长期只停留在类型承诺里。
+
 ## 5. 架构原则
 
 ## 5.1 Memory First
@@ -512,7 +547,21 @@ Agent 在长期运行中会：
 
 而不是只允许“覆盖写入”。
 
-## 5.8 Read Small, Derive Big
+## 5.8 Protected Mutation Boundaries
+
+生命周期规则不应只停留在 helper 中，而应尽量体现在公共接口边界上。
+
+对开发期内部实现可以保留低层 mutation primitive，但对外主入口应优先是：
+
+- create derived
+- create anchored derived
+- create derived link
+- supersede derived
+- supersede anchored derived
+
+而不是直接开放通用 upsert / remove。
+
+## 5.9 Read Small, Derive Big
 
 Agent 不应默认吞整张知识图。
 
@@ -529,13 +578,26 @@ Agent 不应默认吞整张知识图。
 - 小修正
 - 大结构为派生结果
 
-## 5.9 One Graph, Many Lenses
+## 5.10 One Graph, Many Lenses
 
 Knowledge Core 只有一张知识网真相。
 
 不同的地图、局部视图、专题视图，都来自不同 lens，而不是第二套独立地图存储。
 
-## 5.10 No UI Leakage
+## 5.11 Search Small, Search Clean
+
+Knowledge 的搜索边界应尽量围绕：
+
+- package
+- anchors
+- links
+- 轻量 content 文本
+
+而不是直接把整个结构化 content 粗暴 JSON 化后做全文检索。
+
+Agent-first 不等于噪声优先。检索应该帮助 Agent 快速命中相关知识，而不是把原始结构噪声混入搜索。
+
+## 5.12 No UI Leakage
 
 Knowledge Core 里不应出现这些字段作为本体：
 

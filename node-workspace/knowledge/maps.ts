@@ -5,6 +5,8 @@ import type {
   KnowledgeAnchorMapProjection,
   KnowledgeLifecycleProjection,
   KnowledgeLink,
+  KnowledgeMapLens,
+  KnowledgeMapLensProjection,
   KnowledgeMap,
   KnowledgeNode,
   KnowledgeNodeStatus,
@@ -16,6 +18,11 @@ export const buildKnowledgeMap = (snapshot: KnowledgeSnapshot): KnowledgeMap => 
   nodes: snapshot.nodes,
   links: snapshot.links,
 });
+
+const filterLinksByNodeIds = (snapshot: KnowledgeSnapshot, nodeIds: Set<string>) =>
+  snapshot.links.filter(
+    (link) => nodeIds.has(link.fromNodeId) && nodeIds.has(link.toNodeId)
+  );
 
 export type KnowledgeScriptSceneBranch = {
   link: KnowledgeLink | null;
@@ -229,6 +236,100 @@ export const buildKnowledgeAnchorMapProjection = (
     depth: effectiveDepth,
     nodes: snapshot.nodes.filter((node) => visitedNodeIds.has(node.id)),
     links: snapshot.links.filter((link) => visitedLinkIds.has(link.id)),
+  };
+};
+
+export const buildKnowledgeKindMapProjection = (
+  snapshot: KnowledgeSnapshot,
+  {
+    nodeKinds,
+  }: {
+    nodeKinds?: string[];
+  }
+): KnowledgeMapLensProjection => {
+  const kinds = (nodeKinds || []).filter(Boolean);
+  const nodes = kinds.length
+    ? snapshot.nodes.filter((node) => kinds.includes(node.kind))
+    : snapshot.nodes;
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  return {
+    lens: {
+      id: `kind:${kinds.join(",") || "all"}`,
+      kind: "kind",
+      nodeKinds: kinds,
+    },
+    nodes,
+    links: filterLinksByNodeIds(snapshot, nodeIds),
+  };
+};
+
+export const buildKnowledgeFocusMapProjection = (
+  snapshot: KnowledgeSnapshot,
+  {
+    focusNodeRefs,
+  }: {
+    focusNodeRefs?: string[];
+  }
+): KnowledgeMapLensProjection => {
+  const refs = (focusNodeRefs || []).filter(Boolean);
+  const nodes = refs.length
+    ? snapshot.nodes.filter((node) => refs.includes(node.ref))
+    : [];
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  return {
+    lens: {
+      id: `focus:${refs.join(",") || "none"}`,
+      kind: "focus",
+      focusNodeRefs: refs,
+    },
+    nodes,
+    links: filterLinksByNodeIds(snapshot, nodeIds),
+  };
+};
+
+export const buildKnowledgeLensProjection = (
+  snapshot: KnowledgeSnapshot,
+  lens: KnowledgeMapLens
+): KnowledgeMapLensProjection => {
+  if (lens.kind === "full") {
+    return {
+      lens,
+      nodes: snapshot.nodes,
+      links: snapshot.links,
+    };
+  }
+  if (lens.kind === "kind") {
+    return buildKnowledgeKindMapProjection(snapshot, {
+      nodeKinds: lens.nodeKinds,
+    });
+  }
+  if (lens.kind === "focus") {
+    return buildKnowledgeFocusMapProjection(snapshot, {
+      focusNodeRefs: lens.focusNodeRefs,
+    });
+  }
+  if (lens.kind === "anchor") {
+    const anchorRef = lens.anchorRefs?.[0];
+    const [type, ref] = anchorRef?.split(":") || [];
+    const projection = buildKnowledgeAnchorMapProjection(snapshot, {
+      anchor: type && ref ? { type: type as KnowledgeAnchor["type"], ref } : null,
+      depth: lens.depth,
+    });
+    return {
+      lens,
+      nodes: projection.nodes,
+      links: projection.links,
+    };
+  }
+  const focusRef = lens.focusNodeRefs?.[0];
+  const projection = buildKnowledgeLocalMapProjection(snapshot, {
+    nodeRef: focusRef,
+    depth: lens.depth,
+  });
+  return {
+    lens,
+    nodes: projection.nodes,
+    links: projection.links,
   };
 };
 

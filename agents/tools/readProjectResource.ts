@@ -1,5 +1,6 @@
 import { resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { readKnowledgeResource } from "../../node-workspace/knowledge/resources";
 import {
   buildProjectGraphMaps,
   findExecutionLink,
@@ -11,6 +12,14 @@ import { findNodeFlowNode, getNodeFlowLinkRelationsForNode, getNodeFlowNodeRef, 
 
 export const READ_PROJECT_RESOURCE_TYPES = [
   "skill_package",
+  "knowledge_node_identity",
+  "knowledge_node_detail",
+  "knowledge_map",
+  "knowledge_local_map",
+  "knowledge_anchor_map",
+  "knowledge_map_lens",
+  "knowledge_lifecycle",
+  "knowledge_anchor_timeline",
   "source_node",
   "graph_node",
   "graph_node_identity",
@@ -61,6 +70,18 @@ const readProjectResourceParameters = {
       type: "string",
       description: "Map view name.",
     },
+    lens_kind: {
+      type: "string",
+      description: "Knowledge map lens kind such as full, local, anchor, kind, or focus.",
+    },
+    anchor_ref: {
+      type: "string",
+      description: "Knowledge anchor ref, for example script:raw, episode:1, or scene:1-3.",
+    },
+    node_kind: {
+      type: "string",
+      description: "Knowledge node kind filter for knowledge_map_lens.",
+    },
     max_chars: {
       type: "integer",
       description: "Optional maximum characters to return for large text payloads.",
@@ -97,6 +118,9 @@ const parseArgs = (input: unknown) => {
   const linkId = trim(raw.link_id ?? raw.linkId ?? raw.edge_id ?? raw.edgeId) || itemId;
   const mapId = trim(raw.map_id ?? raw.mapId) || undefined;
   const view = trim(raw.view) || undefined;
+  const lensKind = trim(raw.lens_kind ?? raw.lensKind) || undefined;
+  const anchorRef = trim(raw.anchor_ref ?? raw.anchorRef) || undefined;
+  const nodeKind = trim(raw.node_kind ?? raw.nodeKind) || undefined;
   const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
 
   if (!resourceType) throw new Error("read_project_resource 需要 resource_type。");
@@ -108,6 +132,9 @@ const parseArgs = (input: unknown) => {
   }
   if (resourceType === "source_node" && !sourceRef && !name) {
     throw new Error("source_node 需要 source_ref 或 name。");
+  }
+  if (resourceType.startsWith("knowledge_node") && !nodeId && !nodeRef) {
+    throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
   }
   if ((resourceType === "graph_node" || resourceType === "graph_node_identity" || resourceType === "graph_node_detail") && !nodeId && !nodeRef) {
     throw new Error(`${resourceType} 需要 node_id 或 node_ref。`);
@@ -129,6 +156,9 @@ const parseArgs = (input: unknown) => {
     linkId,
     mapId,
     view,
+    lensKind,
+    anchorRef,
+    nodeKind,
     maxChars,
   };
 };
@@ -158,6 +188,45 @@ export const readProjectResourceToolDef = {
     const args = parseArgs(input);
     const projectData = bridge.getProjectData();
     const workflow = bridge.getNodeFlowSnapshot();
+    const knowledge = bridge.getKnowledgeSnapshot();
+
+    if (
+      args.resourceType === "knowledge_node_identity" ||
+      args.resourceType === "knowledge_node_detail" ||
+      args.resourceType === "knowledge_map" ||
+      args.resourceType === "knowledge_local_map" ||
+      args.resourceType === "knowledge_anchor_map" ||
+      args.resourceType === "knowledge_map_lens" ||
+      args.resourceType === "knowledge_lifecycle" ||
+      args.resourceType === "knowledge_anchor_timeline"
+    ) {
+      const anchor =
+        args.anchorRef && args.anchorRef.includes(":")
+          ? (() => {
+              const [type, ref] = args.anchorRef.split(":");
+              return type && ref ? ({ type: type as any, ref } as const) : null;
+            })()
+          : undefined;
+      const lens =
+        args.resourceType === "knowledge_map_lens"
+          ? {
+              id: `lens:${args.lensKind || "full"}:${args.anchorRef || args.nodeRef || args.nodeKind || "default"}`,
+              kind: ((args.lensKind || "full") as "full" | "local" | "anchor" | "kind" | "focus"),
+              focusNodeRefs: args.nodeRef ? [args.nodeRef] : undefined,
+              anchorRefs: args.anchorRef ? [args.anchorRef] : undefined,
+              nodeKinds: args.nodeKind ? [args.nodeKind] : undefined,
+              depth: 1,
+            }
+          : undefined;
+      return readKnowledgeResource(knowledge, {
+        resourceType: args.resourceType,
+        nodeId: args.nodeId,
+        nodeRef: args.nodeRef,
+        anchor,
+        lens,
+        depth: 1,
+      });
+    }
 
     if (args.resourceType === "skill_package") {
       const skill = await resolveBuiltinSkill(args.itemId || args.name || "");
@@ -396,8 +465,16 @@ export const readProjectResourceToolDef = {
         };
   },
   summarize: (output: any) => {
-    if (!output?.found) return `未找到 ${output?.resource_type || "resource"}`;
+    if (output?.found === false) return `未找到 ${output?.resource_type || "resource"}`;
     if (output.resource_type === "skill_package") return `读取技能包 ${output.title || output.item_id}`;
+    if (output.resource_type === "knowledge_node_identity") return `读取 knowledge 节点识别层 ${output.item?.title || output.item?.ref || ""}`;
+    if (output.resource_type === "knowledge_node_detail") return `读取 knowledge 节点细节层 ${output.item?.package?.title || output.item?.ref || ""}`;
+    if (output.resource_type === "knowledge_map") return `读取 knowledge 全图`;
+    if (output.resource_type === "knowledge_local_map") return `读取 knowledge 局部地图`;
+    if (output.resource_type === "knowledge_anchor_map") return `读取 knowledge anchor 地图`;
+    if (output.resource_type === "knowledge_map_lens") return `读取 knowledge lens 地图`;
+    if (output.resource_type === "knowledge_lifecycle") return `读取 knowledge 生命周期视图`;
+    if (output.resource_type === "knowledge_anchor_timeline") return `读取 knowledge anchor 时间线`;
     if (output.resource_type === "source_node") return `读取 source 节点 ${output.title || output.ref}`;
     if (output.resource_type === "graph_node") return `读取 graph 节点 ${output.title || output.node_ref || output.node_id}`;
     if (output.resource_type === "graph_node_identity") return `读取 graph 节点识别层 ${output.title || output.node_ref || output.node_id}`;

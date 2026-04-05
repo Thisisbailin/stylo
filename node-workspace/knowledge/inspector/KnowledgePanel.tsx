@@ -5,6 +5,8 @@ import type { ProjectData } from "../../../types";
 import {
   buildKnowledgeAnchorRegistryProjection,
   buildKnowledgeAnchorTimelineProjection,
+  buildKnowledgeFocusMapProjection,
+  buildKnowledgeKindMapProjection,
   buildKnowledgeLifecycleProjection,
   buildKnowledgeLocalMapProjection,
   buildKnowledgeScriptMapProjection,
@@ -41,6 +43,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 }) => {
   const [focusNodeRef, setFocusNodeRef] = React.useState<string>("");
   const [focusAnchorRef, setFocusAnchorRef] = React.useState<string>("");
+  const [focusKind, setFocusKind] = React.useState<string>("");
   const [debugActionNote, setDebugActionNote] = React.useState<string>("");
   const revision = useKnowledgeStore((state) => state.revision);
   const nodes = useKnowledgeStore((state) => state.nodes);
@@ -78,6 +81,31 @@ export const KnowledgePanel: React.FC<Props> = ({
     {
       nodeRef: effectiveFocusNodeRef,
       depth: 1,
+    }
+  );
+  const availableKinds = React.useMemo(
+    () => Array.from(new Set(nodes.map((node) => node.kind))).sort(),
+    [nodes]
+  );
+  const effectiveKind = focusKind || availableKinds[0] || "";
+  const kindMap = buildKnowledgeKindMapProjection(
+    {
+      revision,
+      nodes,
+      links,
+    },
+    {
+      nodeKinds: effectiveKind ? [effectiveKind] : [],
+    }
+  );
+  const focusMap = buildKnowledgeFocusMapProjection(
+    {
+      revision,
+      nodes,
+      links,
+    },
+    {
+      focusNodeRefs: effectiveFocusNodeRef ? [effectiveFocusNodeRef] : [],
     }
   );
   const availableAnchors = React.useMemo(() => {
@@ -516,6 +544,41 @@ export const KnowledgePanel: React.FC<Props> = ({
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                      Kind Lens
+                    </div>
+                    <select
+                      value={effectiveKind}
+                      onChange={(event) => setFocusKind(event.target.value)}
+                      className="min-w-[220px] rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-1 text-[11px] text-[var(--app-text-primary)]"
+                    >
+                      {availableKinds.length ? (
+                        availableKinds.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No kinds</option>
+                      )}
+                    </select>
+                  </div>
+                  <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
+                    {kindMap.nodes.length} nodes · {kindMap.links.length} links
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                    Focus Lens
+                  </div>
+                  <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
+                    {focusMap.nodes.length} nodes · {focusMap.links.length} links around current focus
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
                       Anchor Lens
                     </div>
                     <select
@@ -609,27 +672,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                         {anchorTimeline.nodes.length} nodes · {anchorTimeline.supersedeChains.length} supersede chains
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCreateDerivedForAnchor}
-                          className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)]"
-                        >
-                          Create Derived
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSupersedeDerivedForAnchor}
-                          disabled={!latestActiveDerivedNode}
-                          className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Supersede Latest Derived
-                        </button>
                       </div>
-                      {debugActionNote ? (
-                        <div className="mt-2 text-[10px] text-[var(--app-text-secondary)]">
-                          {debugActionNote}
-                        </div>
-                      ) : null}
                       <div className="mt-3 space-y-2">
                         {anchorTimeline.nodes.length ? (
                           anchorTimeline.nodes.map((node) => (
@@ -677,6 +720,38 @@ export const KnowledgePanel: React.FC<Props> = ({
                       No anchor selected.
                     </div>
                   )}
+                </div>
+
+                <div className="rounded-xl border border-dashed border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                    Mutation Lab
+                  </div>
+                  <div className="mt-2 text-[11px] leading-6 text-[var(--app-text-secondary)]">
+                    Inspector 默认负责观测。下面这组按钮只用于开发阶段验证 derived knowledge 的写入与 supersede 修正链，不属于长期主界面职责。
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCreateDerivedForAnchor}
+                      disabled={!anchorTimeline.anchor}
+                      className="rounded-full border border-[var(--app-border-strong)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Create Derived
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSupersedeDerivedForAnchor}
+                      disabled={!latestActiveDerivedNode}
+                      className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-primary)] transition hover:bg-[var(--app-panel-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Supersede Latest Derived
+                    </button>
+                  </div>
+                  {debugActionNote ? (
+                    <div className="mt-2 text-[10px] text-[var(--app-text-secondary)]">
+                      {debugActionNote}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>

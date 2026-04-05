@@ -9,6 +9,7 @@ import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField } from "./GlassDiffusionFi
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useKnowledgeStore } from "../store/knowledgeStore";
 import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
 import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
@@ -514,6 +515,14 @@ export const QalamAgent: React.FC<Props> = ({
         viewport: viewport || undefined,
         activeView,
       }),
+      getKnowledgeSnapshot: () => {
+        const state = useKnowledgeStore.getState();
+        return {
+          revision: state.revision,
+          nodes: state.nodes,
+          links: state.links,
+        };
+      },
       getPendingExecutionApprovals: () => Object.values(pendingExecutionApprovals),
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
@@ -562,6 +571,14 @@ export const QalamAgent: React.FC<Props> = ({
             viewport: viewport || undefined,
             activeView: activeView ?? null,
           }) satisfies NodeFlowFile,
+        getKnowledgeSnapshot: () => {
+          const state = useKnowledgeStore.getState();
+          return {
+            revision: state.revision,
+            nodes: state.nodes,
+            links: state.links,
+          };
+        },
       }),
     [
       activeView,

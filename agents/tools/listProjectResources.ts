@@ -1,5 +1,6 @@
 import { listBuiltinSkills } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { listKnowledgeResources } from "../../node-workspace/knowledge/resources";
 import {
   buildGraphNodesFromWorkflow,
   buildProjectedSourceNodes,
@@ -9,6 +10,8 @@ import { getNodeFlowLinkRelationsForNode } from "../../node-workspace/nodeflow/m
 
 export const LIST_PROJECT_RESOURCE_TYPES = [
   "skill_packages",
+  "knowledge_node_identities",
+  "knowledge_anchors",
   "source_nodes",
   "graph_nodes",
   "graph_node_identities",
@@ -75,12 +78,13 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List available graph resource directories before reading them. Supports skill packages, projected source nodes, graph nodes, pending execution approvals, graph links, and maps.",
+    "List available project resources before reading them. Supports skill packages, knowledge resources, projected source nodes, graph nodes, pending execution approvals, graph links, and maps.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const projectData = bridge.getProjectData();
     const workflow = bridge.getNodeFlowSnapshot();
+    const knowledge = bridge.getKnowledgeSnapshot();
 
     if (args.resourceType === "skill_packages") {
       const items = listBuiltinSkills().slice(0, args.maxItems).map((skill) => ({
@@ -95,6 +99,13 @@ export const listProjectResourcesToolDef = {
         total: listBuiltinSkills().length,
         items,
       };
+    }
+
+    if (args.resourceType === "knowledge_node_identities" || args.resourceType === "knowledge_anchors") {
+      return listKnowledgeResources(knowledge, {
+        resourceType: args.resourceType,
+        maxItems: args.maxItems,
+      });
     }
 
     if (args.resourceType === "source_nodes") {
@@ -201,6 +212,8 @@ export const listProjectResourcesToolDef = {
   },
   summarize: (output: any) => {
     if (output?.resource_type === "skill_packages") return `列出 ${output.items?.length || 0} 个技能包`;
+    if (output?.resource_type === "knowledge_node_identities") return `列出 ${output.items?.length || 0} 个 knowledge 节点识别视图`;
+    if (output?.resource_type === "knowledge_anchors") return `列出 ${output.items?.length || 0} 个 knowledge anchors`;
     if (output?.resource_type === "source_nodes") return `列出 ${output.items?.length || 0} 个 source 节点`;
     if (output?.resource_type === "graph_nodes") return `列出 ${output.items?.length || 0} 个 graph 节点`;
     if (output?.resource_type === "graph_node_identities") return `列出 ${output.items?.length || 0} 个 graph 节点识别视图`;

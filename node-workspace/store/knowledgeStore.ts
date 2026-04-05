@@ -10,13 +10,7 @@ import {
 } from "../knowledge/commands";
 import { createEmptyKnowledgeSnapshot } from "../knowledge/defaults";
 import {
-  removeKnowledgeLink,
-  removeKnowledgeNode,
-  replaceKnowledgeLinks,
-  replaceKnowledgeNodes,
-  upsertKnowledgeLink,
   upsertKnowledgeLinks,
-  upsertKnowledgeNode,
   upsertKnowledgeNodes,
 } from "../knowledge/mutations";
 import {
@@ -51,14 +45,6 @@ type KnowledgeStore = {
   nodes: KnowledgeNode[];
   links: KnowledgeLink[];
   setKnowledgeSnapshot: (snapshot: KnowledgeSnapshot) => void;
-  replaceNodes: (nodes: KnowledgeNode[]) => void;
-  replaceLinks: (links: KnowledgeLink[]) => void;
-  upsertNode: (node: KnowledgeNode) => void;
-  upsertNodes: (nodes: KnowledgeNode[]) => void;
-  removeNode: (nodeId: string) => void;
-  upsertLink: (link: KnowledgeLink) => void;
-  upsertLinks: (links: KnowledgeLink[]) => void;
-  removeLink: (linkId: string) => void;
   createDerivedNode: (input: {
     id?: string;
     ref?: string;
@@ -167,30 +153,6 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
   ...createEmptyKnowledgeSnapshot(),
 
   setKnowledgeSnapshot: (snapshot) => set(applySnapshot(snapshot)),
-
-  replaceNodes: (nodes) =>
-    set((state) => applySnapshot(replaceKnowledgeNodes(toSnapshot(state), nodes))),
-
-  replaceLinks: (links) =>
-    set((state) => applySnapshot(replaceKnowledgeLinks(toSnapshot(state), links))),
-
-  upsertNode: (node) =>
-    set((state) => applySnapshot(upsertKnowledgeNode(toSnapshot(state), node))),
-
-  upsertNodes: (nodes) =>
-    set((state) => applySnapshot(upsertKnowledgeNodes(toSnapshot(state), nodes))),
-
-  removeNode: (nodeId) =>
-    set((state) => applySnapshot(removeKnowledgeNode(toSnapshot(state), nodeId))),
-
-  upsertLink: (link) =>
-    set((state) => applySnapshot(upsertKnowledgeLink(toSnapshot(state), link))),
-
-  upsertLinks: (links) =>
-    set((state) => applySnapshot(upsertKnowledgeLinks(toSnapshot(state), links))),
-
-  removeLink: (linkId) =>
-    set((state) => applySnapshot(removeKnowledgeLink(toSnapshot(state), linkId))),
 
   createDerivedNode: (input) => {
     let created!: KnowledgeNode;

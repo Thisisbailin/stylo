@@ -2,6 +2,7 @@ import {
   buildKnowledgeAnchorTimelineProjection,
   buildKnowledgeAnchorMapProjection,
   buildKnowledgeAnchorRegistryProjection,
+  buildKnowledgeLensProjection,
   buildKnowledgeLifecycleProjection,
   buildKnowledgeLocalMapProjection,
   buildKnowledgeMap,
@@ -14,6 +15,7 @@ import {
 } from "./queries";
 import type {
   KnowledgeAnchor,
+  KnowledgeMapLens,
   KnowledgeSearchScope,
   KnowledgeSnapshot,
 } from "./types";
@@ -29,6 +31,7 @@ export const KNOWLEDGE_READ_RESOURCE_TYPES = [
   "knowledge_map",
   "knowledge_local_map",
   "knowledge_anchor_map",
+  "knowledge_map_lens",
   "knowledge_lifecycle",
   "knowledge_anchor_timeline",
 ] as const;
@@ -80,12 +83,14 @@ export const readKnowledgeResource = (
     nodeId,
     nodeRef,
     anchor,
+    lens,
     depth = 1,
   }: {
     resourceType: KnowledgeReadResourceType;
     nodeId?: string;
     nodeRef?: string;
     anchor?: KnowledgeAnchor | null;
+    lens?: KnowledgeMapLens;
     depth?: number;
   }
 ) => {
@@ -123,6 +128,13 @@ export const readKnowledgeResource = (
     return {
       resource_type: resourceType,
       item: buildKnowledgeAnchorMapProjection(snapshot, { anchor, depth }),
+    };
+  }
+
+  if (resourceType === "knowledge_map_lens") {
+    return {
+      resource_type: resourceType,
+      item: buildKnowledgeLensProjection(snapshot, lens || { id: "full", kind: "full" }),
     };
   }
 

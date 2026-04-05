@@ -1,4 +1,5 @@
 import type { ProjectData } from "../../types";
+import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile } from "../../node-workspace/types";
 import type { QalamToolSettings } from "../../types";
 import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
@@ -15,6 +16,7 @@ export type AgentHttpRunRequest = {
   runtime: AgentHttpRuntimeConfig;
   projectData?: ProjectData;
   nodeFlow?: NodeFlowFile;
+  knowledge?: KnowledgeSnapshot;
 };
 
 export type AgentHttpStreamPacket =

@@ -1,5 +1,6 @@
 import { listBuiltinSkills, resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import { searchKnowledgeResources } from "../../node-workspace/knowledge/resources";
 import {
   buildGraphNodesFromWorkflow,
   buildProjectGraphIdentitySearchText,
@@ -11,6 +12,10 @@ import {
 
 export const SEARCH_PROJECT_RESOURCE_SCOPES = [
   "skills",
+  "knowledge_identity",
+  "knowledge_content",
+  "knowledge_anchors",
+  "knowledge_links",
   "source",
   "graph_identity",
   "graph_detail",
@@ -89,7 +94,8 @@ const parseArgs = (input: unknown) => {
     ? raw.resource_scopes.map((item) => String(item))
     : Array.isArray(raw.resourceScopes)
       ? (raw.resourceScopes as unknown[]).map((item) => String(item))
-      : (["skills", "source", "graph_identity", "approvals", "links", "maps"] as Scope[]);
+      : (["skills", "knowledge_identity", "source", "graph_identity", "approvals", "links", "maps"] as Scope[]);
+      
 
   const normalizedScopes = scopes.filter((scope): scope is Scope =>
     (SEARCH_PROJECT_RESOURCE_SCOPES as readonly string[]).includes(scope)
@@ -125,17 +131,42 @@ const pushSkillMatches = async (matches: any[], query: string, maxMatches: numbe
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search projected source nodes, graph nodes, graph links, maps, and skill packages when the exact locator is unknown.",
+    "Search knowledge resources, projected source nodes, graph nodes, graph links, maps, and skill packages when the exact locator is unknown.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const projectData = bridge.getProjectData();
     const workflow = bridge.getNodeFlowSnapshot();
+    const knowledge = bridge.getKnowledgeSnapshot();
     const matches: any[] = [];
     const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
 
     if (args.scopes.includes("skills")) {
       await pushSkillMatches(matches, args.query, args.maxMatches, radius);
+    }
+
+    const knowledgeScopes = [
+      args.scopes.includes("knowledge_identity") ? "identity" : null,
+      args.scopes.includes("knowledge_content") ? "content" : null,
+      args.scopes.includes("knowledge_anchors") ? "anchors" : null,
+      args.scopes.includes("knowledge_links") ? "links" : null,
+    ].filter(Boolean) as Array<"identity" | "content" | "anchors" | "links">;
+    if (knowledgeScopes.length) {
+      for (const item of searchKnowledgeResources(knowledge, {
+        query: args.query,
+        scopes: knowledgeScopes,
+      }).items) {
+        if (matches.length >= args.maxMatches) break;
+        matches.push({
+          scope: "knowledge_node_identity",
+          node_id: item.node.id,
+          node_ref: item.node.ref,
+          title: item.node.title,
+          node_kind: item.node.kind,
+          matched_scopes: item.matchedScopes,
+          snippet: item.matchedScopes.join(" · "),
+        });
+      }
     }
 
     if (args.scopes.includes("source")) {

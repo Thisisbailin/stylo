@@ -976,7 +976,7 @@ body.qalam-resizing * {
   display: grid;
   gap: 8px;
   justify-items: center;
-  width: min(calc(100vw - 24px), 920px);
+  width: min(calc(100vw - 24px), 1440px);
 }
 
 .writing-guide-copy {
@@ -1004,10 +1004,11 @@ body.qalam-resizing * {
 .writing-paper-layout {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   width: min(calc(100vw - 40px), 1280px);
   min-height: 72dvh;
+  padding-bottom: clamp(28px, 6vh, 84px);
 }
 
 .writing-paper {

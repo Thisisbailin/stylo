@@ -42,3 +42,34 @@ export const assertKnowledgeLinkEndpointsExist = (
   return { fromNode, toNode };
 };
 
+const KNOWLEDGE_KIND_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/;
+const KNOWLEDGE_LINK_TYPE_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+
+export const assertKnowledgeNodeKindIsValid = (
+  kind: string,
+  origin: KnowledgeNode["origin"]
+) => {
+  if (!KNOWLEDGE_KIND_PATTERN.test(kind)) {
+    throw new Error(
+      `Knowledge node kind "${kind}" is invalid. Use a light namespaced shape such as "source.scene" or "derived.note".`
+    );
+  }
+  if (origin === "canonical-source" && !kind.startsWith("source.")) {
+    throw new Error(
+      `Canonical knowledge node kind "${kind}" is invalid. Canonical source nodes must use the "source." namespace.`
+    );
+  }
+  if (origin === "agent-derived" && kind.startsWith("source.")) {
+    throw new Error(
+      `Agent-derived knowledge node kind "${kind}" cannot use the reserved "source." namespace.`
+    );
+  }
+};
+
+export const assertKnowledgeLinkTypeIsValid = (type: string) => {
+  if (!KNOWLEDGE_LINK_TYPE_PATTERN.test(type)) {
+    throw new Error(
+      `Knowledge link type "${type}" is invalid. Use a light lowercase identifier such as "contains" or "supersedes".`
+    );
+  }
+};

@@ -89,7 +89,8 @@ type HttpRuntimeDeps = {
   endpoint: string;
   getRuntimeConfig: () => AgentHttpRunRequest["runtime"];
   getProjectDataSnapshot?: () => AgentHttpRunRequest["projectData"];
-  getNodeFlowSnapshot?: () => AgentHttpRunRequest["workflow"];
+  getNodeFlowSnapshot?: () => AgentHttpRunRequest["nodeFlow"];
+  getKnowledgeSnapshot?: () => AgentHttpRunRequest["knowledge"];
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
 };
 
@@ -129,6 +130,7 @@ export const createHttpQalamAgentRuntime = ({
   getRuntimeConfig,
   getProjectDataSnapshot,
   getNodeFlowSnapshot,
+  getKnowledgeSnapshot,
   getAuthToken,
 }: HttpRuntimeDeps): QalamAgentRuntime => ({
   async run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult> {
@@ -137,6 +139,7 @@ export const createHttpQalamAgentRuntime = ({
       runtime: getRuntimeConfig(),
       projectData: getProjectDataSnapshot?.(),
       nodeFlow: getNodeFlowSnapshot?.(),
+      knowledge: getKnowledgeSnapshot?.(),
     };
     browserAgentDebug("httpClient request", {
       endpoint,

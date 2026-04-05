@@ -743,6 +743,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const paperScale = overflowLineIndex > 0
     ? 1 + Math.min(0.12, overflowLineIndex * overflowScaleStep)
     : initialPerspectiveScale - revealLineIndex * revealScaleStep;
+  const paperViewportWidth = Math.round(screenplayPaperWidth * paperScale);
   const paperTranslateY = overflowLineIndex > 0
     ? -(overflowLineIndex * overflowLineStep)
     : initialPaperOffset - revealLineIndex * revealLineStep;
@@ -853,7 +854,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     episodeRefs.current[selectedEpisode.id] = node;
                   }}
                   className="writing-paper writing-paper--hero relative shrink-0"
-                  style={{ width: `${screenplayPaperWidth}px`, height: `${screenplayPaperHeight}px` }}
+                  style={{ width: `${paperViewportWidth}px`, height: `${screenplayPaperHeight}px` }}
                 >
                   <div
                     className="writing-typewriter-sheet"
