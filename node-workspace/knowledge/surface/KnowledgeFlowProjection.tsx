@@ -16,6 +16,14 @@ type Props = {
   links: KnowledgeLink[];
   selectedNodeRef?: string | null;
   onSelectNodeRef?: (nodeRef: string) => void;
+  variant?: "panel" | "canvas";
+};
+
+const formatKnowledgeKindLabel = (kind: string) => {
+  const trimmed = kind.trim();
+  if (!trimmed) return "knowledge";
+  const parts = trimmed.split(".");
+  return parts[parts.length - 1] || trimmed;
 };
 
 const buildNodeLevelMap = (nodes: KnowledgeNode[], links: KnowledgeLink[]) => {
@@ -97,15 +105,27 @@ const toCanvasNodes = (
     position: positioned.get(node.id) || { x: 0, y: 0 },
     data: {
       label: (
-        <div className="min-w-[180px]">
-          <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">
-            {node.package.title}
+        <div className="w-[232px] overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(160deg,rgba(44,44,46,0.97),rgba(28,28,30,0.98))] shadow-[0_10px_24px_rgba(0,0,0,0.12)]">
+          <div className="border-b border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+              Knowledge Node
+            </div>
           </div>
-          <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-secondary)]">
-            {node.kind}
-          </div>
-          <div className="mt-1 text-[10px] text-[var(--app-text-muted)]">
-            {node.origin} · {node.package.status}
+          <div className="space-y-2 px-3 py-3">
+            <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">
+              {node.package.title}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--app-text-secondary)]">
+                {formatKnowledgeKindLabel(node.kind)}
+              </span>
+              <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--app-text-secondary)]">
+                {node.package.status}
+              </span>
+            </div>
+            <div className="text-[10px] leading-5 text-[var(--app-text-muted)]">
+              {node.origin} · anchors {node.anchors.length}
+            </div>
           </div>
         </div>
       ),
@@ -116,19 +136,13 @@ const toCanvasNodes = (
     deletable: false,
     selected: selectedNodeRef === node.ref,
     style: {
-      width: 220,
+      width: 232,
       borderRadius: 18,
-      border:
-        selectedNodeRef === node.ref
-          ? "1px solid var(--app-border-strong)"
-          : "1px solid var(--app-border)",
-      background: "var(--app-panel)",
+      border: selectedNodeRef === node.ref ? "1px solid var(--app-border-strong)" : "1px solid transparent",
+      background: "transparent",
       color: "var(--app-text-primary)",
-      boxShadow:
-        selectedNodeRef === node.ref
-          ? "0 0 0 1px rgba(255,255,255,0.08), 0 12px 28px rgba(0,0,0,0.18)"
-          : "0 10px 24px rgba(0,0,0,0.12)",
-      padding: 12,
+      boxShadow: selectedNodeRef === node.ref ? "0 0 0 1px rgba(255,255,255,0.08), 0 16px 32px rgba(0,0,0,0.22)" : "none",
+      padding: 0,
       cursor: "pointer",
     },
   }));
@@ -160,6 +174,7 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   links,
   selectedNodeRef,
   onSelectNodeRef,
+  variant = "panel",
 }) => {
   const canvasNodes = React.useMemo(
     () => toCanvasNodes(nodes, links, selectedNodeRef),
@@ -167,12 +182,20 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   );
   const canvasLinks = React.useMemo(() => toCanvasLinks(links), [links]);
 
+  const isCanvas = variant === "canvas";
+
   return (
-    <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
+    <div
+      className={
+        isCanvas
+          ? "h-full w-full"
+          : "rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4"
+      }
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-            Flow Projection
+            Knowledge Canvas
           </div>
           <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
             {title}
@@ -182,7 +205,13 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
           {nodes.length} nodes · {links.length} links
         </div>
       </div>
-      <div className="mt-3 h-[420px] overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]">
+      <div
+        className={
+          isCanvas
+            ? "mt-3 h-[calc(100%-56px)] min-h-[420px] overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]"
+            : "mt-3 h-[420px] overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]"
+        }
+      >
         <ReactFlow
           nodes={canvasNodes}
           edges={canvasLinks}

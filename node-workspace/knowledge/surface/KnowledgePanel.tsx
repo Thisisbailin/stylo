@@ -175,27 +175,27 @@ export const KnowledgePanel: React.FC<Props> = ({
   const sections: SectionItem[] = [
     {
       key: "overview",
-      label: "Overview",
+      label: "Backbone",
       icon: BookOpen,
-      subtitle: "Knowledge Core is the agent long-term memory layer.",
+      subtitle: "Read-only backbone view of the agent long-term memory layer.",
     },
     {
       key: "nodes",
-      label: "Nodes",
+      label: "Focus",
       icon: Database,
-      subtitle: `${nodes.length} atomic knowledge nodes`,
+      subtitle: `${nodes.length} memory nodes available for local focus`,
     },
     {
       key: "links",
-      label: "Links",
+      label: "Revisions",
       icon: GitBranch,
-      subtitle: `${links.length} lightweight knowledge links`,
+      subtitle: `${lifecycle.supersedeChains.length} revision chains currently visible`,
     },
     {
       key: "maps",
-      label: "Maps",
+      label: "Anchor",
       icon: Network,
-      subtitle: `${map.nodes.length} nodes / ${map.links.length} links in current debug projection`,
+      subtitle: `${anchorRegistry.items.length} source anchors available for memory inspection`,
     },
     {
       key: "lab",
@@ -285,31 +285,32 @@ export const KnowledgePanel: React.FC<Props> = ({
 
         <div className="min-w-0 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-5">
           <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-            Knowledge Core
+            Knowledge Surface
           </div>
-          <div className="mt-2 text-lg font-semibold">Long-Term Memory Layer</div>
+          <div className="mt-2 text-lg font-semibold">Read-Only Long-Term Memory View</div>
           <div className="mt-3 max-w-3xl text-[13px] leading-6 text-[var(--app-text-secondary)]">
             Knowledge 的本体现在被定义为 Qalam Agent 的长期记忆数据层。这里不再承接旧的
-            理解资产心智，而是只负责调试观察 knowledge node、knowledge link 和
-            knowledge map 的底层真相。
+            理解资产心智，而是作为正式的只读查阅面，用于观察 Agent 当前沉淀下来的
+            knowledge node、knowledge link 和 knowledge map 状态。
           </div>
           <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
               <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]">
-                Current Step
+                Current Surface
               </div>
-              <div className="mt-2 text-[15px] font-semibold">Build Knowledge Core</div>
+              <div className="mt-2 text-[15px] font-semibold">Observe Knowledge State</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                当前先围绕剧本正文三层 script、episode、scene 立住长期记忆层的 node、link、map 真相，再逐步补 agent 写入与局部地图。
+                当前围绕剧本正文三层 script、episode、scene 观察长期记忆层的 node、link、
+                map 真相，让用户可以直接查看 Agent 当前记住了什么。
               </div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
               <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]">
-                Future Surface
+                Surface Role
               </div>
-              <div className="mt-2 text-[15px] font-semibold">Knowledge Inspector</div>
+              <div className="mt-2 text-[15px] font-semibold">Knowledge Surface</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                这里只用于 knowledge node、knowledge link、knowledge map 的调试观察，不承担用户资料库或工作流主界面的职责。
+                这里是 `Nodes / Knowledge` 平面的正式只读查阅面，不承担用户手动编辑长期记忆的职责。
               </div>
             </div>
           </div>
@@ -338,13 +339,13 @@ export const KnowledgePanel: React.FC<Props> = ({
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Node Origins</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Memory Sources</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
                 canonical-source: {canonicalNodeCount} · agent-derived: {derivedNodeCount}
               </div>
             </div>
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Link Origins</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">Relation Sources</div>
               <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
                 canonical-source: {canonicalLinkCount} · agent-derived: {derivedLinkCount}
               </div>
@@ -366,7 +367,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
           {activeSection === "nodes" ? (
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Node Registry</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Memory Nodes</div>
               <div className="mt-3 space-y-3">
                 {nodes.length ? (
                   nodes.map((node) => (
@@ -386,7 +387,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                   ))
                 ) : (
                   <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                    No knowledge nodes yet.
+                    No memory nodes retained yet.
                   </div>
                 )}
               </div>
@@ -395,7 +396,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
           {activeSection === "links" ? (
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Link Registry</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Memory Relations</div>
               <div className="mt-3 space-y-3">
                 {links.length ? (
                   links.map((link) => (
@@ -413,7 +414,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                   ))
                 ) : (
                   <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                    No knowledge links yet.
+                    No memory relations retained yet.
                   </div>
                 )}
               </div>
@@ -422,9 +423,10 @@ export const KnowledgePanel: React.FC<Props> = ({
 
           {activeSection === "maps" ? (
             <div className="mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Knowledge Map Debug View</div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-secondary)]">Knowledge Maps</div>
               <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                Current debug projection includes {map.nodes.length} nodes and {map.links.length} links. This is a data-level knowledge map, not a user workflow canvas.
+                当前视图包含 {map.nodes.length} 个 memory nodes 和 {map.links.length} 条
+                memory relations。这是 Agent 长期记忆的地图视图，不是用户工作流画布。
               </div>
               <div className="mt-4 space-y-4">
                 {scriptMap.scripts.length ? (
@@ -492,7 +494,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                 {(scriptMap.looseNodes.length || scriptMap.looseLinks.length) ? (
                   <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                      Loose Structures
+                      Unattached Structures
                     </div>
                     <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
                       {scriptMap.looseNodes.length} loose nodes · {scriptMap.looseLinks.length} loose links
@@ -502,7 +504,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Supersede Chains
+                    Revision Chains
                   </div>
                   {lifecycle.supersedeChains.length ? (
                     <div className="mt-3 space-y-3">
@@ -530,7 +532,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                     </div>
                   ) : (
                     <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
-                      No supersede chains yet.
+                      No revision chains yet.
                     </div>
                   )}
                 </div>
@@ -538,7 +540,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                      Projection Lens
+                      Map Lens
                     </div>
                     <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-1">
                       {[
@@ -582,7 +584,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Selected Node Detail
+                    Selected Memory Node
                   </div>
                   {selectedNodeDetail ? (
                     <div className="mt-3 space-y-2 text-[11px]">
@@ -605,7 +607,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                     </div>
                   ) : (
                     <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
-                      No focused node selected.
+                      No memory node selected.
                     </div>
                   )}
                 </div>
@@ -613,7 +615,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                      Local Lens
+                      Local Map
                     </div>
                     <select
                       value={effectiveFocusNodeRef}
@@ -669,7 +671,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                      Kind Lens
+                      Kind Map
                     </div>
                     <select
                       value={effectiveKind}
@@ -694,7 +696,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Focus Lens
+                      Focus Map
                   </div>
                   <div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">
                     {focusMap.nodes.length} nodes · {focusMap.links.length} links around current focus
@@ -704,7 +706,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                      Anchor Lens
+                      Anchor Map
                     </div>
                     <select
                       value={effectiveAnchor ? `${effectiveAnchor.type}:${effectiveAnchor.ref}` : ""}
@@ -745,7 +747,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                           ))
                         ) : (
                           <div className="text-[11px] text-[var(--app-text-secondary)]">
-                            No nodes attached to this anchor yet.
+                            No memory nodes attached to this anchor yet.
                           </div>
                         )}
                       </div>
@@ -759,7 +761,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Anchor Registry
+                      Anchor Registry
                   </div>
                   {anchorRegistry.length ? (
                     <div className="mt-3 space-y-2">
@@ -786,7 +788,7 @@ export const KnowledgePanel: React.FC<Props> = ({
 
                 <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel)] p-4">
                   <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                    Anchor Timeline
+                      Anchor Timeline
                   </div>
                   {anchorTimeline.anchor ? (
                     <div className="mt-3">
@@ -813,7 +815,7 @@ export const KnowledgePanel: React.FC<Props> = ({
                           ))
                         ) : (
                           <div className="text-[11px] text-[var(--app-text-secondary)]">
-                            No nodes attached to this anchor yet.
+                            No memory nodes attached to this anchor yet.
                           </div>
                         )}
                       </div>
@@ -858,7 +860,7 @@ export const KnowledgePanel: React.FC<Props> = ({
               </div>
               <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
                 这里是单独的开发实验区，用于手工验证 anchor-first create / supersede
-                行为。Knowledge Inspector 的其它分区保持以只读观测为主。
+                行为。Knowledge Surface 的其它分区保持以只读观测为主。
               </div>
               <KnowledgeMutationLab
                 anchor={anchorTimeline.anchor}

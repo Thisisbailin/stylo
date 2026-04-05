@@ -1,14 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  BookOpen,
   Boxes,
   Cloud,
   Compass,
   Film,
   FileText,
   Image,
-  Layers3,
-  Network,
   Shield,
   Sparkles,
   Target,
@@ -18,15 +15,8 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
-import {
-  KnowledgePanel,
-  type KnowledgeSectionKey,
-} from "../knowledge/inspector/KnowledgePanel";
-import { useKnowledgeStore } from "../store/knowledgeStore";
-import { buildKnowledgeMap } from "../knowledge/maps";
 
 export type WorkspaceSection =
-  | `knowledge:${KnowledgeSectionKey}`
   | `assets:${MaterialsSectionKey}`
   | `sync:${SyncSectionKey}`
   | `info:${InfoSectionKey}`;
@@ -62,7 +52,7 @@ type NavGroup = {
 
 const splitSection = (section: WorkspaceSection) => {
   const [group, key] = section.split(":") as [
-    "knowledge" | "assets" | "sync" | "info",
+    "assets" | "sync" | "info",
     string,
   ];
   return { group, key };
@@ -80,26 +70,10 @@ export const WorkspacePanel: React.FC<Props> = ({
   syncRollout,
   onResetProject,
   onOpenLanding,
-  initialSection = "knowledge:overview",
+  initialSection = "assets:images",
 }) => {
   const [activeSection, setActiveSection] = useState<WorkspaceSection>(initialSection);
   const { globalAssetHistory } = useNodeFlowStore();
-  const knowledgeRevision = useKnowledgeStore((state) => state.revision);
-  const knowledgeNodeCount = useKnowledgeStore((state) => state.nodes.length);
-  const knowledgeLinkCount = useKnowledgeStore((state) => state.links.length);
-  const knowledgeNodes = useKnowledgeStore((state) => state.nodes);
-  const knowledgeLinks = useKnowledgeStore((state) => state.links);
-  const knowledgeMap = useMemo(
-    () =>
-      buildKnowledgeMap({
-        revision: knowledgeRevision,
-        nodes: knowledgeNodes,
-        links: knowledgeLinks,
-      }),
-    [knowledgeLinks, knowledgeNodes, knowledgeRevision]
-  );
-  const knowledgeMapNodeCount = knowledgeMap.nodes.length;
-  const knowledgeMapLinkCount = knowledgeMap.links.length;
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -119,47 +93,6 @@ export const WorkspacePanel: React.FC<Props> = ({
   );
 
   const navGroups: NavGroup[] = [
-    {
-      title: "Knowledge",
-      icon: BookOpen,
-      items: [
-        {
-          key: "knowledge:overview",
-          label: "Overview",
-          description: "Knowledge Core positioning and migration status",
-          icon: BookOpen,
-          tone: "text-amber-300",
-        },
-        {
-          key: "knowledge:nodes",
-          label: "Nodes",
-          description: `${knowledgeNodeCount} memory nodes`,
-          icon: Network,
-          tone: "text-emerald-300",
-        },
-        {
-          key: "knowledge:links",
-          label: "Links",
-          description: `${knowledgeLinkCount} memory links`,
-          icon: Sparkles,
-          tone: "text-sky-300",
-        },
-        {
-          key: "knowledge:maps",
-          label: "Maps",
-          description: `${knowledgeMapNodeCount} nodes / ${knowledgeMapLinkCount} links`,
-          icon: Layers3,
-          tone: "text-violet-300",
-        },
-        {
-          key: "knowledge:lab",
-          label: "Mutation Lab",
-          description: "Dev-only write experiments",
-          icon: Sparkles,
-          tone: "text-rose-300",
-        },
-      ],
-    },
     {
       title: "Assets",
       icon: Boxes,
@@ -301,14 +234,6 @@ export const WorkspacePanel: React.FC<Props> = ({
               {activeItem.description}
             </div>
           </div>
-
-          {group === "knowledge" ? (
-            <KnowledgePanel
-              projectData={projectData}
-              activeSection={key as KnowledgeSectionKey}
-              showSidebar={false}
-            />
-          ) : null}
 
           {group === "assets" ? (
             <MaterialsPanel

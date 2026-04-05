@@ -57,7 +57,7 @@ export const KnowledgeMutationLab: React.FC<Props> = ({
       </div>
       <div className="mt-2 text-[11px] leading-6 text-[var(--app-text-secondary)]">
         这里是独立的开发实验区，只用于验证 derived knowledge 的写入与 supersede 修正链。
-        Inspector 主体仍以观测为先。
+        正式的 Knowledge Surface 仍以只读观测为先。
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button

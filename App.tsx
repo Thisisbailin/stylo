@@ -33,6 +33,7 @@ import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
+import type { KnowledgeCanvasSection } from './node-workspace/knowledge/surface/KnowledgeCanvasSurface';
 import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
 import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
 import { WritingPanel } from './node-workspace/components/WritingPanel';
@@ -677,7 +678,8 @@ const App: React.FC = () => {
   const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<ModuleKey | null>(null);
-  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("knowledge:overview");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("assets:images");
+  const [knowledgeSurfaceRequest, setKnowledgeSurfaceRequest] = useState<{ section: KnowledgeCanvasSection; nonce: number } | null>(null);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -703,7 +705,7 @@ const App: React.FC = () => {
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
 
-  const openWorkspacePanel = useCallback((section: WorkspaceSection = "knowledge:overview") => {
+  const openWorkspacePanel = useCallback((section: WorkspaceSection = "assets:images") => {
     setWorkspaceSection(section);
     setOpenLabModal("workspace");
   }, []);
@@ -737,19 +739,19 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      openWorkspacePanel("knowledge:nodes");
+      setKnowledgeSurfaceRequest({ section: "nodes", nonce: Date.now() });
       return;
     }
     if (key === 'scenes') {
-      openWorkspacePanel("knowledge:nodes");
+      setKnowledgeSurfaceRequest({ section: "nodes", nonce: Date.now() });
       return;
     }
     if (key === 'workspace') {
-      openWorkspacePanel("knowledge:overview");
+      setKnowledgeSurfaceRequest({ section: "overview", nonce: Date.now() });
       return;
     }
     setOpenLabModal(key);
-  }, [openWorkspacePanel]);
+  }, []);
 
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
@@ -2341,7 +2343,6 @@ const App: React.FC = () => {
               isDarkMode={isDarkMode}
               onOpenSyncPanel={() => openWorkspacePanel("sync:status")}
               onOpenInfoPanel={() => openWorkspacePanel("info:about")}
-              onOpenKnowledgePanel={(section = "knowledge:overview") => openWorkspacePanel(section)}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
               accountInfo={{
@@ -2356,6 +2357,7 @@ const App: React.FC = () => {
               }}
               onTryMe={handleTryMe}
               onToggleWorkflow={handleToggleWorkflow}
+              knowledgeSurfaceRequest={knowledgeSurfaceRequest}
             />
           </div>
         );

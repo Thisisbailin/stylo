@@ -49,6 +49,11 @@ import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
+import { KnowledgeCanvasSurface, type KnowledgeCanvasSection } from "../knowledge/surface/KnowledgeCanvasSurface";
+import {
+  deriveKnowledgeSurfaceFocusFromFlowNode,
+  type KnowledgeSurfaceFocusRequest,
+} from "../knowledge/surface/focus";
 
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
@@ -130,14 +135,6 @@ interface NodeFlowProps {
   isDarkMode?: boolean;
   onOpenSyncPanel?: () => void;
   onOpenInfoPanel?: () => void;
-  onOpenKnowledgePanel?: (
-    section?:
-      | "knowledge:overview"
-      | "knowledge:nodes"
-      | "knowledge:links"
-      | "knowledge:maps"
-      | "knowledge:lab"
-  ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: {
@@ -152,6 +149,10 @@ interface NodeFlowProps {
   };
   onToggleWorkflow?: (anchorRect?: DOMRect) => void;
   onTryMe?: () => void;
+  knowledgeSurfaceRequest?: {
+    section: KnowledgeCanvasSection;
+    nonce: number;
+  };
 }
 
 type ThemeKey = "dark" | "light" | "sand" | "creative" | "calm" | "lively";
@@ -413,15 +414,18 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   isDarkMode,
   onOpenSyncPanel,
   onOpenInfoPanel,
-  onOpenKnowledgePanel,
   onResetProject,
   onSignOut,
   accountInfo,
   onToggleWorkflow,
+  knowledgeSurfaceRequest,
 }) => {
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [surfacePlane, setSurfacePlane] = useState<"flow" | "knowledge">("flow");
+  const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeCanvasSection>("overview");
+  const [knowledgeFocusRequest, setKnowledgeFocusRequest] = useState<KnowledgeSurfaceFocusRequest | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const showPeripheralWidgets = false;
   const [isAssetsDockHovered, setIsAssetsDockHovered] = useState(false);
@@ -469,6 +473,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     readingMode,
     setReadingMode,
     viewport,
+    currentNodeId,
+    setCurrentNode,
     addToGlobalHistory,
     globalAssetHistory,
   } = useNodeFlowStore();
@@ -486,6 +492,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
   const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
+  const selectedFlowNode = useMemo(
+    () => nodes.find((node) => node.selected) || nodes.find((node) => node.id === currentNodeId) || null,
+    [currentNodeId, nodes]
+  );
+  const selectedKnowledgeFocus = useMemo(
+    () => deriveKnowledgeSurfaceFocusFromFlowNode(selectedFlowNode),
+    [selectedFlowNode]
+  );
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -640,6 +654,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       });
     });
   }, [addToGlobalHistory, globalAssetHistory, nodes]);
+
+  useEffect(() => {
+    const selectedNode = nodes.find((node) => node.selected) || null;
+    const nextCurrentNodeId = selectedNode?.id || null;
+    if (nextCurrentNodeId !== currentNodeId) {
+      setCurrentNode(nextCurrentNodeId);
+    }
+  }, [currentNodeId, nodes, setCurrentNode]);
 
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
@@ -813,6 +835,42 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleToggleReadingMode = useCallback(() => {
     setReadingMode(readingMode === "identity" ? "full" : "identity");
   }, [readingMode, setReadingMode]);
+
+  const openKnowledgePlane = useCallback(
+    (section: KnowledgeCanvasSection) => {
+      setKnowledgeSection(section);
+      if (selectedKnowledgeFocus && section !== "lab") {
+        setKnowledgeFocusRequest({
+          ...selectedKnowledgeFocus,
+          section: selectedKnowledgeFocus.section === "overview" ? section : selectedKnowledgeFocus.section,
+          nonce: Date.now(),
+        });
+      } else {
+        setKnowledgeFocusRequest(null);
+      }
+      setSurfacePlane("knowledge");
+    },
+    [selectedKnowledgeFocus]
+  );
+
+  const handleOpenKnowledgeSurface = useCallback(
+    (
+      section:
+        | "knowledge:overview"
+        | "knowledge:nodes"
+        | "knowledge:links"
+        | "knowledge:maps"
+        | "knowledge:lab" = "knowledge:overview"
+    ) => {
+      openKnowledgePlane(section.replace("knowledge:", "") as KnowledgeCanvasSection);
+    },
+    [openKnowledgePlane]
+  );
+
+  useEffect(() => {
+    if (!knowledgeSurfaceRequest) return;
+    openKnowledgePlane(knowledgeSurfaceRequest.section);
+  }, [knowledgeSurfaceRequest, openKnowledgePlane]);
 
   const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
   const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
@@ -998,66 +1056,102 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         data-connecting={isConnecting}
         style={backgroundStyle}
       >
-        <ReactFlow
-          nodes={displayNodes}
-          edges={displayEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onLinksChange}
-          onConnect={handleConnect}
-          onConnectStart={handleConnectStart}
-          onConnectEnd={handleConnectEnd}
-          onMove={(_, vp) => setLiveViewport(vp)}
-          onMoveEnd={(_, vp) => {
-            setLiveViewport(vp);
-            setViewportState(vp);
-          }}
-          minZoom={minZoom}
-          maxZoom={maxZoom}
-          nodesDraggable={!isLocked}
-          nodesConnectable={!isLocked}
-          elementsSelectable={!isLocked}
-          panOnDrag={!isLocked}
-          panOnScroll={!isLocked}
-          panOnScrollMode="free"
-          zoomOnScroll={false}
-          zoomOnPinch={!isLocked}
-          zoomOnDoubleClick={!isLocked}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          connectionMode={ConnectionMode.Loose}
-          connectionLineStyle={{
-            stroke: "rgba(74, 222, 128, 0.96)",
-            strokeWidth: 3,
-            strokeLinecap: "round",
-            strokeLinejoin: "round",
-          }}
-          proOptions={{ hideAttribution: true }}
-          data-active-mode="default"
-        >
-          {showMiniMap && (
-            <div
-              className="nodeflow-minimap-drawer"
-              data-open={showMiniMap}
-              style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
-            >
-              <MiniMap
-                className="nodeflow-minimap"
-                style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
-                maskColor="rgba(255,255,255,0.04)"
-                nodeStrokeColor="#38bdf8"
-                nodeColor="#0ea5e9"
-              />
-            </div>
-          )}
-        </ReactFlow>
+        {surfacePlane === "flow" ? (
+          <ReactFlow
+            nodes={displayNodes}
+            edges={displayEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onLinksChange}
+            onConnect={handleConnect}
+            onConnectStart={handleConnectStart}
+            onConnectEnd={handleConnectEnd}
+            onMove={(_, vp) => setLiveViewport(vp)}
+            onMoveEnd={(_, vp) => {
+              setLiveViewport(vp);
+              setViewportState(vp);
+            }}
+            minZoom={minZoom}
+            maxZoom={maxZoom}
+            nodesDraggable={!isLocked}
+            nodesConnectable={!isLocked}
+            elementsSelectable={!isLocked}
+            panOnDrag={!isLocked}
+            panOnScroll={!isLocked}
+            panOnScrollMode="free"
+            zoomOnScroll={false}
+            zoomOnPinch={!isLocked}
+            zoomOnDoubleClick={!isLocked}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            connectionMode={ConnectionMode.Loose}
+            connectionLineStyle={{
+              stroke: "rgba(74, 222, 128, 0.96)",
+              strokeWidth: 3,
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+            }}
+            proOptions={{ hideAttribution: true }}
+            data-active-mode="default"
+          >
+            {showMiniMap && (
+              <div
+                className="nodeflow-minimap-drawer"
+                data-open={showMiniMap}
+                style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
+              >
+                <MiniMap
+                  className="nodeflow-minimap"
+                  style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
+                  maskColor="rgba(255,255,255,0.04)"
+                  nodeStrokeColor="#38bdf8"
+                  nodeColor="#0ea5e9"
+                />
+              </div>
+            )}
+          </ReactFlow>
+        ) : (
+          <KnowledgeCanvasSurface
+            projectData={projectData}
+            section={knowledgeSection}
+            onSectionChange={setKnowledgeSection}
+            focusRequest={knowledgeFocusRequest}
+          />
+        )}
 
-        {connectionDrop && (
+        {surfacePlane === "flow" && connectionDrop && (
           <ConnectionDropMenu
             position={connectionDrop.position}
             onCreate={(t) => handleDropCreate(t)}
             onClose={() => setConnectionDrop(null)}
           />
         )}
+
+        <div className="pointer-events-none absolute left-1/2 top-4 z-[12] -translate-x-1/2">
+          <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/92 p-1 shadow-[var(--app-shadow)] backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={() => setSurfacePlane("flow")}
+              className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                surfacePlane === "flow"
+                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
+                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+              }`}
+            >
+              Flow
+            </button>
+            <button
+              type="button"
+              onClick={() => openKnowledgePlane(knowledgeSection)}
+              className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                surfacePlane === "knowledge"
+                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
+                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+              }`}
+            >
+              Knowledge
+            </button>
+          </div>
+        </div>
       </div>
 
       <MultiSelectToolbar />
@@ -1105,18 +1199,20 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               showPeripheralWidgets && !isQalamFirstMode ? "opacity-100" : "pointer-events-none opacity-0"
             }`}
           >
-            <ViewportControls
-              zoom={zoomValue}
-              minZoom={minZoom}
-              maxZoom={maxZoom}
-              onZoomChange={handleZoomChange}
-              isLocked={isLocked}
-              onToggleLock={handleToggleLock}
-              showMiniMap={showMiniMap}
-              onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
-              readingMode={readingMode}
-              onToggleReadingMode={handleToggleReadingMode}
-            />
+            {surfacePlane === "flow" ? (
+              <ViewportControls
+                zoom={zoomValue}
+                minZoom={minZoom}
+                maxZoom={maxZoom}
+                onZoomChange={handleZoomChange}
+                isLocked={isLocked}
+                onToggleLock={handleToggleLock}
+                showMiniMap={showMiniMap}
+                onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
+                readingMode={readingMode}
+                onToggleReadingMode={handleToggleReadingMode}
+              />
+            ) : null}
           </div>
         </div>
       </div>
@@ -1166,7 +1262,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               onOpenSyncPanel={onOpenSyncPanel}
               syncIndicator={syncIndicator}
               onOpenInfoPanel={onOpenInfoPanel}
-              onOpenKnowledgePanel={onOpenKnowledgePanel}
+              onOpenKnowledgePanel={handleOpenKnowledgeSurface}
               onResetProject={onResetProject}
               onSignOut={onSignOut}
               onAssetLoad={onAssetLoad}
