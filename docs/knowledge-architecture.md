@@ -18,6 +18,8 @@
 
 `Knowledge` 的本体是底层知识数据，而不是节点卡片、列表面板或可视化画布。
 
+这一层的设计目标不是替 Agent 预先规定“应该怎样理解剧本”，而是提供一套足够原子、足够抽象、足够开放的知识容器，让 Agent 能依据实际 source 自主沉淀、修正和扩展自己的知识网络。
+
 ## 2. 核心判断
 
 ## 2.1 Knowledge 是长期记忆，不是“理解结果”
@@ -53,6 +55,20 @@ Knowledge 的本质是网状的，但这里的“网状”不是指某种具体 
 - 原子
 - 原子关系
 - 由它们自然投影出的地图
+
+这套图式的意义在于：
+
+- 不预设固定知识分类体系
+- 不预设固定理解步骤
+- 不要求 Agent 按人类事先写死的模板理解文本
+
+它只规定最小结构：
+
+- 有知识原子
+- 有原子关系
+- 有从局部到整体的 map 投影
+
+至于 Agent 最终沉淀出什么知识节点、建立什么关系、形成什么局部地图，应主要由 Agent 自身根据实际 source 判断，而不是由人工硬编码既定思路。
 
 ## 2.3 Knowledge 与 NodeFlow 理念统一，但层级不同
 
@@ -119,6 +135,16 @@ Knowledge Core 的本体是：
 - `knowledge node` 是第一实体
 - `knowledge link` 是节点之间的原子关系记录
 - `knowledge map` 是大量节点与关系形成的投影
+
+Knowledge Core 提供的是 **结构约束**，不是 **知识规范**。
+
+也就是说：
+
+- 系统只提供最小的 node / link / map 容器
+- 不强制规定“必须有人物关系、事件、节奏冲突、主题”等固定知识类别
+- 不强制规定 Agent 必须按某种既定 schema 撰写知识
+
+知识内容本身应尽量由 Agent 在 source 驱动下自由生成。
 
 ### 3.3 Agent Runtime Layer
 
@@ -188,15 +214,15 @@ type KnowledgeNode = {
   Agent 与工具共享的稳定引用
 
 - `kind`
-  开放命名空间类型，例如：
+  开放命名空间类型。
+
+  当前系统只对 canonical source 的起点种类作最小约定，例如：
   - `source.script`
   - `source.episode`
   - `source.scene`
-  - `character.fact`
-  - `scene.constraint`
-  - `theme.inference`
-  - `design.decision`
-  - `prompt.strategy`
+
+  对于 Agent 后续沉淀出的 derived knowledge，不预设固定 ontology。
+  `kind` 应保持开放，让 Agent 能根据实际需要形成自己的知识命名空间。
 
 - `package`
   节点的略览层
@@ -231,22 +257,22 @@ Knowledge Node 天然支持两层动作：
 
 一个 `KnowledgeNode` 只表达一个稳定知识点。
 
-不建议一开始就把这些做成单个超级节点：
+不建议一开始就把知识节点做成单个超级块：
 
 - 完整人物大全
 - 一整集分析总结
 - 一整套导演方案
 - 一整篇风格说明
 
-应优先拆成更稳定的知识颗粒，例如：
+但这里的“更小颗粒”并不等于由人工写死一套固定知识模板。
 
-- 一个角色事实
-- 一个角色关系
-- 一个场景约束
-- 一个情绪判断
-- 一个主题推断
-- 一个设计决策
-- 一个 prompt 策略
+正确原则是：
+
+- 保持知识节点小而稳定
+- 让 Agent 自主决定哪些知识值得成为节点
+- 不人为限定知识只能长成某几类预设内容
+
+系统提供的是容器，不是剧本理解标准答案。
 
 ## 4.2 KnowledgeLink
 
@@ -301,6 +327,9 @@ Knowledge Link 应尽量只保留：
 
 不要过早把关系类型做成厚重的本体系统。
 
+这些关系类型只是最小抽象示例，而不是强制性的知识关系目录。
+如果 Agent 在实践中需要新的关系类型，应允许在最小结构约束下自由扩展。
+
 ## 4.3 KnowledgeAnchor
 
 Knowledge 必须可追溯。
@@ -320,6 +349,29 @@ type KnowledgeAnchor = {
 - 防止知识层漂移成“自我循环的幻觉仓库”
 
 Knowledge 不应只存“结论”，而不存任何来源。
+
+## 4.3.1 生命周期边界
+
+Knowledge Core 不规定 Agent 必须沉淀什么知识，只规定最小生命周期边界：
+
+- `canonical-source`
+  代表源事实起点，不应被 Agent 直接覆盖或重写
+
+- `agent-derived`
+  代表 Agent 自主沉淀出的知识节点和关系
+
+- 当 Agent 需要修正一个 derived knowledge node 时，优先通过 `supersede`
+  的方式新增一个后继节点，并将旧节点标记为 `superseded`
+
+- 新的 knowledge link 只能建立在真实存在的 knowledge node 之间
+
+也就是说，系统提供的是：
+
+- 最小结构容器
+- 来源边界
+- 修正方式
+
+而不是人为规定 Agent 必须写成人物关系、事件树、冲突表这类固定知识模板。
 
 ## 4.4 KnowledgeMap
 
@@ -397,7 +449,20 @@ Knowledge 的底层真相也遵循：
 
 展开设计。
 
-## 5.3 Package Before Content
+## 5.3 Agent First, Schema Light
+
+Knowledge 的设计必须优先服务于 Agent 的智能发挥，而不是服务于人工预设的知识规范。
+
+这意味着：
+
+- 少人工干预
+- 少预设分类
+- 少预设理解路径
+- 少预设知识模板
+
+系统只提供最小图式结构，不替 Agent 规定应该如何理解 source。
+
+## 5.4 Package Before Content
 
 知识节点必须天然支持两层读取：
 
@@ -406,7 +471,7 @@ Knowledge 的底层真相也遵循：
 
 不要让 Agent 一开始就吞入所有细节。
 
-## 5.4 Anchor Everything
+## 5.5 Anchor Everything
 
 知识沉淀必须尽量带来源锚点。
 
@@ -417,7 +482,7 @@ Knowledge 的底层真相也遵循：
 - NodeFlow 节点
 - 已生成资产
 
-## 5.5 Derived, Not Duplicated
+## 5.6 Derived, Not Duplicated
 
 能从 Knowledge Core 推导出的东西，不要再作为第二套真相存储。
 
@@ -427,7 +492,7 @@ Knowledge 的底层真相也遵循：
 - 调试视图是投影
 - map lens 也是投影规则
 
-## 5.6 Correctable, Not Immutable
+## 5.7 Correctable, Not Immutable
 
 Knowledge 不是一次性写入后永远不变。
 
@@ -447,7 +512,7 @@ Agent 在长期运行中会：
 
 而不是只允许“覆盖写入”。
 
-## 5.7 Read Small, Derive Big
+## 5.8 Read Small, Derive Big
 
 Agent 不应默认吞整张知识图。
 
@@ -464,13 +529,13 @@ Agent 不应默认吞整张知识图。
 - 小修正
 - 大结构为派生结果
 
-## 5.8 One Graph, Many Lenses
+## 5.9 One Graph, Many Lenses
 
 Knowledge Core 只有一张知识网真相。
 
 不同的地图、局部视图、专题视图，都来自不同 lens，而不是第二套独立地图存储。
 
-## 5.9 No UI Leakage
+## 5.10 No UI Leakage
 
 Knowledge Core 里不应出现这些字段作为本体：
 
@@ -604,8 +669,31 @@ knowledge/
 再引入 Agent 写入与修正：
 
 - 新增 derived knowledge nodes
+- 新增 anchored derived knowledge nodes
 - 新增知识 links
 - 基于 anchors 做知识修正与 supersede
+
+在这一阶段，仍然坚持：
+
+- 不为 Agent 预铺固定知识套路
+- 不强制指定人物关系、事件、主题等预设写法
+- 只提供最小 node / link / map 结构
+
+由 Agent 自身根据实际 source 决定哪些知识值得沉淀、如何命名、如何连结。
+
+这里的 `anchor-first` 只是写入辅助，不是知识模板。
+
+也就是说，系统允许 Agent 更方便地创建：
+
+- 挂在某个 `script` anchor 上的知识节点
+- 挂在某个 `episode` anchor 上的知识节点
+- 挂在某个 `scene` anchor 上的知识节点
+
+同样地，当 Agent 需要修正某个已有 derived knowledge node 时，
+也可以通过 `anchor-first supersede` 的方式在保留原知识链的同时，
+显式把新修正结果挂回对应的 `script / episode / scene` anchor。
+
+但系统仍然不规定这些节点必须写成人物、事件、冲突或任何固定分类。
 
 ### 第四阶段
 

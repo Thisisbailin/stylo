@@ -17,6 +17,12 @@ type ManualReferenceAsset = {
   kind: "video" | "image";
 };
 
+type VoiceTargetOption = {
+  value: string;
+  label: string;
+  source: string;
+};
+
 const clampDuration = (value: number) => Math.max(2, Math.min(10, Math.round(value)));
 
 export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
@@ -32,7 +38,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
   const refVoiceInputRef = useRef<HTMLInputElement>(null);
   const firstFrameInputRef = useRef<HTMLInputElement>(null);
 
-  const { images: connectedImages, audios: connectedAudios, atMentions } = getConnectedInputs(id);
+  const { images: connectedImages, videos: connectedVideos, audios: connectedAudios, atMentions } = getConnectedInputs(id);
   const referenceVideos = Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : [];
   const referenceImages = Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [];
   const referenceAudios = Array.isArray(data.referenceAudios) ? data.referenceAudios.filter(Boolean) : [];
@@ -67,6 +73,33 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     () => new Set(projectReferenceTargets.map((target) => `${target.category}:${target.refId}`)),
     [projectReferenceTargets]
   );
+  const voiceTargetOptions = useMemo<VoiceTargetOption[]>(() => {
+    const videoOptions = [...referenceVideos, ...connectedVideos.filter(Boolean)].slice(0, 3).map((_, index) => ({
+      value: `video:${index + 1}`,
+      label: `视频${index + 1}`,
+      source: index < referenceVideos.length ? "手动/上传视频参考" : "连接的视频参考",
+    }));
+    const imageCapacity = Math.max(0, 5 - videoOptions.length);
+    const imageSources = [
+      ...projectReferenceTargets.map((target) => ({
+        source: target.label ? `项目卡片 · ${target.label}` : "项目卡片参考",
+      })),
+      ...referenceImages.map(() => ({ source: "手动/上传图片参考" })),
+      ...connectedImages.filter(Boolean).map(() => ({ source: "连接的图片参考" })),
+    ].slice(0, imageCapacity);
+    const imageOptions = imageSources.map((item, index) => ({
+      value: `image:${index + 1}`,
+      label: `图片${index + 1}`,
+      source: item.source,
+    }));
+    return [...videoOptions, ...imageOptions];
+  }, [connectedImages, connectedVideos, projectReferenceTargets, referenceImages, referenceVideos]);
+  const selectedVoiceTargetValue =
+    typeof data.referenceVoiceTarget === "string" && voiceTargetOptions.some((item) => item.value === data.referenceVoiceTarget)
+      ? data.referenceVoiceTarget
+      : (voiceTargetOptions[0]?.value ?? "");
+  const selectedVoiceTargetLabel =
+    voiceTargetOptions.find((item) => item.value === selectedVoiceTargetValue)?.label ?? null;
   const mentionHints = useMemo(
     () =>
       (atMentions || [])
@@ -156,6 +189,24 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     return () => clearInterval(timer);
   }, [isLoading]);
 
+  useEffect(() => {
+    if (effectiveVoiceCount <= 0) {
+      if (data.referenceVoiceTarget) {
+        updateNodeData(id, { referenceVoiceTarget: null });
+      }
+      return;
+    }
+    if (!voiceTargetOptions.length) {
+      if (data.referenceVoiceTarget) {
+        updateNodeData(id, { referenceVoiceTarget: null });
+      }
+      return;
+    }
+    if (!data.referenceVoiceTarget || !voiceTargetOptions.some((item) => item.value === data.referenceVoiceTarget)) {
+      updateNodeData(id, { referenceVoiceTarget: voiceTargetOptions[0].value });
+    }
+  }, [data.referenceVoiceTarget, effectiveVoiceCount, id, updateNodeData, voiceTargetOptions]);
+
   const handleGenerate = async (e: React.MouseEvent) => {
     e.stopPropagation();
     await runVideoGen(id);
@@ -234,6 +285,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
       const uploaded = await uploadReferenceAsset(file, { prefix: "wan-reference-voice", fallbackType: "audio/mpeg" });
       updateNodeData(id, {
         referenceAudios: [uploaded],
+        referenceVoiceTarget: selectedVoiceTargetValue || voiceTargetOptions[0]?.value || null,
         error: null,
       });
     } catch (e: any) {
@@ -651,12 +703,13 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
 	                    <div className="flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/5 px-2 py-2 text-[9px] text-[var(--node-text-primary)]">
 	                      <Mic size={12} className="text-emerald-300" />
 	                      <span className="min-w-0 flex-1 truncate">
-	                        {referenceAudios.length > 0 ? "manual voice -> first reference role" : "linked audio -> first reference role"}
+	                        {referenceAudios.length > 0 ? "manual voice" : "linked audio"}
+	                        {selectedVoiceTargetLabel ? ` -> ${selectedVoiceTargetLabel}` : ""}
 	                      </span>
 	                      {referenceAudios.length > 0 ? (
 	                        <button
 	                          type="button"
-	                          onClick={() => updateNodeData(id, { referenceAudios: [] })}
+	                          onClick={() => updateNodeData(id, { referenceAudios: [], referenceVoiceTarget: null })}
 	                          className="flex h-5 w-5 items-center justify-center rounded-full bg-black/45 text-white/80 transition hover:bg-black/65"
 	                          onMouseDown={(e) => e.stopPropagation()}
 	                        >
@@ -664,6 +717,29 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
 	                        </button>
 	                      ) : null}
 	                    </div>
+                      {voiceTargetOptions.length > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-[8px] uppercase tracking-[0.14em] text-[var(--node-text-secondary)]">
+                            绑定目标
+                          </div>
+                          <select
+                            className="node-control node-control--tight w-full text-[9px] font-semibold px-2 text-[var(--node-text-primary)] nodrag"
+                            value={selectedVoiceTargetValue}
+                            onChange={(e) => updateNodeData(id, { referenceVoiceTarget: e.target.value })}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            {voiceTargetOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label} · {option.source}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="rounded-[12px] border border-dashed border-[var(--node-border)] px-2 py-2 text-[8px] text-[var(--node-text-secondary)]">
+                          请先添加至少一个图片或视频参考，再绑定参考音色。
+                        </div>
+                      )}
 	                  </div>
 	                ) : (
 	                  <div className="rounded-[12px] border border-dashed border-[var(--node-border)] px-2 py-3 text-[8px] text-[var(--node-text-secondary)]">

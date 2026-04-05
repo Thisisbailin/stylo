@@ -1,6 +1,9 @@
 import type { ProjectData } from "../../types";
 import { createKnowledgeAnchor } from "./anchors";
-import { createKnowledgeLink, createKnowledgeNode } from "./builders";
+import {
+  createCanonicalKnowledgeLink,
+  createCanonicalKnowledgeNode,
+} from "./builders";
 import type { KnowledgeLink, KnowledgeNode, KnowledgeSnapshot } from "./types";
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
@@ -18,17 +21,15 @@ export const buildCanonicalKnowledgeNodes = (
   const rawScript = trim(projectData.rawScript);
   if (rawScript) {
     nodes.push(
-      createKnowledgeNode({
+      createCanonicalKnowledgeNode({
         id: "knowledge-source-script",
         ref: "source:script",
         kind: "source.script",
         title: trim(projectData.fileName) || "Project Script",
         content: {
           content: rawScript,
-          episodeCount: Array.isArray(projectData.episodes) ? projectData.episodes.length : 0,
         },
         meta: {
-          origin: "canonical-source",
           locked: true,
         },
         status: "accepted",
@@ -43,7 +44,7 @@ export const buildCanonicalKnowledgeNodes = (
   for (const episode of projectData.episodes || []) {
     const episodeRef = `ep:${episode.id}`;
     nodes.push(
-      createKnowledgeNode({
+      createCanonicalKnowledgeNode({
         id: `knowledge-source-episode-${episode.id}`,
         ref: `source:episode:${episode.id}`,
         kind: "source.episode",
@@ -51,12 +52,8 @@ export const buildCanonicalKnowledgeNodes = (
         content: {
           episodeId: episode.id,
           content: trim(episode.content),
-          summary: trim(episode.summary),
-          sceneIds: (episode.scenes || []).map((scene) => scene.id),
-          sceneCount: (episode.scenes || []).length,
         },
         meta: {
-          origin: "canonical-source",
           locked: true,
         },
         status: "accepted",
@@ -70,7 +67,7 @@ export const buildCanonicalKnowledgeNodes = (
     for (const scene of episode.scenes || []) {
       const sceneRef = `scene:${scene.id}`;
       nodes.push(
-        createKnowledgeNode({
+        createCanonicalKnowledgeNode({
           id: `knowledge-source-scene-${scene.id}`,
           ref: `source:scene:${scene.id}`,
           kind: "source.scene",
@@ -79,12 +76,8 @@ export const buildCanonicalKnowledgeNodes = (
             episodeId: episode.id,
             sceneId: scene.id,
             content: trim(scene.content),
-            partition: trim(scene.partition),
-            timeOfDay: trim(scene.timeOfDay),
-            location: trim(scene.location),
           },
           meta: {
-            origin: "canonical-source",
             locked: true,
           },
           status: "accepted",
@@ -117,7 +110,7 @@ export const buildCanonicalKnowledgeLinks = (
   for (const episode of projectData.episodes || []) {
     if (hasScript) {
       links.push(
-        createKnowledgeLink({
+        createCanonicalKnowledgeLink({
           id: `knowledge-link-script-episode-${episode.id}`,
           fromNodeId: "knowledge-source-script",
           toNodeId: `knowledge-source-episode-${episode.id}`,
@@ -130,7 +123,7 @@ export const buildCanonicalKnowledgeLinks = (
 
     for (const scene of episode.scenes || []) {
       links.push(
-        createKnowledgeLink({
+        createCanonicalKnowledgeLink({
           id: `knowledge-link-episode-${episode.id}-scene-${scene.id}`,
           fromNodeId: `knowledge-source-episode-${episode.id}`,
           toNodeId: `knowledge-source-scene-${scene.id}`,

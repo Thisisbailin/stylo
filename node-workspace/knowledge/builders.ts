@@ -1,8 +1,10 @@
 import type {
   KnowledgeAnchor,
   KnowledgeLink,
+  KnowledgeLinkOrigin,
   KnowledgeNode,
   KnowledgeNodeConfidence,
+  KnowledgeNodeOrigin,
   KnowledgeNodeStatus,
 } from "./types";
 
@@ -11,6 +13,7 @@ type CreateKnowledgeNodeInput = {
   ref: string;
   kind: string;
   title: string;
+  origin?: KnowledgeNodeOrigin;
   content?: Record<string, unknown>;
   meta?: Record<string, unknown>;
   status?: KnowledgeNodeStatus;
@@ -22,6 +25,7 @@ type CreateKnowledgeNodeInput = {
 
 type CreateKnowledgeLinkInput = {
   id: string;
+  origin?: KnowledgeLinkOrigin;
   fromNodeId: string;
   toNodeId: string;
   type: string;
@@ -36,6 +40,7 @@ export const createKnowledgeNode = ({
   ref,
   kind,
   title,
+  origin = "agent-derived",
   content = {},
   meta,
   status = "draft",
@@ -47,6 +52,7 @@ export const createKnowledgeNode = ({
   id,
   ref,
   kind,
+  origin,
   package: {
     title,
     status,
@@ -61,6 +67,7 @@ export const createKnowledgeNode = ({
 
 export const createKnowledgeLink = ({
   id,
+  origin = "agent-derived",
   fromNodeId,
   toNodeId,
   type,
@@ -70,6 +77,7 @@ export const createKnowledgeLink = ({
   updatedAt = createdAt,
 }: CreateKnowledgeLinkInput): KnowledgeLink => ({
   id,
+  origin,
   fromNodeId,
   toNodeId,
   type,
@@ -78,3 +86,35 @@ export const createKnowledgeLink = ({
   createdAt,
   updatedAt,
 });
+
+export const createCanonicalKnowledgeNode = (
+  input: Omit<CreateKnowledgeNodeInput, "origin">
+): KnowledgeNode =>
+  createKnowledgeNode({
+    ...input,
+    origin: "canonical-source",
+  });
+
+export const createAgentKnowledgeNode = (
+  input: Omit<CreateKnowledgeNodeInput, "origin">
+): KnowledgeNode =>
+  createKnowledgeNode({
+    ...input,
+    origin: "agent-derived",
+  });
+
+export const createCanonicalKnowledgeLink = (
+  input: Omit<CreateKnowledgeLinkInput, "origin">
+): KnowledgeLink =>
+  createKnowledgeLink({
+    ...input,
+    origin: "canonical-source",
+  });
+
+export const createAgentKnowledgeLink = (
+  input: Omit<CreateKnowledgeLinkInput, "origin">
+): KnowledgeLink =>
+  createKnowledgeLink({
+    ...input,
+    origin: "agent-derived",
+  });

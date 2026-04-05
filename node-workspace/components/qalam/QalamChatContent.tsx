@@ -1283,6 +1283,20 @@ export const QalamChatContent: React.FC<Props> = ({
     [revealMode]
   );
 
+  const isPinnedToCurrentAnchor = useMemo(
+    () => (node: HTMLDivElement, currentNode: HTMLDivElement) => {
+      const topInset = revealMode === "latest" ? 2 : 6;
+      const headerTarget = Math.max(0, currentNode.offsetTop - topInset);
+      const bottomTarget = Math.max(0, currentNode.offsetTop + currentNode.offsetHeight - node.clientHeight);
+      const tolerance = 10;
+      if (currentNode.offsetHeight + topInset <= node.clientHeight) {
+        return Math.abs(node.scrollTop - headerTarget) <= tolerance;
+      }
+      return Math.abs(node.scrollTop - bottomTarget) <= tolerance;
+    },
+    [revealMode]
+  );
+
   useEffect(() => {
     const nextKey = latestRevealItem?.key ?? null;
     if (!nextKey) {
@@ -1317,12 +1331,11 @@ export const QalamChatContent: React.FC<Props> = ({
     const handleScroll = () => {
       const currentNode = currentItemRef.current;
       if (!currentNode) return;
-      const targetTop = getCurrentAnchorScrollTop(node, currentNode);
-      setIsPinnedToCurrent(Math.abs(node.scrollTop - targetTop) < 72);
+      setIsPinnedToCurrent(isPinnedToCurrentAnchor(node, currentNode));
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => node.removeEventListener("scroll", handleScroll);
-  }, [displayMessages.length, getCurrentAnchorScrollTop, revealMode]);
+  }, [displayMessages.length, isPinnedToCurrentAnchor, revealMode]);
 
   useEffect(() => {
     if (revealMode !== "latest" && revealMode !== "scroll") return;

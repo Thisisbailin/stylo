@@ -235,6 +235,7 @@ export interface VideoGenNodeData extends BaseNodeData {
   referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudios?: string[];
+  referenceVoiceTarget?: string | null;
   firstFrameImage?: string | null;
   projectReferenceTargets?: {
     category: "identity";

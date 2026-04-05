@@ -157,6 +157,18 @@ const buildViduNonSubjectPrompt = (prompt: string, imageCount: number) => {
   return `${prefix}\n\n${prompt}`;
 };
 
+const parseWanReferenceVoiceTarget = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^(video|image):(\d+)$/);
+  if (!match) return null;
+  const index = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(index) || index < 1) return null;
+  return {
+    kind: match[1] as "video" | "image",
+    index,
+  };
+};
+
 const uploadReferenceFile = async (source: string, options?: { bucket?: string; prefix?: string }) => {
   const response = await fetch(source);
   const blob = await response.blob();
@@ -1438,6 +1450,7 @@ export const useNodeFlowExecutor = () => {
       new Set([...(Array.isArray(data.referenceAudios) ? data.referenceAudios.filter(Boolean) : []), ...(audios || []).filter(Boolean)])
     );
     const firstFrameImage = typeof data.firstFrameImage === "string" ? data.firstFrameImage.trim() : "";
+    const referenceVoiceTarget = parseWanReferenceVoiceTarget(data.referenceVoiceTarget);
     const projectReferenceTargets = Array.isArray(data.projectReferenceTargets)
       ? (data.projectReferenceTargets as ProjectReferenceTargetData[])
       : [];
@@ -1559,6 +1572,13 @@ export const useNodeFlowExecutor = () => {
           imageCount: imageMedia.length,
           videoCount: cappedVideos.length,
         });
+        if (referenceVoiceUrl && referenceVoiceTarget) {
+          const targetCount = referenceVoiceTarget.kind === "video" ? cappedVideos.length : imageMedia.length;
+          if (referenceVoiceTarget.index > targetCount) {
+            const label = `${referenceVoiceTarget.kind === "video" ? "视频" : "图片"}${referenceVoiceTarget.index}`;
+            throw new Error(`参考音色绑定目标 ${label} 不存在，请重新选择。`);
+          }
+        }
         params.aspectRatio = data.aspectRatio || "16:9";
         params.resolution = data.resolution || "1080P";
         params.watermark = data.watermark;
@@ -1567,12 +1587,20 @@ export const useNodeFlowExecutor = () => {
           ...cappedVideos.map((url, index) => ({
             kind: "video" as const,
             url,
-            referenceVoiceUrl: index === 0 ? referenceVoiceUrl : undefined,
+            referenceVoiceUrl: referenceVoiceUrl
+              ? referenceVoiceTarget
+                ? (referenceVoiceTarget.kind === "video" && referenceVoiceTarget.index === index + 1 ? referenceVoiceUrl : undefined)
+                : (index === 0 ? referenceVoiceUrl : undefined)
+              : undefined,
           })),
           ...imageMedia.map((item, index) => ({
             kind: "image" as const,
             url: item.url,
-            referenceVoiceUrl: cappedVideos.length === 0 && index === 0 ? referenceVoiceUrl : undefined,
+            referenceVoiceUrl: referenceVoiceUrl
+              ? referenceVoiceTarget
+                ? (referenceVoiceTarget.kind === "image" && referenceVoiceTarget.index === index + 1 ? referenceVoiceUrl : undefined)
+                : (cappedVideos.length === 0 && index === 0 ? referenceVoiceUrl : undefined)
+              : undefined,
           })),
         ];
         params.firstFrameUrl = normalizedFirstFrame[0];

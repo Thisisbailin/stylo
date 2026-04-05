@@ -147,6 +147,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         referenceImages: [],
         referenceVideos: [],
         referenceAudios: [],
+        referenceVoiceTarget: null,
         firstFrameImage: null,
         projectReferenceTargets: [],
         videoId: undefined,
