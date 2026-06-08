@@ -1217,6 +1217,8 @@ export const QalamAgent: React.FC<Props> = ({
                 width: qalamGlassWidth,
                 height: qalamGlassHeight,
                 opacity: effectiveCollapsed ? 0 : 1,
+                filter:
+                  "drop-shadow(0 34px 70px rgba(0,0,0,0.38)) drop-shadow(0 10px 24px rgba(0,0,0,0.24))",
               }}
             >
               <GlassDiffusionField
@@ -1238,7 +1240,7 @@ export const QalamAgent: React.FC<Props> = ({
             </div>
             <div
               ref={messagePanelRef}
-              className="relative z-10 rounded-[30px] bg-transparent shadow-[0_28px_72px_rgba(0,0,0,0.34),0_10px_28px_rgba(0,0,0,0.22)]"
+              className="relative z-10 rounded-[30px] bg-transparent"
             >
               <QalamChatContent
                 messages={messages}
