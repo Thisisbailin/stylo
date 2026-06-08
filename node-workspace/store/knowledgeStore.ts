@@ -5,6 +5,7 @@ import {
   createAnchoredDerivedKnowledgeNodeCommand,
   createDerivedKnowledgeLinkCommand,
   createDerivedKnowledgeNodeCommand,
+  removeDerivedKnowledgeLinkCommand,
   supersedeAnchoredDerivedKnowledgeNodeCommand,
   supersedeDerivedKnowledgeNodeCommand,
 } from "../knowledge/commands";
@@ -81,6 +82,9 @@ type KnowledgeStore = {
     status?: "active" | "superseded";
     createdAt?: number;
     updatedAt?: number;
+  }) => KnowledgeLink;
+  removeDerivedLink: (input: {
+    linkId: string;
   }) => KnowledgeLink;
   supersedeDerivedNode: (input: {
     nodeId?: string;
@@ -185,6 +189,16 @@ export const useKnowledgeStore = create<KnowledgeStore>((set, get) => ({
       return applySnapshot(result.snapshot);
     });
     return created;
+  },
+
+  removeDerivedLink: (input) => {
+    let removed!: KnowledgeLink;
+    set((state) => {
+      const result = removeDerivedKnowledgeLinkCommand(toSnapshot(state), input);
+      removed = result.link;
+      return applySnapshot(result.snapshot);
+    });
+    return removed;
   },
 
   supersedeDerivedNode: (input) => {

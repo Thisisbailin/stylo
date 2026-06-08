@@ -1,7 +1,8 @@
 import { createKnowledgeAnchor } from "./anchors";
 import { createAgentKnowledgeLink, createAgentKnowledgeNode } from "./builders";
-import { upsertKnowledgeLink, upsertKnowledgeNode } from "./mutations";
+import { removeKnowledgeLink, upsertKnowledgeLink, upsertKnowledgeNode } from "./mutations";
 import {
+  assertKnowledgeLinkCanBeRevised,
   assertKnowledgeLinkEndpointsExist,
   assertKnowledgeNodeCanBeRevised,
 } from "./lifecycle";
@@ -132,6 +133,21 @@ export const createDerivedKnowledgeLinkCommand = (
 
   return {
     snapshot: upsertKnowledgeLink(snapshot, link),
+    link,
+  };
+};
+
+export const removeDerivedKnowledgeLinkCommand = (
+  snapshot: KnowledgeSnapshot,
+  input: { linkId: string }
+): { snapshot: KnowledgeSnapshot; link: KnowledgeLink } => {
+  const link = snapshot.links.find((item) => item.id === input.linkId);
+  if (!link) {
+    throw new Error("Cannot unlink knowledge link because the target link was not found.");
+  }
+  assertKnowledgeLinkCanBeRevised(link);
+  return {
+    snapshot: removeKnowledgeLink(snapshot, link.id),
     link,
   };
 };

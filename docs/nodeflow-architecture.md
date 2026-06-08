@@ -77,18 +77,10 @@ Qalam 的 `Nodes` 模块最终会形成两个平面：
 
 在 Agent 工具分层上，也应保持清晰边界：
 
-- `Source`：
-  负责 canonical script facts 的读取
 - `Knowledge`：
-  负责长期记忆的读取，未来 `edit` 若重新开放也应落在这一层
+  负责长期记忆与 canonical-source backbone 的读取，未来 `edit` 若重新开放也应落在这一层
 - `NodeFlow`：
   负责当前工作流结构、画布节点、连线、审批与操作
-
-因此，正式资源命名与工具心智应统一收敛为：
-
-- `source_*`
-- `knowledge_*`
-- `nodeflow_*`
 
 但工具本身不再被理解成“分别服务三个互不相关模块”的工具。
 
@@ -96,7 +88,7 @@ Qalam 的 `Nodes` 模块最终会形成两个平面：
 
 - `read`
   - 统一读取动作
-  - 面向 `Source / Knowledge / NodeFlow`
+  - 面向 `Knowledge / NodeFlow`
   - 读取的是同一项目世界在不同层级上的 `node / link / map` 事实
 - `edit`
   - 面向 `Knowledge`
@@ -106,6 +98,28 @@ Qalam 的 `Nodes` 模块最终会形成两个平面：
   - 操作表层工作流图
 
 因此 `operate` 明确属于 `NodeFlow` 层，而不是项目通用图操作层。
+
+当前工具协议也应与这套心智保持一致：
+
+- `read`
+  - 通过 `layer / entity / view` 读取图世界
+  - 当前公共 layer 只保留 `knowledge / nodeflow`
+- `edit`
+  - 通过 `entity / action` 编辑 `Knowledge`
+- `operate`
+  - 通过 `entity / action` 操作 `NodeFlow`
+  - 当前原子动作收敛为：
+    - `node`: `create / update / move / remove`
+    - `link`: `connect / unlink`
+
+并且三类工具的结果都应逐步统一到：
+
+- `target`
+- `layer`
+- `entity`
+- `artifact`
+
+这样前端观察链、Agent 运行链、trace 与工具活动链，都能共享同一套 `node / link / map` 输出语言。
 
 从这个意义上说，`Nodes` 是项目的中心区域：
 

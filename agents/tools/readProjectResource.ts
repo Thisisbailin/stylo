@@ -1,4 +1,3 @@
-import { resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { parseKnowledgeAnchorRef } from "../../node-workspace/knowledge/anchors";
 import { readKnowledgeResource } from "../../node-workspace/knowledge/resources";
@@ -16,8 +15,8 @@ import {
   getNodeFlowNodeTitle,
 } from "../../node-workspace/nodeflow/model";
 
-export const READ_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow", "skill"] as const;
-export const READ_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval", "package"] as const;
+export const READ_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
+export const READ_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval"] as const;
 export const READ_PROJECT_RESOURCE_VIEWS = [
   "identity",
   "detail",
@@ -29,7 +28,6 @@ export const READ_PROJECT_RESOURCE_VIEWS = [
   "timeline",
 ] as const;
 export const READ_PROJECT_RESOURCE_TARGETS = [
-  "skill:package",
   "knowledge:node",
   "knowledge:link",
   "knowledge:map",
@@ -49,7 +47,7 @@ const readProjectResourceParameters = {
     layer: {
       type: "string",
       enum: [...READ_PROJECT_RESOURCE_LAYERS],
-      description: "Which graph layer to read from: knowledge, nodeflow, or skill.",
+      description: "Which graph layer to read from: knowledge or nodeflow.",
     },
     entity: {
       type: "string",
@@ -61,13 +59,9 @@ const readProjectResourceParameters = {
       enum: [...READ_PROJECT_RESOURCE_VIEWS],
       description: "Optional read view such as identity, detail, full, local, anchor, lens, lifecycle, or timeline.",
     },
-    item_id: {
-      type: "string",
-      description: "Item id for skill package lookup.",
-    },
     name: {
       type: "string",
-      description: "Name for skill package or nodeflow map lookup.",
+      description: "Name for nodeflow map lookup.",
     },
     node_id: {
       type: "string",
@@ -81,10 +75,10 @@ const readProjectResourceParameters = {
       type: "string",
       description: "Link id for knowledge or nodeflow link reads.",
     },
-    link_kind: {
+    link_role: {
       type: "string",
-      enum: ["canvas", "graph"],
-      description: "Which NodeFlow link space to read when entity=link.",
+      enum: ["connection", "reference"],
+      description: "Which NodeFlow link role to read when entity=link.",
     },
     map_id: {
       type: "string",
@@ -148,12 +142,11 @@ const parseArgs = (input: unknown) => {
   const layer = trim(raw.layer) as ResourceLayer;
   const entity = trim(raw.entity) as ResourceEntity;
   const view = trim(raw.view) as ResourceView;
-  const itemId = trim(raw.item_id ?? raw.itemId) || undefined;
   const name = trim(raw.name) || undefined;
   const nodeId = trim(raw.node_id ?? raw.nodeId) || undefined;
   const nodeRef = trim(raw.node_ref ?? raw.nodeRef) || undefined;
   const linkId = trim(raw.link_id ?? raw.linkId) || undefined;
-  const linkKind = trim(raw.link_kind ?? raw.linkKind) as "canvas" | "graph" | "";
+  const linkRole = trim(raw.link_role ?? raw.linkRole) as "connection" | "reference" | "";
   const mapId = trim(raw.map_id ?? raw.mapId) || undefined;
   const lensKind = trim(raw.lens_kind ?? raw.lensKind) || undefined;
   const anchorRef = trim(raw.anchor_ref ?? raw.anchorRef) || undefined;
@@ -170,9 +163,6 @@ const parseArgs = (input: unknown) => {
     throw new Error(`read_project_resource 不支持 view=${trim(raw.view)}`);
   }
 
-  if (layer === "skill" && entity !== "package") {
-    throw new Error("skill 层仅支持 package。");
-  }
   if (layer === "knowledge" && !["node", "link", "map"].includes(entity)) {
     throw new Error("knowledge 层仅支持 node、link、map。");
   }
@@ -180,9 +170,6 @@ const parseArgs = (input: unknown) => {
     throw new Error("nodeflow 层仅支持 node、link、map 或 approval。");
   }
 
-  if (layer === "skill" && entity === "package" && !itemId && !name) {
-    throw new Error("读取 skill package 需要 item_id 或 name。");
-  }
   if (entity === "node" && !nodeId && !nodeRef) {
     throw new Error("读取 node 需要 node_id 或 node_ref。");
   }
@@ -203,12 +190,11 @@ const parseArgs = (input: unknown) => {
     layer,
     entity,
     view: (view || (entity === "node" ? "detail" : entity === "map" ? "full" : "")) as ResourceView | "",
-    itemId,
     name,
     nodeId,
     nodeRef,
     linkId,
-    linkKind: linkKind || undefined,
+    linkRole: linkRole || undefined,
     mapId,
     lensKind,
     anchorRef,
@@ -220,35 +206,12 @@ const parseArgs = (input: unknown) => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete entity from the shared project graph world. Public reads now focus on two main graph layers: Knowledge for long-term memory and NodeFlow for the visible working canvas. Skill packages remain auxiliary packages.",
+    "Read a concrete entity from the shared project graph world. Public reads focus on two main graph layers: Knowledge for long-term memory and NodeFlow for the visible working canvas.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     const knowledge = bridge.getKnowledgeSnapshot();
-
-    if (args.layer === "skill") {
-      const skill = await resolveBuiltinSkill(args.itemId || args.name || "");
-      return skill
-        ? {
-            layer: "skill",
-            entity: "package",
-            found: true,
-            item_id: skill.id,
-            title: skill.title,
-            description: skill.description,
-            version: skill.version || "",
-            content: clipText(skill.guidanceMarkdown.trim(), args.maxChars),
-            tags: skill.tags || [],
-          }
-        : {
-            layer: "skill",
-            entity: "package",
-            found: false,
-            item_id: args.itemId || null,
-            name: args.name || null,
-          };
-    }
 
     if (args.layer === "knowledge") {
       if (args.entity === "node") {
@@ -256,12 +219,29 @@ export const readProjectResourceToolDef = {
         return {
           layer: "knowledge",
           entity: "node",
+          target: "knowledge:node",
           view: args.view,
-          ...readKnowledgeResource(knowledge, {
+          ...(() => {
+            const result = readKnowledgeResource(knowledge, {
             resourceType,
             nodeId: args.nodeId,
             nodeRef: args.nodeRef,
-          }),
+            });
+            const item = (result as any).item;
+            return {
+              ...result,
+              artifact: item
+                ? {
+                    kind: "node",
+                    target: "knowledge:node",
+                    id: item.id || item.node_id,
+                    ref: item.ref || item.node_ref,
+                    title: item.title,
+                    node_kind: item.kind,
+                  }
+                : undefined,
+            };
+          })(),
         };
       }
 
@@ -273,7 +253,24 @@ export const readProjectResourceToolDef = {
           ? {
               layer: "knowledge",
               entity: "link",
+              target: "knowledge:link",
               found: true,
+              artifact: {
+                kind: "link",
+                target: "knowledge:link",
+                id: link.id,
+                title: link.type,
+                source: {
+                  node_id: link.fromNodeId,
+                  node_ref: fromNode?.ref || null,
+                  title: fromNode?.package.title || null,
+                },
+                destination: {
+                  node_id: link.toNodeId,
+                  node_ref: toNode?.ref || null,
+                  title: toNode?.package.title || null,
+                },
+              },
               item: {
                 link_id: link.id,
                 from_node_id: link.fromNodeId,
@@ -291,6 +288,7 @@ export const readProjectResourceToolDef = {
           : {
               layer: "knowledge",
               entity: "link",
+              target: "knowledge:link",
               found: false,
               link_id: args.linkId || null,
             };
@@ -326,15 +324,26 @@ export const readProjectResourceToolDef = {
       return {
         layer: "knowledge",
         entity: "map",
+        target: "knowledge:map",
         view: args.view || "full",
-        ...readKnowledgeResource(knowledge, {
+        ...(() => {
+          const result = readKnowledgeResource(knowledge, {
           resourceType,
           nodeId: args.nodeId,
           nodeRef: args.nodeRef,
           anchor,
           lens,
           depth: 1,
-        }),
+          });
+          return {
+            ...result,
+            artifact: {
+              kind: "map",
+              target: "knowledge:map",
+              title: args.view || "full",
+            },
+          };
+        })(),
       };
     }
 
@@ -348,6 +357,7 @@ export const readProjectResourceToolDef = {
           return {
             layer: "nodeflow",
             entity: "node",
+            target: "nodeflow:node",
             view: "identity",
             found: false,
             node_id: args.nodeId || null,
@@ -362,13 +372,22 @@ export const readProjectResourceToolDef = {
         return {
           layer: "nodeflow",
           entity: "node",
+          target: "nodeflow:node",
           view: "identity",
           found: true,
-          item: {
-            node_id: rawNode.id,
-            node_ref: getNodeFlowNodeRef(rawNode),
-            kind: rawNode.type,
+          artifact: {
+            kind: "node",
+            target: "nodeflow:node",
+            id: rawNode.id,
+            ref: getNodeFlowNodeRef(rawNode),
             title: getNodeFlowNodeTitle(rawNode, workflow.nodeFlowContext),
+            node_kind: rawNode.type,
+          },
+            item: {
+              node_id: rawNode.id,
+              node_ref: getNodeFlowNodeRef(rawNode),
+              kind: rawNode.type,
+              title: getNodeFlowNodeTitle(rawNode, workflow.nodeFlowContext),
             status,
             parent_id: rawNode.parentId || null,
             incoming_links: linkRelations.incomingLinks,
@@ -389,13 +408,21 @@ export const readProjectResourceToolDef = {
         ? {
             layer: "nodeflow",
             entity: "node",
+            target: "nodeflow:node",
             view: "detail",
             found: true,
+            artifact: {
+              kind: "node",
+              target: "nodeflow:node",
+              id: node.nodeId,
+              ref: node.ref,
+              title: node.title,
+              node_kind: node.type,
+            },
             item: {
               node_id: node.nodeId,
               node_ref: node.ref,
-              plane: node.plane,
-              node_type: node.type,
+              kind: node.type,
               title: node.title,
               position:
                 typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
@@ -403,12 +430,13 @@ export const readProjectResourceToolDef = {
               incoming_links: linkRelations.incomingLinks,
               outgoing_links: linkRelations.outgoingLinks,
               body: clipStructuredValue(node.body, args.maxChars),
-              meta: clipStructuredValue(node.meta || {}, args.maxChars),
+              meta: clipStructuredValue({ ...(node.meta || {}), plane: node.plane }, args.maxChars),
             },
           }
         : {
             layer: "nodeflow",
             entity: "node",
+            target: "nodeflow:node",
             view: "detail",
             found: false,
             node_id: args.nodeId || null,
@@ -417,16 +445,30 @@ export const readProjectResourceToolDef = {
     }
 
     if (args.entity === "link") {
-      if (args.linkKind === "graph") {
+      if (args.linkRole === "reference") {
         const link = findGraphLink(workflow, args.linkId!);
         return link
           ? {
               layer: "nodeflow",
               entity: "link",
-              link_kind: "graph",
+              target: "nodeflow:link",
+              role: "reference",
               found: true,
+              artifact: {
+                kind: "link",
+                target: "nodeflow:link",
+                id: link.id,
+                title: "reference",
+                source: {
+                  node_ref: link.sourceRef,
+                },
+                destination: {
+                  node_ref: link.targetRef,
+                },
+              },
               item: {
                 link_id: link.id,
+                role: "reference",
                 source_ref: link.sourceRef,
                 target_ref: link.targetRef,
               },
@@ -434,7 +476,8 @@ export const readProjectResourceToolDef = {
           : {
               layer: "nodeflow",
               entity: "link",
-              link_kind: "graph",
+              target: "nodeflow:link",
+              role: "reference",
               found: false,
               link_id: args.linkId || null,
             };
@@ -445,10 +488,26 @@ export const readProjectResourceToolDef = {
         ? {
             layer: "nodeflow",
             entity: "link",
-            link_kind: "canvas",
+            target: "nodeflow:link",
+            role: "connection",
             found: true,
+            artifact: {
+              kind: "link",
+              target: "nodeflow:link",
+              id: link.id,
+              title: "connection",
+              source: {
+                node_id: link.fromNodeId,
+                handle: link.fromPort,
+              },
+              destination: {
+                node_id: link.toNodeId,
+                handle: link.toPort,
+              },
+            },
             item: {
               link_id: link.id,
+              role: "connection",
               from_node_id: link.fromNodeId,
               to_node_id: link.toNodeId,
               from_port: link.fromPort,
@@ -459,7 +518,8 @@ export const readProjectResourceToolDef = {
         : {
             layer: "nodeflow",
             entity: "link",
-            link_kind: "canvas",
+            target: "nodeflow:link",
+            role: "connection",
             found: false,
             link_id: args.linkId || null,
           };
@@ -475,12 +535,19 @@ export const readProjectResourceToolDef = {
         ? {
             layer: "nodeflow",
             entity: "approval",
+            target: "nodeflow:approval",
             found: true,
+            artifact: {
+              kind: "approval",
+              target: "nodeflow:approval",
+              id: approval.id,
+              title: approval.nodeTitle,
+            },
             item: {
               approval_id: approval.id,
               node_id: approval.nodeId,
               node_ref: approval.nodeRef || null,
-              node_type: approval.nodeType,
+              node_kind: approval.nodeType,
               node_title: approval.nodeTitle,
               action: approval.action,
               provider: approval.providerLabel,
@@ -494,6 +561,7 @@ export const readProjectResourceToolDef = {
         : {
             layer: "nodeflow",
             entity: "approval",
+            target: "nodeflow:approval",
             found: false,
             approval_id: args.linkId || null,
             node_id: args.nodeId || null,
@@ -510,7 +578,14 @@ export const readProjectResourceToolDef = {
       ? {
           layer: "nodeflow",
           entity: "map",
+          target: "nodeflow:map",
           found: true,
+          artifact: {
+            kind: "map",
+            target: "nodeflow:map",
+            id: map.mapId,
+            title: map.name,
+          },
           item: {
             map_id: map.mapId,
             name: map.name,
@@ -523,6 +598,7 @@ export const readProjectResourceToolDef = {
       : {
           layer: "nodeflow",
           entity: "map",
+          target: "nodeflow:map",
           found: false,
           map_id: args.mapId || null,
           name: args.name || null,
@@ -530,7 +606,6 @@ export const readProjectResourceToolDef = {
   },
   summarize: (output: any) => {
     if (output?.found === false) return `未找到 ${output?.layer || "graph"} ${output?.entity || "resource"}`;
-    if (output?.layer === "skill") return `读取技能包 ${output.title || output.item_id}`;
     if (output?.layer === "knowledge" && output?.entity === "node") {
       return `读取 Knowledge 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.ref || ""}`;
     }
@@ -544,7 +619,7 @@ export const readProjectResourceToolDef = {
       return `读取 NodeFlow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;
     }
     if (output?.layer === "nodeflow" && output?.entity === "link") {
-      return `读取 NodeFlow ${output?.link_kind === "graph" ? "图引用连线" : "连线"} ${output.item?.link_id || output.link_id || ""}`.trim();
+      return `读取 NodeFlow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output.item?.link_id || output.link_id || ""}`.trim();
     }
     if (output?.layer === "nodeflow" && output?.entity === "approval") {
       return `读取 NodeFlow 待审批执行请求 ${output.item?.node_title || output.item?.node_ref || output.item?.node_id || ""}`;

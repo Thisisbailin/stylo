@@ -33,19 +33,21 @@ export const parseToolArguments = (value: string) => {
 
 export const buildToolSummary = (name: string, args: any) => {
   if (name === "list_project_resources") {
-    return `资源目录：${args?.resource_type || "project"}`;
+    return `资源目录：${args?.layer || "graph"}:${args?.entity || "resource"}`;
   }
   if (name === "read_project_resource") {
-    return `资源读取：${args?.resource_type || "resource"}`;
+    const view = args?.view ? `/${args.view}` : "";
+    return `资源读取：${args?.layer || "graph"}:${args?.entity || "resource"}${view}`;
   }
   if (name === "search_project_resource") {
-    return `资源搜索：${String(args?.query || "").slice(0, 32)}`;
+    const layerHint = Array.isArray(args?.layers) && args.layers.length ? ` @${args.layers.join("+")}` : "";
+    return `资源搜索${layerHint}：${String(args?.query || "").slice(0, 32)}`;
   }
   if (name === "edit_knowledge_resource") {
-    return `Knowledge 写入：${args?.resource_type || "knowledge"}`;
+    return `Knowledge 编辑：${args?.entity || "node"} / ${args?.action || "create"}`;
   }
   if (name === "operate_project_resource") {
-    return `NodeFlow 操作：${args?.resource_type || "nodeflow"}`;
+    return `NodeFlow 操作：${args?.entity || "node"} / ${args?.action || "create"}`;
   }
   return "工具调用";
 };

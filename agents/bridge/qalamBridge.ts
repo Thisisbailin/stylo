@@ -65,6 +65,53 @@ export type CreateNodeFlowNodeResult = {
   defaultInputHandles?: NodeFlowHandle[];
 };
 
+export type UpdateNodeFlowNodeInput = {
+  expectedRevision?: number;
+  nodeId?: string;
+  nodeRef?: string;
+  patch: Record<string, unknown>;
+};
+
+export type UpdateNodeFlowNodeResult = {
+  nodeId: string;
+  nodeRef?: string;
+  nodeType: string;
+  title: string;
+  patch: Record<string, unknown>;
+};
+
+export type MoveNodeFlowNodeInput = {
+  expectedRevision?: number;
+  nodeId?: string;
+  nodeRef?: string;
+  x: number;
+  y: number;
+};
+
+export type MoveNodeFlowNodeResult = {
+  nodeId: string;
+  nodeRef?: string;
+  nodeType: string;
+  title: string;
+  position: {
+    x: number;
+    y: number;
+  };
+};
+
+export type RemoveNodeFlowNodeInput = {
+  expectedRevision?: number;
+  nodeId?: string;
+  nodeRef?: string;
+};
+
+export type RemoveNodeFlowNodeResult = {
+  nodeId: string;
+  nodeRef?: string;
+  nodeType: string;
+  title: string;
+};
+
 export type ConnectNodeFlowNodesInput = {
   expectedRevision?: number;
   sourceNodeId?: string;
@@ -157,6 +204,30 @@ export type CreateNodeFlowGraphLinkResult = {
   targetRef: string;
 };
 
+export type RemoveNodeFlowLinkInput = {
+  expectedRevision?: number;
+  linkId: string;
+  linkKind?: "canvas" | "graph";
+};
+
+export type RemoveNodeFlowLinkResult =
+  | {
+      linkId: string;
+      linkKind: "canvas";
+      sourceNodeId: string;
+      targetNodeId: string;
+      sourceRef?: string;
+      targetRef?: string;
+      sourceHandle?: NodeFlowHandle | null;
+      targetHandle?: NodeFlowHandle | null;
+    }
+  | {
+      linkId: string;
+      linkKind: "graph";
+      sourceRef: string;
+      targetRef: string;
+    };
+
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
@@ -188,6 +259,9 @@ export interface QalamAgentBridge {
     createdAt?: number;
     updatedAt?: number;
   }): KnowledgeLink;
+  removeDerivedKnowledgeLink(input: {
+    linkId: string;
+  }): KnowledgeLink;
   supersedeDerivedKnowledgeNode(input: {
     nodeId?: string;
     nodeRef?: string;
@@ -214,9 +288,13 @@ export interface QalamAgentBridge {
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;
+  updateNodeFlowNode(input: UpdateNodeFlowNodeInput): UpdateNodeFlowNodeResult;
+  moveNodeFlowNode(input: MoveNodeFlowNodeInput): MoveNodeFlowNodeResult;
+  removeNodeFlowNode(input: RemoveNodeFlowNodeInput): RemoveNodeFlowNodeResult;
   updateNodeFlowNodeData(nodeId: string, data: Record<string, unknown>): void;
   createNodeFlowGraphLink(input: CreateNodeFlowGraphLinkInput): CreateNodeFlowGraphLinkResult;
   connectNodeFlowNodes(input: ConnectNodeFlowNodesInput): ConnectNodeFlowNodesResult;
+  removeNodeFlowLink(input: RemoveNodeFlowLinkInput): RemoveNodeFlowLinkResult;
   getNodeFlowNode(input: NodeFlowNodeLookupInput): NodeFlowNodeLookupResult | null;
   createNodeFlowMap(input: CreateNodeFlowMapInput): CreateNodeFlowMapResult;
   requestNodeFlowExecutionApproval(input: {

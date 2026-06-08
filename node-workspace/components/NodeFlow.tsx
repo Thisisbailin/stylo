@@ -1158,7 +1158,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         </div>
       </div>
 
-      <MultiSelectToolbar />
+      {surfacePlane === "flow" ? <MultiSelectToolbar /> : null}
       <AgentSettingsPanel
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
@@ -1167,219 +1167,221 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         isDarkMode={isDarkMode}
         requestedPanel={agentSettingsPanel}
       />
-      <div className="fixed bottom-4 left-4 z-[80] pointer-events-none">
-        <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-          <QalamAgent
-            projectData={projectData}
-            setProjectData={setProjectData}
-            getAuthToken={getAuthToken}
-            onOpenStats={() => openAgentSettingsPanel("provider")}
-            settingsOpen={showAgentSettings}
-            openRequest={qalamOpenRequest}
-            closeRequest={qalamCloseRequest}
-            submitRequest={qalamSubmitRequest}
-            cancelRequest={qalamCancelRequest}
-            onCollapsedChange={(collapsed) => {
-              setIsQalamCollapsed(collapsed);
-              if (collapsed) {
-                if (isAutoQalamFirst) {
-                  setDismissedAutoQalamFirst(true);
-                } else if (isQalamFirstMode) {
-                  setIsQalamFirstManual(false);
-                }
-                return;
-              }
-              if (isAutoQalamFirst) {
-                setDismissedAutoQalamFirst(false);
-              }
-            }}
-            onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
-            onSendingChange={setIsQalamSending}
-            renderCollapsedTrigger
-            agentFirstMode={isQalamFirstMode}
-          />
-          <div
-            className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              showPeripheralWidgets && !isQalamFirstMode ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          >
-            {surfacePlane === "flow" ? (
-              <ViewportControls
-                zoom={zoomValue}
-                minZoom={minZoom}
-                maxZoom={maxZoom}
-                onZoomChange={handleZoomChange}
-                isLocked={isLocked}
-                onToggleLock={handleToggleLock}
-                showMiniMap={showMiniMap}
-                onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
-                readingMode={readingMode}
-                onToggleReadingMode={handleToggleReadingMode}
-              />
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <div
-        className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
-          isQalamFirstMode ? "px-4" : ""
-        }`}
-      >
-        <div className={`flex flex-col items-center gap-2 ${isQalamFirstMode ? "w-[min(1120px,calc(100vw-32px))]" : "w-[min(560px,calc(100vw-48px))]"}`}>
-          <div
-            className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              isQalamFirstMode ? "pointer-events-none hidden opacity-0" : "opacity-100 translate-y-0"
-            }`}
-          >
-            <FloatingActionBar
-              onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
-              onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
-              onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
-              onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
-              onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
-              onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
-              onAddVideo={() => handleAddNode("videoInput", { x: 240, y: 140 })}
-              onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
-              onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
-              onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
-              onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
-              onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
-              onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
-              onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
-              onImport={() => fileInputRef.current?.click()}
-              onExport={() => exportNodeFlow()}
-              onRun={runAll}
-              floating={false}
-              onOpenModule={onOpenModule}
-              onExportCsv={onExportCsv}
-              onExportXls={onExportXls}
-              onExportUnderstandingJson={onExportUnderstandingJson}
-              onOpenStats={() => openAgentSettingsPanel("provider")}
-              onToggleTheme={onToggleTheme}
-              onOpenTheme={(anchorRect) => {
-                if (anchorRect) {
-                  setThemeAnchor(anchorRect);
-                }
-                setShowThemeModal(true);
-              }}
-              isDarkMode={isDarkMode}
-              onOpenSyncPanel={onOpenSyncPanel}
-              syncIndicator={syncIndicator}
-              onOpenInfoPanel={onOpenInfoPanel}
-              onOpenKnowledgePanel={handleOpenKnowledgeSurface}
-              onResetProject={onResetProject}
-              onSignOut={onSignOut}
-              onAssetLoad={onAssetLoad}
-              accountInfo={accountInfo}
-              onToggleWorkflow={onToggleWorkflow}
-              onOpenQalam={() => {
-                if (isAutoQalamFirst) {
-                  setDismissedAutoQalamFirst(false);
-                  setQalamOpenRequest((prev) => prev + 1);
-                  return;
-                }
-                setIsQalamFirstManual(true);
-                setQalamOpenRequest((prev) => prev + 1);
-              }}
-              variant="embedded"
-            />
-          </div>
-          <div
-            className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
-            style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
-          >
-            <div className="flex items-end gap-3">
-              <textarea
-                ref={composerRef}
-                value={composerInput}
-                onChange={(e) => {
-                  setComposerInput(e.target.value);
-                  resizeComposer(e.currentTarget);
-                }}
-                rows={1}
-                className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
-                placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const text = composerInput.trim();
-                  if (isQalamSending && !text) {
-                    setQalamCancelRequest((prev) => prev + 1);
+      {surfacePlane === "flow" ? (
+        <>
+          <div className="fixed bottom-4 left-4 z-[80] pointer-events-none">
+            <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
+              <QalamAgent
+                projectData={projectData}
+                setProjectData={setProjectData}
+                getAuthToken={getAuthToken}
+                onOpenStats={() => openAgentSettingsPanel("provider")}
+                settingsOpen={showAgentSettings}
+                openRequest={qalamOpenRequest}
+                closeRequest={qalamCloseRequest}
+                submitRequest={qalamSubmitRequest}
+                cancelRequest={qalamCancelRequest}
+                onCollapsedChange={(collapsed) => {
+                  setIsQalamCollapsed(collapsed);
+                  if (collapsed) {
+                    if (isAutoQalamFirst) {
+                      setDismissedAutoQalamFirst(true);
+                    } else if (isQalamFirstMode) {
+                      setIsQalamFirstManual(false);
+                    }
                     return;
                   }
-                  if (!text) {
-                    toggleQalamFirstMode();
-                    return;
+                  if (isAutoQalamFirst) {
+                    setDismissedAutoQalamFirst(false);
                   }
-                  setComposerInput("");
-                  setQalamSubmitRequest({ id: Date.now(), text });
                 }}
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
-                  isQalamSending
-                    ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
-                    : composerInput.trim()
-                    ? "bg-[var(--app-accent-strong)] hover:brightness-105"
-                    : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
+                onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
+                onSendingChange={setIsQalamSending}
+                renderCollapsedTrigger
+                agentFirstMode={isQalamFirstMode}
+              />
+              <div
+                className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  showPeripheralWidgets && !isQalamFirstMode ? "opacity-100" : "pointer-events-none opacity-0"
                 }`}
-                title={
-                  isQalamSending
-                    ? "Stop Qalam"
-                    : composerInput.trim()
-                    ? "Send to Qalam"
-                    : isQalamFirstMode
-                    ? "Close Qalam First"
-                    : "Open Qalam First"
-                }
-                aria-label={
-                  isQalamSending
-                    ? "Stop Qalam"
-                    : composerInput.trim()
-                    ? "Send to Qalam"
-                    : isQalamFirstMode
-                    ? "Close Qalam First"
-                    : "Open Qalam First"
-                }
               >
-                {isQalamSending ? (
-                  <CircleNotch size={16} weight="bold" className="animate-spin" />
-                ) : (
-                  <ArrowUp size={16} weight="bold" />
-                )}
-              </button>
+                <ViewportControls
+                  zoom={zoomValue}
+                  minZoom={minZoom}
+                  maxZoom={maxZoom}
+                  onZoomChange={handleZoomChange}
+                  isLocked={isLocked}
+                  onToggleLock={handleToggleLock}
+                  showMiniMap={showMiniMap}
+                  onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
+                  readingMode={readingMode}
+                  onToggleReadingMode={handleToggleReadingMode}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      <div
-        className="fixed bottom-0 right-0 z-[29] h-44 w-44 pointer-events-auto"
-        onMouseEnter={() => setIsAssetsDockHovered(true)}
-        onMouseLeave={() => {
-          if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
-        }}
-      />
-      <div
-        className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${
-          showAssetsDock ? "opacity-100" : "opacity-0"
-        }`}
-        onMouseEnter={() => setIsAssetsDockHovered(true)}
-        onMouseLeave={() => {
-          if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
-        }}
-      >
-        <div className={`pointer-events-auto qalam-bottom-assets ${showAssetsDock ? "" : "pointer-events-none"}`}>
-          <div className="relative flex h-12 items-center">
-            <AssetsPanel
-              floating={false}
-              inlineAnchor
-              onCollapsedChange={(collapsed) => {
-                setIsAssetsPanelCollapsed(collapsed);
-                setIsAssetsDockHovered(!collapsed);
-              }}
-            />
+          <div
+            className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
+              isQalamFirstMode ? "px-4" : ""
+            }`}
+          >
+            <div className={`flex flex-col items-center gap-2 ${isQalamFirstMode ? "w-[min(1120px,calc(100vw-32px))]" : "w-[min(560px,calc(100vw-48px))]"}`}>
+              <div
+                className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isQalamFirstMode ? "pointer-events-none hidden opacity-0" : "opacity-100 translate-y-0"
+                }`}
+              >
+                <FloatingActionBar
+                  onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
+                  onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
+                  onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
+                  onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
+                  onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
+                  onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
+                  onAddVideo={() => handleAddNode("videoInput", { x: 240, y: 140 })}
+                  onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
+                  onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
+                  onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
+                  onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
+                  onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
+                  onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+                  onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
+                  onImport={() => fileInputRef.current?.click()}
+                  onExport={() => exportNodeFlow()}
+                  onRun={runAll}
+                  floating={false}
+                  onOpenModule={onOpenModule}
+                  onExportCsv={onExportCsv}
+                  onExportXls={onExportXls}
+                  onExportUnderstandingJson={onExportUnderstandingJson}
+                  onOpenStats={() => openAgentSettingsPanel("provider")}
+                  onToggleTheme={onToggleTheme}
+                  onOpenTheme={(anchorRect) => {
+                    if (anchorRect) {
+                      setThemeAnchor(anchorRect);
+                    }
+                    setShowThemeModal(true);
+                  }}
+                  isDarkMode={isDarkMode}
+                  onOpenSyncPanel={onOpenSyncPanel}
+                  syncIndicator={syncIndicator}
+                  onOpenInfoPanel={onOpenInfoPanel}
+                  onOpenKnowledgePanel={handleOpenKnowledgeSurface}
+                  onResetProject={onResetProject}
+                  onSignOut={onSignOut}
+                  onAssetLoad={onAssetLoad}
+                  accountInfo={accountInfo}
+                  onToggleWorkflow={onToggleWorkflow}
+                  onOpenQalam={() => {
+                    if (isAutoQalamFirst) {
+                      setDismissedAutoQalamFirst(false);
+                      setQalamOpenRequest((prev) => prev + 1);
+                      return;
+                    }
+                    setIsQalamFirstManual(true);
+                    setQalamOpenRequest((prev) => prev + 1);
+                  }}
+                  variant="embedded"
+                />
+              </div>
+              <div
+                className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
+                style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
+              >
+                <div className="flex items-end gap-3">
+                  <textarea
+                    ref={composerRef}
+                    value={composerInput}
+                    onChange={(e) => {
+                      setComposerInput(e.target.value);
+                      resizeComposer(e.currentTarget);
+                    }}
+                    rows={1}
+                    className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
+                    placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = composerInput.trim();
+                      if (isQalamSending && !text) {
+                        setQalamCancelRequest((prev) => prev + 1);
+                        return;
+                      }
+                      if (!text) {
+                        toggleQalamFirstMode();
+                        return;
+                      }
+                      setComposerInput("");
+                      setQalamSubmitRequest({ id: Date.now(), text });
+                    }}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
+                      isQalamSending
+                        ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
+                        : composerInput.trim()
+                        ? "bg-[var(--app-accent-strong)] hover:brightness-105"
+                        : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
+                    }`}
+                    title={
+                      isQalamSending
+                        ? "Stop Qalam"
+                        : composerInput.trim()
+                        ? "Send to Qalam"
+                        : isQalamFirstMode
+                        ? "Close Qalam First"
+                        : "Open Qalam First"
+                    }
+                    aria-label={
+                      isQalamSending
+                        ? "Stop Qalam"
+                        : composerInput.trim()
+                        ? "Send to Qalam"
+                        : isQalamFirstMode
+                        ? "Close Qalam First"
+                        : "Open Qalam First"
+                    }
+                  >
+                    {isQalamSending ? (
+                      <CircleNotch size={16} weight="bold" className="animate-spin" />
+                    ) : (
+                      <ArrowUp size={16} weight="bold" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+          <div
+            className="fixed bottom-0 right-0 z-[29] h-44 w-44 pointer-events-auto"
+            onMouseEnter={() => setIsAssetsDockHovered(true)}
+            onMouseLeave={() => {
+              if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
+            }}
+          />
+          <div
+            className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${
+              showAssetsDock ? "opacity-100" : "opacity-0"
+            }`}
+            onMouseEnter={() => setIsAssetsDockHovered(true)}
+            onMouseLeave={() => {
+              if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
+            }}
+          >
+            <div className={`pointer-events-auto qalam-bottom-assets ${showAssetsDock ? "" : "pointer-events-none"}`}>
+              <div className="relative flex h-12 items-center">
+                <AssetsPanel
+                  floating={false}
+                  inlineAnchor
+                  onCollapsedChange={(collapsed) => {
+                    setIsAssetsPanelCollapsed(collapsed);
+                    setIsAssetsDockHovered(!collapsed);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
       <Toast />
       <AnnotationModal />
       {showThemeModal && (

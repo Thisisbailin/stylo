@@ -32,10 +32,18 @@ import type {
   CreateTextNodeResult,
   ConnectNodeFlowNodesInput,
   ConnectNodeFlowNodesResult,
+  MoveNodeFlowNodeInput,
+  MoveNodeFlowNodeResult,
   NodeFlowHandle,
   NodeFlowNodeLookupInput,
   NodeFlowNodeLookupResult,
   QalamAgentBridge,
+  RemoveNodeFlowLinkInput,
+  RemoveNodeFlowLinkResult,
+  RemoveNodeFlowNodeInput,
+  RemoveNodeFlowNodeResult,
+  UpdateNodeFlowNodeInput,
+  UpdateNodeFlowNodeResult,
 } from "./qalamBridge";
 
 type NodeFlowBridgeDeps = {
@@ -69,6 +77,9 @@ type NodeFlowBridgeDeps = {
     createdAt?: number;
     updatedAt?: number;
   }) => KnowledgeLink;
+  removeDerivedKnowledgeLink: (input: {
+    linkId: string;
+  }) => KnowledgeLink;
   supersedeDerivedKnowledgeNode: (input: {
     nodeId?: string;
     nodeRef?: string;
@@ -91,7 +102,9 @@ type NodeFlowBridgeDeps = {
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
+  moveNode: (nodeId: string, position: { x: number; y: number }) => void;
   addGraphLink: (sourceRef: string, targetRef: string) => string;
+  removeGraphLink: (linkId: string) => void;
   updateNodeStyle: (nodeId: string, style: Record<string, unknown>) => void;
   connectNodes: (connection: Connection) => void;
   removeNode: (nodeId: string) => void;
@@ -280,6 +293,91 @@ const createNodeFlowNode = (
   };
 };
 
+const resolveNodeFlowNode = (
+  snapshot: NodeFlowFile,
+  input: { nodeId?: string; nodeRef?: string },
+  errorPrefix: string
+) => {
+  const resolved = lookupNodeFlowNodeInSnapshot(snapshot, input);
+  if (!resolved) {
+    throw new Error(`${errorPrefix} 引用了不存在的节点。请确认 node_id 或 node_ref 指向已创建的 nodeflow node。`);
+  }
+  const node = snapshot.nodes.find((item) => item.id === resolved.nodeId);
+  if (!node) {
+    throw new Error(`${errorPrefix} 找到了节点标识，但快照中缺少节点实体。`);
+  }
+  return { resolved, node };
+};
+
+const updateNodeFlowNode = (
+  deps: NodeFlowBridgeDeps,
+  input: UpdateNodeFlowNodeInput
+): UpdateNodeFlowNodeResult & Record<string, unknown> => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  const { resolved, node } = resolveNodeFlowNode(snapshot, input, "updateNodeFlowNode");
+  deps.updateNodeData(resolved.nodeId, input.patch as Partial<NodeFlowNodeData>);
+  const nextTitle =
+    typeof input.patch.title === "string" && input.patch.title.trim()
+      ? input.patch.title.trim()
+      : (node.data?.title as string | undefined) || resolved.nodeRef || resolved.nodeId;
+  return {
+    nodeId: resolved.nodeId,
+    node_id: resolved.nodeId,
+    nodeRef: resolved.nodeRef || undefined,
+    node_ref: resolved.nodeRef || undefined,
+    nodeType: resolved.nodeType,
+    node_type: resolved.nodeType,
+    node_kind: resolved.nodeType,
+    title: nextTitle,
+    patch: input.patch,
+  };
+};
+
+const moveNodeFlowNode = (
+  deps: NodeFlowBridgeDeps,
+  input: MoveNodeFlowNodeInput
+): MoveNodeFlowNodeResult & Record<string, unknown> => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  const { resolved, node } = resolveNodeFlowNode(snapshot, input, "moveNodeFlowNode");
+  deps.moveNode(resolved.nodeId, { x: input.x, y: input.y });
+  return {
+    nodeId: resolved.nodeId,
+    node_id: resolved.nodeId,
+    nodeRef: resolved.nodeRef || undefined,
+    node_ref: resolved.nodeRef || undefined,
+    nodeType: resolved.nodeType,
+    node_type: resolved.nodeType,
+    node_kind: resolved.nodeType,
+    title: (node.data?.title as string | undefined) || resolved.nodeRef || resolved.nodeId,
+    position: {
+      x: input.x,
+      y: input.y,
+    },
+  };
+};
+
+const removeNodeFlowNode = (
+  deps: NodeFlowBridgeDeps,
+  input: RemoveNodeFlowNodeInput
+): RemoveNodeFlowNodeResult & Record<string, unknown> => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  const { resolved, node } = resolveNodeFlowNode(snapshot, input, "removeNodeFlowNode");
+  deps.removeNode(resolved.nodeId);
+  return {
+    nodeId: resolved.nodeId,
+    node_id: resolved.nodeId,
+    nodeRef: resolved.nodeRef || undefined,
+    node_ref: resolved.nodeRef || undefined,
+    nodeType: resolved.nodeType,
+    node_type: resolved.nodeType,
+    node_kind: resolved.nodeType,
+    title: (node.data?.title as string | undefined) || resolved.nodeRef || resolved.nodeId,
+  };
+};
+
 const createNodeFlowGraphLink = (
   deps: NodeFlowBridgeDeps,
   input: CreateNodeFlowGraphLinkInput
@@ -323,7 +421,7 @@ const connectNodeFlowNodes = (
     nodeRef: input.targetRef,
   });
   if (!sourceNode || !targetNode) {
-    throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 execution_node。");
+    throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 nodeflow node。");
   }
   const sourceHandles = sourceNode.outputHandles;
   const targetHandles = targetNode.inputHandles;
@@ -372,6 +470,57 @@ const connectNodeFlowNodes = (
     source_handle: resolvedSourceHandle as NodeFlowHandle,
     targetHandle: resolvedTargetHandle as NodeFlowHandle,
     target_handle: resolvedTargetHandle as NodeFlowHandle,
+  };
+};
+
+const removeNodeFlowLink = (
+  deps: NodeFlowBridgeDeps,
+  input: RemoveNodeFlowLinkInput
+): RemoveNodeFlowLinkResult & Record<string, unknown> => {
+  const snapshot = deps.getNodeFlowSnapshot();
+  assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  if (input.linkKind === "graph") {
+    const graphLink = snapshot.graphLinks.find((link) => link.id === input.linkId);
+    if (!graphLink) {
+      throw new Error("removeNodeFlowLink 找不到指定的 nodeflow graph link。");
+    }
+    deps.removeGraphLink(graphLink.id);
+    return {
+      linkId: graphLink.id,
+      link_id: graphLink.id,
+      linkKind: "graph",
+      link_kind: "graph",
+      sourceRef: graphLink.sourceRef,
+      source_ref: graphLink.sourceRef,
+      targetRef: graphLink.targetRef,
+      target_ref: graphLink.targetRef,
+    };
+  }
+
+  const link = snapshot.links.find((item) => item.id === input.linkId);
+  if (!link) {
+    throw new Error("removeNodeFlowLink 找不到指定的 nodeflow canvas link。");
+  }
+  const sourceNode = snapshot.nodes.find((node) => node.id === link.source);
+  const targetNode = snapshot.nodes.find((node) => node.id === link.target);
+  deps.removeLink(link.id);
+  return {
+    linkId: link.id,
+    link_id: link.id,
+    linkKind: "canvas",
+    link_kind: "canvas",
+    sourceNodeId: link.source,
+    source_node_id: link.source,
+    targetNodeId: link.target,
+    target_node_id: link.target,
+    sourceRef: sourceNode ? getNodeFlowRef(sourceNode) || undefined : undefined,
+    source_ref: sourceNode ? getNodeFlowRef(sourceNode) || undefined : undefined,
+    targetRef: targetNode ? getNodeFlowRef(targetNode) || undefined : undefined,
+    target_ref: targetNode ? getNodeFlowRef(targetNode) || undefined : undefined,
+    sourceHandle: (link.sourceHandle as NodeFlowHandle | null | undefined) ?? null,
+    source_handle: (link.sourceHandle as NodeFlowHandle | null | undefined) ?? null,
+    targetHandle: (link.targetHandle as NodeFlowHandle | null | undefined) ?? null,
+    target_handle: (link.targetHandle as NodeFlowHandle | null | undefined) ?? null,
   };
 };
 
@@ -461,13 +610,18 @@ export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBrid
   getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],
   createDerivedKnowledgeNode: (input) => deps.createDerivedKnowledgeNode(input),
   createDerivedKnowledgeLink: (input) => deps.createDerivedKnowledgeLink(input),
+  removeDerivedKnowledgeLink: (input) => deps.removeDerivedKnowledgeLink(input),
   supersedeDerivedKnowledgeNode: (input) => deps.supersedeDerivedKnowledgeNode(input),
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),
+  updateNodeFlowNode: (input) => updateNodeFlowNode(deps, input),
+  moveNodeFlowNode: (input) => moveNodeFlowNode(deps, input),
+  removeNodeFlowNode: (input) => removeNodeFlowNode(deps, input),
   updateNodeFlowNodeData: (nodeId, data) => deps.updateNodeData(nodeId, data as Partial<NodeFlowNodeData>),
   createNodeFlowGraphLink: (input) => createNodeFlowGraphLink(deps, input),
   connectNodeFlowNodes: (input) => connectNodeFlowNodes(deps, input),
+  removeNodeFlowLink: (input) => removeNodeFlowLink(deps, input),
   getNodeFlowNode: (input) => lookupNodeFlowNodeInSnapshot(deps.getNodeFlowSnapshot(), input),
   createNodeFlowMap: (input) => createNodeFlowMap(deps, input),
   requestNodeFlowExecutionApproval: (input) => requestNodeFlowExecutionApproval(deps, input),

@@ -1,4 +1,3 @@
-import { listBuiltinSkills, resolveBuiltinSkill } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { searchKnowledgeResources } from "../../node-workspace/knowledge/resources";
 import {
@@ -9,7 +8,7 @@ import {
   buildProjectGraphSearchText,
 } from "../../node-workspace/nodeflow/projectGraph";
 
-export const SEARCH_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow", "skill"] as const;
+export const SEARCH_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
 export const SEARCH_PROJECT_RESOURCE_FACETS = [
   "identity",
   "content",
@@ -36,7 +35,7 @@ const searchProjectResourceParameters = {
         type: "string",
         enum: [...SEARCH_PROJECT_RESOURCE_LAYERS],
       },
-      description: "Optional graph layers to search. Defaults to knowledge, nodeflow, and skill.",
+      description: "Optional graph layers to search. Defaults to knowledge and nodeflow.",
     },
     facets: {
       type: "array",
@@ -115,30 +114,10 @@ const parseArgs = (input: unknown) => {
   };
 };
 
-const pushSkillMatches = async (matches: any[], query: string, maxMatches: number, radius: number) => {
-  const manifests = listBuiltinSkills();
-  for (const manifest of manifests) {
-    if (matches.length >= maxMatches) break;
-    const resolved = await resolveBuiltinSkill(manifest.id);
-    const haystack = [manifest.title, manifest.description, ...(manifest.tags || []), resolved?.guidanceMarkdown || ""]
-      .filter(Boolean)
-      .join(" ");
-    if (haystack && includesQuery(haystack, query)) {
-      matches.push({
-        layer: "skill",
-        entity: "package",
-        item_id: manifest.id,
-        title: manifest.title,
-        snippet: buildSnippet(haystack, query, radius),
-      });
-    }
-  }
-};
-
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search across the shared project graph world when the exact locator is unknown. Public search now centers on Knowledge and NodeFlow, with skill packages kept as an auxiliary package layer.",
+    "Search across the shared project graph world when the exact locator is unknown. Public search centers on Knowledge and NodeFlow.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -146,10 +125,6 @@ export const searchProjectResourceToolDef = {
     const knowledge = bridge.getKnowledgeSnapshot();
     const matches: any[] = [];
     const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
-
-    if (args.layers.includes("skill")) {
-      await pushSkillMatches(matches, args.query, args.maxMatches, radius);
-    }
 
     if (args.layers.includes("knowledge")) {
       const knowledgeFacets = [
@@ -168,6 +143,7 @@ export const searchProjectResourceToolDef = {
           matches.push({
             layer: "knowledge",
             entity: "node",
+            target: "knowledge:node",
             view: "identity",
             node_id: item.node.id,
             node_ref: item.node.ref,
@@ -175,6 +151,14 @@ export const searchProjectResourceToolDef = {
             node_kind: item.node.kind,
             matched_facets: item.matchedScopes,
             snippet: item.matchedScopes.join(" · "),
+            artifact: {
+              kind: "node",
+              target: "knowledge:node",
+              id: item.node.id,
+              ref: item.node.ref,
+              title: item.node.title,
+              node_kind: item.node.kind,
+            },
           });
         }
       }
@@ -189,13 +173,21 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "node",
+              target: "nodeflow:node",
               view: "identity",
               node_id: node.nodeId,
               node_ref: node.ref,
-              plane: node.plane,
-              node_type: node.type,
+              kind: node.type,
               title: node.title,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "node",
+                target: "nodeflow:node",
+                id: node.nodeId,
+                ref: node.ref,
+                title: node.title,
+                node_kind: node.type,
+              },
             });
           }
         }
@@ -209,13 +201,21 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "node",
+              target: "nodeflow:node",
               view: "detail",
               node_id: node.nodeId,
               node_ref: node.ref,
-              plane: node.plane,
-              node_type: node.type,
+              kind: node.type,
               title: node.title,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "node",
+                target: "nodeflow:node",
+                id: node.nodeId,
+                ref: node.ref,
+                title: node.title,
+                node_kind: node.type,
+              },
             });
           }
         }
@@ -238,9 +238,24 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "link",
-              link_kind: "canvas",
+              target: "nodeflow:link",
+              role: "connection",
               link_id: link.id,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "link",
+                target: "nodeflow:link",
+                id: link.id,
+                title: "connection",
+                source: {
+                  node_id: link.source,
+                  handle: link.sourceHandle ?? null,
+                },
+                destination: {
+                  node_id: link.target,
+                  handle: link.targetHandle ?? null,
+                },
+              },
             });
           }
         }
@@ -252,9 +267,22 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "link",
-              link_kind: "graph",
+              target: "nodeflow:link",
+              role: "reference",
               link_id: link.id,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "link",
+                target: "nodeflow:link",
+                id: link.id,
+                title: "reference",
+                source: {
+                  node_ref: link.sourceRef,
+                },
+                destination: {
+                  node_ref: link.targetRef,
+                },
+              },
             });
           }
         }
@@ -281,12 +309,19 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "approval",
+              target: "nodeflow:approval",
               approval_id: approval.id,
               node_id: approval.nodeId,
               node_ref: approval.nodeRef,
               title: approval.nodeTitle,
               action: approval.action,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "approval",
+                target: "nodeflow:approval",
+                id: approval.id,
+                title: approval.nodeTitle,
+              },
             });
           }
         }
@@ -300,9 +335,16 @@ export const searchProjectResourceToolDef = {
             matches.push({
               layer: "nodeflow",
               entity: "map",
+              target: "nodeflow:map",
               map_id: map.mapId,
               name: map.name,
               snippet: buildSnippet(haystack, args.query, radius),
+              artifact: {
+                kind: "map",
+                target: "nodeflow:map",
+                id: map.mapId,
+                title: map.name,
+              },
             });
           }
         }

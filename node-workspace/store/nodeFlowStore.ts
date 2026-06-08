@@ -121,6 +121,7 @@ interface NodeFlowStore {
   // Node operations
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
+  moveNode: (nodeId: string, position: XYPosition, options?: RevisionGuardOptions) => void;
   updateNodeStyle: (nodeId: string, style: Partial<NodeFlowNodeStyle>) => void;
   convertNodeToVideoInput: (nodeId: string) => void;
   removeNode: (nodeId: string, options?: RevisionGuardOptions) => void;
@@ -268,6 +269,29 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       return {
         ...nextState,
         nodeDefaults: nextDefaults,
+      };
+    });
+  },
+
+  moveNode: (nodeId, position, options) => {
+    assertExpectedRevision(get().revision, options?.expectedRevision);
+    set((state) => {
+      const node = state.nodes.find((item) => item.id === nodeId);
+      if (!node) return state;
+      return {
+        ...state,
+        revision: state.revision + 1,
+        nodes: state.nodes.map((item) =>
+          item.id === nodeId
+            ? {
+                ...item,
+                position: {
+                  x: position.x,
+                  y: position.y,
+                },
+              }
+            : item
+        ),
       };
     });
   },

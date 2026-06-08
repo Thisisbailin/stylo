@@ -1,4 +1,3 @@
-import { listBuiltinSkills } from "../runtime/skills";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { buildKnowledgeAnchorRegistryProjection } from "../../node-workspace/knowledge/maps";
 import { listKnowledgeNodeIdentities } from "../../node-workspace/knowledge/queries";
@@ -9,8 +8,8 @@ import {
 } from "../../node-workspace/nodeflow/projectGraph";
 import { getNodeFlowLinkRelationsForNode } from "../../node-workspace/nodeflow/model";
 
-export const LIST_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow", "skill"] as const;
-export const LIST_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval", "package"] as const;
+export const LIST_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
+export const LIST_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval"] as const;
 export const LIST_PROJECT_RESOURCE_TARGETS = [
   "knowledge:node",
   "knowledge:link",
@@ -19,7 +18,6 @@ export const LIST_PROJECT_RESOURCE_TARGETS = [
   "nodeflow:link",
   "nodeflow:map",
   "nodeflow:approval",
-  "skill:package",
 ] as const;
 
 type ResourceLayer = (typeof LIST_PROJECT_RESOURCE_LAYERS)[number];
@@ -31,22 +29,17 @@ const listProjectResourcesParameters = {
     layer: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_LAYERS],
-      description: "Which graph layer to inspect: knowledge for long-term memory, nodeflow for the visible working canvas, or skill for internal packages.",
+      description: "Which graph layer to inspect: knowledge for long-term memory or nodeflow for the visible working canvas.",
     },
     entity: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_ENTITIES],
       description: "Which graph entity to list inside the chosen layer.",
     },
-    plane: {
+    link_role: {
       type: "string",
-      enum: ["source", "semantic", "design", "execution"],
-      description: "Optional plane filter when listing NodeFlow nodes.",
-    },
-    link_kind: {
-      type: "string",
-      enum: ["canvas", "graph"],
-      description: "Optional link kind when listing NodeFlow links.",
+      enum: ["connection", "reference"],
+      description: "Optional NodeFlow link role filter when listing links.",
     },
     max_items: {
       type: "integer",
@@ -75,8 +68,7 @@ const parseArgs = (input: unknown) => {
   const raw = input as Record<string, unknown>;
   const layer = trim(raw.layer) as ResourceLayer;
   const entity = trim(raw.entity) as ResourceEntity;
-  const plane = trim(raw.plane) || undefined;
-  const linkKind = trim(raw.link_kind ?? raw.linkKind) as "canvas" | "graph" | "";
+  const linkRole = trim(raw.link_role ?? raw.linkRole) as "connection" | "reference" | "";
   const maxItems = Math.max(1, Math.min(200, toPositiveInteger(raw.max_items ?? raw.maxItems) || 50));
 
   if (!(LIST_PROJECT_RESOURCE_LAYERS as readonly string[]).includes(layer)) {
@@ -91,15 +83,11 @@ const parseArgs = (input: unknown) => {
   if (layer === "nodeflow" && !["node", "link", "map", "approval"].includes(entity)) {
     throw new Error("nodeflow 层仅支持 node、link、map 或 approval。");
   }
-  if (layer === "skill" && entity !== "package") {
-    throw new Error("skill 层仅支持 package。");
-  }
 
   return {
     layer,
     entity,
-    plane,
-    linkKind: linkKind || undefined,
+    linkRole: linkRole || undefined,
     maxItems,
   };
 };
@@ -107,35 +95,30 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List graph entities before reading them. The public graph world has two main layers: Knowledge for long-term memory and NodeFlow for the visible working canvas. Skill packages remain an auxiliary package layer.",
+    "List graph entities before reading them. The public graph world has two main layers: Knowledge for long-term memory and NodeFlow for the visible working canvas.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     const knowledge = bridge.getKnowledgeSnapshot();
 
-    if (args.layer === "skill") {
-      const items = listBuiltinSkills().slice(0, args.maxItems).map((skill) => ({
-        item_id: skill.id,
-        title: skill.title,
-        description: skill.description,
-        tags: skill.tags || [],
-        version: skill.version || "",
-      }));
-      return {
-        layer: "skill",
-        entity: "package",
-        total: listBuiltinSkills().length,
-        items,
-      };
-    }
-
     if (args.layer === "knowledge") {
       if (args.entity === "node") {
-        const items = listKnowledgeNodeIdentities(knowledge).slice(0, args.maxItems);
+        const items = listKnowledgeNodeIdentities(knowledge).slice(0, args.maxItems).map((item) => ({
+          ...item,
+          artifact: {
+            kind: "node",
+            target: "knowledge:node",
+            id: item.id,
+            ref: item.ref,
+            title: item.title,
+            node_kind: item.kind,
+          },
+        }));
         return {
           layer: "knowledge",
           entity: "node",
+          target: "knowledge:node",
           view: "identity",
           total: knowledge.nodes.length,
           items,
@@ -157,11 +140,28 @@ export const listProjectResourcesToolDef = {
             link_type: link.type,
             origin: link.origin,
             status: link.status || "active",
+            artifact: {
+              kind: "link",
+              target: "knowledge:link",
+              id: link.id,
+              title: link.type,
+              source: {
+                node_id: link.fromNodeId,
+                node_ref: fromNode?.ref || null,
+                title: fromNode?.package.title || null,
+              },
+              destination: {
+                node_id: link.toNodeId,
+                node_ref: toNode?.ref || null,
+                title: toNode?.package.title || null,
+              },
+            },
           };
         });
         return {
           layer: "knowledge",
           entity: "link",
+          target: "knowledge:link",
           total: knowledge.links.length,
           items,
         };
@@ -174,10 +174,19 @@ export const listProjectResourcesToolDef = {
         { map_view: "lens", title: "Lens Map", description: "按 focus / kind 等镜头投影出的地图" },
         { map_view: "lifecycle", title: "Lifecycle Map", description: "按生命周期观察知识网" },
         { map_view: "timeline", title: "Anchor Timeline", description: "按 anchor 查看知识演化时间线" },
-      ];
+      ].map((item) => ({
+        ...item,
+        artifact: {
+          kind: "map",
+          target: "knowledge:map",
+          id: item.map_view,
+          title: item.title,
+        },
+      }));
       return {
         layer: "knowledge",
         entity: "map",
+        target: "knowledge:map",
         total: items.length,
         items,
       };
@@ -185,12 +194,11 @@ export const listProjectResourcesToolDef = {
 
     if (args.entity === "node") {
       const allNodes = buildGraphNodesFromWorkflow(workflow);
-      const filteredNodes = args.plane ? allNodes.filter((node) => node.plane === args.plane) : allNodes;
+      const filteredNodes = allNodes;
       const items = filteredNodes.slice(0, args.maxItems).map((node) => ({
         node_id: node.nodeId,
         node_ref: node.ref,
-        plane: node.plane,
-        node_type: node.type,
+        kind: node.type,
         title: node.title,
         status: typeof node.meta?.status === "string" ? String(node.meta.status) : null,
         parent_id: node.parentId || null,
@@ -198,10 +206,19 @@ export const listProjectResourcesToolDef = {
         outgoing_link_count: node.nodeId ? getNodeFlowLinkRelationsForNode(workflow, node.nodeId).outgoingLinks.length : 0,
         position:
           typeof node.x === "number" && typeof node.y === "number" ? { x: node.x, y: node.y } : null,
+        artifact: {
+          kind: "node",
+          target: "nodeflow:node",
+          id: node.nodeId,
+          ref: node.ref,
+          title: node.title,
+          node_kind: node.type,
+        },
       }));
       return {
         layer: "nodeflow",
         entity: "node",
+        target: "nodeflow:node",
         view: "identity",
         total: filteredNodes.length,
         items,
@@ -210,30 +227,57 @@ export const listProjectResourcesToolDef = {
 
     if (args.entity === "link") {
       const canvasLinks =
-        !args.linkKind || args.linkKind === "canvas"
+        !args.linkRole || args.linkRole === "connection"
           ? workflow.links.map((link) => ({
-              link_kind: "canvas" as const,
+              role: "connection" as const,
               link_id: link.id,
               from_node_id: link.source,
               to_node_id: link.target,
               from_port: link.sourceHandle ?? null,
               to_port: link.targetHandle ?? null,
               paused: Boolean(link.data?.hasPause),
+              artifact: {
+                kind: "link",
+                target: "nodeflow:link",
+                id: link.id,
+                title: "connection",
+                source: {
+                  node_id: link.source,
+                  handle: link.sourceHandle ?? null,
+                },
+                destination: {
+                  node_id: link.target,
+                  handle: link.targetHandle ?? null,
+                },
+              },
             }))
           : [];
       const graphLinks =
-        !args.linkKind || args.linkKind === "graph"
+        !args.linkRole || args.linkRole === "reference"
           ? buildProjectGraphLinks(workflow).map((link) => ({
-              link_kind: "graph" as const,
+              role: "reference" as const,
               link_id: link.id,
               source_ref: link.sourceRef,
               target_ref: link.targetRef,
+              artifact: {
+                kind: "link",
+                target: "nodeflow:link",
+                id: link.id,
+                title: "reference",
+                source: {
+                  node_ref: link.sourceRef,
+                },
+                destination: {
+                  node_ref: link.targetRef,
+                },
+              },
             }))
           : [];
       const items = [...canvasLinks, ...graphLinks].slice(0, args.maxItems);
       return {
         layer: "nodeflow",
         entity: "link",
+        target: "nodeflow:link",
         total: canvasLinks.length + graphLinks.length,
         items,
       };
@@ -245,16 +289,23 @@ export const listProjectResourcesToolDef = {
         approval_id: approval.id,
         node_id: approval.nodeId,
         node_ref: approval.nodeRef || null,
-        node_type: approval.nodeType,
+        node_kind: approval.nodeType,
         node_title: approval.nodeTitle,
         action: approval.action,
         provider: approval.providerLabel,
         model: approval.modelLabel,
         created_at: approval.createdAt,
+        artifact: {
+          kind: "approval",
+          target: "nodeflow:approval",
+          id: approval.id,
+          title: approval.nodeTitle,
+        },
       }));
       return {
         layer: "nodeflow",
         entity: "approval",
+        target: "nodeflow:approval",
         total: approvals.length,
         items,
       };
@@ -264,6 +315,7 @@ export const listProjectResourcesToolDef = {
     return {
       layer: "nodeflow",
       entity: "map",
+      target: "nodeflow:map",
       total: maps.length,
       items: maps.slice(0, args.maxItems).map((map) => ({
         map_id: map.mapId,
@@ -272,6 +324,12 @@ export const listProjectResourcesToolDef = {
         active: map.isActive,
         node_count: map.nodeCount,
         link_count: map.linkCount,
+        artifact: {
+          kind: "map",
+          target: "nodeflow:map",
+          id: map.mapId,
+          title: map.name,
+        },
       })),
     };
   },
@@ -279,7 +337,6 @@ export const listProjectResourcesToolDef = {
     const layer = output?.layer || "graph";
     const entity = output?.entity || "resource";
     const count = output?.items?.length || 0;
-    if (layer === "skill") return `列出 ${count} 个技能包`;
     if (layer === "knowledge" && entity === "node") return `列出 ${count} 个 Knowledge 节点`;
     if (layer === "knowledge" && entity === "link") return `列出 ${count} 条 Knowledge 关系`;
     if (layer === "knowledge" && entity === "map") return `列出 ${count} 种 Knowledge 地图视图`;

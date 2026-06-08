@@ -404,6 +404,97 @@ const renderMarkdownLite = (text: string) => {
   return <div className="space-y-2">{blocks}</div>;
 };
 
+const renderArtifactMetaPill = (label: string, value?: string | null) => {
+  if (!value) return null;
+  return (
+    <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-0.5 text-[11px] text-[var(--app-text-secondary)]">
+      {label} · {value}
+    </span>
+  );
+};
+
+const renderArtifactCard = (payload: Record<string, any>) => {
+  const artifact =
+    payload.artifact && typeof payload.artifact === "object"
+      ? (payload.artifact as Record<string, any>)
+      : null;
+  if (!artifact || typeof artifact.kind !== "string") return null;
+
+  const title =
+    (typeof artifact.title === "string" && artifact.title.trim()) ||
+    (typeof artifact.ref === "string" && artifact.ref.trim()) ||
+    (typeof artifact.id === "string" && artifact.id.trim()) ||
+    artifact.kind;
+  const target =
+    typeof artifact.target === "string"
+      ? artifact.target
+      : typeof payload.target === "string"
+        ? payload.target
+        : "";
+  const nodeKind =
+    typeof artifact.node_kind === "string"
+      ? artifact.node_kind
+      : typeof artifact.node_type === "string"
+        ? artifact.node_type
+        : undefined;
+
+  const source = artifact.source && typeof artifact.source === "object" ? artifact.source : null;
+  const destination =
+    artifact.destination && typeof artifact.destination === "object" ? artifact.destination : null;
+
+  const sourceLabel =
+    source &&
+    (source.title || source.node_ref || source.node_id || source.ref || source.id);
+  const destinationLabel =
+    destination &&
+    (destination.title || destination.node_ref || destination.node_id || destination.ref || destination.id);
+
+  const typeLabel =
+    artifact.kind === "node"
+      ? "Node"
+      : artifact.kind === "link"
+        ? "Link"
+        : artifact.kind === "map"
+          ? "Map"
+          : artifact.kind === "package"
+            ? "Package"
+            : artifact.kind === "approval"
+              ? "Approval"
+              : artifact.kind;
+
+  return (
+    <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+            {typeLabel}
+          </div>
+          <div className="mt-1 truncate text-[14px] font-medium text-[var(--app-text-primary)]">
+            {title}
+          </div>
+        </div>
+        {target ? (
+          <div className="shrink-0 rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-secondary)]">
+            {target}
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {renderArtifactMetaPill("ID", typeof artifact.id === "string" ? artifact.id : undefined)}
+        {renderArtifactMetaPill("REF", typeof artifact.ref === "string" ? artifact.ref : undefined)}
+        {renderArtifactMetaPill("KIND", nodeKind)}
+      </div>
+      {artifact.kind === "link" && (sourceLabel || destinationLabel) ? (
+        <div className="mt-3 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-bg)] px-3 py-2 text-[12px] text-[var(--app-text-secondary)]">
+          <span className="text-[var(--app-text-primary)]">{String(sourceLabel || "source")}</span>
+          <span className="mx-2 text-[var(--app-text-muted)]">→</span>
+          <span className="text-[var(--app-text-primary)]">{String(destinationLabel || "target")}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const renderToolOutput = (tool: ToolPayload) => {
   if (!tool.output) return null;
   let parsed: any = null;
@@ -426,9 +517,22 @@ const renderToolOutput = (tool: ToolPayload) => {
       ? parsed.output
       : parsed;
 
+  const artifactCard = renderArtifactCard(payload);
+
   const simpleFields: Array<{ label: string; value: string }> = [];
-  if (typeof payload.resource_type === "string") simpleFields.push({ label: "资源类型", value: payload.resource_type });
-  if (typeof payload.action_type === "string") simpleFields.push({ label: "操作类型", value: payload.action_type });
+  if (typeof payload.target === "string") simpleFields.push({ label: "目标", value: payload.target });
+  if (typeof payload.layer === "string") simpleFields.push({ label: "层", value: payload.layer });
+  if (typeof payload.entity === "string") simpleFields.push({ label: "实体", value: payload.entity });
+  if (typeof payload.view === "string") simpleFields.push({ label: "视图", value: payload.view });
+  if (typeof payload.action === "string") simpleFields.push({ label: "动作", value: payload.action });
+  if (typeof payload.role === "string") simpleFields.push({ label: "关系角色", value: payload.role });
+  if (typeof payload.found === "boolean") simpleFields.push({ label: "命中", value: payload.found ? "是" : "否" });
+  if (payload.artifact && typeof payload.artifact === "object") {
+    if (typeof payload.artifact.kind === "string") simpleFields.push({ label: "载荷", value: payload.artifact.kind });
+    if (typeof payload.artifact.id === "string") simpleFields.push({ label: "载荷 ID", value: payload.artifact.id });
+    if (typeof payload.artifact.ref === "string") simpleFields.push({ label: "载荷引用", value: payload.artifact.ref });
+    if (typeof payload.artifact.title === "string") simpleFields.push({ label: "载荷标题", value: payload.artifact.title });
+  }
   if (typeof payload.created === "boolean") simpleFields.push({ label: "写入动作", value: payload.created ? "已创建" : "已更新" });
   if (typeof payload.name === "string") simpleFields.push({ label: "名称", value: payload.name });
   if (typeof payload.workflow_title === "string") simpleFields.push({ label: "工作流", value: payload.workflow_title });
@@ -446,7 +550,7 @@ const renderToolOutput = (tool: ToolPayload) => {
     simpleFields.push({ label: "默认首端端口", value: payload.defaultInputHandles.join(", ") });
   }
   if (typeof payload.node_id === "string") simpleFields.push({ label: "节点 ID", value: payload.node_id });
-  if (typeof payload.node_type === "string") simpleFields.push({ label: "节点类型", value: payload.node_type });
+  if (typeof payload.node_kind === "string") simpleFields.push({ label: "节点类型", value: payload.node_kind });
   if (typeof payload.node_ref === "string") simpleFields.push({ label: "节点引用", value: payload.node_ref });
   if (typeof payload.default_output_handle === "string") simpleFields.push({ label: "默认尾端端口", value: payload.default_output_handle });
   if (Array.isArray(payload.default_input_handles) && payload.default_input_handles.length > 0) {
@@ -482,6 +586,7 @@ const renderToolOutput = (tool: ToolPayload) => {
   ) {
     return (
       <div className="space-y-2">
+        {artifactCard}
         {simpleFields.length > 0 ? (
           <dl className="grid gap-x-4 gap-y-1 text-[12px] text-[var(--app-text-secondary)] sm:grid-cols-2">
             {simpleFields.map((item) => (
@@ -615,70 +720,6 @@ const renderToolOutput = (tool: ToolPayload) => {
       )
     );
   }
-  if (payload.resource_type === "project_summary") {
-    blocks.push(
-      renderSection(
-        "Project Summary",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
-          {payload.summary || (payload.exists ? "Summary exists." : "No summary yet.")}
-        </div>
-      )
-    );
-  }
-  if (payload.resource_type === "episode_summary") {
-    blocks.push(
-      renderSection(
-        "Episode Summary",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
-          <div className="text-[11px] text-[var(--app-text-muted)]">Ep {payload.episode_id}</div>
-          <div>{payload.summary || (payload.exists ? "Summary exists." : "No summary yet.")}</div>
-        </div>
-      )
-    );
-  }
-  if (payload.resource_type === "character_profile") {
-    blocks.push(
-      renderSection(
-        "Character Profile",
-        <div className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          <div className="font-semibold text-[var(--app-text-primary)]">{payload.name || "Unknown Character"}</div>
-          {payload.role ? <div>Role: {payload.role}</div> : null}
-          {typeof payload.is_main === "boolean" ? <div>Main: {payload.is_main ? "Yes" : "No"}</div> : null}
-          {payload.bio ? <div className="whitespace-pre-wrap">{payload.bio}</div> : null}
-          {typeof payload.portraits_count === "number" ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Portraits: {payload.portraits_count}</div>
-          ) : null}
-        </div>
-      )
-    );
-  }
-  if (payload.resource_type === "scene_profile") {
-    blocks.push(
-      renderSection(
-        "Scene Profile",
-        <div className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          <div className="font-semibold text-[var(--app-text-primary)]">{payload.name || "Unknown Scene"}</div>
-          {payload.type ? <div>Type: {payload.type}</div> : null}
-          {payload.description ? <div className="whitespace-pre-wrap">{payload.description}</div> : null}
-          {payload.visuals ? <div className="whitespace-pre-wrap">Visuals: {payload.visuals}</div> : null}
-          {typeof payload.portraits_count === "number" ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Portraits: {payload.portraits_count}</div>
-          ) : null}
-        </div>
-      )
-    );
-  }
-  if (payload.resource_type === "guide_document") {
-    blocks.push(
-      renderSection(
-        "Guide Document",
-        <div className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          <div className="font-semibold text-[var(--app-text-primary)]">{payload.title || "Unknown Guide"}</div>
-          {payload.content ? <div className="whitespace-pre-wrap">{payload.content}</div> : null}
-        </div>
-      )
-    );
-  }
   if (episodeSummaries.length > 0) {
     blocks.push(
       renderSection(
@@ -784,13 +825,16 @@ const renderToolOutput = (tool: ToolPayload) => {
 
   if (blocks.length === 0) {
     return (
-      <pre className="text-[11px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
-        {JSON.stringify(parsed, null, 2)}
-      </pre>
+      <div className="space-y-2">
+        {artifactCard}
+        <pre className="text-[11px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
+          {JSON.stringify(parsed, null, 2)}
+        </pre>
+      </div>
     );
   }
 
-  return <div className="space-y-2">{blocks}</div>;
+  return <div className="space-y-2">{artifactCard}{blocks}</div>;
 };
 
 const READ_TOOL_NAMES = new Set(["list_project_resources", "read_project_resource", "search_project_resource"]);
@@ -888,12 +932,22 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
 };
 
 const renderToolExpansion = (thread: ToolThread) => {
+  const toolOutputView = thread.result?.tool ? renderToolOutput(thread.result.tool) : null;
   const content = buildToolDetailsText(thread);
-  if (!content) return null;
+  if (!toolOutputView && !content) return null;
   return (
-    <pre className="mt-2 max-h-[280px] overflow-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
-      <code>{content}</code>
-    </pre>
+    <div className="mt-2 space-y-2">
+      {toolOutputView ? (
+        <div className="rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3">
+          {toolOutputView}
+        </div>
+      ) : null}
+      {content ? (
+        <pre className="max-h-[280px] overflow-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
+          <code>{content}</code>
+        </pre>
+      ) : null}
+    </div>
   );
 };
 

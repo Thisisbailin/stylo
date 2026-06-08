@@ -47,11 +47,43 @@ This philosophy lands in two tightly related but layered systems:
 In tool terms, the runtime aims to stay aligned to three atomic actions:
 
 - `read`
-  - unified graph reading across `Source`, `Knowledge`, and `NodeFlow`
+  - unified graph reading across `Knowledge` and `NodeFlow`
 - `edit`
   - knowledge-layer mutation for the agent's long-term memory graph
 - `operate`
   - nodeflow-layer mutation for the visible workflow canvas
+
+The public tool protocol is now intentionally graph-shaped instead of module-shaped:
+
+- `read`
+  - `list_project_resources`
+  - `read_project_resource`
+  - `search_project_resource`
+  - uses `layer / entity / view`
+  - reads `node / link / map / approval`
+- `edit`
+  - `edit_knowledge_resource`
+  - uses `entity / action`
+  - writes only `Knowledge` graph entities
+  - current atomic actions:
+    - node: `create / supersede`
+    - link: `connect / unlink`
+- `operate`
+  - `operate_project_resource`
+  - uses `entity / action`
+  - operates only `NodeFlow` graph entities
+  - current atomic actions:
+    - node: `create / update / move / remove`
+    - link: `connect / unlink`
+
+All three now converge on a shared output shape:
+
+- `target`
+- `layer`
+- `entity`
+- `artifact`
+
+So the agent is no longer switching between unrelated tool worlds. It is acting inside one shared graph world with different planes and mutation boundaries.
 
 This means the agent and the user are no longer modeled as working in separate systems.
 

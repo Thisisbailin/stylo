@@ -385,7 +385,9 @@ export const QalamAgent: React.FC<Props> = ({
   const { config } = useConfig("qalam_config_v1");
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
+  const moveNode = useNodeFlowStore((state) => state.moveNode);
   const addGraphLink = useNodeFlowStore((state) => state.addGraphLink);
+  const removeGraphLink = useNodeFlowStore((state) => state.removeGraphLink);
   const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
   const connectNodes = useNodeFlowStore((state) => state.connectNodes);
   const toggleLinkPause = useNodeFlowStore((state) => state.toggleLinkPause);
@@ -532,6 +534,7 @@ export const QalamAgent: React.FC<Props> = ({
         return state.createDerivedNode(input);
       },
       createDerivedKnowledgeLink: (input) => useKnowledgeStore.getState().createDerivedLink(input),
+      removeDerivedKnowledgeLink: (input) => useKnowledgeStore.getState().removeDerivedLink(input),
       supersedeDerivedKnowledgeNode: (input) => {
         const state = useKnowledgeStore.getState();
         if (input.anchorType && input.anchorRef) {
@@ -555,7 +558,9 @@ export const QalamAgent: React.FC<Props> = ({
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
       updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
+      moveNode: (nodeId, position) => moveNode(nodeId, position),
       addGraphLink: (sourceRef, targetRef) => addGraphLink(sourceRef, targetRef),
+      removeGraphLink: (linkId) => removeGraphLink(linkId),
       updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
       connectNodes,
       removeNode,
@@ -564,7 +569,7 @@ export const QalamAgent: React.FC<Props> = ({
       requestExecutionApproval,
       clearExecutionApproval,
     }),
-    [activeView, addNode, updateNodeData, addGraphLink, graphLinks, linkStyle, links, revision, globalAssetHistory, nodeFlowContext, nodes, connectNodes, pendingExecutionApprovals, projectData, removeLink, removeNode, requestExecutionApproval, clearExecutionApproval, setProjectData, toggleLinkPause, updateNodeStyle, viewport]
+    [activeView, addGraphLink, addNode, clearExecutionApproval, connectNodes, globalAssetHistory, graphLinks, linkStyle, links, moveNode, nodeFlowContext, nodes, pendingExecutionApprovals, projectData, removeGraphLink, removeLink, removeNode, requestExecutionApproval, revision, setProjectData, toggleLinkPause, updateNodeData, updateNodeStyle, viewport]
   );
   const browserRuntimeOverride = useMemo(
     () =>
@@ -1231,7 +1236,10 @@ export const QalamAgent: React.FC<Props> = ({
                 showBoundary={false}
               />
             </div>
-            <div ref={messagePanelRef} className="relative z-10 rounded-[30px] bg-transparent">
+            <div
+              ref={messagePanelRef}
+              className="relative z-10 rounded-[30px] bg-transparent shadow-[0_28px_72px_rgba(0,0,0,0.34),0_10px_28px_rgba(0,0,0,0.22)]"
+            >
               <QalamChatContent
                 messages={messages}
                 isSending={isSending}

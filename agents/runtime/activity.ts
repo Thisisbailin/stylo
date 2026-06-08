@@ -65,32 +65,41 @@ const writeActivityMap = (storageKey: string, map: Record<string, AgentToolActiv
 const summarizeArtifact = (call: AgentExecutedToolCall) => {
   const output = call.output as any;
   if (!output || typeof output !== "object") return undefined;
-  if (call.name === "read_project_resource" && output.layer === "skill" && output.entity === "package") {
-    if (typeof output.title === "string" && output.title.trim()) {
-      return `Skill package · ${output.title}`;
-    }
-    if (typeof output.item_id === "string" && output.item_id.trim()) {
-      return `Skill package · ${output.item_id}`;
-    }
+  const artifact = output.artifact && typeof output.artifact === "object" ? output.artifact : null;
+  if (artifact?.target === "knowledge:node" && typeof artifact.title === "string") {
+    return `Knowledge node · ${artifact.title}`;
   }
-  if (call.name === "operate_project_resource") {
-    if (output.layer === "nodeflow" && output.entity === "node" && typeof output.item?.title === "string") {
-      return `NodeFlow node · ${output.item.title}`;
-    }
-    if (output.layer === "nodeflow" && output.entity === "link" && output.link_kind === "canvas") {
-      return `NodeFlow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
-    }
-    if (output.layer === "nodeflow" && output.entity === "link" && output.link_kind === "graph") {
-      return `NodeFlow graph link · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
-    }
+  if (artifact?.target === "knowledge:link") {
+    return `Knowledge link · ${artifact.title || "link"}`;
   }
-  if (call.name === "edit_knowledge_resource") {
-    if (output.layer === "knowledge" && output.entity === "node" && typeof output.item?.title === "string") {
-      return `Knowledge node · ${output.item.title}`;
-    }
-    if (output.layer === "knowledge" && output.entity === "link") {
-      return `Knowledge link · ${output.item?.link_type || "link"}`;
-    }
+  if (artifact?.target === "nodeflow:node" && typeof artifact.title === "string") {
+    return `NodeFlow node · ${artifact.title}`;
+  }
+  if (artifact?.target === "nodeflow:link") {
+    const source = artifact.source?.node_ref || artifact.source?.node_id || "source";
+    const destination = artifact.destination?.node_ref || artifact.destination?.node_id || "target";
+    return `NodeFlow link · ${source} -> ${destination}`;
+  }
+  if (artifact?.target === "nodeflow:map" && typeof artifact.title === "string") {
+    return `NodeFlow map · ${artifact.title}`;
+  }
+  if (artifact?.target === "nodeflow:approval" && typeof artifact.title === "string") {
+    return `NodeFlow approval · ${artifact.title}`;
+  }
+  if (output.target === "nodeflow:node" && typeof output.item?.title === "string") {
+    return `NodeFlow node · ${output.item.title}`;
+  }
+  if (output.target === "nodeflow:link" && output.role === "connection") {
+    return `NodeFlow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
+  }
+  if (output.target === "nodeflow:link" && output.role === "reference") {
+    return `NodeFlow reference · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
+  }
+  if (output.target === "knowledge:node" && typeof output.item?.title === "string") {
+    return `Knowledge node · ${output.item.title}`;
+  }
+  if (output.target === "knowledge:link") {
+    return `Knowledge link · ${output.item?.link_type || "link"}`;
   }
   return undefined;
 };

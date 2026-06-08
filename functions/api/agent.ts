@@ -20,15 +20,18 @@ import {
   createAnchoredDerivedKnowledgeNodeCommand,
   createDerivedKnowledgeLinkCommand,
   createDerivedKnowledgeNodeCommand,
+  removeDerivedKnowledgeLinkCommand,
   supersedeAnchoredDerivedKnowledgeNodeCommand,
   supersedeDerivedKnowledgeNodeCommand,
 } from "../../node-workspace/knowledge/commands";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
+import { createNodeFlowGraphLink, removeNodeFlowGraphLink } from "../../node-workspace/nodeflow/graphLinks";
 import {
   appendNodeToNodeFlow,
   connectNodesInNodeFlow,
+  patchNodeFlowNodeData,
   patchNodeFlowNodeStyle,
   removeLinkFromNodeFlow,
   removeNodeFromNodeFlow,
@@ -132,6 +135,30 @@ const createNodeFlowBridgeState = (
     nodeFlowUpdated = true;
   };
 
+  const updateNodeData = (nodeId: string, data: Partial<NodeFlowNodeData>) => {
+    currentNodeFlow = patchNodeFlowNodeData(currentNodeFlow, nodeId, data);
+    nodeFlowUpdated = true;
+  };
+
+  const moveNode = (nodeId: string, position: { x: number; y: number }) => {
+    currentNodeFlow = {
+      ...currentNodeFlow,
+      revision: currentNodeFlow.revision + 1,
+      nodes: currentNodeFlow.nodes.map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              position: {
+                x: position.x,
+                y: position.y,
+              },
+            }
+          : node
+      ),
+    };
+    nodeFlowUpdated = true;
+  };
+
   const removeNode = (nodeId: string) => {
     currentNodeFlow = removeNodeFromNodeFlow(currentNodeFlow, nodeId);
     nodeFlowUpdated = true;
@@ -144,6 +171,26 @@ const createNodeFlowBridgeState = (
 
   const removeLink = (linkId: string) => {
     currentNodeFlow = removeLinkFromNodeFlow(currentNodeFlow, linkId);
+    nodeFlowUpdated = true;
+  };
+
+  const addGraphLink = (sourceRef: string, targetRef: string) => {
+    const result = createNodeFlowGraphLink(currentNodeFlow.graphLinks || [], sourceRef, targetRef);
+    currentNodeFlow = {
+      ...currentNodeFlow,
+      revision: currentNodeFlow.revision + 1,
+      graphLinks: result.links,
+    };
+    nodeFlowUpdated = true;
+    return result.linkId;
+  };
+
+  const removeGraphLink = (linkId: string) => {
+    currentNodeFlow = {
+      ...currentNodeFlow,
+      revision: currentNodeFlow.revision + 1,
+      graphLinks: removeNodeFlowGraphLink(currentNodeFlow.graphLinks || [], linkId),
+    };
     nodeFlowUpdated = true;
   };
 
@@ -164,6 +211,13 @@ const createNodeFlowBridgeState = (
 
   const createDerivedKnowledgeLink = (input: Parameters<typeof createDerivedKnowledgeLinkCommand>[1]) => {
     const result = createDerivedKnowledgeLinkCommand(currentKnowledge, input);
+    currentKnowledge = result.snapshot;
+    knowledgeUpdated = true;
+    return result.link;
+  };
+
+  const removeDerivedKnowledgeLink = (input: { linkId: string }) => {
+    const result = removeDerivedKnowledgeLinkCommand(currentKnowledge, input);
     currentKnowledge = result.snapshot;
     knowledgeUpdated = true;
     return result.link;
@@ -191,12 +245,17 @@ const createNodeFlowBridgeState = (
       getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
       createDerivedKnowledgeNode,
       createDerivedKnowledgeLink,
+      removeDerivedKnowledgeLink,
       supersedeDerivedKnowledgeNode,
       updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
         currentProjectData = updater(currentProjectData);
         projectDataUpdated = true;
       },
       addNode,
+      updateNodeData,
+      moveNode,
+      addGraphLink,
+      removeGraphLink,
       updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
       connectNodes,
       removeNode,
