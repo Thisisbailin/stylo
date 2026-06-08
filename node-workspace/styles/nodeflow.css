@@ -972,6 +972,392 @@ body.qalam-resizing * {
   background: color-mix(in srgb, var(--app-panel-strong) 82%, transparent);
 }
 
+.writing-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.writing-studio-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  width: min(100%, 1480px);
+  height: min(860px, calc(100dvh - 56px));
+  min-height: 640px;
+}
+
+.writing-studio-grid.is-info-open {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+
+.writing-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 72%, transparent);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-panel-strong) 92%, transparent), color-mix(in srgb, var(--app-panel) 96%, transparent));
+  color: var(--app-text-primary);
+  box-shadow:
+    var(--app-shadow-strong),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.writing-script-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.writing-card-header,
+.writing-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 16px 22px;
+}
+
+.writing-info-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+}
+
+.writing-card-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+.writing-card-title-input {
+  margin-top: 3px;
+  width: min(52vw, 680px);
+  border: 0;
+  background: transparent;
+  color: var(--app-text-primary);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.2;
+  outline: none;
+}
+
+.writing-card-title-input::placeholder {
+  color: var(--app-text-muted);
+}
+
+.writing-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.writing-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-panel-muted) 78%, transparent);
+  color: var(--app-text-secondary);
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.writing-icon-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-panel-soft) 86%, transparent);
+  color: var(--app-text-primary);
+}
+
+.writing-icon-button:disabled {
+  opacity: 0.36;
+  cursor: default;
+}
+
+.writing-scene-count {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--app-text-muted);
+}
+
+.writing-more-button {
+  color: var(--app-text-primary);
+}
+
+.writing-format-guide {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  border-bottom: 1px solid rgba(226, 229, 226, 0.78);
+  padding: 0 22px;
+  color: rgba(58, 64, 59, 0.44);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.writing-script-paper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding: clamp(12px, 1.8vw, 26px) clamp(28px, 6vw, 96px) clamp(24px, 3.4vw, 52px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-panel-strong) 92%, white 8%), color-mix(in srgb, var(--app-panel) 92%, white 8%)),
+    linear-gradient(to bottom, transparent 0 35px, color-mix(in srgb, var(--app-border) 30%, transparent) 35px 36px);
+  background-size: auto, 100% 36px;
+}
+
+.writing-scene-strip {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
+  padding-bottom: 14px;
+}
+
+.writing-scene-input {
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-text-primary);
+  font-family: "Geist Mono", "SFMono-Regular", "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.writing-scene-input::placeholder {
+  color: var(--app-text-muted);
+}
+
+.writing-scene-input--cast {
+  flex: 0 1 180px;
+}
+
+.writing-scene-input--id {
+  flex: 0 0 64px;
+}
+
+.writing-scene-input--short {
+  flex: 0 0 76px;
+}
+
+.writing-scene-strip > .writing-scene-input:not(.writing-scene-input--id):not(.writing-scene-input--short):not(.writing-scene-input--cast) {
+  flex: 0 1 260px;
+}
+
+.writing-script-paper .writing-paper-body {
+  margin: 0;
+  flex: 1;
+  border-radius: 0;
+}
+
+.writing-script-paper .writing-paper-body::before {
+  display: none;
+}
+
+.writing-script-paper .writing-editor,
+.writing-script-paper .writing-editor-highlight {
+  min-height: 100%;
+  font-family: "Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+}
+
+.writing-script-paper .writing-editor {
+  caret-color: var(--app-text-primary);
+}
+
+.writing-script-paper .writing-editor::placeholder {
+  color: var(--app-text-muted);
+  -webkit-text-fill-color: var(--app-text-muted);
+}
+
+.writing-script-paper .writing-editor-highlight {
+  color: var(--app-text-primary);
+}
+
+.writing-script-paper .writing-editor-highlight .text-mention {
+  color: var(--app-text-primary);
+  text-decoration-color: color-mix(in srgb, var(--app-accent) 36%, transparent);
+}
+
+.writing-info-card {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 18px;
+}
+
+.writing-info-title {
+  margin-top: 3px;
+  color: var(--app-text-primary);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.writing-side-section {
+  padding: 22px 22px 0;
+}
+
+.writing-side-label {
+  margin-bottom: 12px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.writing-side-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.writing-guide-list {
+  display: grid;
+  gap: 8px;
+}
+
+.writing-guide-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  padding-top: 10px;
+}
+
+.writing-guide-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.writing-guide-row span {
+  color: var(--app-text-muted);
+  font-family: "Geist Mono", "SFMono-Regular", "SF Mono", Consolas, monospace;
+  font-size: 11px;
+}
+
+.writing-guide-row p {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.writing-guide-row.is-active p {
+  color: var(--app-text-primary);
+}
+
+.writing-side-field {
+  display: grid;
+  gap: 7px;
+}
+
+.writing-side-field span {
+  color: rgba(48, 54, 49, 0.52);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.writing-side-field input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid rgba(218, 222, 218, 0.92);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0 12px;
+  color: #222522;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.writing-side-field input:focus {
+  border-color: rgba(132, 144, 134, 0.88);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.writing-stat-list,
+.writing-episode-list {
+  display: grid;
+}
+
+.writing-stat-row,
+.writing-episode-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  color: var(--app-text-secondary);
+  font-size: 13px;
+}
+
+.writing-stat-row strong,
+.writing-episode-item strong {
+  color: var(--app-text-primary);
+  font-family: "Geist Mono", "SFMono-Regular", "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.writing-episode-item {
+  width: 100%;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+  text-align: left;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.writing-episode-item:hover,
+.writing-episode-item.is-active {
+  color: var(--app-text-primary);
+}
+
+.writing-episode-item--add {
+  color: var(--app-text-muted);
+}
+
+.writing-side-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: auto 22px 0;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  padding-top: 16px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1080px) {
+  .writing-studio-grid {
+    grid-template-columns: 1fr;
+    height: calc(100dvh - 40px);
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .writing-info-card {
+    min-height: 520px;
+  }
+}
+
 .writing-composer-stage {
   display: grid;
   gap: 8px;

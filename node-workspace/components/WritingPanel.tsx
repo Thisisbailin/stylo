@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BarChart3, Bot, ChevronLeft, ChevronRight, MoreHorizontal, Plus, X } from "lucide-react";
 import type { Character, Episode, ProjectData } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -248,6 +249,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const [writingQalamSubmitRequest, setWritingQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
   const [activeGuideIndex, setActiveGuideIndex] = useState(0);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
@@ -703,67 +705,43 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
 
   const selectedEpisodeIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
   const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
-  const previousEpisode = selectedEpisodeIndex > 0 ? draft[selectedEpisodeIndex - 1] : null;
-  const nextEpisode = selectedEpisodeIndex < draft.length - 1 ? draft[selectedEpisodeIndex + 1] : null;
   const isCompactLayout = viewportSize.width < 1180;
-  const sidePeekWidth = isCompactLayout ? 26 : 34;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
-  const availableStageWidth = viewportSize.width - (isWritingQalamOpen && !isCompactLayout ? qalamPanelWidth + 104 : 48);
-  const targetPaperHeight = clamp(
-    viewportSize.height - (isCompactLayout ? (isWritingQalamOpen ? 420 : 360) : 320),
-    520,
-    820
-  );
-  const screenplayPaperWidth = Math.min(
-    clamp(
-      isCompactLayout ? availableStageWidth - 32 : availableStageWidth * 0.58,
-      isCompactLayout ? 330 : 520,
-      isCompactLayout ? 520 : 760
-    ),
-    Math.round(targetPaperHeight * (8.5 / 11))
-  );
-  const screenplayPaperHeight = Math.round(screenplayPaperWidth * (11 / 8.5));
-  const screenplayPageLines = 55;
-  const initialViewportWidthRatio = 0.7;
-  const initialTargetVisibleWidth = availableStageWidth * initialViewportWidthRatio;
-  const initialPerspectiveScale = clamp(initialTargetVisibleWidth / screenplayPaperWidth, 1.12, 2.4);
   const screenplayLineCount = useMemo(
     () => Math.max(1, selectedScene.body.split(/\r?\n/).length),
     [selectedScene.body]
   );
-  const initialPaperOffset = screenplayPaperHeight * 0.5;
-  const revealLineStep = initialPaperOffset / screenplayPageLines;
-  const overflowLineStep = (screenplayPaperHeight * 0.48) / screenplayPageLines;
-  const revealLineIndex = Math.min(Math.max(screenplayLineCount - 1, 0), screenplayPageLines);
-  const overflowLineIndex = Math.max(screenplayLineCount - screenplayPageLines, 0);
-  const revealScaleStep = (initialPerspectiveScale - 1) / screenplayPageLines;
-  const overflowScaleStep = 0.12 / screenplayPageLines;
-  const paperScale = overflowLineIndex > 0
-    ? 1 + Math.min(0.12, overflowLineIndex * overflowScaleStep)
-    : initialPerspectiveScale - revealLineIndex * revealScaleStep;
-  const paperViewportWidth = Math.round(screenplayPaperWidth * paperScale);
-  const paperTranslateY = overflowLineIndex > 0
-    ? -(overflowLineIndex * overflowLineStep)
-    : initialPaperOffset - revealLineIndex * revealLineStep;
-  const guideOpacity = clamp(1 - (screenplayLineCount - 1) / 14, 0, 1);
+  const scriptCharacterCount = selectedScene.body.trim().length;
+  const totalSceneCount = draft.reduce((sum, episode) => sum + episode.scenes.length, 0);
+  const sceneMentionCount = countCharactersInBody(selectedScene.body).length;
+  const locationCount = new Set(
+    draft.flatMap((episode) =>
+      episode.scenes.map((scene) => scene.title.trim() || scene.location.trim()).filter(Boolean)
+    )
+  ).size;
   const writingGuides = useMemo(
     () => [
-      { text: "Start with a clean action line or slugline. The page rises one line at a time." },
-      { text: "Three blank returns switches the current line into an agent message instead of screenplay text." },
-      { text: "When the full sheet is revealed, you are roughly at a standard screenplay page rhythm." },
-      { text: "After one page, each new line continues feeding the sheet upward like a typewriter carriage." },
+      "Fountain draft: scene heading, action, character cue, dialogue.",
+      "Triple return opens a Qalam dialogue line inside the page.",
+      "Scene metadata edits directly on the page.",
     ],
     []
   );
-  const activeGuide = writingGuides[activeGuideIndex % writingGuides.length];
+  const scriptStats = [
+    { label: "Scenes", value: totalSceneCount },
+    { label: "Lines", value: screenplayLineCount },
+    { label: "Characters", value: sceneMentionCount },
+    { label: "Locations", value: locationCount },
+    { label: "Issues", value: parserIssues.length },
+  ];
   const navigateScene = (delta: number) => {
     const nextIndex = selectedSceneIndex + delta;
     if (nextIndex < 0 || nextIndex >= selectedEpisode.scenes.length) return;
     setSelectedSceneId(selectedEpisode.scenes[nextIndex].id);
   };
-  const paperShiftStyle = isWritingQalamOpen
+  const stageStyle = isWritingQalamOpen
     ? isCompactLayout
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
       : { paddingLeft: `${qalamPanelWidth + 44}px` }
@@ -797,147 +775,125 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       ) : null}
 
       <div className="relative min-h-[100dvh]">
-        <div className="writing-floating-controls pointer-events-auto absolute right-4 top-4 z-30 flex items-center gap-2 md:right-6 md:top-6">
-          <button
-            type="button"
-            onClick={() => {
-              if (isWritingQalamOpen) {
-                setIsWritingQalamOpen(false);
-                setAgentLine(null);
-              } else {
-                openWritingQalam(true);
-              }
-            }}
-            className="writing-floating-chip"
-          >
-            {isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
-          </button>
-          <button type="button" onClick={handleClose} className="writing-floating-chip">
-            Close
-          </button>
-        </div>
-
-        <main className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 py-6 md:px-6 md:py-8">
+        <main className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 py-5 md:px-6 md:py-7">
           <div
-            className="writing-stage flex h-full w-full items-center justify-center transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-            style={paperShiftStyle}
+            className="writing-stage pointer-events-auto h-full w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={stageStyle}
           >
-            <div className="writing-composer-stage pointer-events-auto">
-              <div
-                className="writing-guide-copy"
-                style={{
-                  opacity: guideOpacity,
-                  transform: `translateY(${paperTranslateY * 0.18}px)`,
-                }}
-              >
-                <div className="writing-guide-copy__text">{activeGuide.text}</div>
-              </div>
-
-              <div className="writing-paper-layout">
-                {previousEpisode ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEpisodeId(previousEpisode.id);
-                      setSelectedSceneId(previousEpisode.scenes[0]?.id || `${previousEpisode.id}-1`);
-                    }}
-                    className="writing-paper writing-paper--peek writing-paper--peek-left absolute"
-                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
-                    title={previousEpisode.title}
-                  >
-                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
-                  </button>
-                ) : null}
-
-                <article
-                  ref={(node) => {
-                    episodeRefs.current[selectedEpisode.id] = node;
-                  }}
-                  className="writing-paper writing-paper--hero relative shrink-0"
-                  style={{ width: `${paperViewportWidth}px`, height: `${screenplayPaperHeight}px` }}
-                >
-                  <div
-                    className="writing-typewriter-sheet"
-                    style={{
-                      width: `${screenplayPaperWidth}px`,
-                      height: `${screenplayPaperHeight}px`,
-                      transform: `translate3d(0, ${paperTranslateY}px, 0) scale(${paperScale})`,
-                    }}
-                  >
-                    <div className="writing-paper-head">
-                      <div className="writing-paper-head__row">
-                        <div className="writing-paper-head__meta">
-                          <button type="button" onClick={() => navigateScene(-1)} className="writing-text-button" disabled={selectedSceneIndex === 0}>
-                            ←
-                          </button>
-                          <span>{selectedEpisode.id.toString().padStart(2, "0")}</span>
-                          <span>{selectedSceneIndex + 1}/{selectedEpisode.scenes.length}</span>
-                          <button
-                            type="button"
-                            onClick={() => navigateScene(1)}
-                            className="writing-text-button"
-                            disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
-                          >
-                            →
-                          </button>
-                          <button type="button" onClick={addScene} className="writing-text-button">
-                            +
-                          </button>
-                        </div>
-                      </div>
-                      <input
-                        value={selectedEpisode.title}
-                        onChange={(event) =>
-                          patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
+            <div className={`writing-studio-grid ${isInfoPanelOpen ? "is-info-open" : ""}`}>
+              <section className="writing-card writing-script-card">
+                <header className="writing-card-header">
+                  <div>
+                    <div className="writing-card-kicker">Script</div>
+                    <input
+                      value={selectedEpisode.title}
+                      onChange={(event) =>
+                        patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
+                      }
+                      className="writing-card-title-input"
+                      placeholder={`Episode ${selectedEpisode.id}`}
+                    />
+                  </div>
+                  <div className="writing-header-actions">
+                    <button
+                      type="button"
+                      onClick={() => navigateScene(-1)}
+                      className="writing-icon-button"
+                      disabled={selectedSceneIndex === 0}
+                      title="Previous scene"
+                    >
+                      <ChevronLeft size={17} strokeWidth={1.8} />
+                    </button>
+                    <span className="writing-scene-count">{selectedSceneIndex + 1}/{selectedEpisode.scenes.length}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigateScene(1)}
+                      className="writing-icon-button"
+                      disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
+                      title="Next scene"
+                    >
+                      <ChevronRight size={17} strokeWidth={1.8} />
+                    </button>
+                    <button type="button" onClick={addScene} className="writing-icon-button" title="New scene">
+                      <Plus size={17} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isWritingQalamOpen) {
+                          setIsWritingQalamOpen(false);
+                          setAgentLine(null);
+                        } else {
+                          openWritingQalam(true);
                         }
-                        className="writing-paper-head__title"
-                        placeholder={`Episode ${selectedEpisode.id}`}
-                      />
-                      <div className="writing-paper-head__slugline">
-                        <input
-                          value={selectedScene.id}
-                          onChange={(event) =>
-                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
-                          }
-                          className="writing-paper-head__slug-input writing-paper-head__slug-input--short"
-                          placeholder={`${selectedEpisode.id}-1`}
-                        />
-                        <span className="writing-paper-head__dot">/</span>
-                        <input
-                          value={selectedScene.location}
-                          onChange={(event) =>
-                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
-                          }
-                          className="writing-paper-head__slug-input writing-paper-head__slug-input--tiny"
-                          placeholder="INT."
-                        />
-                        <span className="writing-paper-head__dot">.</span>
-                        <input
-                          value={selectedScene.title}
-                          onChange={(event) =>
-                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
-                          }
-                          className="writing-paper-head__slug-input"
-                          placeholder="APARTMENT"
-                        />
-                        <span className="writing-paper-head__dot">-</span>
-                        <input
-                          value={selectedScene.timeOfDay}
-                          onChange={(event) =>
-                            patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
-                          }
-                          className="writing-paper-head__slug-input writing-paper-head__slug-input--tiny"
-                          placeholder="NIGHT"
-                        />
-                      </div>
-                      <div className="writing-paper-head__tear" aria-hidden="true" />
-                    </div>
+                      }}
+                      className="writing-icon-button"
+                      title={isWritingQalamOpen ? "Hide Qalam" : "Open Qalam"}
+                    >
+                      <Bot size={17} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsInfoPanelOpen((current) => !current)}
+                      className="writing-icon-button writing-more-button"
+                      title={isInfoPanelOpen ? "Hide info" : "Show info"}
+                    >
+                      <MoreHorizontal size={18} strokeWidth={1.8} />
+                    </button>
+                    <button type="button" onClick={handleClose} className="writing-icon-button" title="Close writing">
+                      <X size={17} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </header>
 
-                    <div className="writing-paper-body relative flex-1">
+                <div className="writing-script-paper">
+                  <div className="writing-scene-strip">
+                    <input
+                      value={selectedScene.id}
+                      onChange={(event) =>
+                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
+                      }
+                      className="writing-scene-input writing-scene-input--id"
+                      placeholder={`${selectedEpisode.id}-1`}
+                    />
+                    <input
+                      value={selectedScene.location}
+                      onChange={(event) =>
+                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
+                      }
+                      className="writing-scene-input writing-scene-input--short"
+                      placeholder="INT."
+                    />
+                    <input
+                      value={selectedScene.title}
+                      onChange={(event) =>
+                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
+                      }
+                      className="writing-scene-input"
+                      placeholder="APARTMENT"
+                    />
+                    <input
+                      value={selectedScene.timeOfDay}
+                      onChange={(event) =>
+                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
+                      }
+                      className="writing-scene-input writing-scene-input--short"
+                      placeholder="DAY"
+                    />
+                    <input
+                      value={selectedScene.castLine}
+                      onChange={(event) =>
+                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
+                      }
+                      className="writing-scene-input writing-scene-input--cast"
+                      placeholder="CAST"
+                    />
+                  </div>
+                  <div className="writing-paper-body relative flex-1">
                       <div
                         ref={highlightRef}
                         aria-hidden="true"
-                        className="writing-editor-highlight pointer-events-none absolute inset-0 z-0 overflow-auto whitespace-pre-wrap px-8 pb-8 pt-6 font-sans text-[16px] leading-9"
+                        className="writing-editor-highlight pointer-events-none absolute inset-0 z-0 overflow-auto whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9"
                       >
                         {highlightedDraftBody}
                       </div>
@@ -966,7 +922,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                         onKeyDown={handleEditorKeyDown}
                         rows={18}
                         placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
-                        className="writing-editor relative z-10 h-full w-full border-none bg-transparent px-8 pb-8 pt-6 font-sans text-[16px] leading-9 outline-none"
+                        className="writing-editor relative z-10 h-full w-full border-none bg-transparent px-10 pb-10 pt-8 font-sans text-[17px] leading-9 outline-none"
                       />
 
                       {agentLine ? (
@@ -1001,7 +957,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       ) : null}
 
                       {mentionState && filteredCharacters.length > 0 ? (
-                        <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-8 top-6 z-30 w-[320px]">
+                        <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-10 top-8 z-30 w-[320px]">
                           <div className="mention-picker-header">
                             <div className="mention-picker-title">Character Mentions</div>
                             <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter / Tab insert, Esc dismiss</div>
@@ -1026,24 +982,77 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                         </div>
                       ) : null}
                     </div>
-                  </div>
-                </article>
+                </div>
+              </section>
 
-                {nextEpisode ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEpisodeId(nextEpisode.id);
-                      setSelectedSceneId(nextEpisode.scenes[0]?.id || `${nextEpisode.id}-1`);
-                    }}
-                    className="writing-paper writing-paper--peek writing-paper--peek-right absolute"
-                    style={{ width: `${sidePeekWidth}px`, height: `${screenplayPaperHeight}px` }}
-                    title={nextEpisode.title}
-                  >
-                    <div className="writing-paper-peek__ghost" aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
+              {isInfoPanelOpen ? (
+              <aside className="writing-card writing-info-card">
+                <header className="writing-info-header">
+                  <div>
+                    <div className="writing-card-kicker">Writing</div>
+                    <div className="writing-info-title">Info</div>
+                  </div>
+                  <div className="writing-header-actions">
+                    <button type="button" onClick={() => setIsInfoPanelOpen(false)} className="writing-icon-button" title="Hide info">
+                      <X size={17} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </header>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">Format</div>
+                  <div className="writing-guide-list">
+                    {writingGuides.map((guide, index) => (
+                      <div key={guide} className={`writing-guide-row ${index === activeGuideIndex % writingGuides.length ? "is-active" : ""}`}>
+                        <span>{String(index + 1).padStart(2, "0")}</span>
+                        <p>{guide}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">Episodes</div>
+                  <div className="writing-episode-list">
+                    {draft.map((episode) => (
+                      <button
+                        key={episode.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedEpisodeId(episode.id);
+                          setSelectedSceneId(episode.scenes[0]?.id || `${episode.id}-1`);
+                        }}
+                        className={`writing-episode-item ${episode.id === selectedEpisode.id ? "is-active" : ""}`}
+                      >
+                        <span>{episode.title || `Episode ${episode.id}`}</span>
+                        <strong>{episode.scenes.length}</strong>
+                      </button>
+                    ))}
+                    <button type="button" onClick={addEpisode} className="writing-episode-item writing-episode-item--add">
+                      <span>New episode</span>
+                      <Plus size={15} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">Script data</div>
+                  <div className="writing-stat-list">
+                    {scriptStats.map((stat) => (
+                      <div key={stat.label} className="writing-stat-row">
+                        <span>{stat.label}</span>
+                        <strong>{stat.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="writing-side-foot">
+                  <BarChart3 size={16} strokeWidth={1.8} />
+                  <span>{scriptCharacterCount} chars in current scene</span>
+                </div>
+              </aside>
+              ) : null}
             </div>
           </div>
         </main>

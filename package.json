@@ -3,12 +3,52 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "predev": "node scripts/generate-skill-manifest.mjs",
     "dev": "vite",
     "prebuild": "node scripts/generate-skill-manifest.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "concurrently -k \"npm run dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env QALAM_DESKTOP_URL=http://127.0.0.1:5173 electron .\"",
+    "desktop:pack": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "desktop:dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "desktop:dist:signed": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "ai.qalam.desktop",
+    "productName": "Qalam",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "mac": {
+      "icon": "electron/assets/icon.icns",
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
   },
   "dependencies": {
     "@clerk/backend": "^1.15.1",
@@ -32,8 +72,13 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "electron": "^42.3.3",
+    "electron-builder": "^26.15.2",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.8.2",
-    "vite": "^5.3.4"
+    "vite": "^5.3.4",
+    "wait-on": "^9.0.10"
   }
 }

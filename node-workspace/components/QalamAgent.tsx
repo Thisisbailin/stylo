@@ -1210,15 +1210,25 @@ export const QalamAgent: React.FC<Props> = ({
         >
           <div className="relative">
             <div
-              className="pointer-events-none absolute z-0 transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              className="pointer-events-none absolute z-0 rounded-[46px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{
+                left: qalamGlassOffsetX + qalamGlassConfig.fadeInsetX,
+                top: qalamGlassOffsetY + qalamGlassConfig.fadeInsetY,
+                width: Math.max(0, qalamGlassWidth - qalamGlassConfig.fadeInsetX * 2),
+                height: Math.max(0, qalamGlassHeight - qalamGlassConfig.fadeInsetY * 2),
+                opacity: effectiveCollapsed ? 0 : 1,
+                boxShadow:
+                  "0 34px 74px rgba(0,0,0,0.32), 0 12px 30px rgba(0,0,0,0.22)",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute z-[1] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
               style={{
                 left: qalamGlassOffsetX,
                 top: qalamGlassOffsetY,
                 width: qalamGlassWidth,
                 height: qalamGlassHeight,
                 opacity: effectiveCollapsed ? 0 : 1,
-                filter:
-                  "drop-shadow(0 34px 70px rgba(0,0,0,0.38)) drop-shadow(0 10px 24px rgba(0,0,0,0.24))",
               }}
             >
               <GlassDiffusionField
