@@ -182,7 +182,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                   Agent Long-Term Memory
                 </div>
                 <div className="mt-1 max-w-[34ch] text-[12px] leading-5 text-[var(--app-text-secondary)]">
-                  这是独立的知识画布，不再挤在工作流画布的一角。这里所有节点都按 markdown 文档卡片阅读。
+                  这是独立的知识画布，不再挤在工作流画布的一角。默认情况下，整份剧本会作为一个 markdown 文本文档节点呈现。
                 </div>
               </div>
               <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/92 p-1 shadow-[var(--app-shadow)] backdrop-blur-xl">
@@ -237,13 +237,15 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
               </div>
               <div className={`pointer-events-auto ${statCardClass}`}>
                 <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-                  Backbone
+                  Script Node
                 </div>
                 <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
-                  {scriptRootCount} script · {episodeCount} episodes
+                  {scriptRootCount} script text node
                 </div>
                 <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                  {sceneCount} scenes in canonical chain
+                  {episodeCount + sceneCount > 0
+                    ? "后续只有在明确要求分层拆解时，agent 才会继续拆成更细的知识节点。"
+                    : "默认不自动拆成 episode / scene 层级。"}
                 </div>
               </div>
               <div className={`pointer-events-auto ${statCardClass}`}>
@@ -277,7 +279,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
                 </div>
                 <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
                   {section === "overview"
-                    ? "只看 script → episode → scene 的主记忆链。"
+                    ? "默认只看整份剧本这个主文本节点，以及后续派生出来的知识连接。"
                     : section === "nodes"
                       ? "放大当前焦点节点与它的一阶邻域。"
                       : section === "links"

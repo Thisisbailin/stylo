@@ -641,18 +641,12 @@ const toCanvasLinks = (links: KnowledgeLink[]): Edge[] =>
     id: link.id,
     source: link.fromNodeId,
     target: link.toNodeId,
-    label: link.type,
     animated: false,
     selectable: false,
     deletable: false,
     style: {
       stroke: "rgba(255,255,255,0.2)",
       strokeWidth: 1.5,
-    },
-    labelStyle: {
-      fill: "var(--app-text-secondary)",
-      fontSize: 10,
-      fontWeight: 600,
     },
   }));
 
