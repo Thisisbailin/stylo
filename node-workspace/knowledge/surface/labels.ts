@@ -4,11 +4,11 @@ const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "")
 
 export const formatKnowledgeKindLabel = (kind: string) => {
   const value = trim(kind);
-  if (!value) return "知识节点";
+  if (!value) return "Knowledge";
 
-  if (value === "source.script") return "剧本源";
-  if (value === "source.episode") return "剧集源";
-  if (value === "source.scene") return "场景源";
+  if (value === "source.script") return "Script Source";
+  if (value === "source.episode") return "Episode Source";
+  if (value === "source.scene") return "Scene Source";
 
   const parts = value.split(".");
   const tail = trim(parts[parts.length - 1]);
@@ -16,6 +16,6 @@ export const formatKnowledgeKindLabel = (kind: string) => {
 };
 
 export const formatKnowledgeOriginLabel = (origin: KnowledgeNodeOrigin) => {
-  if (origin === "canonical-source") return "源事实";
-  return "派生记忆";
+  if (origin === "canonical-source") return "Source";
+  return "Derived";
 };

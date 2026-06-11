@@ -7,6 +7,7 @@ import {
   EdgeTypes,
   useReactFlow,
   OnConnectEnd,
+  PanOnScrollMode,
   ReactFlowProvider,
   ConnectionMode,
   XYPosition,
@@ -42,7 +43,9 @@ import { ConnectionDropMenu } from "./ConnectionDropMenu";
 import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
+import { ScriptCanvas } from "./ScriptCanvas";
 import { ViewportControls } from "./ViewportControls";
+import { WritingPanel } from "./WritingPanel";
 import { Toast, useToast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { ProjectData } from "../../types";
@@ -424,11 +427,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [surfacePlane, setSurfacePlane] = useState<"flow" | "knowledge">("flow");
+  const [surfacePlane, setSurfacePlane] = useState<"flow" | "script" | "knowledge">("flow");
+  const [editingScriptEpisodeId, setEditingScriptEpisodeId] = useState<number | null>(null);
   const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeCanvasSection>("overview");
   const [knowledgeFocusRequest, setKnowledgeFocusRequest] = useState<KnowledgeSurfaceFocusRequest | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
-  const showPeripheralWidgets = false;
   const [isAssetsDockHovered, setIsAssetsDockHovered] = useState(false);
   const [isAssetsPanelCollapsed, setIsAssetsPanelCollapsed] = useState(true);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
@@ -489,7 +492,9 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [connectionDrop, setConnectionDrop] = useState<ConnectionDropState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
+  const keepPeripheralWidgetsOpen = showMiniMap;
   const [isLocked, setIsLocked] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
@@ -1053,6 +1058,74 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     };
   }, [themeAnchor]);
 
+  const qalamComposer = (
+    <div
+      className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
+      style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
+    >
+      <div className="flex items-end gap-3">
+        <textarea
+          ref={composerRef}
+          value={composerInput}
+          onChange={(e) => {
+            setComposerInput(e.target.value);
+            resizeComposer(e.currentTarget);
+          }}
+          rows={1}
+          className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
+          placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
+        />
+        <button
+          type="button"
+          onClick={() => {
+            const text = composerInput.trim();
+            if (isQalamSending && !text) {
+              setQalamCancelRequest((prev) => prev + 1);
+              return;
+            }
+            if (!text) {
+              toggleQalamFirstMode();
+              return;
+            }
+            setComposerInput("");
+            setQalamSubmitRequest({ id: Date.now(), text });
+          }}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
+            isQalamSending
+              ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
+              : composerInput.trim()
+              ? "bg-[var(--app-accent-strong)] hover:brightness-105"
+              : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
+          }`}
+          title={
+            isQalamSending
+              ? "Stop Qalam"
+              : composerInput.trim()
+              ? "Send to Qalam"
+              : isQalamFirstMode
+              ? "Close Qalam First"
+              : "Open Qalam First"
+          }
+          aria-label={
+            isQalamSending
+              ? "Stop Qalam"
+              : composerInput.trim()
+              ? "Send to Qalam"
+              : isQalamFirstMode
+              ? "Close Qalam First"
+              : "Open Qalam First"
+          }
+        >
+          {isQalamSending ? (
+            <CircleNotch size={16} weight="bold" className="animate-spin" />
+          ) : (
+            <ArrowUp size={16} weight="bold" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full w-full flex flex-col app-text-primary" style={backgroundStyle}>
       <div
@@ -1077,12 +1150,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             }}
             minZoom={minZoom}
             maxZoom={maxZoom}
+            snapToGrid={snapToGrid}
+            snapGrid={[28, 28]}
             nodesDraggable={!isLocked}
             nodesConnectable={!isLocked}
             elementsSelectable={!isLocked}
             panOnDrag={!isLocked}
             panOnScroll={!isLocked}
-            panOnScrollMode="free"
+            panOnScrollMode={PanOnScrollMode.Free}
             zoomOnScroll={false}
             zoomOnPinch={!isLocked}
             zoomOnDoubleClick={!isLocked}
@@ -1114,11 +1189,18 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               </div>
             )}
           </ReactFlow>
+        ) : surfacePlane === "script" ? (
+          <ScriptCanvas
+            projectData={projectData}
+            setProjectData={setProjectData}
+            onOpenEpisode={(episodeId) => setEditingScriptEpisodeId(episodeId)}
+          />
         ) : (
           <KnowledgeCanvasSurface
             section={knowledgeSection}
             onSectionChange={setKnowledgeSection}
             focusRequest={knowledgeFocusRequest}
+            composerSlot={qalamComposer}
           />
         )}
 
@@ -1134,24 +1216,40 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/92 p-1 shadow-[var(--app-shadow)] backdrop-blur-xl">
             <button
               type="button"
+              onClick={() => setSurfacePlane("script")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+                surfacePlane === "script"
+                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
+                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
+              }`}
+              title="Script"
+              aria-label="Script"
+            >
+              <FileText size={12} strokeWidth={2.2} />
+              Script
+            </button>
+            <button
+              type="button"
               onClick={() => setSurfacePlane("flow")}
-              className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                 surfacePlane === "flow"
                   ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
                   : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
               }`}
             >
+              <List size={12} strokeWidth={2.2} />
               Flow
             </button>
             <button
               type="button"
               onClick={() => openKnowledgePlane(knowledgeSection)}
-              className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
                 surfacePlane === "knowledge"
                   ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
                   : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
               }`}
             >
+              <FolderOpen size={12} strokeWidth={2.2} />
               Knowledge
             </button>
           </div>
@@ -1167,10 +1265,24 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         isDarkMode={isDarkMode}
         requestedPanel={agentSettingsPanel}
       />
+      {editingScriptEpisodeId !== null ? (
+        <WritingPanel
+          projectData={projectData}
+          setProjectData={setProjectData}
+          getAuthToken={getAuthToken}
+          initialEpisodeId={editingScriptEpisodeId}
+          onClose={() => setEditingScriptEpisodeId(null)}
+        />
+      ) : null}
       {surfacePlane === "flow" ? (
         <>
-          <div className="fixed bottom-4 left-4 z-[80] pointer-events-none">
-            <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
+          <div
+            className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
+            data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
+            data-qalam-first={isQalamFirstMode}
+          >
+            <div className="absolute bottom-4 left-4 pointer-events-none">
+              <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
               <QalamAgent
                 projectData={projectData}
                 setProjectData={setProjectData}
@@ -1202,7 +1314,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               />
               <div
                 className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                  showPeripheralWidgets && !isQalamFirstMode ? "opacity-100" : "pointer-events-none opacity-0"
+                  keepPeripheralWidgetsOpen && !isQalamFirstMode
+                    ? "opacity-100"
+                    : !isQalamFirstMode
+                      ? "pointer-events-none opacity-0"
+                      : "pointer-events-none opacity-0"
                 }`}
               >
                 <ViewportControls
@@ -1216,10 +1332,15 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                   onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
                   readingMode={readingMode}
                   onToggleReadingMode={handleToggleReadingMode}
+                  snapToGrid={snapToGrid}
+                  onToggleSnapToGrid={() => setSnapToGrid((prev) => !prev)}
                 />
+              </div>
               </div>
             </div>
           </div>
+          {surfacePlane === "flow" ? (
+            <>
           <div
             className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
               isQalamFirstMode ? "px-4" : ""
@@ -1284,71 +1405,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                   variant="embedded"
                 />
               </div>
-              <div
-                className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
-                style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
-              >
-                <div className="flex items-end gap-3">
-                  <textarea
-                    ref={composerRef}
-                    value={composerInput}
-                    onChange={(e) => {
-                      setComposerInput(e.target.value);
-                      resizeComposer(e.currentTarget);
-                    }}
-                    rows={1}
-                    className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
-                    placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const text = composerInput.trim();
-                      if (isQalamSending && !text) {
-                        setQalamCancelRequest((prev) => prev + 1);
-                        return;
-                      }
-                      if (!text) {
-                        toggleQalamFirstMode();
-                        return;
-                      }
-                      setComposerInput("");
-                      setQalamSubmitRequest({ id: Date.now(), text });
-                    }}
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
-                      isQalamSending
-                        ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
-                        : composerInput.trim()
-                        ? "bg-[var(--app-accent-strong)] hover:brightness-105"
-                        : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
-                    }`}
-                    title={
-                      isQalamSending
-                        ? "Stop Qalam"
-                        : composerInput.trim()
-                        ? "Send to Qalam"
-                        : isQalamFirstMode
-                        ? "Close Qalam First"
-                        : "Open Qalam First"
-                    }
-                    aria-label={
-                      isQalamSending
-                        ? "Stop Qalam"
-                        : composerInput.trim()
-                        ? "Send to Qalam"
-                        : isQalamFirstMode
-                        ? "Close Qalam First"
-                        : "Open Qalam First"
-                    }
-                  >
-                    {isQalamSending ? (
-                      <CircleNotch size={16} weight="bold" className="animate-spin" />
-                    ) : (
-                      <ArrowUp size={16} weight="bold" />
-                    )}
-                  </button>
-                </div>
-              </div>
+              {qalamComposer}
             </div>
           </div>
           <div
@@ -1380,6 +1437,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               </div>
             </div>
           </div>
+            </>
+          ) : null}
         </>
       ) : null}
       <Toast />

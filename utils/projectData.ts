@@ -84,6 +84,52 @@ const normalizeEpisode = (episode: any): Episode => {
   };
 };
 
+const normalizeScriptCanvasPosition = (value: any, fallback = { x: 0, y: 0 }) => ({
+  x: typeof value?.x === "number" && Number.isFinite(value.x) ? value.x : fallback.x,
+  y: typeof value?.y === "number" && Number.isFinite(value.y) ? value.y : fallback.y,
+});
+
+const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
+  const pages = Array.isArray(value?.pages)
+    ? value.pages
+        .map((page: any) => ({
+          episodeId: Number(page?.episodeId),
+          position: normalizeScriptCanvasPosition(page?.position),
+        }))
+        .filter((page: any) => Number.isFinite(page.episodeId) && page.episodeId > 0)
+    : [];
+
+  const images = Array.isArray(value?.images)
+    ? value.images
+        .map((image: any) => ({
+          id: ensureStableId(image?.id, "script-image"),
+          imageUrl: toSafeString(image?.imageUrl || image?.url),
+          filename: toOptionalString(image?.filename || image?.fileName),
+          position: normalizeScriptCanvasPosition(image?.position),
+          createdAt: typeof image?.createdAt === "number" ? image.createdAt : Date.now(),
+        }))
+        .filter((image: any) => !!image.imageUrl)
+    : [];
+
+  const nodeIds = new Set<string>([
+    ...pages.map((page: any) => `script-${page.episodeId}`),
+    ...images.map((image: any) => `image-${image.id}`),
+  ]);
+  const links = Array.isArray(value?.links)
+    ? value.links
+        .map((link: any) => ({
+          id: ensureStableId(link?.id, "script-link"),
+          source: toSafeString(link?.source),
+          target: toSafeString(link?.target),
+          sourceHandle: link?.sourceHandle === "text" ? "text" : link?.sourceHandle === "image" ? "image" : undefined,
+          targetHandle: link?.targetHandle === "text" ? "text" : link?.targetHandle === "image" ? "image" : undefined,
+        }))
+        .filter((link: any) => nodeIds.has(link.source) && nodeIds.has(link.target))
+    : [];
+
+  return { pages, images, links };
+};
+
 const normalizeAliases = (values: unknown[], seed: string[]) => {
   const seen = new Set<string>();
   const items = [...seed, ...values.map((item) => toSafeString(item).trim()).filter(Boolean)];
@@ -348,6 +394,7 @@ export const normalizeProjectData = (data: any): ProjectData => {
   base.designAssets = remapDesignAssets(base.designAssets as DesignAssetItem[], context);
   base.nodeFlow = data?.nodeFlow && typeof data.nodeFlow === "object" ? data.nodeFlow : null;
   base.nodeDefaults = normalizeNodeFlowNodeDefaults(data?.nodeDefaults);
+  base.scriptCanvas = normalizeScriptCanvas(data?.scriptCanvas);
   base.shotGuide = data?.shotGuide || INITIAL_PROJECT_DATA.shotGuide;
   base.soraGuide = data?.soraGuide || INITIAL_PROJECT_DATA.soraGuide;
   base.storyboardGuide = data?.storyboardGuide || INITIAL_PROJECT_DATA.storyboardGuide;

@@ -108,6 +108,38 @@ export interface Episode {
 
 export type ActiveTab = 'knowledge' | 'visuals' | 'video' | 'lab' | 'stats' | 'projector';
 
+export interface ScriptCanvasPosition {
+  x: number;
+  y: number;
+}
+
+export interface ScriptCanvasPageNode {
+  episodeId: number;
+  position: ScriptCanvasPosition;
+}
+
+export interface ScriptCanvasImageNode {
+  id: string;
+  imageUrl: string;
+  filename?: string;
+  position: ScriptCanvasPosition;
+  createdAt: number;
+}
+
+export interface ScriptCanvasLink {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: "image" | "text";
+  targetHandle?: "image" | "text";
+}
+
+export interface ScriptCanvasState {
+  pages: ScriptCanvasPageNode[];
+  images: ScriptCanvasImageNode[];
+  links: ScriptCanvasLink[];
+}
+
 // --- Unified Role Identity Types ---
 
 export type ProjectRoleKind = "person" | "scene";
@@ -214,6 +246,7 @@ export interface ProjectData {
   designAssets: DesignAssetItem[];
   nodeFlow?: NodeFlowFile | null;
   nodeDefaults?: NodeFlowNodeDefaults;
+  scriptCanvas?: ScriptCanvasState;
   contextUsage?: TokenUsage; // Total usage (Phase 1 + Easter Eggs)
   phase1Usage: Phase1Usage; // Detailed breakdown of Phase 1
 

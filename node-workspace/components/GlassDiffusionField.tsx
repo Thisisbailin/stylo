@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useId, useMemo } from "react";
 
 export type GlassDiffusionPresetKey = "bare" | "mist" | "veil";
 
@@ -80,6 +80,25 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
   },
 };
 
+export const QALAM_GLASS_LAB_CONFIG: Omit<GlassDiffusionConfig, "width" | "height"> = {
+  blur: 96,
+  fillAlpha: 0.08,
+  saturate: 107,
+  fadeInsetX: 20,
+  fadeInsetY: 68,
+  fade: 48,
+  edgeAlpha: 0.12,
+  curve: 5.4,
+};
+
+export const QALAM_GLASS_LAB_SHADOW = {
+  offsetX: 1,
+  offsetY: 0,
+  blur: 96,
+  alpha: 0.16,
+  spread: 16,
+};
+
 type Props = {
   width: number;
   height: number;
@@ -91,6 +110,65 @@ type Props = {
   boundaryDasharray?: string;
   boundaryWidth?: number;
   boundaryColor?: string;
+};
+
+type MaterialShadowProps = {
+  width: number;
+  height: number;
+  curve: number;
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+  alpha: number;
+  spread: number;
+};
+
+export const MaterialGlassShadow: React.FC<MaterialShadowProps> = ({
+  width,
+  height,
+  curve,
+  offsetX,
+  offsetY,
+  blur,
+  alpha,
+  spread,
+}) => {
+  const reactId = useId().replace(/:/g, "");
+  const filterId = `glass-material-shadow-${reactId}`;
+  const filterPad = Math.max(blur * 3 + Math.abs(offsetX) + Math.abs(offsetY), Math.abs(spread) + 24);
+  const viewWidth = width + filterPad * 2;
+  const viewHeight = height + filterPad * 2;
+  const shadowPath = useMemo(
+    () => buildSuperellipsePath(width + spread * 2, height + spread * 2, curve, filterPad - spread, filterPad - spread),
+    [curve, filterPad, height, spread, width]
+  );
+
+  if (width <= 0 || height <= 0 || alpha <= 0 || blur <= 0) return null;
+
+  return (
+    <svg
+      className="pointer-events-none absolute overflow-visible"
+      style={{
+        left: -filterPad,
+        top: -filterPad,
+        width: viewWidth,
+        height: viewHeight,
+      }}
+      viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%" colorInterpolationFilters="sRGB">
+          <feGaussianBlur in="SourceAlpha" stdDeviation={blur} result="shadow-blur" />
+          <feOffset in="shadow-blur" dx={offsetX} dy={offsetY} result="shadow-offset" />
+          <feFlood floodColor={`rgba(0,0,0,${alpha})`} result="shadow-color" />
+          <feComposite in="shadow-color" in2="shadow-offset" operator="in" result="shadow" />
+        </filter>
+      </defs>
+      <path d={shadowPath} fill="black" filter={`url(#${filterId})`} />
+    </svg>
+  );
 };
 
 export const GlassDiffusionField: React.FC<Props> = ({

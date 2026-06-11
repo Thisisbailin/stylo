@@ -13,6 +13,11 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
   designAssets: [],
   nodeFlow: null,
   nodeDefaults: {},
+  scriptCanvas: {
+    pages: [],
+    images: [],
+    links: [],
+  },
   shotGuide: '',
   soraGuide: '',
   storyboardGuide: '',

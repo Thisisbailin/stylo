@@ -290,6 +290,18 @@
   transform: translateY(12px) !important;
 }
 
+.qalam-viewport-control-zone:hover .qalam-bottom-controls,
+.qalam-viewport-control-zone:focus-within .qalam-bottom-controls,
+.qalam-viewport-control-zone[data-keep-open="true"] .qalam-bottom-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.qalam-viewport-control-zone[data-qalam-first="true"] .qalam-bottom-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
 body.qalam-resizing,
 body.qalam-resizing * {
   user-select: none !important;
@@ -879,6 +891,77 @@ body.qalam-resizing * {
   opacity: 0;
 }
 
+.writing-fountain-line {
+  display: inline-block;
+  width: 100%;
+  min-height: 2.25rem;
+  white-space: pre-wrap;
+}
+
+.writing-fountain-line--scene_heading {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.writing-fountain-line--character {
+  width: 42%;
+  margin-left: 36%;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.writing-fountain-line--dialogue {
+  width: 52%;
+  margin-left: 24%;
+}
+
+.writing-fountain-line--parenthetical {
+  width: 42%;
+  margin-left: 30%;
+  color: color-mix(in srgb, var(--app-text-primary) 78%, transparent);
+}
+
+.writing-fountain-line--transition {
+  text-align: right;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.writing-fountain-line--centered {
+  text-align: center;
+  font-weight: 700;
+}
+
+.writing-fountain-line--note {
+  color: var(--app-text-muted);
+  font-style: italic;
+}
+
+.writing-fountain-line--section {
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.writing-fountain-line--synopsis {
+  color: var(--app-text-secondary);
+  font-style: italic;
+}
+
+.writing-fountain-line--page_break {
+  position: relative;
+}
+
+.writing-fountain-line--page_break::after {
+  content: "";
+  display: block;
+  width: 100%;
+  border-top: 1px dashed color-mix(in srgb, var(--app-text-muted) 52%, transparent);
+  transform: translateY(1.05rem);
+}
+
 .writing-token {
   display: inline-flex;
   align-items: center;
@@ -1082,6 +1165,24 @@ body.qalam-resizing * {
   cursor: default;
 }
 
+.writing-format-pill {
+  display: inline-flex;
+  height: 34px;
+  min-width: 92px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+  background: color-mix(in srgb, var(--app-panel-muted) 78%, transparent);
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--app-text-secondary);
+  white-space: nowrap;
+}
+
 .writing-scene-count {
   min-width: 42px;
   text-align: center;
@@ -1159,6 +1260,42 @@ body.qalam-resizing * {
 
 .writing-scene-strip > .writing-scene-input:not(.writing-scene-input--id):not(.writing-scene-input--short):not(.writing-scene-input--cast) {
   flex: 0 1 260px;
+}
+
+.writing-format-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+  padding: 9px 16px;
+  scrollbar-width: thin;
+}
+
+.writing-format-button {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 68%, transparent);
+  background: color-mix(in srgb, var(--app-panel-muted) 68%, transparent);
+  padding: 0 11px;
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-secondary);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.writing-format-button:hover,
+.writing-format-button.is-active {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--app-accent) 46%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-accent-soft) 34%, var(--app-panel-muted));
+  color: var(--app-text-primary);
 }
 
 .writing-script-paper .writing-paper-body {

@@ -1,15 +1,21 @@
-import React from "react";
+﻿import React from "react";
 import {
+  applyNodeChanges,
   Background,
-  Controls,
   MiniMap,
+  PanOnScrollMode,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   type Edge,
   type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import type { KnowledgeLink, KnowledgeNode } from "../types";
 import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
+import type { NodeFlowReadingMode } from "../../nodeflow/sessionState";
+import { useNodeFlowStore } from "../../store/nodeFlowStore";
+import { ViewportControls } from "../../components/ViewportControls";
 
 type Props = {
   title?: string;
@@ -21,10 +27,10 @@ type Props = {
   layoutMode?: "backbone" | "focus" | "revisions" | "anchor" | "full";
 };
 
-const CARD_WIDTH = 356;
-const CARD_HEIGHT = 258;
-const COLUMN_GAP = 460;
-const ROW_GAP = 320;
+const CARD_WIDTH = 320;
+const CARD_HEIGHT = 226;
+const COLUMN_GAP = 400;
+const ROW_GAP = 274;
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -47,7 +53,7 @@ const renderInlineMarkdown = (text: string) => {
       nodes.push(
         <code
           key={`${match.index}-c`}
-          className="rounded bg-white/8 px-1 py-0.5 text-[11px] text-[var(--app-text-primary)]"
+          className="rounded bg-[var(--app-panel-muted)] px-1 py-0.5 text-[11px] text-[var(--app-text-primary)]"
         >
           {token.slice(1, -1)}
         </code>
@@ -62,7 +68,7 @@ const renderInlineMarkdown = (text: string) => {
           href={href}
           target="_blank"
           rel="noreferrer"
-          className="text-sky-300 underline underline-offset-2"
+          className="text-[var(--app-text-primary)] underline decoration-[var(--app-border-strong)] underline-offset-2"
         >
           {label}
         </a>
@@ -74,7 +80,7 @@ const renderInlineMarkdown = (text: string) => {
           href={token}
           target="_blank"
           rel="noreferrer"
-          className="text-sky-300 underline underline-offset-2"
+          className="text-[var(--app-text-primary)] underline decoration-[var(--app-border-strong)] underline-offset-2"
         >
           {token}
         </a>
@@ -114,9 +120,11 @@ const renderMarkdownLite = (text: string) => {
       blocks.push(
         <pre
           key={`code-${i}`}
-          className="overflow-x-auto rounded-2xl border border-white/8 bg-black/24 px-3 py-2 text-[11px] leading-5 text-[var(--app-text-secondary)]"
+          className="overflow-x-auto rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-secondary)]"
         >
-          {lang ? <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-muted)]">{lang}</div> : null}
+          {lang ? (
+            <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-muted)]">{lang}</div>
+          ) : null}
           <code>{codeLines.join("\n")}</code>
         </pre>
       );
@@ -128,10 +136,10 @@ const renderMarkdownLite = (text: string) => {
       const level = headingMatch[1].length;
       const title =
         level === 1
-          ? "text-[16px] font-semibold"
+          ? "text-[15px] font-semibold"
           : level === 2
-            ? "text-[14px] font-semibold"
-            : "text-[12px] font-semibold uppercase tracking-[0.12em]";
+            ? "text-[13px] font-semibold"
+            : "text-[11px] font-semibold uppercase tracking-[0.12em]";
       blocks.push(
         <div key={`h-${i}`} className={`${title} text-[var(--app-text-primary)]`}>
           {renderInlineMarkdown(headingMatch[2])}
@@ -158,14 +166,14 @@ const renderMarkdownLite = (text: string) => {
       continue;
     }
 
-    const listMatch = line.match(/^\s*(?:[-*•]|\d+\.|\d+、)\s+/);
+    const listMatch = line.match(/^\s*(?:[-*\u2022]|\d+\.|\d+\u3001)\s+/);
     if (listMatch) {
       const items: string[] = [];
       let ordered = false;
       while (i < lines.length) {
         const current = lines[i];
-        const bulletMatch = current.match(/^\s*[-*•]\s+(.+)$/);
-        const orderedMatch = current.match(/^\s*(?:\d+\.|\d+、)\s+(.+)$/);
+        const bulletMatch = current.match(/^\s*[-*\u2022]\s+(.+)$/);
+        const orderedMatch = current.match(/^\s*(?:\d+\.|\d+\u3001)\s+(.+)$/);
         if (!bulletMatch && !orderedMatch) break;
         if (orderedMatch) ordered = true;
         items.push((orderedMatch?.[1] || bulletMatch?.[1] || "").trim());
@@ -205,14 +213,14 @@ const renderMarkdownLite = (text: string) => {
           i += 1;
         }
         blocks.push(
-          <div key={`table-${i}`} className="overflow-x-auto rounded-2xl border border-white/8 bg-white/4 px-2 py-2">
+          <div key={`table-${i}`} className="overflow-x-auto rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-2">
             <table className="min-w-full border-collapse text-[11px] text-[var(--app-text-secondary)]">
               <thead>
                 <tr>
                   {headers.map((header, index) => (
                     <th
                       key={`${header}-${index}`}
-                      className="border-b border-white/8 px-2 pb-1 text-left font-semibold text-[var(--app-text-primary)]"
+                      className="border-b border-[var(--app-border)] px-2 pb-1 text-left font-semibold text-[var(--app-text-primary)]"
                     >
                       {renderInlineMarkdown(header)}
                     </th>
@@ -244,7 +252,7 @@ const renderMarkdownLite = (text: string) => {
         current.trim().startsWith("```") ||
         /^(#{1,4})\s+/.test(current) ||
         current.trim().startsWith(">") ||
-        /^\s*(?:[-*•]|\d+\.|\d+、)\s+/.test(current)
+        /^\s*(?:[-*\u2022]|\d+\.|\d+\u3001)\s+/.test(current)
       ) {
         break;
       }
@@ -406,10 +414,10 @@ const buildBackbonePositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) 
     });
 
     const blockHeights = episodeBlocks.map(({ sceneNodes }) =>
-      Math.max(CARD_HEIGHT, sceneNodes.length * (CARD_HEIGHT + 36) - 36)
+      Math.max(CARD_HEIGHT, sceneNodes.length * (CARD_HEIGHT + 28) - 28)
     );
     const totalHeight =
-      blockHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, episodeBlocks.length - 1) * 64;
+      blockHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, episodeBlocks.length - 1) * 48;
     const scriptY = cursorY + Math.max(0, totalHeight / 2 - CARD_HEIGHT / 2);
 
     positioned.set(scriptNode.id, { x: 0, y: scriptY });
@@ -423,14 +431,14 @@ const buildBackbonePositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) 
       sceneNodes.forEach((sceneNode, sceneIndex) => {
         positioned.set(sceneNode.id, {
           x: COLUMN_GAP * 2,
-          y: episodeCursorY + sceneIndex * (CARD_HEIGHT + 36),
+          y: episodeCursorY + sceneIndex * (CARD_HEIGHT + 28),
         });
       });
 
-      episodeCursorY += blockHeight + 64;
+      episodeCursorY += blockHeight + 48;
     });
 
-    cursorY += Math.max(totalHeight, CARD_HEIGHT) + (scriptIndex < scriptNodes.length - 1 ? 160 : 0);
+    cursorY += Math.max(totalHeight, CARD_HEIGHT) + (scriptIndex < scriptNodes.length - 1 ? 120 : 0);
   });
 
   const remaining = nodes
@@ -439,8 +447,8 @@ const buildBackbonePositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) 
 
   remaining.forEach((node, index) => {
     positioned.set(node.id, {
-      x: COLUMN_GAP * 3 + (index % 2) * (CARD_WIDTH + 48),
-      y: Math.floor(index / 2) * (CARD_HEIGHT + 48),
+      x: COLUMN_GAP * 3 + (index % 2) * (CARD_WIDTH + 36),
+      y: Math.floor(index / 2) * (CARD_HEIGHT + 36),
     });
   });
 
@@ -469,22 +477,22 @@ const buildFocusPositions = (
 
   incoming.forEach((node, index) => {
     positioned.set(node.id, {
-      x: -(COLUMN_GAP + 80),
-      y: index * (CARD_HEIGHT + 44) - ((incoming.length - 1) * (CARD_HEIGHT + 44)) / 2,
+      x: -(COLUMN_GAP + 40),
+      y: index * (CARD_HEIGHT + 36) - ((incoming.length - 1) * (CARD_HEIGHT + 36)) / 2,
     });
   });
   outgoing.forEach((node, index) => {
     positioned.set(node.id, {
-      x: COLUMN_GAP + 80,
-      y: index * (CARD_HEIGHT + 44) - ((outgoing.length - 1) * (CARD_HEIGHT + 44)) / 2,
+      x: COLUMN_GAP + 40,
+      y: index * (CARD_HEIGHT + 36) - ((outgoing.length - 1) * (CARD_HEIGHT + 36)) / 2,
     });
   });
 
   const remaining = nodes.filter((node) => !positioned.has(node.id));
   remaining.forEach((node, index) => {
     positioned.set(node.id, {
-      x: (index % 3) * (CARD_WIDTH + 44) - (CARD_WIDTH + 44),
-      y: CARD_HEIGHT + 120 + Math.floor(index / 3) * (CARD_HEIGHT + 44),
+      x: (index % 3) * (CARD_WIDTH + 36) - (CARD_WIDTH + 36),
+      y: CARD_HEIGHT + 96 + Math.floor(index / 3) * (CARD_HEIGHT + 36),
     });
   });
 
@@ -512,8 +520,8 @@ const buildRevisionPositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) 
     while (cursor && !seen.has(cursor.id)) {
       seen.add(cursor.id);
       positioned.set(cursor.id, {
-        x: column * (CARD_WIDTH + 72),
-        y: rowIndex * (CARD_HEIGHT + 84),
+        x: column * (CARD_WIDTH + 56),
+        y: rowIndex * (CARD_HEIGHT + 64),
       });
       const nextLink = supersedeLinks
         .filter((link) => link.fromNodeId === cursor!.id)
@@ -527,8 +535,8 @@ const buildRevisionPositions = (nodes: KnowledgeNode[], links: KnowledgeLink[]) 
   const remaining = nodes.filter((node) => !positioned.has(node.id));
   remaining.forEach((node, index) => {
     positioned.set(node.id, {
-      x: (index % 3) * (CARD_WIDTH + 48),
-      y: (heads.length + 1) * (CARD_HEIGHT + 84) + Math.floor(index / 3) * (CARD_HEIGHT + 48),
+      x: (index % 3) * (CARD_WIDTH + 36),
+      y: (heads.length + 1) * (CARD_HEIGHT + 64) + Math.floor(index / 3) * (CARD_HEIGHT + 36),
     });
   });
 
@@ -555,80 +563,83 @@ const buildPositionsByMode = (
   }
 };
 
+const nodeMetaPillClass =
+  "rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-1.5 py-0.5 text-[10px] text-[var(--app-text-secondary)]";
+
 const toCanvasNodes = (
   nodes: KnowledgeNode[],
   links: KnowledgeLink[],
   selectedNodeRef?: string | null,
-  layoutMode: NonNullable<Props["layoutMode"]> = "full"
+  layoutMode: NonNullable<Props["layoutMode"]> = "full",
+  readingMode: NodeFlowReadingMode = "full",
+  positionOverrides: Record<string, { x: number; y: number }> = {}
 ): Node[] => {
   const positioned = buildPositionsByMode(nodes, links, layoutMode, selectedNodeRef);
+  const isIdentityMode = readingMode === "identity";
 
   return nodes.map((node) => {
     const markdown = buildKnowledgeMarkdown(node);
     const urls = extractUrls(markdown);
+    const selected = selectedNodeRef === node.ref;
+    const position = positionOverrides[node.id] || positioned.get(node.id) || { x: 0, y: 0 };
     return {
       id: node.id,
       type: "default",
-      position: positioned.get(node.id) || { x: 0, y: 0 },
+      position,
       data: {
         label: (
-          <div className="flex h-full w-full flex-col overflow-hidden rounded-[26px] border border-white/8 bg-[linear-gradient(180deg,rgba(36,36,38,0.98),rgba(24,24,26,0.98))] shadow-[0_18px_48px_rgba(0,0,0,0.26)]">
-            <div className="border-b border-white/8 px-4 py-3">
+          <div
+            className={`flex h-full w-full flex-col overflow-hidden rounded-lg border bg-[var(--app-panel)]/96 shadow-[0_12px_30px_rgba(0,0,0,0.14)] ${
+              selected ? "border-[var(--app-border-strong)]" : "border-[var(--app-border)]"
+            }`}
+            data-reading-mode={readingMode}
+          >
+            <div className="border-b border-[var(--app-border)] px-3 py-2.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
                     {formatKnowledgeKindLabel(node.kind)}
                   </div>
-                  <div className="mt-1 truncate text-[15px] font-semibold text-[var(--app-text-primary)]">
+                  <div className="mt-1 truncate text-[14px] font-semibold text-[var(--app-text-primary)]">
                     {node.package.title}
                   </div>
                 </div>
-                <span className="shrink-0 rounded-full border border-white/8 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[var(--app-text-secondary)]">
+                <span className="shrink-0 rounded-md border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--app-text-secondary)]">
                   {node.package.status}
                 </span>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                  {formatKnowledgeOriginLabel(node.origin)}
-                </span>
-                <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                  anchors {node.anchors.length}
-                </span>
-                {urls.length ? (
-                  <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                    links {urls.length}
-                  </span>
-                ) : null}
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className={nodeMetaPillClass}>{formatKnowledgeOriginLabel(node.origin)}</span>
+                <span className={nodeMetaPillClass}>anchors {node.anchors.length}</span>
+                {urls.length ? <span className={nodeMetaPillClass}>links {urls.length}</span> : null}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-              {renderMarkdownLite(markdown)}
-            </div>
-            <div className="border-t border-white/8 px-4 py-2 text-[10px] text-[var(--app-text-muted)]">
-              {node.ref}
-            </div>
+            {!isIdentityMode ? (
+              <>
+                <div className="min-h-0 flex-1 overflow-auto px-3 py-2.5">
+                  {renderMarkdownLite(markdown)}
+                </div>
+                <div className="truncate border-t border-[var(--app-border)] px-3 py-1.5 font-mono text-[10px] text-[var(--app-text-muted)]">
+                  {node.ref}
+                </div>
+              </>
+            ) : null}
           </div>
         ),
       },
-      draggable: false,
+      draggable: true,
       selectable: true,
       connectable: false,
       deletable: false,
-      selected: selectedNodeRef === node.ref,
+      selected,
       style: {
         width: CARD_WIDTH,
-        height: CARD_HEIGHT,
-        borderRadius: 26,
-        border:
-          selectedNodeRef === node.ref
-            ? "1px solid rgba(255,255,255,0.22)"
-            : "1px solid transparent",
+        height: isIdentityMode ? 112 : CARD_HEIGHT,
+        borderRadius: 8,
+        border: selected ? "1px solid var(--app-border-strong)" : "1px solid transparent",
         background: "transparent",
         color: "var(--app-text-primary)",
-        boxShadow:
-          selectedNodeRef === node.ref
-            ? "0 0 0 1px rgba(255,255,255,0.08), 0 20px 48px rgba(0,0,0,0.32)"
-            : "none",
+        boxShadow: selected ? "0 0 0 3px var(--app-accent-soft)" : "none",
         padding: 0,
         cursor: "pointer",
       },
@@ -645,8 +656,8 @@ const toCanvasLinks = (links: KnowledgeLink[]): Edge[] =>
     selectable: false,
     deletable: false,
     style: {
-      stroke: "rgba(255,255,255,0.2)",
-      strokeWidth: 1.5,
+      stroke: "var(--app-border-strong)",
+      strokeWidth: 1.4,
     },
   }));
 
@@ -659,33 +670,73 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   variant = "panel",
   layoutMode = "full",
 }) => {
+  const { getViewport, setViewport } = useReactFlow();
+  const minZoom = 0.2;
+  const maxZoom = 1.4;
+  const [isLocked, setIsLocked] = React.useState(false);
+  const [snapToGrid, setSnapToGrid] = React.useState(false);
+  const [showMiniMap, setShowMiniMap] = React.useState(false);
+  const [zoomValue, setZoomValue] = React.useState(() => getViewport().zoom ?? 1);
+  const [positionOverrides, setPositionOverrides] = React.useState<Record<string, { x: number; y: number }>>({});
+  const readingMode = useNodeFlowStore((state) => state.readingMode);
+  const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
   const canvasNodes = React.useMemo(
-    () => toCanvasNodes(nodes, links, selectedNodeRef, layoutMode),
-    [layoutMode, links, nodes, selectedNodeRef]
+    () => toCanvasNodes(nodes, links, selectedNodeRef, layoutMode, readingMode, positionOverrides),
+    [layoutMode, links, nodes, positionOverrides, readingMode, selectedNodeRef]
   );
   const canvasLinks = React.useMemo(() => toCanvasLinks(links), [links]);
   const isCanvas = variant === "canvas";
+
+  React.useEffect(() => {
+    setPositionOverrides((current) => {
+      const validIds = new Set(nodes.map((node) => node.id));
+      const next = Object.fromEntries(Object.entries(current).filter(([id]) => validIds.has(id)));
+      return Object.keys(next).length === Object.keys(current).length ? current : next;
+    });
+  }, [nodes]);
+
+  const handleZoomChange = React.useCallback(
+    (value: number) => {
+      const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
+      setZoomValue(nextZoom);
+      setViewport({ ...getViewport(), zoom: nextZoom }, { duration: 180 });
+    },
+    [getViewport, setViewport]
+  );
+  const handleNodesChange = React.useCallback(
+    (changes: NodeChange[]) => {
+      const nextNodes = applyNodeChanges(changes, canvasNodes);
+      setPositionOverrides((current) => {
+        const next = { ...current };
+        nextNodes.forEach((node) => {
+          next[node.id] = node.position;
+        });
+        return next;
+      });
+    },
+    [canvasNodes]
+  );
 
   return (
     <div
       className={
         isCanvas
-          ? "h-full w-full"
-          : "rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel)]/88 p-4"
+          ? "relative h-full w-full"
+          : "relative rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)]/88 p-4"
       }
     >
       {!isCanvas ? (
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
               Knowledge Canvas
             </div>
-            <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
+            <div className="mt-1 truncate text-[13px] font-semibold text-[var(--app-text-primary)]">
               {title}
             </div>
           </div>
-          <div className="text-[10px] text-[var(--app-text-secondary)]">
-            {nodes.length} nodes · {links.length} links
+          <div className="shrink-0 text-[10px] text-[var(--app-text-secondary)]">
+            {nodes.length} nodes / {links.length} links
           </div>
         </div>
       ) : null}
@@ -693,41 +744,78 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
       <div
         className={
           isCanvas
-            ? "h-full w-full overflow-hidden rounded-[28px]"
-            : "h-[420px] overflow-hidden rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]"
+            ? "h-full w-full overflow-hidden"
+            : "h-[420px] overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-muted)]"
         }
       >
         <ReactFlow
           nodes={canvasNodes}
           edges={canvasLinks}
+          onNodesChange={handleNodesChange}
           fitView
-          fitViewOptions={{ padding: 0.24, maxZoom: 1.1, minZoom: 0.24 }}
-          nodesDraggable={false}
+          fitViewOptions={{ padding: 0.22, maxZoom: 1.08, minZoom: 0.24 }}
+          nodesDraggable={isCanvas && !isLocked}
           nodesConnectable={false}
-          elementsSelectable
+          elementsSelectable={!isLocked}
+          snapToGrid={snapToGrid}
+          snapGrid={[28, 28]}
           zoomOnDoubleClick={false}
+          zoomOnPinch={!isLocked}
+          panOnDrag={!isLocked}
+          panOnScroll={!isLocked}
+          panOnScrollMode={PanOnScrollMode.Free}
+          onMove={(_, viewport) => setZoomValue(viewport.zoom)}
           onNodeClick={(_, node) => {
             const ref = nodes.find((item) => item.id === node.id)?.ref;
             if (ref) onSelectNodeRef?.(ref);
           }}
+          onlyRenderVisibleElements
           proOptions={{ hideAttribution: true }}
-          minZoom={0.2}
-          maxZoom={1.4}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
         >
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={() => "rgba(255,255,255,0.55)"}
-            maskColor="rgba(0,0,0,0.18)"
-            style={{
-              background: "rgba(16,16,18,0.78)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 16,
-            }}
-          />
-          <Controls showInteractive={false} />
-          <Background gap={24} size={1} color="rgba(255,255,255,0.06)" />
+          {showMiniMap || !isCanvas ? (
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={() => "var(--app-text-muted)"}
+              maskColor="rgba(0,0,0,0.16)"
+              style={{
+                background: "var(--app-panel)",
+                border: "1px solid var(--app-border)",
+                borderRadius: 8,
+              }}
+            />
+          ) : null}
+          <Background gap={28} size={1} color="var(--app-pattern)" />
         </ReactFlow>
+
+        {isCanvas ? (
+          <div
+            className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
+            data-keep-open={showMiniMap}
+            data-qalam-first="false"
+          >
+            <div className="absolute bottom-4 left-4 pointer-events-none">
+              <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                <ViewportControls
+                  zoom={zoomValue}
+                  minZoom={minZoom}
+                  maxZoom={maxZoom}
+                  onZoomChange={handleZoomChange}
+                  isLocked={isLocked}
+                  onToggleLock={() => setIsLocked((value) => !value)}
+                  readingMode={readingMode}
+                  onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
+                  snapToGrid={snapToGrid}
+                  onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
+                  showMiniMap={showMiniMap}
+                  onToggleMiniMap={() => setShowMiniMap((value) => !value)}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

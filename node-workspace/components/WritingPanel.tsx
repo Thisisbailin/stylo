@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Bot, ChevronLeft, ChevronRight, MoreHorizontal, Plus, X } from "lucide-react";
-import type { Character, Episode, ProjectData } from "../../types";
+import { BarChart3, Bot, ChevronLeft, ChevronRight, Download, Minimize2, MoreHorizontal, Plus, X } from "lucide-react";
+import type { Character, Episode, ProjectData, Scene } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
 import { QalamAgent } from "./QalamAgent";
@@ -10,6 +10,7 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onClose?: () => void;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
+  initialEpisodeId?: number | null;
 };
 
 type WritingScene = {
@@ -177,6 +178,94 @@ const exportEpisode = (episode: WritingEpisode) =>
 
 const exportDraft = (episodes: WritingEpisode[]) => episodes.map(exportEpisode).filter(Boolean).join("\n\n");
 
+const collectFountainCharacterNames = (body: string) => {
+  const names = body
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("@")) return "";
+      return stripFountainMarkup(trimmed).replace(/\s*\([^)]*\)\s*$/, "").trim();
+    })
+    .filter(Boolean);
+  return Array.from(new Set(names));
+};
+
+const draftSceneToProjectScene = (scene: WritingScene): Scene => ({
+  id: scene.id,
+  title: scene.title.trim() || "SCENE",
+  content: scene.body.trim(),
+  timeOfDay: scene.timeOfDay.trim() || undefined,
+  location: scene.location.trim() || undefined,
+  metadata: {
+    rawTitle: [scene.location.trim(), scene.title.trim(), scene.timeOfDay.trim()].filter(Boolean).join(" "),
+    tokens: [scene.location.trim(), scene.title.trim(), scene.timeOfDay.trim()].filter(Boolean),
+  },
+});
+
+const draftToProjectEpisodes = (episodes: WritingEpisode[]): Episode[] =>
+  episodes.map((episode) => {
+    const scenes = episode.scenes.map(draftSceneToProjectScene);
+    const cast = Array.from(
+      new Set([
+        ...episode.scenes.flatMap((scene) => parseCastNames(scene.castLine)),
+        ...episode.scenes.flatMap((scene) => collectFountainCharacterNames(scene.body)),
+      ])
+    );
+
+    return {
+      id: episode.id,
+      title: episode.title.trim() || `Episode ${episode.id}`,
+      content: scenes
+        .map((scene) => [`${scene.id} ${scene.title}`, scene.content].filter(Boolean).join("\n"))
+        .join("\n\n"),
+      scenes,
+      characters: cast,
+      shots: [],
+      status: "pending",
+    };
+  });
+
+const buildSceneFountainHeader = (scene: WritingScene) => {
+  const heading = [scene.location.trim() || "INT.", scene.title.trim() || "SCENE", scene.timeOfDay.trim()]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return heading ? `.${heading}` : "";
+};
+
+const exportFountainDocument = (episodes: WritingEpisode[], title: string) =>
+  [
+    title.trim() ? `Title: ${title.trim()}` : "",
+    "",
+    ...episodes.flatMap((episode) => [
+      `# ${episode.title.trim() || `Episode ${episode.id}`}`,
+      "",
+      ...episode.scenes.flatMap((scene) => [
+        buildSceneFountainHeader(scene),
+        "",
+        scene.body.trim(),
+        "",
+      ]),
+    ]),
+  ]
+    .filter((line, index, lines) => line.trim() || (index > 0 && lines[index - 1]?.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const downloadTextFile = (filename: string, content: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
 const mergeEpisodes = (previous: Episode[], parsed: Episode[]) => {
   const previousMap = new Map(previous.map((episode) => [episode.id, episode]));
   return parsed.map((episode) => {
@@ -218,6 +307,202 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const summarizeEpisode = (episode: WritingEpisode) =>
   compactText(episode.scenes.map((scene) => scene.body).find((body) => body.trim()) || "");
 
+type FountainLineKind =
+  | "action"
+  | "scene_heading"
+  | "character"
+  | "dialogue"
+  | "parenthetical"
+  | "transition"
+  | "centered"
+  | "note"
+  | "section"
+  | "synopsis"
+  | "page_break";
+
+const FOUNTAIN_FORMAT_ORDER: FountainLineKind[] = [
+  "action",
+  "scene_heading",
+  "character",
+  "dialogue",
+  "parenthetical",
+  "transition",
+  "centered",
+  "note",
+  "section",
+  "synopsis",
+  "page_break",
+];
+
+const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
+  action: "Action",
+  scene_heading: "Scene",
+  character: "Character",
+  dialogue: "Dialogue",
+  parenthetical: "Paren",
+  transition: "Transition",
+  centered: "Centered",
+  note: "Note",
+  section: "Section",
+  synopsis: "Synopsis",
+  page_break: "Page Break",
+};
+
+const FOUNTAIN_QUICK_FORMATS: FountainLineKind[] = [
+  "action",
+  "scene_heading",
+  "character",
+  "dialogue",
+  "parenthetical",
+  "transition",
+  "centered",
+  "note",
+];
+
+const getLineBoundsAt = (text: string, cursor: number) => {
+  const safeCursor = clamp(cursor, 0, text.length);
+  const lineStart = text.lastIndexOf("\n", Math.max(0, safeCursor - 1)) + 1;
+  const nextBreak = text.indexOf("\n", safeCursor);
+  const lineEnd = nextBreak === -1 ? text.length : nextBreak;
+  const lineIndex = text.slice(0, lineStart).split("\n").length - 1;
+  return {
+    lineStart,
+    lineEnd,
+    lineIndex,
+    line: text.slice(lineStart, lineEnd),
+  };
+};
+
+const stripFountainMarkup = (line: string) => {
+  const trimmed = line.trim();
+  if (!trimmed) return "";
+  if (/^={3,}$/.test(trimmed)) return "";
+  if (/^\[\[.*\]\]$/.test(trimmed)) return trimmed.replace(/^\[\[/, "").replace(/\]\]$/, "").trim();
+  if (/^>.*<$/.test(trimmed)) return trimmed.replace(/^>\s*/, "").replace(/\s*<$/, "").trim();
+  if (/^>/.test(trimmed)) return trimmed.replace(/^>\s*/, "").trim();
+  if (/^#+\s*/.test(trimmed)) return trimmed.replace(/^#+\s*/, "").trim();
+  if (/^=\s*/.test(trimmed)) return trimmed.replace(/^=\s*/, "").trim();
+  if (/^@/.test(trimmed)) return trimmed.replace(/^@+/, "").trim();
+  if (/^!/.test(trimmed)) return trimmed.replace(/^!+/, "").trim();
+  if (/^\..+/.test(trimmed)) return trimmed.replace(/^\.+/, "").trim();
+  if (/^\(.+\)$/.test(trimmed)) return trimmed.replace(/^\(/, "").replace(/\)$/, "").trim();
+  return line;
+};
+
+const isCharacterLine = (line: string) => /^@/.test(line.trim());
+
+const getPreviousNonEmptyLine = (lines: string[], lineIndex: number) => {
+  for (let i = lineIndex - 1; i >= 0; i -= 1) {
+    if (lines[i]?.trim()) return lines[i];
+  }
+  return "";
+};
+
+const getFountainLineKind = (line: string, previousNonEmptyLine = ""): FountainLineKind => {
+  const trimmed = line.trim();
+  if (!trimmed) return "action";
+  if (/^={3,}$/.test(trimmed)) return "page_break";
+  if (/^#+\s*/.test(trimmed)) return "section";
+  if (/^=\s*/.test(trimmed)) return "synopsis";
+  if (/^\[\[.*\]\]$/.test(trimmed)) return "note";
+  if (/^>.*<$/.test(trimmed)) return "centered";
+  if (/^>/.test(trimmed)) return "transition";
+  if (/^\(.+\)$/.test(trimmed)) return "parenthetical";
+  if (/^@/.test(trimmed)) return "character";
+  if (/^\./.test(trimmed)) return "scene_heading";
+  if (/^!/.test(trimmed)) return "action";
+  if (isCharacterLine(previousNonEmptyLine)) return "dialogue";
+  return "action";
+};
+
+const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
+  const raw = stripFountainMarkup(line).trim();
+  const fallback = raw || (targetKind === "page_break" ? "" : targetKind === "character" ? "CHARACTER" : "Text");
+
+  switch (targetKind) {
+    case "scene_heading":
+      return `.${fallback.toUpperCase()}`;
+    case "character":
+      return `@${fallback.toUpperCase()}`;
+    case "dialogue":
+      return fallback === "Text" ? "Dialogue line" : fallback;
+    case "parenthetical":
+      return `(${fallback === "Text" ? "beat" : fallback})`;
+    case "transition":
+      return `> ${fallback === "Text" ? "CUT TO:" : fallback.toUpperCase().endsWith(":") ? fallback.toUpperCase() : `${fallback.toUpperCase()}:`}`;
+    case "centered":
+      return `> ${fallback} <`;
+    case "note":
+      return `[[${fallback === "Text" ? "note" : fallback}]]`;
+    case "section":
+      return `# ${fallback === "Text" ? "Act One" : fallback}`;
+    case "synopsis":
+      return `= ${fallback === "Text" ? "summary" : fallback}`;
+    case "page_break":
+      return "===";
+    case "action":
+    default:
+      return raw ? `!${raw}` : "";
+  }
+};
+
+const getNextFountainLineKind = (currentKind: FountainLineKind): FountainLineKind => {
+  switch (currentKind) {
+    case "scene_heading":
+      return "action";
+    case "character":
+    case "parenthetical":
+      return "dialogue";
+    case "transition":
+    case "centered":
+    case "note":
+    case "section":
+    case "synopsis":
+    case "page_break":
+      return "action";
+    case "dialogue":
+    case "action":
+    default:
+      return "action";
+  }
+};
+
+const createEmptyFountainLine = (kind: FountainLineKind) => {
+  switch (kind) {
+    case "scene_heading":
+      return ".INT. SCENE - DAY";
+    case "character":
+      return "@CHARACTER";
+    case "dialogue":
+      return "";
+    case "parenthetical":
+      return "(beat)";
+    case "transition":
+      return "> CUT TO:";
+    case "centered":
+      return "> TEXT <";
+    case "note":
+      return "[[note]]";
+    case "section":
+      return "# Section";
+    case "synopsis":
+      return "= summary";
+    case "page_break":
+      return "===";
+    case "action":
+    default:
+      return "";
+  }
+};
+
+const displayFountainLine = (line: string, kind: FountainLineKind) => {
+  if (kind === "page_break") return " ";
+  if (kind === "character") return stripFountainMarkup(line).toUpperCase();
+  if (kind === "scene_heading") return stripFountainMarkup(line).toUpperCase();
+  if (kind === "transition") return stripFountainMarkup(line).toUpperCase();
+  return stripFountainMarkup(line);
+};
+
 const buildScenePreview = (scene: WritingScene) => {
   const sluglineParts = [
     scene.location.trim().toUpperCase(),
@@ -230,12 +515,15 @@ const buildScenePreview = (scene: WritingScene) => {
     .join("\n");
 };
 
-export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onClose, getAuthToken }) => {
+export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onClose, getAuthToken, initialEpisodeId }) => {
   const [draft, setDraft] = useState<WritingEpisode[]>(() =>
     buildDraftFromEpisodes(projectData.episodes, projectData.rawScript)
   );
-  const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>(() => draft[0]?.id || 1);
-  const [selectedSceneId, setSelectedSceneId] = useState<string>(() => draft[0]?.scenes[0]?.id || "1-1");
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>(() => initialEpisodeId || draft[0]?.id || 1);
+  const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
+    const initialEpisode = draft.find((episode) => episode.id === initialEpisodeId) || draft[0];
+    return initialEpisode?.scenes[0]?.id || "1-1";
+  });
   const [cursorPos, setCursorPos] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
@@ -293,6 +581,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       setSelectedEpisodeId(draft[0]?.id || 1);
     }
   }, [draft, selectedEpisodeId]);
+
+  useEffect(() => {
+    if (!initialEpisodeId) return;
+    const nextEpisode = draft.find((episode) => episode.id === initialEpisodeId);
+    if (!nextEpisode) return;
+    setSelectedEpisodeId(nextEpisode.id);
+    setSelectedSceneId(nextEpisode.scenes[0]?.id || `${nextEpisode.id}-1`);
+  }, [draft, initialEpisodeId]);
 
   useEffect(() => {
     if (!selectedEpisode.scenes.some((scene) => scene.id === selectedSceneId)) {
@@ -384,9 +680,16 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     setSelectedSceneId(nextScene.id);
   };
 
-  const fullScript = useMemo(() => exportDraft(draft), [draft]);
-  const parserPreview = useMemo(() => parseScriptToEpisodes(fullScript), [fullScript]);
+  const fountainScript = useMemo(
+    () => exportFountainDocument(draft, projectData.fileName?.replace(/\.[^/.]+$/, "") || "qalam-script"),
+    [draft, projectData.fileName]
+  );
   const selectedScenePreview = useMemo(() => buildScenePreview(selectedScene), [selectedScene]);
+  const handleExportFountain = useCallback(() => {
+    const title = projectData.fileName?.replace(/\.[^/.]+$/, "") || "qalam-script";
+    const filename = `${title || "qalam-script"}.fountain`;
+    downloadTextFile(filename, exportFountainDocument(draft, title), "text/plain;charset=utf-8");
+  }, [draft, projectData.fileName]);
 
   const parserIssues = useMemo(() => {
     const issues: string[] = [];
@@ -430,9 +733,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
               issues.push(`${sceneKey || `${episode.id}-${index + 1}`} line ${lineIndex + 1} references unknown mention @${name}`);
             }
           });
-          if (/^@/.test(line) && !/[:：]/.test(line) && !/\/\s*(os|vo)/i.test(line)) {
-            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} line ${lineIndex + 1} starts with @ but has no dialogue payload.`);
-          }
         });
       });
     });
@@ -549,21 +849,22 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   };
 
   const renderWritingLine = useCallback(
-    (line: string, lineIndex: number) => {
+    (line: string, lineIndex: number, kind: FountainLineKind) => {
       if (!line) return <span className="writing-line-empty"> </span>;
 
       const mentionRegex = /@([\w\u4e00-\u9fa5-]+)/g;
       const parts: React.ReactNode[] = [];
+      const displayLine = displayFountainLine(line, kind);
       let lastIndex = 0;
       let match: RegExpExecArray | null;
 
       mentionRegex.lastIndex = 0;
-      while ((match = mentionRegex.exec(line))) {
+      while ((match = mentionRegex.exec(displayLine))) {
         const [full, name] = match;
         const start = match.index;
         const end = start + full.length;
         if (start > lastIndex) {
-          parts.push(line.slice(lastIndex, start));
+          parts.push(displayLine.slice(lastIndex, start));
         }
         const character = characterMap.get(name);
         parts.push(
@@ -580,24 +881,25 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         lastIndex = end;
       }
 
-      if (lastIndex < line.length) {
-        parts.push(line.slice(lastIndex));
+      if (lastIndex < displayLine.length) {
+        parts.push(displayLine.slice(lastIndex));
       }
 
-      return <>{parts}</>;
+      return <span className={`writing-fountain-line writing-fountain-line--${kind}`}>{parts}</span>;
     },
     [characterMap]
   );
 
-  const highlightedDraftBody = useMemo(
-    () =>
-      joinNodes(
-        selectedScene.body.split(/\r?\n/).map((line, index) => (
-          <React.Fragment key={`line-${index}`}>{renderWritingLine(line, index)}</React.Fragment>
-        ))
-      ),
-    [renderWritingLine, selectedScene.body]
-  );
+  const highlightedDraftBody = useMemo(() => {
+    const lines = selectedScene.body.split(/\r?\n/);
+    return joinNodes(
+      lines.map((line, index) => {
+        const previous = getPreviousNonEmptyLine(lines, index);
+        const kind = getFountainLineKind(line, previous);
+        return <React.Fragment key={`line-${index}`}>{renderWritingLine(line, index, kind)}</React.Fragment>;
+      })
+    );
+  }, [renderWritingLine, selectedScene.body]);
 
   const openWritingQalam = useCallback((freshConversation: boolean) => {
     setIsWritingQalamOpen(true);
@@ -625,6 +927,88 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     [computeAgentLineTop, isWritingQalamOpen, openWritingQalam]
   );
 
+  const currentFountainKind = useMemo(() => {
+    const bounds = getLineBoundsAt(selectedScene.body, cursorPos);
+    const lines = selectedScene.body.split(/\r?\n/);
+    return getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
+  }, [cursorPos, selectedScene.body]);
+
+  const applyFountainLineFormat = useCallback(
+    (editor: HTMLTextAreaElement, nextKind: FountainLineKind) => {
+      const text = editor.value;
+      const cursor = editor.selectionStart || 0;
+      const bounds = getLineBoundsAt(text, cursor);
+      const lines = text.split(/\r?\n/);
+      const formattedLine = formatFountainLine(bounds.line, nextKind);
+      const cursorOffset = Math.max(0, cursor - bounds.lineStart);
+
+      let nextText = `${text.slice(0, bounds.lineStart)}${formattedLine}${text.slice(bounds.lineEnd)}`;
+      let nextCursor = bounds.lineStart + Math.min(formattedLine.length, cursorOffset);
+
+      if (nextKind === "dialogue") {
+        const previousLine = getPreviousNonEmptyLine(lines, bounds.lineIndex);
+        if (!isCharacterLine(previousLine)) {
+          const insert = `@CHARACTER\n${formattedLine}`;
+          nextText = `${text.slice(0, bounds.lineStart)}${insert}${text.slice(bounds.lineEnd)}`;
+          nextCursor = bounds.lineStart + "@CHARACTER\n".length + Math.min(formattedLine.length, cursorOffset);
+        }
+      }
+
+      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
+      requestAnimationFrame(() => {
+        editor.focus();
+        editor.selectionStart = nextCursor;
+        editor.selectionEnd = nextCursor;
+        setCursorPos(nextCursor);
+        syncEditorScroll();
+      });
+    },
+    [selectedEpisode.id, selectedScene.id]
+  );
+
+  const cycleFountainLineFormat = useCallback(
+    (editor: HTMLTextAreaElement, direction: 1 | -1) => {
+      const text = editor.value;
+      const cursor = editor.selectionStart || 0;
+      const bounds = getLineBoundsAt(text, cursor);
+      const lines = text.split(/\r?\n/);
+      const currentKind = getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
+      const currentIndex = Math.max(0, FOUNTAIN_FORMAT_ORDER.indexOf(currentKind));
+      const nextKind =
+        FOUNTAIN_FORMAT_ORDER[
+          (currentIndex + direction + FOUNTAIN_FORMAT_ORDER.length) % FOUNTAIN_FORMAT_ORDER.length
+        ];
+      applyFountainLineFormat(editor, nextKind);
+    },
+    [applyFountainLineFormat]
+  );
+
+  const insertStructuredFountainBreak = useCallback(
+    (editor: HTMLTextAreaElement) => {
+      const text = editor.value;
+      const cursor = editor.selectionStart || 0;
+      const bounds = getLineBoundsAt(text, cursor);
+      const lines = text.split(/\r?\n/);
+      const currentKind = getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
+      const nextKind = getNextFountainLineKind(currentKind);
+      const nextLine = createEmptyFountainLine(nextKind);
+      const insertion = `\n${nextLine}`;
+      const selectionEnd = editor.selectionEnd || cursor;
+      const nextText = `${text.slice(0, cursor)}${insertion}${text.slice(selectionEnd)}`;
+      const nextCursor = cursor + insertion.length;
+
+      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
+      requestAnimationFrame(() => {
+        editor.focus();
+        editor.selectionStart = nextCursor;
+        editor.selectionEnd = nextCursor;
+        setCursorPos(nextCursor);
+        syncEditorScroll();
+      });
+    },
+    [selectedEpisode.id, selectedScene.id]
+  );
+
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionState && filteredCharacters.length) {
       if (event.key === "ArrowDown") {
@@ -639,7 +1023,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         return;
       }
 
-      if (event.key === "Enter" || event.key === "Tab") {
+      if (event.key === "Enter") {
         event.preventDefault();
         insertMention(filteredCharacters[activeMentionIndex]?.name || filteredCharacters[0].name);
         return;
@@ -652,22 +1036,31 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       }
     }
 
+    if (event.key === "Tab") {
+      event.preventDefault();
+      setDismissedMentionStart(null);
+      cycleFountainLineFormat(event.currentTarget, event.shiftKey ? -1 : 1);
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
       const selectionStart = event.currentTarget.selectionStart || 0;
       const textBefore = event.currentTarget.value.slice(0, selectionStart);
       if (textBefore.endsWith("\n\n")) {
         event.preventDefault();
         activateAgentLine(event.currentTarget);
+        return;
       }
+      event.preventDefault();
+      insertStructuredFountainBreak(event.currentTarget);
     }
   };
 
   const applyToProject = useCallback(() => {
-    const generatedScript = exportDraft(draft);
-    const parsedEpisodes = parseScriptToEpisodes(generatedScript);
+    const parsedEpisodes = draftToProjectEpisodes(draft);
     setProjectData((prev) => ({
       ...prev,
-      rawScript: generatedScript,
+      rawScript: fountainScript,
       episodes: mergeEpisodes(prev.episodes, parsedEpisodes),
       context: {
         ...prev.context,
@@ -676,7 +1069,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         ),
       },
     }));
-  }, [draft, setProjectData]);
+  }, [draft, fountainScript, setProjectData]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -797,6 +1190,17 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                   <div className="writing-header-actions">
                     <button
                       type="button"
+                      onClick={handleExportFountain}
+                      className="writing-icon-button"
+                      title="Export Fountain"
+                    >
+                      <Download size={17} strokeWidth={1.8} />
+                    </button>
+                    <span className="writing-format-pill" title="Tab cycles line format, Shift+Tab cycles backward">
+                      {FOUNTAIN_FORMAT_LABELS[currentFountainKind]}
+                    </span>
+                    <button
+                      type="button"
                       onClick={() => navigateScene(-1)}
                       className="writing-icon-button"
                       disabled={selectedSceneIndex === 0}
@@ -840,8 +1244,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     >
                       <MoreHorizontal size={18} strokeWidth={1.8} />
                     </button>
-                    <button type="button" onClick={handleClose} className="writing-icon-button" title="Close writing">
-                      <X size={17} strokeWidth={1.8} />
+                    <button type="button" onClick={handleClose} className="writing-icon-button" title="退出全屏编辑">
+                      <Minimize2 size={17} strokeWidth={1.8} />
                     </button>
                   </div>
                 </header>
@@ -888,6 +1292,23 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       className="writing-scene-input writing-scene-input--cast"
                       placeholder="CAST"
                     />
+                  </div>
+                  <div className="writing-format-bar">
+                    {FOUNTAIN_QUICK_FORMATS.map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          const editor = editorRef.current;
+                          if (!editor) return;
+                          applyFountainLineFormat(editor, kind);
+                        }}
+                        className={`writing-format-button ${currentFountainKind === kind ? "is-active" : ""}`}
+                      >
+                        {FOUNTAIN_FORMAT_LABELS[kind]}
+                      </button>
+                    ))}
                   </div>
                   <div className="writing-paper-body relative flex-1">
                       <div
@@ -960,7 +1381,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                         <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-10 top-8 z-30 w-[320px]">
                           <div className="mention-picker-header">
                             <div className="mention-picker-title">Character Mentions</div>
-                            <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter / Tab insert, Esc dismiss</div>
+                            <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter insert, Esc dismiss</div>
                           </div>
                           <div className="mention-picker-grid">
                             {filteredCharacters.map((character, index) => (

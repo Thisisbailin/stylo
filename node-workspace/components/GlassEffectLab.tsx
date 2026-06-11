@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField, GlassDiffusionPresetKey } from "./GlassDiffusionField";
+import {
+  GLASS_DIFFUSION_PRESETS,
+  GlassDiffusionField,
+  GlassDiffusionPresetKey,
+  MaterialGlassShadow,
+  QALAM_GLASS_LAB_CONFIG,
+  QALAM_GLASS_LAB_SHADOW,
+} from "./GlassDiffusionField";
 
 type Props = {
   isOpen: boolean;
@@ -23,14 +30,20 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
   const [posY, setPosY] = useState(82);
   const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.mist.width);
   const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.mist.height);
-  const [blur, setBlur] = useState(GLASS_DIFFUSION_PRESETS.mist.blur);
-  const [fillAlpha, setFillAlpha] = useState(GLASS_DIFFUSION_PRESETS.mist.fillAlpha);
-  const [saturate, setSaturate] = useState(GLASS_DIFFUSION_PRESETS.mist.saturate);
-  const [fadeInsetX, setFadeInsetX] = useState(GLASS_DIFFUSION_PRESETS.mist.fadeInsetX);
-  const [fadeInsetY, setFadeInsetY] = useState(GLASS_DIFFUSION_PRESETS.mist.fadeInsetY);
-  const [fade, setFade] = useState(GLASS_DIFFUSION_PRESETS.mist.fade);
-  const [edgeAlpha, setEdgeAlpha] = useState(GLASS_DIFFUSION_PRESETS.mist.edgeAlpha);
-  const [curve, setCurve] = useState(GLASS_DIFFUSION_PRESETS.mist.curve);
+  const [blur, setBlur] = useState(QALAM_GLASS_LAB_CONFIG.blur);
+  const [fillAlpha, setFillAlpha] = useState(QALAM_GLASS_LAB_CONFIG.fillAlpha);
+  const [saturate, setSaturate] = useState(QALAM_GLASS_LAB_CONFIG.saturate);
+  const [fadeInsetX, setFadeInsetX] = useState(QALAM_GLASS_LAB_CONFIG.fadeInsetX);
+  const [fadeInsetY, setFadeInsetY] = useState(QALAM_GLASS_LAB_CONFIG.fadeInsetY);
+  const [fade, setFade] = useState(QALAM_GLASS_LAB_CONFIG.fade);
+  const [edgeAlpha, setEdgeAlpha] = useState(QALAM_GLASS_LAB_CONFIG.edgeAlpha);
+  const [curve, setCurve] = useState(QALAM_GLASS_LAB_CONFIG.curve);
+  const [showMaterialShadow, setShowMaterialShadow] = useState(true);
+  const [shadowX, setShadowX] = useState(QALAM_GLASS_LAB_SHADOW.offsetX);
+  const [shadowY, setShadowY] = useState(QALAM_GLASS_LAB_SHADOW.offsetY);
+  const [shadowBlur, setShadowBlur] = useState(QALAM_GLASS_LAB_SHADOW.blur);
+  const [shadowAlpha, setShadowAlpha] = useState(QALAM_GLASS_LAB_SHADOW.alpha);
+  const [shadowSpread, setShadowSpread] = useState(QALAM_GLASS_LAB_SHADOW.spread);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showField, setShowField] = useState(true);
   const dragStateRef = useRef<DragState>(null);
@@ -115,6 +128,18 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           showField={showField}
           showBoundary={showBoundary}
         />
+        {showMaterialShadow ? (
+          <MaterialGlassShadow
+            width={width}
+            height={height}
+            curve={curve}
+            offsetX={shadowX}
+            offsetY={shadowY}
+            blur={shadowBlur}
+            alpha={shadowAlpha}
+            spread={shadowSpread}
+          />
+        ) : null}
         <div
           onPointerDown={beginDrag}
           onPointerMove={updateDrag}
@@ -153,6 +178,13 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
       <div className="fixed right-5 top-5 z-[86] flex max-w-[360px] flex-wrap justify-end gap-2">
         <button
           type="button"
+          onClick={() => setShowMaterialShadow((value) => !value)}
+          className={`${controlChipClass} px-3 py-2 text-[11px] ${showMaterialShadow ? "border-white/22" : "text-white/54"}`}
+        >
+          material shadow
+        </button>
+        <button
+          type="button"
           onClick={() => setShowBoundary((value) => !value)}
           className={`${controlChipClass} px-3 py-2 text-[11px] ${showBoundary ? "border-white/22" : "text-white/54"}`}
         >
@@ -181,6 +213,11 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
           { label: "edge blur", value: fade, min: 0, max: 48, step: 1, set: setFade },
           { label: "edge", value: edgeAlpha, min: 0.04, max: 0.56, step: 0.01, set: setEdgeAlpha },
           { label: "curve", value: curve, min: 2.2, max: 5.4, step: 0.05, set: setCurve },
+          { label: "shadow x", value: shadowX, min: -80, max: 80, step: 1, set: setShadowX },
+          { label: "shadow y", value: shadowY, min: -80, max: 120, step: 1, set: setShadowY },
+          { label: "shadow blur", value: shadowBlur, min: 0, max: 96, step: 1, set: setShadowBlur },
+          { label: "shadow alpha", value: shadowAlpha, min: 0, max: 0.48, step: 0.01, set: setShadowAlpha },
+          { label: "shadow spread", value: shadowSpread, min: -48, max: 64, step: 1, set: setShadowSpread },
         ].map((item) => (
           <label key={item.label} className={`${controlChipClass} block px-3 py-2`}>
             <div className="mb-1.5 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-white/68">

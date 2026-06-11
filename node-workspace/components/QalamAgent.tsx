@@ -5,7 +5,13 @@ import { ProjectData } from "../../types";
 import type { NodeFlowFile } from "../types";
 import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
-import { GLASS_DIFFUSION_PRESETS, GlassDiffusionField } from "./GlassDiffusionField";
+import {
+  GLASS_DIFFUSION_PRESETS,
+  GlassDiffusionField,
+  MaterialGlassShadow,
+  QALAM_GLASS_LAB_CONFIG,
+  QALAM_GLASS_LAB_SHADOW,
+} from "./GlassDiffusionField";
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
@@ -988,7 +994,7 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setExecutionApprovals, setMessages, setProjectData]);
 
-  const panelClassName = "pointer-events-auto isolate qalam-panel";
+  const panelClassName = "pointer-events-auto qalam-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const handleApprovalChoice = useCallback(
@@ -1081,10 +1087,11 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamGlassConfig = useMemo(
     () => ({
       ...GLASS_DIFFUSION_PRESETS.mist,
-      curve: 5.8,
+      ...QALAM_GLASS_LAB_CONFIG,
     }),
     []
   );
+  const qalamGlassShadow = QALAM_GLASS_LAB_SHADOW;
   const qalamTitleBandHeight = titleOrigin.y + titleOrigin.height + 10;
   const qalamUnifiedBaseWidth = Math.max(0, messagePanelSize.width);
   const qalamGlassBaseHeight = Math.min(
@@ -1210,18 +1217,6 @@ export const QalamAgent: React.FC<Props> = ({
         >
           <div className="relative">
             <div
-              className="pointer-events-none absolute z-0 rounded-[46px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              style={{
-                left: qalamGlassOffsetX + qalamGlassConfig.fadeInsetX,
-                top: qalamGlassOffsetY + qalamGlassConfig.fadeInsetY,
-                width: Math.max(0, qalamGlassWidth - qalamGlassConfig.fadeInsetX * 2),
-                height: Math.max(0, qalamGlassHeight - qalamGlassConfig.fadeInsetY * 2),
-                opacity: effectiveCollapsed ? 0 : 1,
-                boxShadow:
-                  "0 34px 74px rgba(0,0,0,0.32), 0 12px 30px rgba(0,0,0,0.22)",
-              }}
-            />
-            <div
               className="pointer-events-none absolute z-[1] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
               style={{
                 left: qalamGlassOffsetX,
@@ -1245,7 +1240,17 @@ export const QalamAgent: React.FC<Props> = ({
                   edgeAlpha: qalamGlassConfig.edgeAlpha,
                   curve: qalamGlassConfig.curve,
                 }}
-                showBoundary={false}
+                showBoundary
+              />
+              <MaterialGlassShadow
+                width={qalamGlassWidth}
+                height={qalamGlassHeight}
+                curve={qalamGlassConfig.curve}
+                offsetX={qalamGlassShadow.offsetX}
+                offsetY={qalamGlassShadow.offsetY}
+                blur={qalamGlassShadow.blur}
+                alpha={qalamGlassShadow.alpha}
+                spread={qalamGlassShadow.spread}
               />
             </div>
             <div
