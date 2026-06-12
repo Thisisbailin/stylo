@@ -13,6 +13,7 @@ export type KnowledgeAnchorType =
   | "script"
   | "episode"
   | "scene"
+  | "guide"
   | "nodeflow"
   | "asset";
 

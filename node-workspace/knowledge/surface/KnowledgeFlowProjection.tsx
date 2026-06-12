@@ -15,7 +15,13 @@ import type { KnowledgeLink, KnowledgeNode } from "../types";
 import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
 import type { NodeFlowReadingMode } from "../../nodeflow/sessionState";
 import { useNodeFlowStore } from "../../store/nodeFlowStore";
+import { EdgeAlignmentGuides } from "../../components/EdgeAlignmentGuides";
 import { ViewportControls } from "../../components/ViewportControls";
+import {
+  alignPositionChangesToNodeEdges,
+  getEdgeAlignedPosition,
+  type EdgeAlignmentGuide,
+} from "../../utils/edgeAlignment";
 
 type Props = {
   title?: string;
@@ -677,8 +683,10 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   const maxZoom = 1.4;
   const [isLocked, setIsLocked] = React.useState(false);
   const [snapToGrid, setSnapToGrid] = React.useState(false);
+  const [snapGuide, setSnapGuide] = React.useState<EdgeAlignmentGuide | null>(null);
   const [showMiniMap, setShowMiniMap] = React.useState(false);
   const [zoomValue, setZoomValue] = React.useState(() => getViewport().zoom ?? 1);
+  const [liveViewport, setLiveViewport] = React.useState(() => getViewport());
   const [positionOverrides, setPositionOverrides] = React.useState<Record<string, { x: number; y: number }>>({});
   const readingMode = useNodeFlowStore((state) => state.readingMode);
   const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
@@ -707,7 +715,9 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   );
   const handleNodesChange = React.useCallback(
     (changes: NodeChange[]) => {
-      const nextNodes = applyNodeChanges(changes, canvasNodes);
+      const aligned = alignPositionChangesToNodeEdges(changes, canvasNodes, snapToGrid && !isLocked);
+      setSnapGuide(aligned.guide);
+      const nextNodes = applyNodeChanges(aligned.changes, canvasNodes);
       setPositionOverrides((current) => {
         const next = { ...current };
         nextNodes.forEach((node) => {
@@ -716,8 +726,27 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
         return next;
       });
     },
-    [canvasNodes]
+    [canvasNodes, isLocked, snapToGrid]
   );
+  const updateSnapGuide = React.useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      if (!snapToGrid || isLocked) {
+        setSnapGuide(null);
+        return;
+      }
+      const node = canvasNodes.find((item) => item.id === nodeId);
+      if (!node) {
+        setSnapGuide(null);
+        return;
+      }
+      setSnapGuide(getEdgeAlignedPosition(node, canvasNodes, position).guide);
+    },
+    [canvasNodes, isLocked, snapToGrid]
+  );
+
+  React.useEffect(() => {
+    if (!snapToGrid) setSnapGuide(null);
+  }, [snapToGrid]);
 
   return (
     <div
@@ -759,14 +788,18 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
           nodesDraggable={isCanvas && !isLocked}
           nodesConnectable={false}
           elementsSelectable={!isLocked}
-          snapToGrid={snapToGrid}
-          snapGrid={[28, 28]}
           zoomOnDoubleClick={false}
           zoomOnPinch={!isLocked}
           panOnDrag={!isLocked}
           panOnScroll={!isLocked}
           panOnScrollMode={PanOnScrollMode.Free}
-          onMove={(_, viewport) => setZoomValue(viewport.zoom)}
+          onMove={(_, viewport) => {
+            setZoomValue(viewport.zoom);
+            setLiveViewport(viewport);
+          }}
+          onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
+          onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
+          onNodeDragStop={() => setSnapGuide(null)}
           onNodeClick={(_, node) => {
             const ref = nodes.find((item) => item.id === node.id)?.ref;
             if (ref) onSelectNodeRef?.(ref);
@@ -791,6 +824,10 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
           ) : null}
           <Background gap={28} size={1} color="var(--app-pattern)" />
         </ReactFlow>
+
+        {isCanvas && snapToGrid ? (
+          <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
+        ) : null}
 
         {isCanvas ? (
           <div

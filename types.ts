@@ -428,7 +428,7 @@ export interface ViduVideoGenNodeData extends BaseNodeData {
 }
 
 export type TextProvider = 'openrouter' | 'qwen';
-export type AgentTextProvider = TextProvider | 'ark';
+export type AgentTextProvider = TextProvider | 'ark' | 'deepseek';
 
 export interface TextServiceConfig {
   provider: TextProvider;

@@ -14,6 +14,7 @@ const KNOWN_ANCHOR_TYPES = new Set<KnowledgeAnchorType>([
   "script",
   "episode",
   "scene",
+  "guide",
   "nodeflow",
   "asset",
 ]);

@@ -199,12 +199,19 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
     const scriptLinks = links.filter(
       (link) => scriptNodeIds.has(link.fromNodeId) && scriptNodeIds.has(link.toNodeId)
     );
+    const looseNodes = scriptMap.looseNodes.filter((node) => !scriptNodeIds.has(node.id));
+    const visibleNodeIds = new Set([...scriptNodeIds, ...looseNodes.map((node) => node.id)]);
     return {
       title: "Script Memory Map",
-      nodes: scriptNodes,
-      links: scriptLinks,
+      nodes: [...scriptNodes, ...looseNodes],
+      links: [
+        ...scriptLinks,
+        ...scriptMap.looseLinks.filter(
+          (link) => visibleNodeIds.has(link.fromNodeId) && visibleNodeIds.has(link.toNodeId)
+        ),
+      ],
     };
-  }, [anchorMap.anchor, anchorMap.links, anchorMap.nodes, links, localMap.centerNode, localMap.links, localMap.nodes, map.links, map.nodes, revisionProjection, scriptMap.scripts, section]);
+  }, [anchorMap.anchor, anchorMap.links, anchorMap.nodes, links, localMap.centerNode, localMap.links, localMap.nodes, map.links, map.nodes, revisionProjection, scriptMap.looseLinks, scriptMap.looseNodes, scriptMap.scripts, section]);
 
   const canonicalNodeCount = nodes.filter((node) => node.origin === "canonical-source").length;
   const derivedNodeCount = nodes.filter((node) => node.origin === "agent-derived").length;

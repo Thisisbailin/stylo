@@ -367,41 +367,191 @@ body.qalam-resizing * {
 
 .nodeflow-snap-guide {
   position: absolute;
-  background: color-mix(in srgb, var(--app-accent-strong) 82%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-accent-soft) 78%, transparent);
-  opacity: 0.86;
+  border-radius: 999px;
+  opacity: 0;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--app-accent-strong) 38%, transparent));
+  transition:
+    opacity 180ms ease,
+    transform 210ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 210ms ease;
+  will-change: opacity, transform;
+}
+
+.nodeflow-snap-guide::before,
+.nodeflow-snap-guide::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.nodeflow-snap-guide::before {
+  inset: -8px;
+  border-radius: inherit;
+  opacity: 0.34;
+  filter: blur(7px);
+}
+
+.nodeflow-snap-guide::after {
+  opacity: 0.58;
+}
+
+.nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide {
+  opacity: var(--snap-guide-opacity, 0.88);
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--app-accent-strong) 46%, transparent));
+}
+
+.nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide {
+  opacity: 0;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--app-accent-strong) 18%, transparent));
 }
 
 .nodeflow-snap-guide--vertical {
+  top: 5%;
+  bottom: 5%;
+  width: 2px;
+  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.72);
+  transform-origin: center;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 11%,
+    color-mix(in srgb, var(--app-accent-strong) 88%, transparent) 48%,
+    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 89%,
+    transparent 100%
+  );
+}
+
+.nodeflow-snap-guide--vertical::before {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 20%,
+    color-mix(in srgb, var(--app-accent-strong) 58%, transparent) 50%,
+    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 80%,
+    transparent 100%
+  );
+}
+
+.nodeflow-snap-guide--vertical::after {
   top: 0;
-  bottom: 0;
-  width: 1px;
+  left: -1px;
+  width: 4px;
+  height: 23%;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.76), transparent);
+  animation: qalam-snap-guide-sheen-y 1.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide--vertical {
+  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(1);
+  animation: qalam-snap-guide-in-y 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide--vertical {
+  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.62);
 }
 
 .nodeflow-snap-guide--horizontal {
-  left: 0;
-  right: 0;
-  height: 1px;
+  left: 5%;
+  right: 5%;
+  height: 2px;
+  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.72);
+  transform-origin: center;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 11%,
+    color-mix(in srgb, var(--app-accent-strong) 88%, transparent) 48%,
+    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 89%,
+    transparent 100%
+  );
 }
 
-.nodeflow-snap-guide-label {
-  position: absolute;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  background: var(--app-panel);
-  color: var(--app-text-secondary);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1;
-  padding: 5px 7px;
-  box-shadow: var(--app-shadow);
+.nodeflow-snap-guide--horizontal::before {
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 20%,
+    color-mix(in srgb, var(--app-accent-strong) 58%, transparent) 50%,
+    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 80%,
+    transparent 100%
+  );
+}
+
+.nodeflow-snap-guide--horizontal::after {
+  top: -1px;
+  left: 0;
+  width: 23%;
+  height: 4px;
+  border-radius: inherit;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.76), transparent);
+  animation: qalam-snap-guide-sheen-x 1.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide--horizontal {
+  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(1);
+  animation: qalam-snap-guide-in-x 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide--horizontal {
+  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.62);
+}
+
+@keyframes qalam-snap-guide-sheen-y {
+  0% {
+    transform: translateY(-32%);
+    opacity: 0;
+  }
+  26% {
+    opacity: 0.68;
+  }
+  100% {
+    transform: translateY(430%);
+    opacity: 0;
+  }
+}
+
+@keyframes qalam-snap-guide-sheen-x {
+  0% {
+    transform: translateX(-32%);
+    opacity: 0;
+  }
+  26% {
+    opacity: 0.68;
+  }
+  100% {
+    transform: translateX(430%);
+    opacity: 0;
+  }
+}
+
+@keyframes qalam-snap-guide-in-y {
+  from {
+    opacity: 0;
+    transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.62);
+  }
+  to {
+    opacity: var(--snap-guide-opacity, 0.88);
+    transform: translateX(var(--snap-guide-offset, 0px)) scaleY(1);
+  }
+}
+
+@keyframes qalam-snap-guide-in-x {
+  from {
+    opacity: 0;
+    transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.62);
+  }
+  to {
+    opacity: var(--snap-guide-opacity, 0.88);
+    transform: translateY(var(--snap-guide-offset, 0px)) scaleX(1);
+  }
 }
 
 /* Handles - Minimal and integrated */
 .react-flow__handle {
-  width: 30px !important;
-  height: 30px !important;
+  width: 58px !important;
+  height: calc(100% - 28px) !important;
+  min-height: 92px !important;
   border-radius: 999px !important;
   border: 0 !important;
   background: transparent !important;
@@ -434,20 +584,20 @@ body.qalam-resizing * {
 }
 
 .react-flow__handle-left {
-  transform: translate(calc(-100% - 12px), -50%) scale(0.78);
+  transform: translate(calc(-100% + 18px), -50%);
 }
 
 .react-flow__handle-right {
-  transform: translate(calc(100% + 12px), -50%) scale(0.78);
+  transform: translate(calc(100% - 18px), -50%);
 }
 
 .react-flow__node:hover .react-flow__handle-left {
-  transform: translate(calc(-100% - 16px), -50%) scale(1);
+  transform: translate(calc(-100% + 10px), -50%);
   opacity: 1;
 }
 
 .react-flow__node:hover .react-flow__handle-right {
-  transform: translate(calc(100% + 16px), -50%) scale(1);
+  transform: translate(calc(100% - 10px), -50%);
   opacity: 1;
 }
 
@@ -472,6 +622,13 @@ body.qalam-resizing * {
 .node-flow-canvas[data-connecting="true"] .react-flow__handle {
   animation: none !important;
   box-shadow: none !important;
+  opacity: 1;
+}
+
+.node-flow-canvas[data-connecting="true"] .react-flow__handle::before,
+.node-flow-canvas[data-connecting="true"] .react-flow__handle::after {
+  opacity: 0.92;
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
 .node-flow-canvas[data-connecting="true"] .react-flow__connection-path {
@@ -561,7 +718,21 @@ body.qalam-resizing * {
   min-width: 280px;
   min-height: 160px;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 7px;
+}
+
+.node-card-floating-header {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  width: 100%;
+  min-height: 22px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
 }
 
 .node-card-shell {
@@ -609,14 +780,6 @@ body.qalam-resizing * {
   box-shadow: var(--node-shadow-strong);
 }
 
-.node-card-header-shell {
-  padding: 18px 18px 10px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .node-card-header-copy {
   min-width: 0;
   display: flex;
@@ -633,13 +796,16 @@ body.qalam-resizing * {
   line-height: 1.2;
   letter-spacing: -0.02em;
   color: var(--node-text-primary);
+  text-shadow: 0 8px 22px color-mix(in srgb, var(--node-bg) 60%, transparent);
 }
 
 .node-card-title-input {
-  background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--node-bg) 18%, transparent);
   outline: none;
-  padding: 0;
+  padding: 3px 6px;
+  transform: translateX(-6px);
 }
 
 .node-card-title-input::placeholder {
@@ -647,15 +813,28 @@ body.qalam-resizing * {
 }
 
 .node-card-title-input:focus {
+  border-color: var(--node-border);
+  background: var(--node-surface);
   color: var(--node-text-primary);
 }
 
 .node-card-body {
-  padding: 0 18px 18px;
+  padding: 18px;
   display: flex;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
+}
+
+.node-card-base[data-variant="media"] .node-card-body {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 24px;
+}
+
+.node-card-base[data-variant="media"] .node-card-shell::before {
+  background: var(--node-bg);
 }
 
 .node-card-base[data-variant="text"] .text-node-shell {
@@ -668,7 +847,7 @@ body.qalam-resizing * {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 0;
+  padding: 0 24px 0 0;
   box-sizing: border-box;
   min-height: 160px;
 }
@@ -687,13 +866,7 @@ body.qalam-resizing * {
 }
 
 .node-card-base[data-reading-mode="identity"] .node-card-shell {
-  min-height: 76px;
-}
-
-.node-card-base[data-reading-mode="identity"] .node-card-header-shell {
-  min-height: 76px;
-  padding: 14px 18px;
-  align-items: center;
+  min-height: 34px;
 }
 
 .node-card-base[data-reading-mode="identity"] .node-card-title,
@@ -707,6 +880,31 @@ body.qalam-resizing * {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.text-node-drag-rail {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  bottom: 6px;
+  z-index: 2;
+  width: 18px;
+  cursor: grab;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--node-text-secondary) 46%, transparent) 1px, transparent 1.5px)
+      center / 5px 11px repeat-y;
+  opacity: 0;
+  transition: opacity 160ms ease, background-color 160ms ease;
+}
+
+.node-card-base[data-variant="text"]:hover .text-node-drag-rail {
+  opacity: 0.62;
+}
+
+.text-node-drag-rail:active {
+  cursor: grabbing;
+  opacity: 0.95;
 }
 
 .text-node-editor {
@@ -1069,6 +1267,14 @@ body.qalam-resizing * {
   scroll-behavior: smooth;
 }
 
+.writing-room.is-focus-mode .writing-canvas-backdrop::after {
+  opacity: 0.16;
+}
+
+.writing-room.is-focus-mode.is-editor-focused .writing-canvas-backdrop {
+  filter: saturate(0.86);
+}
+
 .writing-canvas-backdrop {
   background:
     radial-gradient(circle at top center, color-mix(in srgb, var(--app-accent-soft) 56%, transparent), transparent 42%),
@@ -1183,6 +1389,17 @@ body.qalam-resizing * {
     inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  transition: opacity 220ms ease, transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+
+.writing-room.is-focus-mode.is-editor-focused .writing-floating-header:not(:hover):not(:focus-within) {
+  opacity: 0.42;
+  transform: translateY(-6px) scale(0.992);
+  border-color: color-mix(in srgb, var(--app-border) 34%, transparent);
+  background: color-mix(in srgb, var(--app-panel) 42%, transparent);
+  box-shadow:
+    0 10px 28px rgba(8, 8, 10, 0.08),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
 }
 
 .writing-floating-header > div:first-child {
@@ -1255,6 +1472,19 @@ body.qalam-resizing * {
   color: var(--app-text-primary);
 }
 
+.writing-icon-button.is-active {
+  border-color: color-mix(in srgb, var(--app-accent) 52%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-accent-soft) 42%, var(--app-panel-muted));
+  color: var(--app-accent-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-accent) 14%, transparent);
+}
+
+.writing-icon-button--danger:hover:not(:disabled) {
+  border-color: rgba(178, 70, 58, 0.42);
+  background: rgba(178, 70, 58, 0.08);
+  color: #9f342c;
+}
+
 .writing-icon-button:disabled {
   opacity: 0.36;
   cursor: default;
@@ -1265,6 +1495,7 @@ body.qalam-resizing * {
   height: 34px;
   min-width: 92px;
   align-items: center;
+  gap: 7px;
   justify-content: center;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
@@ -1276,6 +1507,20 @@ body.qalam-resizing * {
   text-transform: uppercase;
   color: var(--app-text-secondary);
   white-space: nowrap;
+}
+
+.writing-format-pill__marker {
+  display: inline-flex;
+  min-width: 24px;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(92, 72, 51, 0.08);
+  color: color-mix(in srgb, var(--app-accent-strong) 76%, var(--app-text-secondary));
+  font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .writing-scene-count {
@@ -1328,7 +1573,10 @@ body.qalam-resizing * {
   transition:
     border-color 180ms ease,
     box-shadow 180ms ease,
-    transform 180ms ease;
+    opacity 220ms ease,
+    filter 220ms ease,
+    transform 220ms ease;
+  animation: writing-paper-arrive 360ms ease both;
 }
 
 .writing-script-paper.is-active {
@@ -1337,6 +1585,18 @@ body.qalam-resizing * {
     0 30px 80px rgba(16, 11, 7, 0.28),
     0 2px 6px rgba(16, 11, 7, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.writing-room.is-focus-mode .writing-script-paper:not(.is-active) {
+  opacity: 0.48;
+  filter: saturate(0.82);
+  transform: scale(0.988);
+}
+
+.writing-room.is-focus-mode .writing-script-paper:not(.is-active):hover {
+  opacity: 0.86;
+  filter: saturate(0.96);
+  transform: translateY(-2px) scale(0.994);
 }
 
 .writing-script-paper::before {
@@ -1372,6 +1632,13 @@ body.qalam-resizing * {
   border-bottom: 1px solid rgba(129, 106, 76, 0.2);
   padding: 18px 38px 10px;
   scrollbar-width: thin;
+  transition: opacity 220ms ease, transform 220ms ease, border-color 220ms ease;
+}
+
+.writing-room.is-focus-mode.is-editor-focused .writing-script-paper.is-active .writing-scene-strip:not(:hover):not(:focus-within) {
+  opacity: 0.18;
+  transform: translateY(-4px);
+  border-color: rgba(129, 106, 76, 0.06);
 }
 
 .writing-scene-input {
@@ -1405,6 +1672,34 @@ body.qalam-resizing * {
   flex: 0 0 76px;
 }
 
+.writing-scene-delete {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(95, 70, 50, 0.44);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.writing-scene-delete:hover:not(:disabled),
+.writing-scene-delete:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(178, 70, 58, 0.34);
+  background: rgba(178, 70, 58, 0.08);
+  color: #9f342c;
+  outline: none;
+}
+
+.writing-scene-delete:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
 .writing-scene-strip > .writing-scene-input:not(.writing-scene-input--id):not(.writing-scene-input--short):not(.writing-scene-input--cast) {
   flex: 0 1 260px;
 }
@@ -1427,6 +1722,12 @@ body.qalam-resizing * {
   display: flex;
   justify-content: center;
   pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.writing-room.is-focus-mode.is-editor-focused .writing-format-dock:not(:hover):not(:focus-within) {
+  opacity: 0.52;
+  transform: translateY(10px);
 }
 
 .writing-format-dock .writing-format-bar {
@@ -1441,6 +1742,14 @@ body.qalam-resizing * {
     inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+}
+
+.writing-format-dock:hover .writing-format-bar,
+.writing-format-dock:focus-within .writing-format-bar {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-panel) 88%, transparent);
 }
 
 .writing-format-button {
@@ -1448,6 +1757,7 @@ body.qalam-resizing * {
   height: 30px;
   flex: 0 0 auto;
   align-items: center;
+  gap: 6px;
   justify-content: center;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--app-border) 68%, transparent);
@@ -1461,12 +1771,31 @@ body.qalam-resizing * {
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
+.writing-format-button__marker {
+  display: inline-flex;
+  min-width: 22px;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(92, 72, 51, 0.08);
+  color: color-mix(in srgb, var(--app-text-secondary) 86%, transparent);
+  font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .writing-format-button:hover,
 .writing-format-button.is-active {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--app-accent) 46%, var(--app-border-strong));
   background: color-mix(in srgb, var(--app-accent-soft) 34%, var(--app-panel-muted));
   color: var(--app-text-primary);
+}
+
+.writing-format-button.is-active .writing-format-button__marker {
+  background: color-mix(in srgb, var(--app-accent-soft) 58%, rgba(255, 255, 255, 0.72));
+  color: var(--app-accent-strong);
 }
 
 .writing-script-paper .writing-paper-body {
@@ -1523,6 +1852,31 @@ body.qalam-resizing * {
 .writing-paper-preview .writing-editor-highlight {
   display: block;
   min-height: 700px;
+}
+
+@keyframes writing-paper-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.996);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writing-script-paper {
+    animation: none;
+  }
+
+  .writing-floating-header,
+  .writing-script-paper,
+  .writing-scene-strip,
+  .writing-format-dock,
+  .writing-format-dock .writing-format-bar {
+    transition: none;
+  }
 }
 
 .writing-info-card {
@@ -2099,23 +2453,36 @@ body.qalam-resizing * {
   flex-direction: column;
   width: 100%;
   min-height: 220px;
-  gap: 12px;
+  gap: 0;
 }
 
 .image-input-frame {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   width: 100%;
+}
+
+.media-input-frame {
+  display: flex;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 0;
 }
 
 .image-input-media {
   overflow: hidden;
-  border-radius: 24px;
-  border: 1px solid var(--node-border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--node-bg);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.12);
+  border-radius: 0;
+  border: 0;
+  background: #050505;
+  box-shadow: none;
   cursor: pointer;
+}
+
+.media-input-asset {
+  width: 100%;
+  border-radius: 24px 24px 0 0;
 }
 
 .image-input-img {
@@ -2124,11 +2491,59 @@ body.qalam-resizing * {
   display: block;
 }
 
+.audio-input-media {
+  display: flex;
+  min-height: 168px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--node-accent) 13%, transparent), transparent 46%),
+    linear-gradient(180deg, color-mix(in srgb, var(--node-surface-strong) 86%, transparent), color-mix(in srgb, var(--node-bg) 92%, black 8%));
+}
+
+.audio-input-icon {
+  display: flex;
+  height: 56px;
+  width: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: 1px solid var(--node-border);
+  background: color-mix(in srgb, var(--node-surface) 84%, transparent);
+}
+
+.audio-input-kicker {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--node-text-secondary);
+}
+
+.video-input-media {
+  overflow: hidden;
+  border-radius: 24px 24px 0 0;
+  object-fit: cover;
+}
+
+.media-input-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--node-border) 82%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--node-surface) 72%, transparent), transparent 72%),
+    var(--node-bg);
+}
+
 .image-input-caption {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 2px;
+  padding: 0;
 }
 
 .image-input-actions {
@@ -2616,21 +3031,22 @@ body.qalam-resizing * {
 }
 
 .node-card-port--multi {
-  width: 22px !important;
-  height: 22px !important;
   border-radius: 999px !important;
-  background: rgba(8, 15, 10, 0.92) !important;
   box-shadow:
     0 0 0 8px rgba(74, 222, 128, 0.08),
     0 10px 26px rgba(34, 197, 94, 0.22) !important;
 }
 
+.media-input-empty {
+  border-radius: 24px;
+}
+
 .react-flow__handle-left.node-card-port--multi {
-  transform: translate(calc(-100% - 14px), -50%) scale(1) !important;
+  transform: translate(calc(-100% + 10px), -50%) !important;
 }
 
 .react-flow__handle-right.node-card-port--multi {
-  transform: translate(calc(100% + 14px), -50%) scale(1) !important;
+  transform: translate(calc(100% - 10px), -50%) !important;
 }
 
 .node-title-input {

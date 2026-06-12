@@ -224,7 +224,8 @@ export type QalamRunOptions = {
 };
 
 export type QalamAgentConfig = {
-  provider?: "qwen" | "openrouter" | "ark";
+  provider?: "qwen" | "openrouter" | "ark" | "deepseek";
+  apiMode?: "responses" | "chat_completions";
   runtimeTarget?: "browser" | "edge";
   apiKey?: string;
   baseUrl?: string;

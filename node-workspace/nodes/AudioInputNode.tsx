@@ -49,22 +49,31 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
       onTitleChange={(title) => updateNodeData(id, { title })}
       outputs={["audio"]}
       selected={selected}
+      variant="media"
+      nodeType="audioInput"
     >
-      <div className="space-y-4 flex-1 flex flex-col">
+      <div className="media-input-frame flex-1">
         {data.audio ? (
-          <div className="node-panel p-3 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 truncate text-[12px] font-semibold text-[var(--node-text-primary)]">
-                {data.filename || "untitled-audio"}
+          <>
+            <div className="audio-input-media media-input-asset">
+              <div className="audio-input-icon">
+                <AudioLines className="text-[var(--node-text-secondary)]" size={28} />
               </div>
-              <button
-                type="button"
-                onClick={() => updateNodeData(id, { audio: null, filename: null, mimeType: null, durationMs: null })}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--node-border)] text-[var(--node-text-secondary)] transition hover:border-[var(--node-border-strong)] hover:text-[var(--node-text-primary)]"
-              >
-                <X size={12} />
-              </button>
+              <div className="audio-input-kicker">Audio Reference</div>
             </div>
+            <div className="media-input-info">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 truncate text-[12px] font-semibold text-[var(--node-text-primary)]">
+                  {data.filename || "untitled-audio"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateNodeData(id, { audio: null, filename: null, mimeType: null, durationMs: null })}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--node-border)] text-[var(--node-text-secondary)] transition hover:border-[var(--node-border-strong)] hover:text-[var(--node-text-primary)]"
+                >
+                  <X size={12} />
+                </button>
+              </div>
             <audio
               controls
               preload="metadata"
@@ -80,12 +89,23 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
             >
               <source src={data.audio} type={data.mimeType || undefined} />
             </audio>
-          </div>
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
+                >
+                  <Upload size={12} />
+                  Replace
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="node-surface node-surface--dashed w-full min-h-[180px] rounded-[20px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
+            className="media-input-empty node-surface node-surface--dashed w-full min-h-[220px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
           >
             <div className="h-14 w-14 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center shadow-inner">
               <AudioLines className="text-[var(--node-text-secondary)]" size={28} />
@@ -100,17 +120,6 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
             </div>
           </button>
         )}
-
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
-          >
-            <Upload size={12} />
-            {data.audio ? "Replace" : "Select"}
-          </button>
-        </div>
 
         <input
           ref={fileInputRef}

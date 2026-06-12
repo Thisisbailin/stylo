@@ -121,33 +121,31 @@ export const VideoInputNode: React.FC<Props> = ({ id, data, selected }) => {
       variant="media"
       nodeType="videoInput"
     >
-      <div className="space-y-4 flex-1 flex flex-col">
+      <div className="media-input-frame flex-1">
         {data.video ? (
           <>
-            <div className="node-surface overflow-hidden rounded-[20px] bg-black/40">
-              <video
-                ref={videoRef}
-                src={data.video}
-                className="block w-full aspect-video bg-black nodrag cursor-pointer"
-                playsInline
-                preload="metadata"
-                onClick={handleVideoClick}
-                onMouseDown={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onLoadedMetadata={(event) => {
-                  const duration = event.currentTarget.duration;
-                  updateNodeData(id, {
-                    durationMs: Number.isFinite(duration) ? Math.round(duration * 1000) : data.durationMs ?? null,
-                    dimensions:
-                      event.currentTarget.videoWidth && event.currentTarget.videoHeight
-                        ? { width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight }
-                        : data.dimensions ?? null,
-                  });
-                }}
-              />
-            </div>
+            <video
+              ref={videoRef}
+              src={data.video}
+              className="video-input-media media-input-asset block w-full aspect-video bg-black nodrag cursor-pointer"
+              playsInline
+              preload="metadata"
+              onClick={handleVideoClick}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onLoadedMetadata={(event) => {
+                const duration = event.currentTarget.duration;
+                updateNodeData(id, {
+                  durationMs: Number.isFinite(duration) ? Math.round(duration * 1000) : data.durationMs ?? null,
+                  dimensions:
+                    event.currentTarget.videoWidth && event.currentTarget.videoHeight
+                      ? { width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight }
+                      : data.dimensions ?? null,
+                });
+              }}
+            />
 
-            <div className="node-panel p-3 space-y-3">
+            <div className="media-input-info">
               <div className="min-w-0 truncate text-[12px] font-semibold text-[var(--node-text-primary)]">
                 {data.filename || "untitled-video"}
               </div>
@@ -200,7 +198,7 @@ export const VideoInputNode: React.FC<Props> = ({ id, data, selected }) => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="node-surface node-surface--dashed w-full min-h-[220px] rounded-[20px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
+            className="media-input-empty node-surface node-surface--dashed w-full min-h-[220px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
           >
             <div className="h-14 w-14 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center shadow-inner">
               <Film className="text-[var(--node-text-secondary)]" size={28} />

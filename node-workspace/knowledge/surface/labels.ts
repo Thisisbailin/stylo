@@ -9,6 +9,7 @@ export const formatKnowledgeKindLabel = (kind: string) => {
   if (value === "source.script") return "Script Source";
   if (value === "source.episode") return "Episode Source";
   if (value === "source.scene") return "Scene Source";
+  if (value === "source.guide") return "Guide Document";
 
   const parts = value.split(".");
   const tail = trim(parts[parts.length - 1]);

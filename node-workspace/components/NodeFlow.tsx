@@ -44,6 +44,7 @@ import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { ScriptCanvas } from "./ScriptCanvas";
+import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
 import { Toast, useToast } from "./Toast";
@@ -58,6 +59,11 @@ import {
   deriveKnowledgeSurfaceFocusFromFlowNode,
   type KnowledgeSurfaceFocusRequest,
 } from "../knowledge/surface/focus";
+import {
+  alignPositionChangesToNodeEdges,
+  getEdgeAlignedPosition,
+  type EdgeAlignmentGuide,
+} from "../utils/edgeAlignment";
 
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
@@ -110,6 +116,22 @@ const pickInputHandle = (
   if (preferred && handles.includes(preferred)) return preferred;
   if (preferred && handles.includes("multi")) return "multi";
   return handles[0] || null;
+};
+
+const getNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
+  if (typeof document === "undefined") return null;
+  const elements = document.elementsFromPoint(clientX, clientY);
+  for (const element of elements) {
+    const nodeElement = element.closest?.(".react-flow__node") as HTMLElement | null;
+    const nodeId = nodeElement?.getAttribute("data-id");
+    if (!nodeElement || !nodeId || nodeId === excludedNodeId) continue;
+    const rect = nodeElement.getBoundingClientRect();
+    return {
+      nodeId,
+      side: clientX < rect.left + rect.width / 2 ? "left" : "right",
+    };
+  }
+  return null;
 };
 
 interface NodeFlowProps {
@@ -489,7 +511,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const minZoom = 0.25;
   const maxZoom = 4;
-  const snapGridSize = 28;
   const [connectionDrop, setConnectionDrop] = useState<ConnectionDropState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
@@ -497,7 +518,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [snapGuide, setSnapGuide] = useState<XYPosition | null>(null);
+  const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
   const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
@@ -526,20 +547,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleConnectStart = useCallback(() => {
     setIsConnecting(true);
   }, []);
-
-  const updateSnapGuide = useCallback(
-    (position: XYPosition) => {
-      if (!snapToGrid || isLocked) {
-        setSnapGuide(null);
-        return;
-      }
-      setSnapGuide({
-        x: Math.round(position.x / snapGridSize) * snapGridSize,
-        y: Math.round(position.y / snapGridSize) * snapGridSize,
-      });
-    },
-    [isLocked, snapToGrid]
-  );
 
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
@@ -702,6 +709,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       const e = event as any;
       const clientX = e.clientX || e.touches?.[0]?.clientX;
       const clientY = e.clientY || e.touches?.[0]?.clientY;
+      if (typeof clientX !== "number" || typeof clientY !== "number") return;
 
       const fromHandleId = connectionState.fromHandle?.id || null;
       const fromHandleType =
@@ -709,6 +717,34 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           ? fromHandleId
           : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
+      const hitNode = getNodeHitAtPoint(clientX, clientY, connectionState.fromNode.id);
+      if (hitNode) {
+        const fromNode = nodes.find((node) => node.id === connectionState.fromNode?.id);
+        const hitFlowNode = nodes.find((node) => node.id === hitNode.nodeId);
+        if (fromNode && hitFlowNode) {
+          const fromNodeHandles = getNodeHandles(fromNode.type);
+          const hitNodeHandles = getNodeHandles(hitFlowNode.type);
+          const preferredHandleType = fromHandleType || inferHandleTypeFromNodeType(fromNode.type) || inferHandleTypeFromNodeType(hitFlowNode.type);
+          const connection = isFromSource
+            ? {
+                source: fromNode.id,
+                sourceHandle: (isTypedHandle(fromHandleId) ? fromHandleId : null) || pickOutputHandle(fromNodeHandles.outputs, preferredHandleType),
+                target: hitFlowNode.id,
+                targetHandle: pickInputHandle(hitNodeHandles.inputs, preferredHandleType),
+              }
+            : {
+                source: hitFlowNode.id,
+                sourceHandle: pickOutputHandle(hitNodeHandles.outputs, preferredHandleType),
+                target: fromNode.id,
+                targetHandle: (isTypedHandle(fromHandleId) ? fromHandleId : null) || pickInputHandle(fromNodeHandles.inputs, preferredHandleType),
+              };
+
+          if (connection.sourceHandle && connection.targetHandle && isValidConnection(connection)) {
+            connectNodes(connection, { expectedRevision: useNodeFlowStore.getState().revision });
+            return;
+          }
+        }
+      }
       const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
       setConnectionDrop({
         position: { x: clientX, y: clientY },
@@ -719,7 +755,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         sourceHandleId: connectionState.fromHandle?.id || null,
       });
     },
-    [screenToFlowPosition]
+    [connectNodes, nodes, screenToFlowPosition]
   );
 
   const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
@@ -904,6 +940,30 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
   const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
+  const updateSnapGuide = useCallback(
+    (nodeId: string, position: XYPosition) => {
+      if (!snapToGrid || isLocked) {
+        setSnapGuide(null);
+        return;
+      }
+      const node = displayNodes.find((item) => item.id === nodeId);
+      if (!node) {
+        setSnapGuide(null);
+        return;
+      }
+      const result = getEdgeAlignedPosition(node, displayNodes, position);
+      setSnapGuide(result.guide);
+    },
+    [displayNodes, isLocked, snapToGrid]
+  );
+  const handleFlowNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      const aligned = alignPositionChangesToNodeEdges(changes, displayNodes, snapToGrid && !isLocked);
+      setSnapGuide(aligned.guide);
+      onNodesChange(aligned.changes);
+    },
+    [displayNodes, isLocked, onNodesChange, snapToGrid]
+  );
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const patternDefinitions = useMemo(
@@ -1190,13 +1250,13 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           <ReactFlow
             nodes={displayNodes}
             edges={displayEdges}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleFlowNodesChange}
             onEdgesChange={onLinksChange}
             onConnect={handleConnect}
             onConnectStart={handleConnectStart}
             onConnectEnd={handleConnectEnd}
-            onNodeDragStart={(_, node) => updateSnapGuide(node.position)}
-            onNodeDrag={(_, node) => updateSnapGuide(node.position)}
+            onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
+            onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
             onNodeDragStop={() => setSnapGuide(null)}
             onMove={(_, vp) => setLiveViewport(vp)}
             onMoveEnd={(_, vp) => {
@@ -1205,8 +1265,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             }}
             minZoom={minZoom}
             maxZoom={maxZoom}
-            snapToGrid={snapToGrid}
-            snapGrid={[snapGridSize, snapGridSize]}
             nodesDraggable={!isLocked}
             nodesConnectable={!isLocked}
             elementsSelectable={!isLocked}
@@ -1260,25 +1318,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           />
         )}
 
-        {surfacePlane === "flow" && snapToGrid && snapGuide ? (
-          <div className="nodeflow-snap-guides pointer-events-none absolute inset-0 z-[9]" aria-hidden="true">
-            <div
-              className="nodeflow-snap-guide nodeflow-snap-guide--vertical"
-              style={{ transform: `translateX(${liveViewport.x + snapGuide.x * liveViewport.zoom}px)` }}
-            />
-            <div
-              className="nodeflow-snap-guide nodeflow-snap-guide--horizontal"
-              style={{ transform: `translateY(${liveViewport.y + snapGuide.y * liveViewport.zoom}px)` }}
-            />
-            <div
-              className="nodeflow-snap-guide-label"
-              style={{
-                transform: `translate(${liveViewport.x + snapGuide.x * liveViewport.zoom + 8}px, ${liveViewport.y + snapGuide.y * liveViewport.zoom + 8}px)`,
-              }}
-            >
-              {Math.round(snapGuide.x)}, {Math.round(snapGuide.y)}
-            </div>
-          </div>
+        {surfacePlane === "flow" && snapToGrid ? (
+          <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
         ) : null}
 
         {surfacePlane === "flow" && connectionDrop && (

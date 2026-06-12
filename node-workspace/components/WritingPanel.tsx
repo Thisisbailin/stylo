@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Bot, ChevronLeft, ChevronRight, Download, Minimize2, MoreHorizontal, Plus, X } from "lucide-react";
+import { BarChart3, Bot, ChevronLeft, ChevronRight, Download, Focus, Minimize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { Character, Episode, ProjectData, Scene } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -348,6 +348,20 @@ const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
   page_break: "Page Break",
 };
 
+const FOUNTAIN_FORMAT_META: Record<FountainLineKind, { marker: string; sample: string }> = {
+  action: { marker: "!", sample: "!Action line" },
+  scene_heading: { marker: ".", sample: ".INT. ROOM - DAY" },
+  character: { marker: "@", sample: "@CHARACTER" },
+  dialogue: { marker: "\"", sample: "Dialogue line" },
+  parenthetical: { marker: "()", sample: "(beat)" },
+  transition: { marker: ">", sample: "> CUT TO:" },
+  centered: { marker: "><", sample: "> Centered <" },
+  note: { marker: "[[]]", sample: "[[note]]" },
+  section: { marker: "#", sample: "# Section" },
+  synopsis: { marker: "=", sample: "= synopsis" },
+  page_break: { marker: "===", sample: "===" },
+};
+
 const FOUNTAIN_QUICK_FORMATS: FountainLineKind[] = [
   "action",
   "scene_heading",
@@ -417,27 +431,26 @@ const getFountainLineKind = (line: string, previousNonEmptyLine = ""): FountainL
 
 const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
   const raw = stripFountainMarkup(line).trim();
-  const fallback = raw || (targetKind === "page_break" ? "" : targetKind === "character" ? "CHARACTER" : "Text");
 
   switch (targetKind) {
     case "scene_heading":
-      return `.${fallback.toUpperCase()}`;
+      return raw ? `.${raw.toUpperCase()}` : ".INT. SCENE - DAY";
     case "character":
-      return `@${fallback.toUpperCase()}`;
+      return raw ? `@${raw.toUpperCase()}` : "@CHARACTER";
     case "dialogue":
-      return fallback === "Text" ? "Dialogue line" : fallback;
+      return raw;
     case "parenthetical":
-      return `(${fallback === "Text" ? "beat" : fallback})`;
+      return `(${raw || "beat"})`;
     case "transition":
-      return `> ${fallback === "Text" ? "CUT TO:" : fallback.toUpperCase().endsWith(":") ? fallback.toUpperCase() : `${fallback.toUpperCase()}:`}`;
+      return `> ${raw ? (raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`) : "CUT TO:"}`;
     case "centered":
-      return `> ${fallback} <`;
+      return `> ${raw || "Centered text"} <`;
     case "note":
-      return `[[${fallback === "Text" ? "note" : fallback}]]`;
+      return `[[${raw || "note"}]]`;
     case "section":
-      return `# ${fallback === "Text" ? "Act One" : fallback}`;
+      return `# ${raw || "Section"}`;
     case "synopsis":
-      return `= ${fallback === "Text" ? "summary" : fallback}`;
+      return `= ${raw || "synopsis"}`;
     case "page_break":
       return "===";
     case "action":
@@ -446,52 +459,31 @@ const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
   }
 };
 
-const getNextFountainLineKind = (currentKind: FountainLineKind): FountainLineKind => {
-  switch (currentKind) {
+const getFountainTemplateSelection = (formattedLine: string, targetKind: FountainLineKind) => {
+  switch (targetKind) {
     case "scene_heading":
-      return "action";
     case "character":
+      return { start: 1, end: formattedLine.length };
     case "parenthetical":
-      return "dialogue";
-    case "transition":
+      return { start: 1, end: Math.max(1, formattedLine.length - 1) };
+    case "transition": {
+      const start = formattedLine.startsWith("> ") ? 2 : 0;
+      const end = formattedLine.endsWith(":") ? formattedLine.length - 1 : formattedLine.length;
+      return { start, end: Math.max(start, end) };
+    }
     case "centered":
+      return { start: 2, end: Math.max(2, formattedLine.length - 2) };
     case "note":
+      return { start: 2, end: Math.max(2, formattedLine.length - 2) };
     case "section":
     case "synopsis":
+      return { start: 2, end: formattedLine.length };
     case "page_break":
-      return "action";
+      return { start: formattedLine.length, end: formattedLine.length };
     case "dialogue":
     case "action":
     default:
-      return "action";
-  }
-};
-
-const createEmptyFountainLine = (kind: FountainLineKind) => {
-  switch (kind) {
-    case "scene_heading":
-      return ".INT. SCENE - DAY";
-    case "character":
-      return "@CHARACTER";
-    case "dialogue":
-      return "";
-    case "parenthetical":
-      return "(beat)";
-    case "transition":
-      return "> CUT TO:";
-    case "centered":
-      return "> TEXT <";
-    case "note":
-      return "[[note]]";
-    case "section":
-      return "# Section";
-    case "synopsis":
-      return "= summary";
-    case "page_break":
-      return "===";
-    case "action":
-    default:
-      return "";
+      return { start: 0, end: formattedLine.length };
   }
 };
 
@@ -538,6 +530,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
   const [activeGuideIndex, setActiveGuideIndex] = useState(0);
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(true);
+  const [isEditorFocused, setIsEditorFocused] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
@@ -702,6 +696,24 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     setSelectedSceneId(nextEpisode.scenes[0].id);
   };
 
+  const deleteEpisode = () => {
+    if (draft.length <= 1) return;
+    const currentIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
+    const hasContent = selectedEpisode.scenes.some((scene) => scene.body.trim() || scene.title.trim() || scene.castLine.trim());
+    if (hasContent && !window.confirm(`Delete ${selectedEpisode.title || `Episode ${selectedEpisode.id}`} and all of its scenes?`)) {
+      return;
+    }
+
+    const nextDraft = draft.filter((episode) => episode.id !== selectedEpisode.id);
+    const nextEpisode = nextDraft[Math.min(currentIndex, nextDraft.length - 1)] || nextDraft[0];
+    setDraft(nextDraft);
+    if (nextEpisode) {
+      setSelectedEpisodeId(nextEpisode.id);
+      setSelectedSceneId(nextEpisode.scenes[0]?.id || `${nextEpisode.id}-1`);
+    }
+    setAgentLine(null);
+  };
+
   const addScene = () => {
     const nextSceneIndex = selectedEpisode.scenes.length + 1;
     const nextScene = createEmptyScene(selectedEpisode.id, nextSceneIndex);
@@ -714,6 +726,25 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     requestAnimationFrame(() => {
       setSelectedSceneId(nextScene.id);
     });
+  };
+
+  const deleteScene = (sceneId: string) => {
+    if (selectedEpisode.scenes.length <= 1) return;
+    const sceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === sceneId));
+    const sceneToDelete = selectedEpisode.scenes[sceneIndex];
+    const hasContent = !!sceneToDelete && (sceneToDelete.body.trim() || sceneToDelete.title.trim() || sceneToDelete.castLine.trim());
+    if (hasContent && !window.confirm(`Delete scene ${sceneToDelete.id || sceneIndex + 1}?`)) {
+      return;
+    }
+
+    const nextScenes = selectedEpisode.scenes.filter((scene) => scene.id !== sceneId);
+    const nextScene = nextScenes[Math.min(sceneIndex, nextScenes.length - 1)] || nextScenes[0];
+    patchEpisode(selectedEpisode.id, (episode) => ({
+      ...episode,
+      scenes: nextScenes,
+    }));
+    if (nextScene) setSelectedSceneId(nextScene.id);
+    setAgentLine(null);
   };
 
   const fountainScript = useMemo(
@@ -1009,6 +1040,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     const lines = selectedScene.body.split(/\r?\n/);
     return getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
   }, [cursorPos, selectedScene.body]);
+  const currentFountainMeta = FOUNTAIN_FORMAT_META[currentFountainKind];
 
   const applyFountainLineFormat = useCallback(
     (editor: HTMLTextAreaElement, nextKind: FountainLineKind) => {
@@ -1016,11 +1048,21 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       const cursor = editor.selectionStart || 0;
       const bounds = getLineBoundsAt(text, cursor);
       const lines = text.split(/\r?\n/);
+      const rawLine = stripFountainMarkup(bounds.line).trim();
       const formattedLine = formatFountainLine(bounds.line, nextKind);
       const cursorOffset = Math.max(0, cursor - bounds.lineStart);
+      const templateSelection = getFountainTemplateSelection(formattedLine, nextKind);
 
       let nextText = `${text.slice(0, bounds.lineStart)}${formattedLine}${text.slice(bounds.lineEnd)}`;
       let nextCursor = bounds.lineStart + Math.min(formattedLine.length, cursorOffset);
+      let nextSelectionStart = nextCursor;
+      let nextSelectionEnd = nextCursor;
+
+      if (!rawLine && formattedLine) {
+        nextSelectionStart = bounds.lineStart + templateSelection.start;
+        nextSelectionEnd = bounds.lineStart + templateSelection.end;
+        nextCursor = nextSelectionEnd;
+      }
 
       if (nextKind === "dialogue") {
         const previousLine = getPreviousNonEmptyLine(lines, bounds.lineIndex);
@@ -1028,15 +1070,17 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
           const insert = `@CHARACTER\n${formattedLine}`;
           nextText = `${text.slice(0, bounds.lineStart)}${insert}${text.slice(bounds.lineEnd)}`;
           nextCursor = bounds.lineStart + "@CHARACTER\n".length + Math.min(formattedLine.length, cursorOffset);
+          nextSelectionStart = nextCursor;
+          nextSelectionEnd = nextCursor;
         }
       }
 
       patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
       requestAnimationFrame(() => {
         editor.focus();
-        editor.selectionStart = nextCursor;
-        editor.selectionEnd = nextCursor;
-        setCursorPos(nextCursor);
+        editor.selectionStart = nextSelectionStart;
+        editor.selectionEnd = nextSelectionEnd;
+        setCursorPos(nextSelectionEnd);
         syncEditorScroll();
       });
     },
@@ -1058,32 +1102,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       applyFountainLineFormat(editor, nextKind);
     },
     [applyFountainLineFormat]
-  );
-
-  const insertStructuredFountainBreak = useCallback(
-    (editor: HTMLTextAreaElement) => {
-      const text = editor.value;
-      const cursor = editor.selectionStart || 0;
-      const bounds = getLineBoundsAt(text, cursor);
-      const lines = text.split(/\r?\n/);
-      const currentKind = getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
-      const nextKind = getNextFountainLineKind(currentKind);
-      const nextLine = createEmptyFountainLine(nextKind);
-      const insertion = `\n${nextLine}`;
-      const selectionEnd = editor.selectionEnd || cursor;
-      const nextText = `${text.slice(0, cursor)}${insertion}${text.slice(selectionEnd)}`;
-      const nextCursor = cursor + insertion.length;
-
-      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
-      requestAnimationFrame(() => {
-        editor.focus();
-        editor.selectionStart = nextCursor;
-        editor.selectionEnd = nextCursor;
-        setCursorPos(nextCursor);
-        syncEditorScroll();
-      });
-    },
-    [selectedEpisode.id, selectedScene.id]
   );
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1128,8 +1146,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
         activateAgentLine(event.currentTarget);
         return;
       }
-      event.preventDefault();
-      insertStructuredFountainBreak(event.currentTarget);
     }
   };
 
@@ -1193,9 +1209,9 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   ).size;
   const writingGuides = useMemo(
     () => [
-      "Fountain draft: scene heading, action, character cue, dialogue.",
-      "Triple return opens a Qalam dialogue line inside the page.",
-      "Scene metadata edits directly on the page.",
+      "Fountain is stored as plain screenplay text with explicit line marks.",
+      "Line format changes only through Tab, Shift+Tab, or the format dock.",
+      "Scene metadata edits stay on the page and export with the draft.",
     ],
     []
   );
@@ -1222,7 +1238,10 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   };
 
   return (
-    <div ref={writingRoomRef} className="writing-room fixed inset-0 z-[61] overflow-y-auto overflow-x-hidden text-[var(--app-text-primary)]">
+    <div
+      ref={writingRoomRef}
+      className={`writing-room fixed inset-0 z-[61] overflow-y-auto overflow-x-hidden text-[var(--app-text-primary)] ${isFocusMode ? "is-focus-mode" : ""} ${isEditorFocused ? "is-editor-focused" : ""}`}
+    >
       <div className="writing-canvas-backdrop absolute inset-0" aria-hidden="true" />
       {isWritingQalamOpen ? (
         <QalamAgent
@@ -1273,8 +1292,12 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     >
                       <Download size={17} strokeWidth={1.8} />
                     </button>
-                    <span className="writing-format-pill" title="Tab cycles line format, Shift+Tab cycles backward">
-                      {FOUNTAIN_FORMAT_LABELS[currentFountainKind]}
+                    <span
+                      className="writing-format-pill"
+                      title={`Current Fountain format: ${currentFountainMeta.sample}`}
+                    >
+                      <span className="writing-format-pill__marker">{currentFountainMeta.marker}</span>
+                      <span>{FOUNTAIN_FORMAT_LABELS[currentFountainKind]}</span>
                     </span>
                     <button
                       type="button"
@@ -1300,6 +1323,15 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                     </button>
                     <button
                       type="button"
+                      onClick={deleteEpisode}
+                      className="writing-icon-button writing-icon-button--danger"
+                      disabled={draft.length <= 1}
+                      title={draft.length <= 1 ? "Keep at least one episode" : "Delete episode"}
+                    >
+                      <Trash2 size={16} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         if (isWritingQalamOpen) {
                           setIsWritingQalamOpen(false);
@@ -1320,6 +1352,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       title={isInfoPanelOpen ? "Hide info" : "Show info"}
                     >
                       <MoreHorizontal size={18} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsFocusMode((current) => !current)}
+                      className={`writing-icon-button ${isFocusMode ? "is-active" : ""}`}
+                      title={isFocusMode ? "Focus mode on" : "Focus mode off"}
+                    >
+                      <Focus size={17} strokeWidth={1.8} />
                     </button>
                     <button type="button" onClick={handleClose} className="writing-icon-button" title="退出全屏编辑">
                       <Minimize2 size={17} strokeWidth={1.8} />
@@ -1388,6 +1428,16 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                             className="writing-scene-input writing-scene-input--cast"
                             placeholder="CAST"
                           />
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => deleteScene(scene.id)}
+                            className="writing-scene-delete"
+                            disabled={selectedEpisode.scenes.length <= 1}
+                            title={selectedEpisode.scenes.length <= 1 ? "Keep at least one scene" : "Delete scene"}
+                          >
+                            <Trash2 size={14} strokeWidth={1.9} />
+                          </button>
                         </div>
 
                         <div className="writing-paper-body relative flex-1">
@@ -1403,6 +1453,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                               <textarea
                                 ref={editorRef}
                                 value={selectedScene.body}
+                                onFocus={() => setIsEditorFocused(true)}
+                                onBlur={() => setIsEditorFocused(false)}
                                 onChange={(event) =>
                                   patchScene(selectedEpisode.id, selectedScene.id, (current) => ({ ...current, body: event.target.value }))
                                 }
@@ -1508,6 +1560,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       <button
                         key={kind}
                         type="button"
+                        title={FOUNTAIN_FORMAT_META[kind].sample}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           const editor = editorRef.current;
@@ -1516,7 +1569,8 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                         }}
                         className={`writing-format-button ${currentFountainKind === kind ? "is-active" : ""}`}
                       >
-                        {FOUNTAIN_FORMAT_LABELS[kind]}
+                        <span className="writing-format-button__marker">{FOUNTAIN_FORMAT_META[kind].marker}</span>
+                        <span>{FOUNTAIN_FORMAT_LABELS[kind]}</span>
                       </button>
                     ))}
                   </div>

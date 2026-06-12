@@ -4,7 +4,7 @@ import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
 import type { NodeFlowFile } from "../types";
 import { createStableId } from "../../utils/id";
-import { ARK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
+import { ARK_DEFAULT_MODEL, DEEPSEEK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import {
   GLASS_DIFFUSION_PRESETS,
   GlassDiffusionField,
@@ -20,7 +20,6 @@ import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
 import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
-import type { QalamAgentRuntime } from "../../agents/runtime/types";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 
@@ -114,65 +113,13 @@ const resolveAgentRuntimeModel = (textConfig: any) => {
     }
     return explicitAgentModel;
   }
+  if (provider === "deepseek") {
+    if (!explicitAgentModel || explicitAgentModel.startsWith("qwen") || explicitAgentModel.startsWith("doubao-")) {
+      return DEEPSEEK_DEFAULT_MODEL;
+    }
+    return explicitAgentModel;
+  }
   return explicitAgentModel || (textConfig?.model || "").trim() || "";
-};
-
-const resolveAgentProviderConfig = async (textConfig: any) => {
-  const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
-  const model = resolveAgentRuntimeModel(textConfig);
-  const baseUrl = textConfig?.agentBaseUrl || textConfig?.baseUrl;
-  return {
-    provider,
-    apiKey: textConfig?.apiKey,
-    baseUrl,
-    model,
-    qalamTools: textConfig?.qalamTools,
-    tracingDisabled: true,
-  };
-};
-
-const isBrowserRuntimeDebugEnabled = () =>
-  typeof window !== "undefined" &&
-  import.meta.env.DEV &&
-  window.localStorage.getItem("qalam_agent_runtime_target") === "browser";
-
-const createBrowserRuntimeOverride = (
-  bridge: QalamAgentBridge,
-  getConfig: () => Promise<any>
-): QalamAgentRuntime => {
-  let runtimePromise: Promise<QalamAgentRuntime> | null = null;
-
-  const loadRuntime = async () => {
-    const [{ createQalamAgentRuntime }, { StaticSkillLoader }, { LocalStorageSessionStore }] = await Promise.all([
-      import("../../agents/runtime/agent"),
-      import("../../agents/runtime/skills"),
-      import("../../agents/runtime/session"),
-    ]);
-    return createQalamAgentRuntime({
-      bridge,
-      skillLoader: new StaticSkillLoader(),
-      sessionStore: new LocalStorageSessionStore(),
-      configProvider: {
-        getConfig: async () => ({
-          ...(await getConfig()),
-          runtimeTarget: "browser" as const,
-        }),
-      },
-    });
-  };
-
-  return {
-    async run(input, options) {
-      if (!isBrowserRuntimeDebugEnabled()) {
-        throw new Error("Browser runtime 仅作为本地开发调试入口保留，当前产品路径固定走 edge。");
-      }
-      if (!runtimePromise) {
-        runtimePromise = loadRuntime();
-      }
-      const runtime = await runtimePromise;
-      return runtime.run(input, options);
-    },
-  };
 };
 
 const hasEpisodeSceneRef = (text: string) => {
@@ -577,13 +524,6 @@ export const QalamAgent: React.FC<Props> = ({
     }),
     [activeView, addGraphLink, addNode, clearExecutionApproval, connectNodes, globalAssetHistory, graphLinks, linkStyle, links, moveNode, nodeFlowContext, nodes, pendingExecutionApprovals, projectData, removeGraphLink, removeLink, removeNode, requestExecutionApproval, revision, setProjectData, toggleLinkPause, updateNodeData, updateNodeStyle, viewport]
   );
-  const browserRuntimeOverride = useMemo(
-    () =>
-      import.meta.env.DEV
-        ? createBrowserRuntimeOverride(bridge, () => resolveAgentProviderConfig(config.textConfig))
-        : null,
-    [bridge, config.textConfig]
-  );
   const edgeRuntime = useMemo(
     () =>
       createHttpQalamAgentRuntime({
@@ -640,17 +580,7 @@ export const QalamAgent: React.FC<Props> = ({
       viewport,
     ]
   );
-  const runtime = useMemo(
-    () => ({
-      run: (input: any, options?: any) => {
-        if (browserRuntimeOverride && isBrowserRuntimeDebugEnabled()) {
-          return browserRuntimeOverride.run(input, options);
-        }
-        return edgeRuntime.run(input, options);
-      },
-    }),
-    [browserRuntimeOverride, edgeRuntime]
-  );
+  const runtime = edgeRuntime;
   const mentionTargets = useMemo(() => {
     const targets: Array<{ kind: "character" | "location"; name: string; label: string; search: string; id?: string }> = [];
     (projectData.context?.characters || []).forEach((c) => {

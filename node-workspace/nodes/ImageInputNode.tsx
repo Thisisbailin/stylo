@@ -387,79 +387,81 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     <BaseNode title={nodeTitle} onTitleChange={(title) => updateNodeData(id, { title })} outputs={["image"]} selected={selected} variant="media">
       <div ref={shellRef} className="image-input-shell relative w-full h-full">
         {data.image ? (
-          <div className="image-input-frame">
-            <div className="image-input-media" onClick={() => fileInputRef.current?.click()}>
+          <div className="image-input-frame media-input-frame">
+            <div className="image-input-media media-input-asset" onClick={() => fileInputRef.current?.click()}>
               <img src={data.image} alt="preview" className="image-input-img" />
             </div>
-            <div className="image-input-caption">
-              <div className="image-input-label">
-                <div
-                  ref={editorRef}
-                  className="image-input-editor nodrag"
-                  contentEditable
-                  suppressContentEditableWarning
-                  data-placeholder={data.filename ? "Add a caption" : "Name"}
-                  onInput={handleInput}
-                  onBeforeInput={(e) => {
-                    const native = e.nativeEvent as InputEvent;
-                    if (!native || typeof native.inputType !== "string") return;
-                    if (native.inputType === "insertParagraph" || native.inputType === "insertLineBreak") {
-                      e.preventDefault();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      (e.currentTarget as HTMLDivElement).blur();
-                    }
-                  }}
-                onKeyUp={() => {
-                  if (skipNextCursorUpdateRef.current) {
-                    skipNextCursorUpdateRef.current = false;
-                    return;
-                  }
-                  updateCursor();
-                  updatePickerPosition();
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateCursor();
-                  updatePickerPosition();
-                }}
-                  onFocus={() => {
-                    setIsFocused(true);
-                    updateCursor();
-                    updatePickerPosition();
-                  }}
-                  onBlur={() => {
-                    setIsFocused(false);
-                    if (!isComposingRef.current && labelDraft !== data.label) {
-                      isLocalUpdateRef.current = true;
-                      commitLabel(labelDraft);
-                    }
-                  }}
-                  onCompositionStart={() => {
-                    isComposingRef.current = true;
-                  }}
-                  onCompositionEnd={() => {
-                    isComposingRef.current = false;
-                    handleInput();
-                  }}
-                />
+            <div className="media-input-info">
+              <div className="image-input-caption">
+                <div className="image-input-label">
+                  <div
+                    ref={editorRef}
+                    className="image-input-editor nodrag"
+                    contentEditable
+                    suppressContentEditableWarning
+                    data-placeholder={data.filename ? "Add a caption" : "Name"}
+                    onInput={handleInput}
+                    onBeforeInput={(e) => {
+                      const native = e.nativeEvent as InputEvent;
+                      if (!native || typeof native.inputType !== "string") return;
+                      if (native.inputType === "insertParagraph" || native.inputType === "insertLineBreak") {
+                        e.preventDefault();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        (e.currentTarget as HTMLDivElement).blur();
+                      }
+                    }}
+                    onKeyUp={() => {
+                      if (skipNextCursorUpdateRef.current) {
+                        skipNextCursorUpdateRef.current = false;
+                        return;
+                      }
+                      updateCursor();
+                      updatePickerPosition();
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateCursor();
+                      updatePickerPosition();
+                    }}
+                    onFocus={() => {
+                      setIsFocused(true);
+                      updateCursor();
+                      updatePickerPosition();
+                    }}
+                    onBlur={() => {
+                      setIsFocused(false);
+                      if (!isComposingRef.current && labelDraft !== data.label) {
+                        isLocalUpdateRef.current = true;
+                        commitLabel(labelDraft);
+                      }
+                    }}
+                    onCompositionStart={() => {
+                      isComposingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                      isComposingRef.current = false;
+                      handleInput();
+                    }}
+                  />
+                </div>
+                {dimensionLabel ? <div className="image-input-dimension">{dimensionLabel}</div> : null}
               </div>
-              {dimensionLabel ? <div className="image-input-dimension">{dimensionLabel}</div> : null}
-            </div>
-            <div className="image-input-actions">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
-              >
-                <Upload size={12} />
-                Replace
-              </button>
+              <div className="image-input-actions">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
+                >
+                  <Upload size={12} />
+                  Replace
+                </button>
+              </div>
             </div>
           </div>
         ) : (

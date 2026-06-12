@@ -2,6 +2,7 @@ import {
   Agent,
   InputGuardrailTripwireTriggered,
   OutputGuardrailTripwireTriggered,
+  OpenAIProvider,
   Runner,
   ToolInputGuardrailTripwireTriggered,
   ToolOutputGuardrailTripwireTriggered,
@@ -16,7 +17,7 @@ import { buildAgentEnvironment } from "./environment";
 import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guardrails";
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems } from "./memory";
-import { formatModelAccessError, isModelAccessError, type QalamAgentProvider } from "./providerConfig";
+import { formatModelAccessError, isModelAccessError, type QalamAgentApiMode, type QalamAgentProvider } from "./providerConfig";
 import type {
   AgentExecutedToolCall,
   AgentRuntimeEvent,
@@ -197,6 +198,7 @@ const instrumentOpenAIResponsesClient = (
 
 type ResolvedRuntimeConfig = Pick<QalamAgentConfig, "defaultHeaders" | "qalamTools"> & {
   provider: QalamAgentProvider;
+  apiMode?: QalamAgentApiMode;
   model: string;
   apiKey: string;
   baseUrl: string;
@@ -288,17 +290,20 @@ export const runQalamAgentCore = async ({
   });
   emitTrace("runtime", "running", "Run started", `session=${input.sessionId}`);
 
-  setOpenAIAPI("responses");
+  const apiMode = config.apiMode || "responses";
+  setOpenAIAPI(apiMode);
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL: config.baseUrl,
     defaultHeaders: config.defaultHeaders,
     dangerouslyAllowBrowser: runtimeMode === "browser",
   });
-  instrumentOpenAIResponsesClient(client, {
-    emitTrace,
-    debug: onDebug,
-  });
+  if (apiMode === "responses") {
+    instrumentOpenAIResponsesClient(client, {
+      emitTrace,
+      debug: onDebug,
+    });
+  }
   setDefaultOpenAIClient(client);
 
   const toolEvents: AgentExecutedToolCall[] = [];
@@ -382,6 +387,10 @@ export const runQalamAgentCore = async ({
 
   try {
     const runner = new Runner({
+      modelProvider: new OpenAIProvider({
+        openAIClient: client,
+        useResponses: apiMode === "responses",
+      }),
       tracingDisabled: tracingDisabled ?? true,
       traceIncludeSensitiveData: traceIncludeSensitiveData ?? false,
       workflowName,

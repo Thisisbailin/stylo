@@ -7,7 +7,7 @@ import {
   serializeAgentStreamPacket,
   type AgentHttpRunRequest,
 } from "../../agents/runtime/httpProtocol";
-import { resolveAgentProvider, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
+import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
@@ -46,12 +46,14 @@ const CORS_HEADERS = {
 
 const EDGE_AGENT_MAX_TURNS = 50;
 
-const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark") => {
+const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark" | "deepseek") => {
   const value =
     provider === "openrouter"
       ? env.OPENROUTER_API_KEY
       : provider === "ark"
         ? env.ARK_API_KEY
+        : provider === "deepseek"
+          ? env.DEEPSEEK_API_KEY
       : env.QWEN_API_KEY || env.DASHSCOPE_API_KEY || env.OPENAI_API_KEY;
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`Pages Functions 未配置 ${provider} 的可用 API Key。`);
@@ -426,6 +428,7 @@ export const onRequestPost = async (context: any) => {
           userText: body.run.userText,
         });
         const effectiveModel = resolveProviderModel(provider, body.runtime.model);
+        const apiMode = resolveApiMode(provider);
         const resolvedBaseUrl = resolveBaseUrl(provider, body.runtime.baseUrl);
         const resolvedApiKey = resolveApiKey(context.env || {}, provider);
         const {
@@ -457,12 +460,16 @@ export const onRequestPost = async (context: any) => {
             enabledSkills: enabledSkills.map((skill) => skill.id),
           })
         );
-        const session = new QalamResponsesCompactionSession({
-          underlyingSession: new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner),
-          model: effectiveModel,
-          apiKey: resolvedApiKey,
-          baseUrl: resolvedBaseUrl,
-        });
+        const underlyingSession = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
+        const session =
+          apiMode === "responses"
+            ? new QalamResponsesCompactionSession({
+                underlyingSession,
+                model: effectiveModel,
+                apiKey: resolvedApiKey,
+                baseUrl: resolvedBaseUrl,
+              })
+            : underlyingSession;
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
         emitWrapperTrace("runtime", "running", "Delegating to agent core");
@@ -470,6 +477,7 @@ export const onRequestPost = async (context: any) => {
           input: body.run,
           config: {
             provider,
+            apiMode,
             model: effectiveModel,
             apiKey: resolvedApiKey,
             baseUrl: resolvedBaseUrl,

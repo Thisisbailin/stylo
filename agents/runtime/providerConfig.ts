@@ -1,13 +1,32 @@
-import { ARK_DEFAULT_MODEL, ARK_RESPONSES_BASE_URL, OPENROUTER_RESPONSES_BASE_URL, QWEN_DEFAULT_MODEL, QWEN_RESPONSES_BASE_URL } from "../../constants";
+import {
+  ARK_DEFAULT_MODEL,
+  ARK_RESPONSES_BASE_URL,
+  DEEPSEEK_CHAT_BASE_URL,
+  DEEPSEEK_DEFAULT_MODEL,
+  OPENROUTER_RESPONSES_BASE_URL,
+  QWEN_DEFAULT_MODEL,
+  QWEN_RESPONSES_BASE_URL,
+} from "../../constants";
 
-export type QalamAgentProvider = "qwen" | "openrouter" | "ark";
+export type QalamAgentProvider = "qwen" | "openrouter" | "ark" | "deepseek";
+export type QalamAgentApiMode = "responses" | "chat_completions";
 
 export const resolveAgentProvider = (provider?: string): QalamAgentProvider =>
-  provider === "openrouter" ? "openrouter" : provider === "ark" ? "ark" : "qwen";
+  provider === "openrouter"
+    ? "openrouter"
+    : provider === "ark"
+      ? "ark"
+      : provider === "deepseek"
+        ? "deepseek"
+        : "qwen";
+
+export const resolveApiMode = (provider: QalamAgentProvider): QalamAgentApiMode =>
+  provider === "deepseek" ? "chat_completions" : "responses";
 
 export const resolveBaseUrl = (provider: QalamAgentProvider, baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
+  if (provider === "deepseek") return DEEPSEEK_CHAT_BASE_URL;
   if (provider === "openrouter") return OPENROUTER_RESPONSES_BASE_URL;
   if (provider === "ark") return ARK_RESPONSES_BASE_URL;
   return QWEN_RESPONSES_BASE_URL;
@@ -22,8 +41,14 @@ export const resolveProviderModel = (provider: QalamAgentProvider, requestedMode
     return model;
   }
   if (provider === "qwen") {
-    if (!model || model.startsWith("doubao-")) {
+    if (!model || model.startsWith("doubao-") || model.startsWith("deepseek-")) {
       return QWEN_DEFAULT_MODEL;
+    }
+    return model;
+  }
+  if (provider === "deepseek") {
+    if (!model || model.startsWith("qwen") || model.startsWith("doubao-")) {
+      return DEEPSEEK_DEFAULT_MODEL;
     }
     return model;
   }
@@ -31,8 +56,8 @@ export const resolveProviderModel = (provider: QalamAgentProvider, requestedMode
 };
 
 export const isModelAccessError = (message: string) =>
-  /model or endpoint/i.test(message) &&
-  /(does not exist|do not have access)/i.test(message);
+  /model or endpoint|model|endpoint/i.test(message) &&
+  /(does not exist|do not have access|not found|invalid|unsupported)/i.test(message);
 
 export const formatModelAccessError = (
   provider: QalamAgentProvider,
@@ -40,10 +65,13 @@ export const formatModelAccessError = (
   message: string
 ) => {
   if (provider === "ark") {
-    return `Ark 模型不可用：当前请求使用的是 \`${effectiveModel}\`。方舟 Agent 路线请优先使用 \`doubao-seed-*\` 或已开通权限的 \`ep-*\` 接入点 ID；旧的 \`doubao-lite/pro-*\` 常会在 Responses 路线上 404。原始错误：${message}`;
+    return `Ark model unavailable: current request uses \`${effectiveModel}\`. Prefer \`doubao-seed-*\` or an enabled \`ep-*\` endpoint ID. Original error: ${message}`;
   }
   if (provider === "qwen") {
-    return `Qwen 模型不可用：当前请求使用的是 \`${effectiveModel}\`。这通常表示当前 API Key 对该模型未开通权限，或该模型不在当前兼容路线上可用。建议先切回 \`${QWEN_DEFAULT_MODEL}\` 再试。原始错误：${message}`;
+    return `Qwen model unavailable: current request uses \`${effectiveModel}\`. Check model access for this API key or switch back to \`${QWEN_DEFAULT_MODEL}\`. Original error: ${message}`;
+  }
+  if (provider === "deepseek") {
+    return `DeepSeek model unavailable: current request uses \`${effectiveModel}\`. Check DEEPSEEK_API_KEY permissions, the model name, and the Chat Completions route. Original error: ${message}`;
   }
   return message;
 };

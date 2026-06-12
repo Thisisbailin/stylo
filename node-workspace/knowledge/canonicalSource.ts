@@ -32,6 +32,29 @@ const buildWholeScriptContent = (projectData: ProjectData) => {
   return sections.join("\n\n");
 };
 
+const CANONICAL_GUIDES = [
+  {
+    key: "globalStyleGuide",
+    title: "Global Style Guide",
+  },
+  {
+    key: "shotGuide",
+    title: "Shot Guide",
+  },
+  {
+    key: "soraGuide",
+    title: "Sora Prompt Guide",
+  },
+  {
+    key: "storyboardGuide",
+    title: "Storyboard Guide",
+  },
+  {
+    key: "dramaGuide",
+    title: "Drama Guide",
+  },
+] as const;
+
 export const buildCanonicalKnowledgeNodes = (
   projectData: ProjectData,
   {
@@ -64,6 +87,33 @@ export const buildCanonicalKnowledgeNodes = (
       })
     );
   }
+
+  CANONICAL_GUIDES.forEach(({ key, title }) => {
+    const content = trim(projectData[key]);
+    if (!content) return;
+
+    nodes.push(
+      createCanonicalKnowledgeNode({
+        id: `knowledge-source-guide-${key}`,
+        ref: `source:guide:${key}`,
+        kind: "source.guide",
+        title,
+        content: {
+          key,
+          content,
+        },
+        meta: {
+          locked: true,
+          guideKey: key,
+        },
+        status: "accepted",
+        confidence: "high",
+        anchors: [createKnowledgeAnchor("guide", key)],
+        createdAt,
+        updatedAt: createdAt,
+      })
+    );
+  });
 
   return nodes;
 };

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -22,7 +22,13 @@ import { Plus, Upload } from "lucide-react";
 import type { Episode, ProjectData, ScriptCanvasState } from "../../types";
 import { BaseNode } from "../nodes/BaseNode";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
+import {
+  alignPositionChangesToNodeEdges,
+  getEdgeAlignedPosition,
+  type EdgeAlignmentGuide,
+} from "../utils/edgeAlignment";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
+import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 
 type ScriptPageData = {
@@ -97,6 +103,22 @@ const pickInputHandle = (
 const getScriptNodeHandles = (nodeId: string) => {
   if (isImageNodeId(nodeId)) return { inputs: [] as ScriptHandleType[], outputs: ["image"] as ScriptHandleType[] };
   return { inputs: ["image", "text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
+};
+
+const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
+  if (typeof document === "undefined") return null;
+  const elements = document.elementsFromPoint(clientX, clientY);
+  for (const element of elements) {
+    const nodeElement = element.closest?.(".react-flow__node") as HTMLElement | null;
+    const nodeId = nodeElement?.getAttribute("data-id");
+    if (!nodeElement || !nodeId || nodeId === excludedNodeId) continue;
+    const rect = nodeElement.getBoundingClientRect();
+    return {
+      nodeId,
+      side: clientX < rect.left + rect.width / 2 ? "left" : "right",
+    };
+  }
+  return null;
 };
 
 const getDefaultScriptPosition = (index: number) => ({
@@ -202,9 +224,11 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
   const maxZoom = 2.5;
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
+  const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
+  const [liveViewport, setLiveViewport] = useState(() => getViewport());
   const readingMode = useNodeFlowStore((state) => state.readingMode);
   const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
   const canvas = useMemo(() => ensureCanvas(projectData.scriptCanvas), [projectData.scriptCanvas]);
@@ -389,7 +413,10 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<ScriptCanvasNode>[]) => {
-      const hasPositionChange = changes.some((change) => change.type === "position" && change.position);
+      const aligned = alignPositionChangesToNodeEdges(changes, nodes, snapToGrid && !isLocked);
+      setSnapGuide(aligned.guide);
+      const effectiveChanges = aligned.changes;
+      const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
       const removedEpisodeIds = changes
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("script-"))
@@ -402,7 +429,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
 
       if (!hasPositionChange && removedImageIds.length === 0 && removedEpisodeIds.length === 0) return;
 
-      const nextNodes = applyNodeChanges(changes, nodes);
+      const nextNodes = applyNodeChanges(effectiveChanges, nodes);
       const positionById = new Map(nextNodes.map((node) => [node.id, node.position]));
 
       persistCanvas((currentCanvas, previous) => {
@@ -443,7 +470,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         });
       }
     },
-    [nodes, persistCanvas, setProjectData]
+    [isLocked, nodes, persistCanvas, setProjectData, snapToGrid]
   );
 
   const handleEdgesChange = useCallback(
@@ -463,15 +490,25 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     [edges, persistCanvas]
   );
 
-  const handleConnect = useCallback(
+  const commitScriptConnection = useCallback(
     (connection: Connection) => {
-      if (!connection.source || !connection.target) return;
-      if (!isTextNodeId(connection.target)) return;
-      if (!isImageNodeId(connection.source) && !isTextNodeId(connection.source)) return;
+      if (!connection.source || !connection.target) return false;
+      if (!isTextNodeId(connection.target)) return false;
+      if (!isImageNodeId(connection.source) && !isTextNodeId(connection.source)) return false;
 
-      const id = `link-${connection.source}-${connection.target}`;
-      const sourceHandle = isImageNodeId(connection.source) ? "image" : "text";
-      const targetHandle = isImageNodeId(connection.source) ? "image" : "text";
+      const sourceHandle =
+        connection.sourceHandle === "image" || connection.sourceHandle === "text"
+          ? connection.sourceHandle
+          : isImageNodeId(connection.source)
+            ? "image"
+            : "text";
+      const targetHandle =
+        connection.targetHandle === "image" || connection.targetHandle === "text"
+          ? connection.targetHandle
+          : isImageNodeId(connection.source)
+            ? "image"
+            : "text";
+      const id = `link-${connection.source}-${connection.target}-${sourceHandle}-${targetHandle}`;
       const nextEdges = addEdge(
         {
           ...connection,
@@ -492,8 +529,16 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
           targetHandle: (edge.targetHandle === "image" || edge.targetHandle === "text" ? edge.targetHandle : undefined),
         })),
       }));
+      return true;
     },
     [edges, persistCanvas]
+  );
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      commitScriptConnection(connection);
+    },
+    [commitScriptConnection]
   );
 
   const handleZoomChange = useCallback(
@@ -504,6 +549,25 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     },
     [getViewport, setViewport]
   );
+  const updateSnapGuide = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      if (!snapToGrid || isLocked) {
+        setSnapGuide(null);
+        return;
+      }
+      const node = nodes.find((item) => item.id === nodeId);
+      if (!node) {
+        setSnapGuide(null);
+        return;
+      }
+      setSnapGuide(getEdgeAlignedPosition(node, nodes, position).guide);
+    },
+    [isLocked, nodes, snapToGrid]
+  );
+
+  useEffect(() => {
+    if (!snapToGrid) setSnapGuide(null);
+  }, [snapToGrid]);
 
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
@@ -516,6 +580,28 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
       const fromHandleId = connectionState.fromHandle?.id || null;
       const fromHandleType = fromHandleId === "image" || fromHandleId === "text" ? fromHandleId : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
+      const hitNode = getScriptNodeHitAtPoint(clientX, clientY, connectionState.fromNode.id);
+      if (hitNode) {
+        const fromNodeId = connectionState.fromNode.id;
+        const fromHandles = getScriptNodeHandles(fromNodeId);
+        const hitHandles = getScriptNodeHandles(hitNode.nodeId);
+        const preferred = fromHandleType || (isImageNodeId(fromNodeId) ? "image" : "text");
+        const connection = isFromSource
+          ? {
+              source: fromNodeId,
+              sourceHandle: pickOutputHandle(fromHandles.outputs, preferred),
+              target: hitNode.nodeId,
+              targetHandle: pickInputHandle(hitHandles.inputs, preferred),
+            }
+          : {
+              source: hitNode.nodeId,
+              sourceHandle: pickOutputHandle(hitHandles.outputs, preferred),
+              target: fromNodeId,
+              targetHandle: pickInputHandle(fromHandles.inputs, preferred, fromHandleId),
+            };
+
+        if (connection.sourceHandle && connection.targetHandle && commitScriptConnection(connection)) return;
+      }
       setConnectionDrop({
         position: { x: clientX, y: clientY },
         flowPosition: screenToFlowPosition({ x: clientX, y: clientY }),
@@ -525,7 +611,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         sourceHandleId: fromHandleId,
       });
     },
-    [screenToFlowPosition]
+    [commitScriptConnection, screenToFlowPosition]
   );
 
   const handleDropCreate = useCallback(
@@ -558,14 +644,18 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         onNodeClick={(_, node) => {
           if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
         }}
-        onMove={(_, viewport) => setZoomValue(viewport.zoom)}
+        onMove={(_, viewport) => {
+          setZoomValue(viewport.zoom);
+          setLiveViewport(viewport);
+        }}
+        onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
+        onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
+        onNodeDragStop={() => setSnapGuide(null)}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
         minZoom={minZoom}
         maxZoom={maxZoom}
-        snapToGrid={snapToGrid}
-        snapGrid={[28, 28]}
         nodesDraggable={!isLocked}
         nodesConnectable={!isLocked}
         elementsSelectable={!isLocked}
@@ -595,6 +685,10 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
           </div>
         ) : null}
       </ReactFlow>
+
+      {snapToGrid ? (
+        <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
+      ) : null}
 
       {connectionDrop ? (
         <ConnectionDropMenu

@@ -169,34 +169,33 @@ export const BaseNode: React.FC<Props> = ({
         onResizeEnd={handleResizeEnd}
       />
 
-      <div className="node-card-shell">
-        <div className="node-card-header-shell">
-          <div className="flex items-center justify-between gap-2">
-            <div className="node-card-header-copy min-w-0 flex-1">
-              {onTitleChange && !isIdentityMode ? (
-                <input
-                  className="node-card-title-input nodrag"
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={commitTitle}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      commitTitle();
-                      event.currentTarget.blur();
-                    }
-                  }}
-                />
-              ) : (
-                <div className="node-card-title">{title}</div>
-              )}
-            </div>
-            {headerActions ? <div className="flex items-center gap-1">{headerActions}</div> : null}
-          </div>
+      <div className="node-card-floating-header">
+        <div className="node-card-header-copy min-w-0 flex-1">
+          {onTitleChange && !isIdentityMode ? (
+            <input
+              className="node-card-title-input nodrag"
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              onBlur={commitTitle}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitTitle();
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          ) : (
+            <div className="node-card-title">{title}</div>
+          )}
         </div>
+        {headerActions ? <div className="flex items-center gap-1">{headerActions}</div> : null}
+      </div>
+
+      <div className="node-card-shell">
         {!isIdentityMode ? <div className="node-card-body">{children}</div> : null}
       </div>
 

@@ -1,7 +1,7 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { readPersistedAgentSessionMessages } from "./session";
 import { runQalamAgentCore } from "./core";
-import { resolveAgentProvider, resolveBaseUrl } from "./providerConfig";
+import { resolveAgentProvider, resolveApiMode, resolveBaseUrl } from "./providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "./skills";
 import { buildDisabledTools } from "./toolPolicy";
 import type {
@@ -23,7 +23,7 @@ type RuntimeDeps = {
   tracer?: QalamAgentTracer;
 };
 
-const resolveApiKey = (provider: "qwen" | "openrouter" | "ark", apiKey?: string) => {
+const resolveApiKey = (provider: "qwen" | "openrouter" | "ark" | "deepseek", apiKey?: string) => {
   const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
   const processEnv = typeof process !== "undefined" ? process.env : undefined;
   const envKey =
@@ -37,6 +37,11 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | "ark", apiKey?: string)
           env?.VITE_ARK_API_KEY ||
           processEnv?.ARK_API_KEY ||
           processEnv?.VITE_ARK_API_KEY
+        : provider === "deepseek"
+          ? env?.DEEPSEEK_API_KEY ||
+            env?.VITE_DEEPSEEK_API_KEY ||
+            processEnv?.DEEPSEEK_API_KEY ||
+            processEnv?.VITE_DEEPSEEK_API_KEY
         : env?.QWEN_API_KEY ||
           env?.VITE_QWEN_API_KEY ||
           env?.DASHSCOPE_API_KEY ||
@@ -91,6 +96,7 @@ export const createQalamAgentRuntime = ({
       const resolvedConfig = {
         ...rawConfig,
         provider,
+        apiMode: resolveApiMode(provider),
         apiKey: resolveApiKey(provider, rawConfig.apiKey),
         baseUrl: resolveBaseUrl(provider, rawConfig.baseUrl),
       };
@@ -118,6 +124,7 @@ export const createQalamAgentRuntime = ({
         input,
         config: {
           provider,
+          apiMode: resolvedConfig.apiMode,
           model: resolvedConfig.model,
           apiKey: resolvedConfig.apiKey,
           baseUrl: resolvedConfig.baseUrl,

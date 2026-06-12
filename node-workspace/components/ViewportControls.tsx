@@ -44,7 +44,6 @@ export const ViewportControls: React.FC<Props> = ({
         type="button"
         onClick={handleMinus}
         className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
-        title="缩小"
         aria-label="缩小"
         disabled={lockDisabled}
       >
@@ -54,7 +53,6 @@ export const ViewportControls: React.FC<Props> = ({
         type="button"
         onClick={handlePlus}
         className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
-        title="放大"
         aria-label="放大"
         disabled={lockDisabled}
       >
@@ -68,7 +66,6 @@ export const ViewportControls: React.FC<Props> = ({
           type="button"
           onClick={onToggleLock}
           className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
-          title={isLocked ? "解锁画布" : "锁定画布"}
           aria-label={isLocked ? "解锁画布" : "锁定画布"}
         >
           {isLocked ? (
@@ -83,7 +80,6 @@ export const ViewportControls: React.FC<Props> = ({
           type="button"
           onClick={onToggleReadingMode}
           className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
-          title={readingMode === "identity" ? "切换到完整节点视图" : "切换到统一读取视图"}
           aria-label={readingMode === "identity" ? "切换到完整节点视图" : "切换到统一读取视图"}
         >
           {readingMode === "identity" ? (
@@ -101,8 +97,7 @@ export const ViewportControls: React.FC<Props> = ({
           className={`flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px ${
             snapToGrid ? "bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)] ring-1 ring-[var(--app-border-strong)]" : ""
           }`}
-          title={snapToGrid ? "网格对齐已开启，拖动节点会显示参考线" : "开启网格对齐"}
-          aria-label={snapToGrid ? "关闭网格对齐" : "开启网格对齐"}
+          aria-label={snapToGrid ? "关闭边缘对齐" : "开启边缘对齐"}
         >
           <Grid3X3 size={14} className={snapToGrid ? "text-[var(--app-accent-strong)]" : "text-[var(--app-text-secondary)]"} />
         </button>
@@ -112,7 +107,6 @@ export const ViewportControls: React.FC<Props> = ({
           type="button"
           onClick={onToggleMiniMap}
           className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
-          title={showMiniMap ? "隐藏地图" : "显示地图"}
           aria-label={showMiniMap ? "隐藏地图" : "显示地图"}
         >
           <Map size={14} className={showMiniMap ? "text-[var(--app-accent-strong)]" : "text-[var(--app-text-secondary)]"} />

@@ -408,6 +408,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
                 className="text-node-shell relative flex-1"
                 data-has-content={draftText.trim().length > 0 ? "true" : "false"}
             >
+                <div className="text-node-drag-rail" aria-hidden="true" />
                 <div
                     ref={editorRef}
                     className="text-node-editor nodrag"

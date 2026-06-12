@@ -5,7 +5,7 @@ import type { QalamToolSettings } from "../../types";
 import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
 
 export type AgentHttpRuntimeConfig = {
-  provider?: "qwen" | "openrouter" | "ark";
+  provider?: "qwen" | "openrouter" | "ark" | "deepseek";
   model: string;
   baseUrl?: string;
   qalamTools?: QalamToolSettings;
