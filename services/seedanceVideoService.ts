@@ -1,4 +1,7 @@
 import type {
+  SeedanceAssetCreateResult,
+  SeedanceAssetStatusResult,
+  SeedanceKeyProbeResult,
   SeedanceTaskCreateParams,
   SeedanceTaskStatusResult,
   SeedanceTaskSubmissionResult,
@@ -95,21 +98,21 @@ const parseJson = async (response: Response) => {
   }
 };
 
-const isHumanComplianceMessage = (message?: string) => {
-  const normalized = (message || "").toLowerCase();
-  return (
-    normalized.includes("真人") ||
-    normalized.includes("人脸") ||
-    normalized.includes("肖像") ||
-    normalized.includes("real person") ||
-    normalized.includes("human face") ||
-    normalized.includes("portrait") ||
-    normalized.includes("face") ||
-    normalized.includes("deepfake")
-  );
+const normalizeModels = (raw: any): string[] => {
+  const models =
+    (Array.isArray(raw?.data) && raw.data) ||
+    (Array.isArray(raw?.models) && raw.models) ||
+    (Array.isArray(raw?.result) && raw.result) ||
+    [];
+  return models
+    .map((item: any) => item?.id || item?.model || item?.name)
+    .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
 };
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const maskKeySource = (config?: VideoServiceConfig): SeedanceKeyProbeResult["keySource"] => {
+  if ((config?.apiKey || "").trim()) return "config";
+  return resolveApiKey(config) ? "env" : "missing";
+};
 
 export const createSeedanceTask = async (
   params: SeedanceTaskCreateParams,
@@ -186,72 +189,156 @@ export const getSeedanceTask = async (
   };
 };
 
-export const checkSeedanceImageHumanCompliance = async (
-  imageUrl: string,
-  config?: VideoServiceConfig
-): Promise<{
-  status: "passed" | "human_detected" | "blocked" | "error";
-  message: string;
-  taskId?: string;
-}> => {
-  const configToUse = {
-    ...config,
-    baseUrl: SEEDANCE_DEFAULT_BASE_URL,
-  };
-  try {
-    const task = await createSeedanceTask(
-      {
-        model: "doubao-seedance-2-0-fast-260128",
-        content: [
-          {
-            type: "text",
-            text: "素材合规性预检。请基于图片生成一段简单静态镜头，不添加新人物，不改变主体身份。",
-          },
-          {
-            type: "image_url",
-            image_url: { url: imageUrl },
-            role: "reference_image",
-          },
-        ],
-        generateAudio: false,
-        resolution: "480p",
-        ratio: "adaptive",
-        duration: 4,
-        watermark: true,
-      },
-      configToUse
-    );
-
-    for (let attempt = 0; attempt < 36; attempt += 1) {
-      const result = await getSeedanceTask(task.id, configToUse);
-      if (result.status === "succeeded") {
-        return {
-          status: "passed",
-          taskId: task.id,
-          message: "官方预检任务通过：该素材未被 Seedance 2.0 按真人人脸参考素材拦截。",
-        };
-      }
-      if (result.status === "failed") {
-        const message = result.errorMsg || "Seedance 预检任务失败。";
-        return {
-          status: isHumanComplianceMessage(message) ? "human_detected" : "blocked",
-          taskId: task.id,
-          message,
-        };
-      }
-      await wait(5000);
+export const probeSeedanceApiKey = async (
+  config?: VideoServiceConfig,
+  configuredModel?: string
+): Promise<SeedanceKeyProbeResult> => {
+  const apiKey = resolveApiKey(config);
+  const baseUrl = SEEDANCE_DEFAULT_BASE_URL;
+  const model = configuredModel || config?.model || "";
+  const keySource = maskKeySource(config);
+  const capabilities = ["video-generation", "multimodal-reference-video", "asset-uri-reference"];
+  if (!apiKey) {
+    const endpoint = buildApiUrl("/api/ark-models");
+    const url = new URL(endpoint, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    url.searchParams.set("baseUrl", baseUrl);
+    const serverResponse = await fetch(url.toString(), { method: "GET" });
+    if (serverResponse.ok) {
+      const raw = await serverResponse.json();
+      const models = normalizeModels(raw);
+      return {
+        status: "valid",
+        message: models.length
+          ? "服务端 ARK_API_KEY 有效，已读取可用模型列表。"
+          : "服务端 ARK_API_KEY 有效，但未返回模型明细。",
+        keySource: "env",
+        baseUrl,
+        configuredModel: model,
+        models,
+        modelAvailable: model ? models.includes(model) : undefined,
+        capabilities,
+      };
     }
-
     return {
-      status: "error",
-      taskId: task.id,
-      message: "Seedance 预检任务超时，未能确认素材是否会被真人合规审核拦截。",
-    };
-  } catch (error: any) {
-    const message = error?.message || "Seedance 预检提交失败。";
-    return {
-      status: isHumanComplianceMessage(message) ? "human_detected" : "error",
-      message,
+      status: "invalid",
+      message: `未检测到可用 API Key：${await serverResponse.text()}`,
+      keySource,
+      baseUrl,
+      configuredModel: model,
+      models: [],
+      modelAvailable: false,
+      capabilities,
     };
   }
+
+  const modelsUrl = wrapWithProxy(`${baseUrl}/models`);
+  const modelsResponse = await fetch(modelsUrl, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (modelsResponse.status === 401 || modelsResponse.status === 403) {
+    const text = await modelsResponse.text();
+    return {
+      status: "invalid",
+      message: `API Key 鉴权失败：${text || modelsResponse.statusText}`,
+      keySource,
+      baseUrl,
+      configuredModel: model,
+      models: [],
+      modelAvailable: false,
+      capabilities,
+    };
+  }
+
+  if (modelsResponse.ok) {
+    const raw = await modelsResponse.json();
+    const models = normalizeModels(raw);
+    const modelAvailable = model ? models.includes(model) : undefined;
+    return {
+      status: "valid",
+      message: models.length
+        ? "API Key 有效，已读取可用模型列表。"
+        : "API Key 有效，但模型列表为空或当前账号未返回模型明细。",
+      keySource,
+      baseUrl,
+      configuredModel: model,
+      models,
+      modelAvailable,
+      capabilities,
+    };
+  }
+
+  const fallbackResponse = await fetch(wrapWithProxy(`${baseUrl}/contents/generations/tasks/qalam-api-key-probe`), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (fallbackResponse.status === 401 || fallbackResponse.status === 403) {
+    const text = await fallbackResponse.text();
+    return {
+      status: "invalid",
+      message: `API Key 鉴权失败：${text || fallbackResponse.statusText}`,
+      keySource,
+      baseUrl,
+      configuredModel: model,
+      models: [],
+      modelAvailable: undefined,
+      capabilities,
+    };
+  }
+
+  return {
+    status: fallbackResponse.ok || fallbackResponse.status === 404 || fallbackResponse.status === 400 ? "valid" : "unknown",
+    message:
+      fallbackResponse.ok || fallbackResponse.status === 404 || fallbackResponse.status === 400
+        ? "API Key 鉴权通过；当前模型列表接口未返回可解析列表，模型可用性需以实际任务提交为准。"
+        : `无法确认 API Key 状态：${fallbackResponse.status} ${await fallbackResponse.text()}`,
+    keySource,
+    baseUrl,
+    configuredModel: model,
+    models: [],
+    modelAvailable: undefined,
+    capabilities,
+  };
+};
+
+const postAssetApi = async (payload: Record<string, unknown>) => {
+  const response = await fetch(buildApiUrl("/api/seedance-assets"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Seedance Asset API Error ${response.status}: ${text}`);
+  }
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Seedance Asset API 返回了无法解析的 JSON: ${text}`);
+  }
+};
+
+export const createSeedanceAsset = async (params: {
+  url: string;
+  name?: string;
+  groupId?: string | null;
+}): Promise<SeedanceAssetCreateResult> => {
+  return postAssetApi({
+    action: "create",
+    url: params.url,
+    name: params.name,
+    groupId: params.groupId || undefined,
+  });
+};
+
+export const getSeedanceAsset = async (assetId: string): Promise<SeedanceAssetStatusResult> => {
+  return postAssetApi({
+    action: "get",
+    assetId,
+  });
 };

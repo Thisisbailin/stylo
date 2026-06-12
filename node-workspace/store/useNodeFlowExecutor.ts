@@ -19,7 +19,7 @@ import {
   SEEDANCE_DEFAULT_MODEL,
 } from "../../constants";
 import { useCallback } from "react";
-import { DesignAssetItem, ProjectRoleIdentity, SeedanceModel } from "../../types";
+import { DesignAssetItem, ProjectRoleIdentity, SeedanceContentItem, SeedanceModel } from "../../types";
 import { buildApiUrl } from "../../utils/api";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
@@ -1344,7 +1344,7 @@ export const useNodeFlowExecutor = () => {
       const normalizedAudios = await normalizeSeedanceAudios(audios.slice(0, 3));
       const normalizedImages = await normalizeSeedanceImages(images.filter(Boolean).slice(0, 9));
 
-      const content: Array<Record<string, any>> = [];
+      const content: SeedanceContentItem[] = [];
       if (prompt) {
         content.push({ type: "text", text: prompt });
       }

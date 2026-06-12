@@ -4,6 +4,7 @@ import { ImageInputNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AtSign, CheckCircle2, ImagePlus, ShieldAlert, ShieldCheck, Upload } from "lucide-react";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
+import { buildApiUrl } from "../../utils/api";
 import {
   buildMentionIndex,
   buildMentionTargets,
@@ -131,6 +132,50 @@ const getCaretRect = (el: HTMLElement) => {
   return rect;
 };
 
+const isPublicHttpsUrl = (value?: string | null) => typeof value === "string" && /^https:\/\//i.test(value);
+
+const uploadImageForAssetReview = async (source: string, filename?: string | null) => {
+  if (isPublicHttpsUrl(source)) return source;
+
+  const response = await fetch(source);
+  const blob = await response.blob();
+  const contentType = blob.type || "image/png";
+  const ext = contentType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "png";
+  const safeBase = (filename || "qalam-aigc-portrait")
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(0, 48);
+  const fileName = `seedance-assets/${Date.now()}-${safeBase}.${ext}`;
+
+  const signedRes = await fetch(buildApiUrl("/api/upload-url"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileName, bucket: "public-assets", contentType }),
+  });
+  if (!signedRes.ok) {
+    const err = await signedRes.text();
+    throw new Error(`上传审核素材失败 (${signedRes.status}): ${err}`);
+  }
+  const signedData = await signedRes.json();
+  if (!signedData?.signedUrl) {
+    throw new Error("上传审核素材失败：缺少 signedUrl。");
+  }
+
+  const uploadRes = await fetch(signedData.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: blob,
+  });
+  if (!uploadRes.ok) {
+    const err = await uploadRes.text();
+    throw new Error(`上传审核素材失败 (${uploadRes.status}): ${err}`);
+  }
+  if (!signedData.publicUrl || !isPublicHttpsUrl(signedData.publicUrl)) {
+    throw new Error("仿真人审核需要 public-assets 返回稳定 HTTPS publicUrl。");
+  }
+  return signedData.publicUrl as string;
+};
+
 export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -140,13 +185,13 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const pendingSelectionRef = useRef<number | null>(null);
   const skipNextCursorUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
-  const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext, appConfig } = useNodeFlowStore();
+  const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext } = useNodeFlowStore();
 
   const [labelDraft, setLabelDraft] = useState(data.label || "");
   const [cursorPos, setCursorPos] = useState(labelDraft.length);
   const [isFocused, setIsFocused] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
-  const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
+  const [isReviewingAsset, setIsReviewingAsset] = useState(false);
   const dimensionLabel = useMemo(() => {
     if (!data.dimensions?.width || !data.dimensions?.height) return null;
     return `${data.dimensions.width} × ${data.dimensions.height}`;
@@ -376,10 +421,13 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
           image: result,
           filename: file.name,
           dimensions: { width: img.width, height: img.height },
-          complianceCheckStatus: "idle",
-          complianceCheckMessage: null,
-          complianceCheckTaskId: null,
-          complianceCheckedAt: null,
+          assetAuditStatus: "idle",
+          assetAuditMessage: null,
+          assetAuditCheckedAt: null,
+          assetId: null,
+          assetUri: null,
+          assetGroupId: null,
+          assetSourceUrl: null,
           label: data.label || baseName,
         });
       };
@@ -389,54 +437,99 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     e.target.value = "";
   };
 
-  const runHumanComplianceCheck = async (e: React.MouseEvent) => {
+  const runSyntheticPortraitReview = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!data.image || isCheckingCompliance) return;
-    setIsCheckingCompliance(true);
+    if (!data.image || isReviewingAsset) return;
+    setIsReviewingAsset(true);
     updateNodeData(id, {
-      complianceCheckStatus: "checking",
-      complianceCheckMessage: "正在提交 Seedance 低规格预检任务...",
-      complianceCheckTaskId: null,
-      complianceCheckedAt: null,
+      assetAuditStatus: "uploading",
+      assetAuditMessage: "正在准备可供官方审核的素材 URL...",
+      assetAuditCheckedAt: null,
+      assetId: null,
+      assetUri: null,
     });
     try {
-      const result = await SeedanceVideoService.checkSeedanceImageHumanCompliance(
-        data.image,
-        {
-          ...(appConfig?.videoConfig || {}),
-          baseUrl: undefined,
-          model: "doubao-seedance-2-0-fast-260128",
-        }
-      );
+      const sourceUrl = await uploadImageForAssetReview(data.image, data.filename);
       updateNodeData(id, {
-        complianceCheckStatus: result.status,
-        complianceCheckMessage: result.message,
-        complianceCheckTaskId: result.taskId || null,
-        complianceCheckedAt: Date.now(),
+        assetAuditStatus: "submitting",
+        assetAuditMessage: "正在提交仿真人审核入库...",
+        assetSourceUrl: sourceUrl,
+      });
+      const created = await SeedanceVideoService.createSeedanceAsset({
+        url: sourceUrl,
+        name: data.filename || data.label || `qalam-aigc-${Date.now()}`,
+        groupId: data.assetGroupId || null,
+      });
+      updateNodeData(id, {
+        assetAuditStatus: created.status === "Active" ? "active" : "processing",
+        assetAuditMessage:
+          created.status === "Active" ? "仿真人审核通过，素材已入库。" : "素材已提交，正在等待官方审核处理...",
+        assetId: created.assetId,
+        assetUri: created.assetUri,
+        assetGroupId: created.groupId,
+        assetAuditCheckedAt: Date.now(),
+      });
+
+      if (created.status === "Active") return;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const current = await SeedanceVideoService.getSeedanceAsset(created.assetId);
+        if (current.status === "Active") {
+          updateNodeData(id, {
+            assetAuditStatus: "active",
+            assetAuditMessage: "仿真人审核通过，素材已入库。",
+            assetId: current.assetId,
+            assetUri: current.assetUri,
+            assetGroupId: current.groupId || created.groupId,
+            assetAuditCheckedAt: Date.now(),
+          });
+          return;
+        }
+        if (current.status === "Failed") {
+          updateNodeData(id, {
+            assetAuditStatus: "failed",
+            assetAuditMessage: current.failedReason || "素材未通过官方仿真人审核，无法入库。",
+            assetId: current.assetId,
+            assetUri: current.assetUri,
+            assetGroupId: current.groupId || created.groupId,
+            assetAuditCheckedAt: Date.now(),
+          });
+          return;
+        }
+        updateNodeData(id, {
+          assetAuditStatus: "processing",
+          assetAuditMessage: `官方审核处理中... (${attempt + 1}/60)`,
+          assetAuditCheckedAt: Date.now(),
+        });
+      }
+      updateNodeData(id, {
+        assetAuditStatus: "processing",
+        assetAuditMessage: "仿真人审核仍在处理中，可稍后重新点击查询或直接等待。",
+        assetAuditCheckedAt: Date.now(),
       });
     } catch (error: any) {
       updateNodeData(id, {
-        complianceCheckStatus: "error",
-        complianceCheckMessage: error?.message || "真人合规性预检失败。",
-        complianceCheckedAt: Date.now(),
+        assetAuditStatus: "error",
+        assetAuditMessage: error?.message || "仿真人审核提交失败。",
+        assetAuditCheckedAt: Date.now(),
       });
     } finally {
-      setIsCheckingCompliance(false);
+      setIsReviewingAsset(false);
     }
   };
 
-  const complianceTone =
-    data.complianceCheckStatus === "passed"
+  const assetAuditTone =
+    data.assetAuditStatus === "active"
       ? "text-emerald-300"
-      : data.complianceCheckStatus === "human_detected" || data.complianceCheckStatus === "blocked"
+      : data.assetAuditStatus === "failed" || data.assetAuditStatus === "error"
         ? "text-red-300"
-        : data.complianceCheckStatus === "checking"
+        : data.assetAuditStatus === "uploading" || data.assetAuditStatus === "submitting" || data.assetAuditStatus === "processing"
           ? "text-amber-300"
           : "text-[var(--node-text-secondary)]";
-  const ComplianceIcon =
-    data.complianceCheckStatus === "passed"
+  const AssetAuditIcon =
+    data.assetAuditStatus === "active"
       ? CheckCircle2
-      : data.complianceCheckStatus === "human_detected" || data.complianceCheckStatus === "blocked"
+      : data.assetAuditStatus === "failed" || data.assetAuditStatus === "error"
         ? ShieldAlert
         : ShieldCheck;
 
@@ -512,13 +605,19 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
               <div className="image-input-actions">
                 <button
                   type="button"
-                  onClick={runHumanComplianceCheck}
-                  disabled={!data.image || isCheckingCompliance || data.complianceCheckStatus === "checking"}
+                  onClick={runSyntheticPortraitReview}
+                  disabled={
+                    !data.image ||
+                    isReviewingAsset ||
+                    ["uploading", "submitting", "processing"].includes(data.assetAuditStatus || "")
+                  }
                   className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag disabled:opacity-60"
-                  title="提交一次 Seedance 低规格任务，探测官方是否按真人人脸参考素材拦截。任务通过时可能产生一次最小生成成本。"
+                  title="将 AIGC 人像素材提交到 Seedance 私域虚拟人像素材库审核。通过后会保存 asset://，后续 Seedance 自动使用入库素材。"
                 >
                   <ShieldCheck size={12} />
-                  {isCheckingCompliance || data.complianceCheckStatus === "checking" ? "Checking" : "真人预检"}
+                  {isReviewingAsset || ["uploading", "submitting", "processing"].includes(data.assetAuditStatus || "")
+                    ? "Reviewing"
+                    : "仿真人审核"}
                 </button>
                 <button
                   type="button"
@@ -529,22 +628,25 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
                   Replace
                 </button>
               </div>
-              {(data.complianceCheckStatus && data.complianceCheckStatus !== "idle") || data.complianceCheckMessage ? (
-                <div className={`mt-2 flex items-start gap-2 rounded-[12px] border border-white/10 bg-black/20 px-2 py-1.5 text-[9px] leading-5 ${complianceTone}`}>
-                  <ComplianceIcon size={12} className="mt-1 shrink-0" />
+              {(data.assetAuditStatus && data.assetAuditStatus !== "idle") || data.assetAuditMessage ? (
+                <div className={`mt-2 flex items-start gap-2 rounded-[12px] border border-white/10 bg-black/20 px-2 py-1.5 text-[9px] leading-5 ${assetAuditTone}`}>
+                  <AssetAuditIcon size={12} className="mt-1 shrink-0" />
                   <div className="min-w-0">
                     <div className="font-semibold">
-                      {data.complianceCheckStatus === "human_detected"
-                        ? "疑似真人素材"
-                        : data.complianceCheckStatus === "blocked"
-                          ? "素材被官方审核拦截"
-                          : data.complianceCheckStatus === "passed"
-                            ? "预检通过"
-                            : data.complianceCheckStatus === "checking"
-                              ? "预检中"
-                              : "预检异常"}
+                      {data.assetAuditStatus === "active"
+                        ? "已入库"
+                        : data.assetAuditStatus === "failed"
+                          ? "审核未通过"
+                          : data.assetAuditStatus === "error"
+                            ? "审核异常"
+                            : data.assetAuditStatus === "uploading"
+                              ? "上传中"
+                              : data.assetAuditStatus === "submitting"
+                                ? "提交中"
+                                : "审核中"}
                     </div>
-                    <div className="break-words text-white/60">{data.complianceCheckMessage}</div>
+                    <div className="break-words text-white/60">{data.assetAuditMessage}</div>
+                    {data.assetUri ? <div className="mt-1 break-all font-mono text-white/50">{data.assetUri}</div> : null}
                   </div>
                 </div>
               ) : null}

@@ -37,10 +37,13 @@ export interface ImageInputNodeData extends BaseNodeData {
   image: string | null;
   filename: string | null;
   dimensions: { width: number; height: number } | null;
-  complianceCheckStatus?: "idle" | "checking" | "passed" | "human_detected" | "blocked" | "error";
-  complianceCheckMessage?: string | null;
-  complianceCheckTaskId?: string | null;
-  complianceCheckedAt?: number | null;
+  assetAuditStatus?: "idle" | "uploading" | "submitting" | "processing" | "active" | "failed" | "error";
+  assetAuditMessage?: string | null;
+  assetAuditCheckedAt?: number | null;
+  assetId?: string | null;
+  assetUri?: string | null;
+  assetGroupId?: string | null;
+  assetSourceUrl?: string | null;
   identityTag?: string;
   identityId?: string;
   label?: string;

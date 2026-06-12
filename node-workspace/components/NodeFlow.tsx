@@ -1461,7 +1461,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           initialEpisodeId={editingScriptEpisodeId}
           isQalamOpen={!isQalamCollapsed}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
-          onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
           onSubmitToQalam={(text) => setQalamSubmitRequest({ id: Date.now(), text })}
           onClose={() => setEditingScriptEpisodeId(null)}
         />

@@ -16,7 +16,7 @@ import {
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { useAuth } from "../../lib/auth";
-import { AgentTextProvider, ProjectData } from "../../types";
+import { AgentTextProvider, ProjectData, type SeedanceKeyProbeResult } from "../../types";
 import { Dashboard } from "../../components/Dashboard";
 import {
   ARK_DEFAULT_MODEL,
@@ -51,6 +51,7 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { fetchArkModels, type ArkModel } from "../../services/arkResponsesService";
 import { fetchTextModels } from "../../services/responsesTextService";
 import { fetchQwenModels, type QwenModel } from "../../services/qwenResponsesService";
+import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import { createStableId } from "../../utils/id";
 
 type Props = {
@@ -406,6 +407,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const [arkChatModels, setArkChatModels] = useState<ArkModel[]>([]);
   const [arkModelsRaw, setArkModelsRaw] = useState<string>("");
   const [showArkRaw, setShowArkRaw] = useState(false);
+  const [isCheckingSeedanceKey, setIsCheckingSeedanceKey] = useState(false);
+  const [seedanceProbeResult, setSeedanceProbeResult] = useState<SeedanceKeyProbeResult | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [runtimeMetaVersion, setRuntimeMetaVersion] = useState(0);
   const [observabilityData, setObservabilityData] = useState<AgentObservabilityPayload | null>(null);
@@ -905,6 +908,39 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       setArkModelsRaw("");
     } finally {
       setIsLoadingArkChatModels(false);
+    }
+  };
+
+  const handleProbeSeedanceKey = async () => {
+    setIsCheckingSeedanceKey(true);
+    setSeedanceProbeResult(null);
+    try {
+      const configuredModel =
+        config.videoConfig.model === SEEDANCE_DEFAULT_MODEL || config.videoConfig.model === SEEDANCE_FAST_MODEL
+          ? config.videoConfig.model
+          : SEEDANCE_DEFAULT_MODEL;
+      const result = await SeedanceVideoService.probeSeedanceApiKey(
+        {
+          ...config.videoConfig,
+          baseUrl: SEEDANCE_DEFAULT_BASE_URL,
+          model: configuredModel,
+        },
+        configuredModel
+      );
+      setSeedanceProbeResult(result);
+    } catch (e: any) {
+      setSeedanceProbeResult({
+        status: "unknown",
+        message: e?.message || "Seedance API Key 检测失败。",
+        keySource: "missing",
+        baseUrl: SEEDANCE_DEFAULT_BASE_URL,
+        configuredModel: SEEDANCE_DEFAULT_MODEL,
+        models: [],
+        modelAvailable: undefined,
+        capabilities: ["video-generation", "multimodal-reference-video", "asset-uri-reference"],
+      });
+    } finally {
+      setIsCheckingSeedanceKey(false);
     }
   };
 
@@ -1824,6 +1860,58 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
                 使用 ARK_API_KEY / VITE_ARK_API_KEY，或沿用 Video API Key。
+              </div>
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold text-[var(--app-text-primary)]">API Key 检测</div>
+                    <div className="text-[11px] text-[var(--app-text-muted)]">
+                      验证 Key、可调用能力和当前 Seedance 模型 ID。
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleProbeSeedanceKey}
+                    disabled={isCheckingSeedanceKey}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--app-text-secondary)] hover:bg-white/10 transition disabled:opacity-60"
+                  >
+                    {isCheckingSeedanceKey ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                    检测 API Key
+                  </button>
+                </div>
+                {seedanceProbeResult ? (
+                  <div
+                    className={`rounded-xl border px-3 py-2 text-[11px] leading-5 ${
+                      seedanceProbeResult.status === "valid"
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                        : seedanceProbeResult.status === "invalid"
+                          ? "border-red-400/30 bg-red-500/10 text-red-200"
+                          : "border-amber-400/30 bg-amber-500/10 text-amber-200"
+                    }`}
+                  >
+                    <div className="font-semibold">{seedanceProbeResult.message}</div>
+                    <div className="mt-1 text-[var(--app-text-secondary)]">
+                      Key 来源：{seedanceProbeResult.keySource} · Base URL：{seedanceProbeResult.baseUrl}
+                    </div>
+                    <div className="text-[var(--app-text-secondary)]">
+                      当前模型：{seedanceProbeResult.configuredModel || "未设置"} ·{" "}
+                      {seedanceProbeResult.modelAvailable === true
+                        ? "模型 ID 可用"
+                        : seedanceProbeResult.modelAvailable === false
+                          ? "模型 ID 未出现在返回列表"
+                          : "模型可用性未确认"}
+                    </div>
+                    <div className="text-[var(--app-text-secondary)]">
+                      能力：{seedanceProbeResult.capabilities.join(" / ")}
+                    </div>
+                    {seedanceProbeResult.models.length ? (
+                      <div className="mt-1 max-h-16 overflow-auto font-mono text-[10px] text-[var(--app-text-muted)]">
+                        {seedanceProbeResult.models.slice(0, 24).join("\n")}
+                        {seedanceProbeResult.models.length > 24 ? `\n... +${seedanceProbeResult.models.length - 24}` : ""}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           )}

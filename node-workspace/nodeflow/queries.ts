@@ -129,6 +129,8 @@ export const buildConnectedInputs = ({
   const entityBindings: TextNodeData["entityBindings"] = [];
   const imageRefs: { src: string; identityTag?: string | null; identityId?: string | null }[] = [];
   let connectedIdentity: NodeFlowConnectedInputs["connectedIdentity"] | undefined;
+  const targetNode = nodes.find((node) => node.id === nodeId);
+  const preferSeedanceAssetUri = targetNode?.type === "seedanceVideoGen";
 
   links
     .filter((link) => link.target === nodeId)
@@ -142,13 +144,18 @@ export const buildConnectedInputs = ({
       });
       if (effectiveHandle === "image") {
         if (sourceNode.type === "imageInput") {
-          const src = (sourceNode.data as ImageInputNodeData).image;
+          const imageData = sourceNode.data as ImageInputNodeData;
+          const assetUri =
+            preferSeedanceAssetUri && imageData.assetAuditStatus === "active" && imageData.assetUri
+              ? imageData.assetUri
+              : null;
+          const src = assetUri || imageData.image;
           if (src) images.push(src);
           if (src) {
             imageRefs.push({
               src,
-              identityTag: (sourceNode.data as ImageInputNodeData).identityTag,
-              identityId: (sourceNode.data as ImageInputNodeData).identityId,
+              identityTag: imageData.identityTag,
+              identityId: imageData.identityId,
             });
           }
         } else if (sourceNode.type === "annotation") {

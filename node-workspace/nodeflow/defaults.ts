@@ -24,10 +24,13 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         image: null,
         filename: null,
         dimensions: null,
-        complianceCheckStatus: "idle",
-        complianceCheckMessage: null,
-        complianceCheckTaskId: null,
-        complianceCheckedAt: null,
+        assetAuditStatus: "idle",
+        assetAuditMessage: null,
+        assetAuditCheckedAt: null,
+        assetId: null,
+        assetUri: null,
+        assetGroupId: null,
+        assetSourceUrl: null,
         label: "",
       } as ImageInputNodeData;
     case "audioInput":

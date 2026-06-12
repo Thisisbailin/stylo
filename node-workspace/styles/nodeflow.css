@@ -1431,6 +1431,7 @@ body.qalam-resizing * {
   isolation: isolate;
   pointer-events: none;
   scroll-behavior: smooth;
+  overflow: hidden;
 }
 
 .writing-room.is-focus-mode .writing-canvas-backdrop::after {
@@ -1482,7 +1483,9 @@ body.qalam-resizing * {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 0 0 96px;
+  height: calc(100dvh - 40px);
+  min-height: 0;
+  padding: 0;
 }
 
 .writing-studio-grid {
@@ -1490,12 +1493,14 @@ body.qalam-resizing * {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   width: min(100%, 1480px);
-  min-height: calc(100dvh - 72px);
-  align-items: start;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
 }
 
 .writing-studio-grid.is-info-open {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 980px) minmax(300px, 360px);
+  justify-content: center;
 }
 
 .writing-card {
@@ -1517,6 +1522,8 @@ body.qalam-resizing * {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   align-items: center;
   gap: 14px;
   padding-top: 10px;
@@ -1598,14 +1605,14 @@ body.qalam-resizing * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: auto;
+  width: 34px;
   min-width: 34px;
   height: 34px;
-  gap: 7px;
+  gap: 0;
   border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--app-bg) 62%, transparent);
-  padding: 0 11px;
+  padding: 0;
   color: var(--app-text-secondary);
   font-size: 10px;
   font-weight: 760;
@@ -1642,54 +1649,6 @@ body.qalam-resizing * {
   cursor: default;
 }
 
-.writing-format-pill {
-  display: inline-flex;
-  height: 34px;
-  min-width: 92px;
-  align-items: center;
-  gap: 7px;
-  justify-content: center;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
-  background: color-mix(in srgb, var(--app-bg) 62%, transparent);
-  padding: 0 12px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--app-text-secondary);
-  white-space: nowrap;
-}
-
-.writing-format-pill__marker {
-  display: inline-flex;
-  min-width: 24px;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(92, 72, 51, 0.08);
-  color: color-mix(in srgb, var(--app-accent-strong) 76%, var(--app-text-secondary));
-  font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.writing-scene-count {
-  min-width: 42px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--app-border) 48%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--app-bg) 48%, transparent);
-  text-align: center;
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--app-text-muted);
-}
-
 .writing-more-button {
   color: var(--app-text-primary);
 }
@@ -1708,7 +1667,14 @@ body.qalam-resizing * {
 .writing-paper-stack {
   display: grid;
   gap: 18px;
+  flex: 1 1 auto;
+  min-height: 0;
   width: min(100%, 980px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 92px;
+  scroll-padding-top: 18px;
+  scrollbar-width: thin;
 }
 
 .writing-paper-title-row {
@@ -2027,11 +1993,15 @@ body.qalam-resizing * {
 .writing-info-card {
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 16px;
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  max-height: none;
+  overflow: visible;
   padding-bottom: 18px;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .writing-info-title {
@@ -2063,6 +2033,75 @@ body.qalam-resizing * {
 .writing-guide-list {
   display: grid;
   gap: 8px;
+}
+
+.writing-side-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.writing-side-action {
+  display: flex;
+  min-height: 38px;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--app-panel-muted) 72%, transparent);
+  padding: 0 12px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.writing-side-action:hover:not(:disabled),
+.writing-side-action:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-panel-soft) 82%, transparent);
+  color: var(--app-text-primary);
+  outline: none;
+}
+
+.writing-side-action--danger:hover:not(:disabled),
+.writing-side-action--danger:focus-visible:not(:disabled) {
+  border-color: rgba(178, 70, 58, 0.38);
+  background: rgba(178, 70, 58, 0.08);
+  color: #d46c62;
+}
+
+.writing-side-action:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.writing-format-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  padding: 10px 0;
+  color: var(--app-text-primary);
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.writing-format-summary__marker {
+  display: inline-flex;
+  min-width: 28px;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-accent-soft) 52%, transparent);
+  color: var(--app-accent-strong);
+  font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .writing-guide-row {
@@ -2181,6 +2220,7 @@ body.qalam-resizing * {
 @media (max-width: 1080px) {
   .writing-studio-grid {
     grid-template-columns: 1fr;
+    overflow: hidden;
     min-height: 0;
   }
 
@@ -2189,6 +2229,17 @@ body.qalam-resizing * {
     top: auto;
     max-height: none;
     min-height: 520px;
+  }
+}
+
+@media (max-width: 760px) {
+  .writing-studio-grid.is-info-open {
+    grid-template-columns: minmax(0, 980px);
+  }
+
+  .writing-studio-grid.is-info-open .writing-info-card {
+    width: min(100%, 980px);
+    justify-self: center;
   }
 }
 

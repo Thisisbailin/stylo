@@ -317,6 +317,35 @@ export interface SeedanceTaskStatusResult {
   errorMsg?: string;
 }
 
+export type SeedanceKeyProbeStatus = "valid" | "invalid" | "unknown";
+
+export interface SeedanceKeyProbeResult {
+  status: SeedanceKeyProbeStatus;
+  message: string;
+  keySource: "config" | "env" | "missing";
+  baseUrl: string;
+  configuredModel?: string;
+  models: string[];
+  modelAvailable?: boolean;
+  capabilities: string[];
+}
+
+export type SeedanceAssetStatus = "Processing" | "Active" | "Failed" | string;
+
+export interface SeedanceAssetCreateResult {
+  assetId: string;
+  groupId: string;
+  assetUri: string;
+  status?: SeedanceAssetStatus;
+  failedReason?: string;
+}
+
+export interface SeedanceAssetStatusResult extends SeedanceAssetCreateResult {
+  status: SeedanceAssetStatus;
+  name?: string;
+  url?: string;
+}
+
 // Vidu service config and task types
 export interface ViduServiceConfig {
   baseUrl?: string;

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Bot, ChevronLeft, ChevronRight, Download, Focus, Minimize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, Download, Focus, Minimize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { Character, Episode, ProjectData, Scene } from "../../types";
 import { parseScriptToEpisodes } from "../../utils/parser";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -12,7 +12,6 @@ type Props = {
   initialEpisodeId?: number | null;
   isQalamOpen?: boolean;
   onOpenQalam?: () => void;
-  onCloseQalam?: () => void;
   onSubmitToQalam?: (text: string) => void;
 };
 
@@ -43,10 +42,10 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\
 const buildCharacterDetail = (character?: Character) => {
   if (!character) return "";
   return [
-    character.name ? `Character: ${character.name}` : "",
-    character.role ? `Role: ${character.role}` : "",
-    typeof character.appearanceCount === "number" ? `Appearances: ${character.appearanceCount}` : "",
-    character.episodeUsage ? `Episodes: ${character.episodeUsage}` : "",
+    character.name ? `角色：${character.name}` : "",
+    character.role ? `身份：${character.role}` : "",
+    typeof character.appearanceCount === "number" ? `出现次数：${character.appearanceCount}` : "",
+    character.episodeUsage ? `分集：${character.episodeUsage}` : "",
     character.bio || "",
   ]
     .filter(Boolean)
@@ -73,7 +72,7 @@ const createEmptyScene = (episodeId: number, sceneIndex: number): WritingScene =
 
 const createEmptyEpisode = (episodeId: number): WritingEpisode => ({
   id: episodeId,
-  title: `Episode ${episodeId}`,
+  title: `第${episodeId}集`,
   scenes: [createEmptyScene(episodeId, 1)],
 });
 
@@ -299,7 +298,7 @@ const joinNodes = (parts: React.ReactNode[]) => parts.flatMap((part, index) => (
 
 const compactText = (value: string, limit = 160) => {
   const clean = value.replace(/\s+/g, " ").trim();
-  if (!clean) return "No draft on this page yet.";
+  if (!clean) return "当前页还没有草稿。";
   return clean.length > limit ? `${clean.slice(0, limit)}...` : clean;
 };
 
@@ -342,36 +341,36 @@ const FOUNTAIN_FORMAT_ORDER: FountainLineKind[] = [
 ];
 
 const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
-  action: "Action",
-  scene_heading: "Scene",
-  character: "Character",
-  dual_dialogue: "Dual",
-  dialogue: "Dialogue",
-  parenthetical: "Paren",
-  lyric: "Lyric",
-  transition: "Transition",
-  centered: "Centered",
-  note: "Note",
-  boneyard: "Boneyard",
-  section: "Section",
-  synopsis: "Synopsis",
-  page_break: "Page Break",
+  action: "动作",
+  scene_heading: "场景",
+  character: "角色",
+  dual_dialogue: "双人",
+  dialogue: "对白",
+  parenthetical: "括注",
+  lyric: "歌词",
+  transition: "转场",
+  centered: "居中",
+  note: "注释",
+  boneyard: "隐藏",
+  section: "章节",
+  synopsis: "梗概",
+  page_break: "分页",
 };
 
 const FOUNTAIN_FORMAT_META: Record<FountainLineKind, { marker: string; sample: string }> = {
-  action: { marker: "!", sample: "!Action line" },
-  scene_heading: { marker: ".", sample: ".INT. ROOM - DAY" },
-  character: { marker: "@", sample: "@CHARACTER" },
-  dual_dialogue: { marker: "^", sample: "@CHARACTER ^" },
-  dialogue: { marker: "\"", sample: "Dialogue line" },
-  parenthetical: { marker: "()", sample: "(beat)" },
-  lyric: { marker: "~", sample: "~Lyric line" },
-  transition: { marker: ">", sample: "> CUT TO:" },
-  centered: { marker: "><", sample: "> Centered <" },
-  note: { marker: "[[]]", sample: "[[note]]" },
-  boneyard: { marker: "/* */", sample: "/* omitted text */" },
-  section: { marker: "#", sample: "# Section" },
-  synopsis: { marker: "=", sample: "= synopsis" },
+  action: { marker: "!", sample: "!动作描述" },
+  scene_heading: { marker: ".", sample: ".内景 房间 - 日" },
+  character: { marker: "@", sample: "@角色" },
+  dual_dialogue: { marker: "^", sample: "@角色 ^" },
+  dialogue: { marker: "\"", sample: "对白内容" },
+  parenthetical: { marker: "()", sample: "(停顿)" },
+  lyric: { marker: "~", sample: "~歌词" },
+  transition: { marker: ">", sample: "> 切至:" },
+  centered: { marker: "><", sample: "> 居中文本 <" },
+  note: { marker: "[[]]", sample: "[[注释]]" },
+  boneyard: { marker: "/* */", sample: "/* 隐藏文本 */" },
+  section: { marker: "#", sample: "# 章节" },
+  synopsis: { marker: "=", sample: "= 梗概" },
   page_break: { marker: "===", sample: "===" },
 };
 
@@ -392,6 +391,31 @@ const FOUNTAIN_QUICK_FORMATS: FountainLineKind[] = [
   "page_break",
 ];
 
+const FOUNTAIN_VISUAL_TEMPLATE_INDENT: Partial<Record<FountainLineKind, string>> = {
+  transition: "                                ",
+  centered: "                    ",
+  dual_dialogue: "                         ",
+  character: "                  ",
+  parenthetical: "              ",
+};
+
+const FOUNTAIN_EMPTY_TEMPLATE_LINES = new Set([
+  ".内景 场景 - 日",
+  "@角色",
+  "@角色 ^",
+  "(停顿)",
+  "~歌词",
+  "> 切至:",
+  "> 居中文本 <",
+  "[[注释]]",
+  "/* 隐藏文本 */",
+  "# 章节",
+  "= 梗概",
+  "===",
+]);
+
+const isFountainEmptyTemplateLine = (line: string) => FOUNTAIN_EMPTY_TEMPLATE_LINES.has(line.trim());
+
 const getLineBoundsAt = (text: string, cursor: number) => {
   const safeCursor = clamp(cursor, 0, text.length);
   const lineStart = text.lastIndexOf("\n", Math.max(0, safeCursor - 1)) + 1;
@@ -406,21 +430,25 @@ const getLineBoundsAt = (text: string, cursor: number) => {
   };
 };
 
+const getFountainRawContent = (line: string) =>
+  isFountainEmptyTemplateLine(line) ? "" : stripFountainMarkup(line).trim();
+
 const stripFountainMarkup = (line: string) => {
   const trimmed = line.trim();
   if (!trimmed) return "";
   if (/^={3,}$/.test(trimmed)) return "";
   if (/^\[\[.*\]\]$/.test(trimmed)) return trimmed.replace(/^\[\[/, "").replace(/\]\]$/, "").trim();
+  if (/^\/\*/.test(trimmed)) return trimmed.replace(/^\/\*\s*/, "").replace(/\s*\*\/$/, "").trim();
   if (/^>.*<$/.test(trimmed)) return trimmed.replace(/^>\s*/, "").replace(/\s*<$/, "").trim();
   if (/^>/.test(trimmed)) return trimmed.replace(/^>\s*/, "").trim();
   if (/^#+\s*/.test(trimmed)) return trimmed.replace(/^#+\s*/, "").trim();
   if (/^=\s*/.test(trimmed)) return trimmed.replace(/^=\s*/, "").trim();
-  if (/^@/.test(trimmed)) return trimmed.replace(/^@+/, "").trim();
+  if (/^@/.test(trimmed)) return trimmed.replace(/^@+/, "").replace(/\s*\^\s*$/, "").trim();
   if (/^!/.test(trimmed)) return trimmed.replace(/^!+/, "").trim();
   if (/^~/.test(trimmed)) return trimmed.replace(/^~+/, "").trim();
   if (/^\..+/.test(trimmed)) return trimmed.replace(/^\.+/, "").trim();
   if (/^\(.+\)$/.test(trimmed)) return trimmed.replace(/^\(/, "").replace(/\)$/, "").trim();
-  return line;
+  return line.replace(/\s*\^\s*$/, "");
 };
 
 const isCharacterLine = (line: string) => /^@/.test(line.trim());
@@ -502,35 +530,38 @@ const analyzeFountainLines = (body: string): FountainLineAnalysis[] => {
 };
 
 const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
-  const raw = stripFountainMarkup(line).trim();
+  const raw = getFountainRawContent(line);
+  const templateIndent = raw ? "" : FOUNTAIN_VISUAL_TEMPLATE_INDENT[targetKind] || "";
 
   switch (targetKind) {
     case "scene_heading":
-      return raw ? `.${raw.toUpperCase()}` : ".INT. SCENE - DAY";
+      return raw ? `.${raw.toUpperCase()}` : ".内景 场景 - 日";
     case "character":
-      return raw ? `@${raw.toUpperCase()}` : "@CHARACTER";
+      return raw ? `@${raw.toUpperCase()}` : `${templateIndent}@角色`;
     case "dual_dialogue": {
       const cleaned = raw.replace(/\s*\^\s*$/, "").trim();
-      return cleaned ? `@${cleaned.toUpperCase()} ^` : "@CHARACTER ^";
+      return cleaned ? `@${cleaned.toUpperCase()} ^` : `${templateIndent}@角色 ^`;
     }
     case "dialogue":
       return raw;
     case "parenthetical":
-      return `(${raw || "beat"})`;
+      return raw ? `(${raw})` : `${templateIndent}(停顿)`;
     case "lyric":
-      return `~${raw || "Lyric line"}`;
+      return `~${raw || "歌词"}`;
     case "transition":
-      return `> ${raw ? (raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`) : "CUT TO:"}`;
+      return raw
+        ? `> ${raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`}`
+        : `${templateIndent}> 切至:`;
     case "centered":
-      return `> ${raw || "Centered text"} <`;
+      return raw ? `> ${raw} <` : `${templateIndent}> 居中文本 <`;
     case "note":
-      return `[[${raw || "note"}]]`;
+      return `[[${raw || "注释"}]]`;
     case "boneyard":
-      return raw ? `/* ${raw} */` : "/* omitted text */";
+      return raw ? `/* ${raw} */` : "/* 隐藏文本 */";
     case "section":
-      return `# ${raw || "Section"}`;
+      return `# ${raw || "章节"}`;
     case "synopsis":
-      return `= ${raw || "synopsis"}`;
+      return `= ${raw || "梗概"}`;
     case "page_break":
       return "===";
     case "action":
@@ -540,23 +571,25 @@ const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
 };
 
 const getFountainTemplateSelection = (formattedLine: string, targetKind: FountainLineKind) => {
+  const leading = formattedLine.length - formattedLine.trimStart().length;
+  const trimmed = formattedLine.trim();
   switch (targetKind) {
     case "scene_heading":
     case "character":
-      return { start: 1, end: formattedLine.length };
+      return { start: leading + 1, end: formattedLine.length };
     case "dual_dialogue":
-      return { start: 1, end: Math.max(1, formattedLine.length - 2) };
+      return { start: leading + 1, end: Math.max(leading + 1, formattedLine.length - 2) };
     case "parenthetical":
-      return { start: 1, end: Math.max(1, formattedLine.length - 1) };
+      return { start: leading + 1, end: Math.max(leading + 1, formattedLine.length - 1) };
     case "lyric":
-      return { start: 1, end: formattedLine.length };
+      return { start: leading + 1, end: formattedLine.length };
     case "transition": {
-      const start = formattedLine.startsWith("> ") ? 2 : 0;
-      const end = formattedLine.endsWith(":") ? formattedLine.length - 1 : formattedLine.length;
+      const start = leading + (trimmed.startsWith("> ") ? 2 : 0);
+      const end = trimmed.endsWith(":") ? formattedLine.length - 1 : formattedLine.length;
       return { start, end: Math.max(start, end) };
     }
     case "centered":
-      return { start: 2, end: Math.max(2, formattedLine.length - 2) };
+      return { start: leading + 2, end: Math.max(leading + 2, formattedLine.length - 2) };
     case "note":
       return { start: 2, end: Math.max(2, formattedLine.length - 2) };
     case "boneyard":
@@ -571,6 +604,25 @@ const getFountainTemplateSelection = (formattedLine: string, targetKind: Fountai
     default:
       return { start: 0, end: formattedLine.length };
   }
+};
+
+const getFountainContentOffset = (line: string) => {
+  const leading = line.length - line.trimStart().length;
+  const trimmed = line.trim();
+  if (!trimmed) return leading;
+
+  const trimmedOffset = line.indexOf(trimmed);
+  const withTrimmedOffset = (offset: number) => trimmedOffset + Math.max(0, offset);
+
+  if (/^>.*<$/.test(trimmed)) return withTrimmedOffset(trimmed.startsWith("> ") ? 2 : 1);
+  if (/^\[\[/.test(trimmed)) return withTrimmedOffset(2);
+  if (/^\/\*/.test(trimmed)) return withTrimmedOffset(trimmed.startsWith("/* ") ? 3 : 2);
+  if (/^#+\s+/.test(trimmed)) return withTrimmedOffset(trimmed.match(/^#+\s+/)?.[0].length || 0);
+  if (/^=\s+/.test(trimmed)) return withTrimmedOffset(2);
+  if (/^>\s+/.test(trimmed)) return withTrimmedOffset(trimmed.match(/^>\s+/)?.[0].length || 0);
+  if (/^[@!~.]/.test(trimmed)) return withTrimmedOffset(1);
+  if (/^\(.+\)$/.test(trimmed)) return withTrimmedOffset(1);
+  return leading;
 };
 
 const displayFountainLine = (line: string, kind: FountainLineKind) => {
@@ -601,7 +653,6 @@ export const WritingPanel: React.FC<Props> = ({
   initialEpisodeId,
   isQalamOpen = false,
   onOpenQalam,
-  onCloseQalam,
   onSubmitToQalam,
 }) => {
   const [draft, setDraft] = useState<WritingEpisode[]>(() =>
@@ -629,6 +680,7 @@ export const WritingPanel: React.FC<Props> = ({
   const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
   const writingRoomRef = useRef<HTMLDivElement>(null);
+  const paperStackRef = useRef<HTMLDivElement>(null);
   const episodeRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const scenePaperRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const pendingSceneSelectionRef = useRef<string | null>(null);
@@ -709,17 +761,17 @@ export const WritingPanel: React.FC<Props> = ({
   useEffect(() => {
     const node = scenePaperRefs.current[selectedSceneId];
     if (!node) return;
-    const room = writingRoomRef.current;
-    if (!room) {
+    const paperStack = paperStackRef.current;
+    if (!paperStack) {
       node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
       return;
     }
 
-    const roomRect = room.getBoundingClientRect();
+    const roomRect = paperStack.getBoundingClientRect();
     const nodeRect = node.getBoundingClientRect();
-    const headerOffset = viewportSize.width < 760 ? 150 : 126;
-    room.scrollTo({
-      top: Math.max(0, room.scrollTop + nodeRect.top - roomRect.top - headerOffset),
+    const headerOffset = viewportSize.width < 760 ? 28 : 34;
+    paperStack.scrollTo({
+      top: Math.max(0, paperStack.scrollTop + nodeRect.top - roomRect.top - headerOffset),
       behavior: "smooth",
     });
   }, [selectedEpisode.scenes.length, selectedSceneId, viewportSize.width]);
@@ -792,7 +844,7 @@ export const WritingPanel: React.FC<Props> = ({
     if (draft.length <= 1) return;
     const currentIndex = Math.max(0, draft.findIndex((episode) => episode.id === selectedEpisode.id));
     const hasContent = selectedEpisode.scenes.some((scene) => scene.body.trim() || scene.title.trim() || scene.castLine.trim());
-    if (hasContent && !window.confirm(`Delete ${selectedEpisode.title || `Episode ${selectedEpisode.id}`} and all of its scenes?`)) {
+    if (hasContent && !window.confirm(`删除 ${selectedEpisode.title || `第${selectedEpisode.id}集`} 及其全部场景？`)) {
       return;
     }
 
@@ -825,7 +877,7 @@ export const WritingPanel: React.FC<Props> = ({
     const sceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === sceneId));
     const sceneToDelete = selectedEpisode.scenes[sceneIndex];
     const hasContent = !!sceneToDelete && (sceneToDelete.body.trim() || sceneToDelete.title.trim() || sceneToDelete.castLine.trim());
-    if (hasContent && !window.confirm(`Delete scene ${sceneToDelete.id || sceneIndex + 1}?`)) {
+    if (hasContent && !window.confirm(`删除场景 ${sceneToDelete.id || sceneIndex + 1}？`)) {
       return;
     }
 
@@ -1171,33 +1223,50 @@ export const WritingPanel: React.FC<Props> = ({
   const applyFountainLineFormat = useCallback(
     (editor: HTMLTextAreaElement, nextKind: FountainLineKind) => {
       const text = editor.value;
-      const cursor = editor.selectionStart || 0;
+      const selectionStart = editor.selectionStart || 0;
+      const selectionEnd = editor.selectionEnd || selectionStart;
+      const cursor = selectionStart;
       const bounds = getLineBoundsAt(text, cursor);
       const lines = text.split(/\r?\n/);
-      const rawLine = stripFountainMarkup(bounds.line).trim();
+      const rawLine = getFountainRawContent(bounds.line);
       const formattedLine = formatFountainLine(bounds.line, nextKind);
-      const cursorOffset = Math.max(0, cursor - bounds.lineStart);
       const templateSelection = getFountainTemplateSelection(formattedLine, nextKind);
+      const contentOffset = getFountainContentOffset(bounds.line);
+      const rawSelectionStart = Math.max(0, Math.min(rawLine.length, selectionStart - bounds.lineStart - contentOffset));
+      const rawSelectionEnd = Math.max(rawSelectionStart, Math.min(rawLine.length, selectionEnd - bounds.lineStart - contentOffset));
+      const targetEditableLength = Math.max(0, templateSelection.end - templateSelection.start);
+      const mapSelection = (baseOffset = 0) => {
+        const mappedStart =
+          bounds.lineStart + baseOffset + templateSelection.start + Math.min(rawSelectionStart, targetEditableLength);
+        const mappedEnd =
+          bounds.lineStart + baseOffset + templateSelection.start + Math.min(rawSelectionEnd, targetEditableLength);
+        return { start: mappedStart, end: mappedEnd };
+      };
 
       let nextText = `${text.slice(0, bounds.lineStart)}${formattedLine}${text.slice(bounds.lineEnd)}`;
-      let nextCursor = bounds.lineStart + Math.min(formattedLine.length, cursorOffset);
-      let nextSelectionStart = nextCursor;
-      let nextSelectionEnd = nextCursor;
+      let mappedSelection = mapSelection();
+      let nextSelectionStart = mappedSelection.start;
+      let nextSelectionEnd = mappedSelection.end;
 
       if (!rawLine && formattedLine) {
         nextSelectionStart = bounds.lineStart + templateSelection.start;
         nextSelectionEnd = bounds.lineStart + templateSelection.end;
-        nextCursor = nextSelectionEnd;
       }
 
       if (nextKind === "dialogue") {
         const previousLine = getPreviousNonEmptyLine(lines, bounds.lineIndex);
         if (!isCharacterLine(previousLine)) {
-          const insert = `@CHARACTER\n${formattedLine}`;
+          const insert = `@角色\n${formattedLine}`;
+          const dialogueOffset = "@角色\n".length;
           nextText = `${text.slice(0, bounds.lineStart)}${insert}${text.slice(bounds.lineEnd)}`;
-          nextCursor = bounds.lineStart + "@CHARACTER\n".length + Math.min(formattedLine.length, cursorOffset);
-          nextSelectionStart = nextCursor;
-          nextSelectionEnd = nextCursor;
+          if (!rawLine) {
+            nextSelectionStart = bounds.lineStart + dialogueOffset + templateSelection.start;
+            nextSelectionEnd = bounds.lineStart + dialogueOffset + templateSelection.end;
+          } else {
+            mappedSelection = mapSelection(dialogueOffset);
+            nextSelectionStart = mappedSelection.start;
+            nextSelectionEnd = mappedSelection.end;
+          }
         }
       }
 
@@ -1334,18 +1403,18 @@ export const WritingPanel: React.FC<Props> = ({
   ).size;
   const writingGuides = useMemo(
     () => [
-      "Fountain is stored as plain screenplay text with explicit line marks.",
-      "Line format changes only through Tab, Shift+Tab, or the format dock.",
-      "Scene metadata edits stay on the page and export with the draft.",
+      "Fountain 以纯文本保存剧本，并通过行首标记表达格式。",
+      "行格式可通过 Tab、Shift+Tab 或底部格式候选切换。",
+      "场景元信息会保留在稿纸上，并随剧本一起导出。",
     ],
     []
   );
   const scriptStats = [
-    { label: "Scenes", value: totalSceneCount },
-    { label: "Lines", value: screenplayLineCount },
-    { label: "Characters", value: sceneMentionCount },
-    { label: "Locations", value: locationCount },
-    { label: "Issues", value: parserIssues.length },
+    { label: "场景", value: totalSceneCount },
+    { label: "行数", value: screenplayLineCount },
+    { label: "角色", value: sceneMentionCount },
+    { label: "地点", value: locationCount },
+    { label: "问题", value: parserIssues.length },
   ];
   const navigateScene = (delta: number) => {
     const nextIndex = selectedSceneIndex + delta;
@@ -1365,13 +1434,13 @@ export const WritingPanel: React.FC<Props> = ({
   return (
     <div
       ref={writingRoomRef}
-      className={`writing-room fixed inset-0 z-[61] overflow-y-auto overflow-x-hidden text-[var(--app-text-primary)] ${isFocusMode ? "is-focus-mode" : ""} ${isEditorFocused ? "is-editor-focused" : ""}`}
+      className={`writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)] ${isFocusMode ? "is-focus-mode" : ""} ${isEditorFocused ? "is-editor-focused" : ""}`}
     >
       <div className="writing-canvas-backdrop absolute inset-0" aria-hidden="true" />
-      <div className="relative min-h-[100dvh]">
-        <main className="pointer-events-none relative z-[1] flex min-h-[100dvh] justify-center px-4 py-5 md:px-6 md:py-7">
+      <div className="relative h-[100dvh] overflow-hidden">
+        <main className="pointer-events-none relative z-[1] flex h-[100dvh] min-h-0 justify-center overflow-hidden px-4 py-5 md:px-6 md:py-7">
           <div
-            className="writing-stage pointer-events-auto min-h-[calc(100dvh-40px)] w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            className="writing-stage pointer-events-auto h-[calc(100dvh-40px)] min-h-0 w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
             style={stageStyle}
           >
             <div className={`writing-studio-grid ${isInfoPanelOpen ? "is-info-open" : ""}`}>
@@ -1380,97 +1449,48 @@ export const WritingPanel: React.FC<Props> = ({
                   <div className="writing-header-actions">
                     <button
                       type="button"
-                      onClick={handleExportFountain}
-                      className="writing-icon-button writing-action-label"
-                      title="Export Fountain"
-                    >
-                      <Download size={17} strokeWidth={1.8} />
-                      <span>Export</span>
-                    </button>
-                    <span
-                      className="writing-format-pill"
-                      title={`Current Fountain format: ${currentFountainMeta.sample}`}
-                    >
-                      <span className="writing-format-pill__marker">{currentFountainMeta.marker}</span>
-                      <span>{FOUNTAIN_FORMAT_LABELS[currentFountainKind]}</span>
-                    </span>
-                    <button
-                      type="button"
                       onClick={() => navigateScene(-1)}
-                      className="writing-icon-button writing-action-label"
+                      className="writing-icon-button"
                       disabled={selectedSceneIndex === 0}
-                      title="Previous scene"
+                      title="上一场"
                     >
                       <ChevronLeft size={17} strokeWidth={1.8} />
-                      <span>Prev</span>
                     </button>
-                    <span className="writing-scene-count">{selectedSceneIndex + 1}/{selectedEpisode.scenes.length}</span>
                     <button
                       type="button"
                       onClick={() => navigateScene(1)}
-                      className="writing-icon-button writing-action-label"
+                      className="writing-icon-button"
                       disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
-                      title="Next scene"
+                      title="下一场"
                     >
                       <ChevronRight size={17} strokeWidth={1.8} />
-                      <span>Next</span>
                     </button>
-                    <button type="button" onClick={addScene} className="writing-icon-button writing-action-label" title="New scene">
+                    <button type="button" onClick={addScene} className="writing-icon-button" title="新增场景">
                       <Plus size={17} strokeWidth={1.8} />
-                      <span>Scene</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={deleteEpisode}
-                      className="writing-icon-button writing-action-label writing-icon-button--danger"
-                      disabled={draft.length <= 1}
-                      title={draft.length <= 1 ? "Keep at least one episode" : "Delete episode"}
-                    >
-                      <Trash2 size={16} strokeWidth={1.8} />
-                      <span>Delete</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isQalamOpen) {
-                          onCloseQalam?.();
-                          setAgentLine(null);
-                        } else {
-                          openWritingQalam();
-                        }
-                      }}
-                      className="writing-icon-button writing-action-label"
-                      title={isQalamOpen ? "Hide Qalam" : "Open Qalam"}
-                    >
-                      <Bot size={17} strokeWidth={1.8} />
-                      <span>Qalam</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsInfoPanelOpen((current) => !current)}
-                      className="writing-icon-button writing-action-label writing-more-button"
-                      title={isInfoPanelOpen ? "Hide info" : "Show info"}
+                      className="writing-icon-button writing-more-button"
+                      title={isInfoPanelOpen ? "隐藏信息" : "显示信息"}
                     >
                       <MoreHorizontal size={18} strokeWidth={1.8} />
-                      <span>Info</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsFocusMode((current) => !current)}
-                      className={`writing-icon-button writing-action-label ${isFocusMode ? "is-active" : ""}`}
-                      title={isFocusMode ? "Focus mode on" : "Focus mode off"}
+                      className={`writing-icon-button ${isFocusMode ? "is-active" : ""}`}
+                      title={isFocusMode ? "专注模式已开" : "专注模式已关"}
                     >
                       <Focus size={17} strokeWidth={1.8} />
-                      <span>Focus</span>
                     </button>
-                    <button type="button" onClick={handleClose} className="writing-icon-button writing-action-label" title="退出全屏编辑">
+                    <button type="button" onClick={handleClose} className="writing-icon-button" title="退出全屏编辑">
                       <Minimize2 size={17} strokeWidth={1.8} />
-                      <span>Exit</span>
                     </button>
                   </div>
                 </header>
 
-                <div className="writing-paper-stack">
+                <div ref={paperStackRef} className="writing-paper-stack">
                   <div className="writing-paper-title-row">
                     <input
                       value={selectedEpisode.title}
@@ -1478,7 +1498,7 @@ export const WritingPanel: React.FC<Props> = ({
                         patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
                       }
                       className="writing-card-title-input"
-                      placeholder={`Episode ${selectedEpisode.id}`}
+                      placeholder={`第${selectedEpisode.id}集`}
                     />
                   </div>
                   {selectedEpisode.scenes.map((scene) => {
@@ -1547,7 +1567,7 @@ export const WritingPanel: React.FC<Props> = ({
                             onClick={() => deleteScene(scene.id)}
                             className="writing-scene-delete"
                             disabled={selectedEpisode.scenes.length <= 1}
-                            title={selectedEpisode.scenes.length <= 1 ? "Keep at least one scene" : "Delete scene"}
+                            title={selectedEpisode.scenes.length <= 1 ? "至少保留一个场景" : "删除场景"}
                           >
                             <Trash2 size={14} strokeWidth={1.9} />
                           </button>
@@ -1618,7 +1638,7 @@ export const WritingPanel: React.FC<Props> = ({
                                         closeAgentLine();
                                       }
                                     }}
-                                    placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
+                                    placeholder="在这里继续输入即可和 Qalam 对话。按 Enter 发送，按 Esc 返回剧本。"
                                     className="writing-agent-line__input"
                                   />
                                 </div>
@@ -1627,8 +1647,8 @@ export const WritingPanel: React.FC<Props> = ({
                               {mentionState && filteredCharacters.length > 0 ? (
                                 <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-10 top-8 z-30 w-[320px]">
                                   <div className="mention-picker-header">
-                                    <div className="mention-picker-title">Character Mentions</div>
-                                    <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter insert, Esc dismiss</div>
+                                    <div className="mention-picker-title">角色提及</div>
+                                    <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ 选择，Enter 插入，Esc 关闭</div>
                                   </div>
                                   <div className="mention-picker-grid">
                                     {filteredCharacters.map((character, index) => (
@@ -1643,7 +1663,7 @@ export const WritingPanel: React.FC<Props> = ({
                                         title={buildCharacterDetail(character)}
                                       >
                                         <span className="font-semibold">@{character.name}</span>
-                                        <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
+                                        <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "角色"}</span>
                                       </button>
                                     ))}
                                   </div>
@@ -1694,19 +1714,43 @@ export const WritingPanel: React.FC<Props> = ({
               <aside className="writing-card writing-info-card">
                 <header className="writing-info-header">
                   <div>
-                    <div className="writing-card-kicker">Writing</div>
-                    <div className="writing-info-title">Info</div>
+                    <div className="writing-card-kicker">写作</div>
+                    <div className="writing-info-title">信息</div>
                   </div>
                   <div className="writing-header-actions">
-                    <button type="button" onClick={() => setIsInfoPanelOpen(false)} className="writing-icon-button" title="Hide info">
+                    <button type="button" onClick={() => setIsInfoPanelOpen(false)} className="writing-icon-button" title="隐藏信息">
                       <X size={17} strokeWidth={1.8} />
                     </button>
                   </div>
                 </header>
 
                 <div className="writing-side-section">
-                  <div className="writing-side-label">Format</div>
+                  <div className="writing-side-label">操作</div>
+                  <div className="writing-side-actions">
+                    <button type="button" onClick={handleExportFountain} className="writing-side-action">
+                      <Download size={15} strokeWidth={1.8} />
+                      <span>导出 Fountain</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={deleteEpisode}
+                      className="writing-side-action writing-side-action--danger"
+                      disabled={draft.length <= 1}
+                      title={draft.length <= 1 ? "至少保留一个分集" : "删除分集"}
+                    >
+                      <Trash2 size={15} strokeWidth={1.8} />
+                      <span>删除分集</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">格式</div>
                   <div className="writing-guide-list">
+                    <div className="writing-format-summary">
+                      <span className="writing-format-summary__marker">{currentFountainMeta.marker}</span>
+                      <span>{FOUNTAIN_FORMAT_LABELS[currentFountainKind]}</span>
+                    </div>
                     {writingGuides.map((guide, index) => (
                       <div key={guide} className={`writing-guide-row ${index === activeGuideIndex % writingGuides.length ? "is-active" : ""}`}>
                         <span>{String(index + 1).padStart(2, "0")}</span>
@@ -1717,7 +1761,7 @@ export const WritingPanel: React.FC<Props> = ({
                 </div>
 
                 <div className="writing-side-section">
-                  <div className="writing-side-label">Episodes</div>
+                  <div className="writing-side-label">分集</div>
                   <div className="writing-episode-list">
                     {draft.map((episode) => (
                       <button
@@ -1729,19 +1773,19 @@ export const WritingPanel: React.FC<Props> = ({
                         }}
                         className={`writing-episode-item ${episode.id === selectedEpisode.id ? "is-active" : ""}`}
                       >
-                        <span>{episode.title || `Episode ${episode.id}`}</span>
+                        <span>{episode.title || `第${episode.id}集`}</span>
                         <strong>{episode.scenes.length}</strong>
                       </button>
                     ))}
                     <button type="button" onClick={addEpisode} className="writing-episode-item writing-episode-item--add">
-                      <span>New episode</span>
+                      <span>新建分集</span>
                       <Plus size={15} strokeWidth={1.8} />
                     </button>
                   </div>
                 </div>
 
                 <div className="writing-side-section">
-                  <div className="writing-side-label">Script data</div>
+                  <div className="writing-side-label">剧本数据</div>
                   <div className="writing-stat-list">
                     {scriptStats.map((stat) => (
                       <div key={stat.label} className="writing-stat-row">
@@ -1754,7 +1798,9 @@ export const WritingPanel: React.FC<Props> = ({
 
                 <div className="writing-side-foot">
                   <BarChart3 size={16} strokeWidth={1.8} />
-                  <span>{scriptCharacterCount} chars in current scene</span>
+                  <span>
+                    场景 {selectedSceneIndex + 1}/{selectedEpisode.scenes.length} · {scriptCharacterCount} 字
+                  </span>
                 </div>
               </aside>
               ) : null}
