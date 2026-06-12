@@ -1,5 +1,5 @@
 import React from "react";
-import { Grid3X3, LibraryBig, LockKeyhole, Map, Minus, Plus, Rows3, UnlockKeyhole } from "lucide-react";
+import { LibraryBig, LockKeyhole, Map, Minus, Plus, Rows3, UnlockKeyhole } from "lucide-react";
 import type { NodeFlowReadingMode } from "../nodeflow/sessionState";
 
 type Props = {
@@ -13,8 +13,6 @@ type Props = {
   onToggleMiniMap?: () => void;
   readingMode?: NodeFlowReadingMode;
   onToggleReadingMode?: () => void;
-  snapToGrid?: boolean;
-  onToggleSnapToGrid?: () => void;
 };
 
 export const ViewportControls: React.FC<Props> = ({
@@ -28,8 +26,6 @@ export const ViewportControls: React.FC<Props> = ({
   onToggleMiniMap,
   readingMode,
   onToggleReadingMode,
-  snapToGrid,
-  onToggleSnapToGrid,
 }) => {
   const step = 0.25;
   const lockDisabled = isLocked === true;
@@ -58,7 +54,7 @@ export const ViewportControls: React.FC<Props> = ({
       >
         <Plus size={14} className="text-[var(--app-text-secondary)]" />
       </button>
-      {(onToggleLock || onToggleReadingMode || onToggleSnapToGrid || onToggleMiniMap) ? (
+      {(onToggleLock || onToggleReadingMode || onToggleMiniMap) ? (
         <div className="my-0.5 h-px w-5 rounded-full bg-[var(--app-border)]" aria-hidden="true" />
       ) : null}
       {onToggleLock ? (
@@ -87,19 +83,6 @@ export const ViewportControls: React.FC<Props> = ({
           ) : (
             <LibraryBig size={14} className="text-[var(--app-text-secondary)]" />
           )}
-        </button>
-      ) : null}
-      {onToggleSnapToGrid ? (
-        <button
-          type="button"
-          onClick={onToggleSnapToGrid}
-          aria-pressed={snapToGrid}
-          className={`flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px ${
-            snapToGrid ? "bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)] ring-1 ring-[var(--app-border-strong)]" : ""
-          }`}
-          aria-label={snapToGrid ? "关闭边缘对齐" : "开启边缘对齐"}
-        >
-          <Grid3X3 size={14} className={snapToGrid ? "text-[var(--app-accent-strong)]" : "text-[var(--app-text-secondary)]"} />
         </button>
       ) : null}
       {onToggleMiniMap ? (

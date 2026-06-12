@@ -95,6 +95,22 @@ const parseJson = async (response: Response) => {
   }
 };
 
+const isHumanComplianceMessage = (message?: string) => {
+  const normalized = (message || "").toLowerCase();
+  return (
+    normalized.includes("真人") ||
+    normalized.includes("人脸") ||
+    normalized.includes("肖像") ||
+    normalized.includes("real person") ||
+    normalized.includes("human face") ||
+    normalized.includes("portrait") ||
+    normalized.includes("face") ||
+    normalized.includes("deepfake")
+  );
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const createSeedanceTask = async (
   params: SeedanceTaskCreateParams,
   config?: VideoServiceConfig
@@ -168,4 +184,74 @@ export const getSeedanceTask = async (
       data?.output?.error ||
       data?.message,
   };
+};
+
+export const checkSeedanceImageHumanCompliance = async (
+  imageUrl: string,
+  config?: VideoServiceConfig
+): Promise<{
+  status: "passed" | "human_detected" | "blocked" | "error";
+  message: string;
+  taskId?: string;
+}> => {
+  const configToUse = {
+    ...config,
+    baseUrl: SEEDANCE_DEFAULT_BASE_URL,
+  };
+  try {
+    const task = await createSeedanceTask(
+      {
+        model: "doubao-seedance-2-0-fast-260128",
+        content: [
+          {
+            type: "text",
+            text: "素材合规性预检。请基于图片生成一段简单静态镜头，不添加新人物，不改变主体身份。",
+          },
+          {
+            type: "image_url",
+            image_url: { url: imageUrl },
+            role: "reference_image",
+          },
+        ],
+        generateAudio: false,
+        resolution: "480p",
+        ratio: "adaptive",
+        duration: 4,
+        watermark: true,
+      },
+      configToUse
+    );
+
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      const result = await getSeedanceTask(task.id, configToUse);
+      if (result.status === "succeeded") {
+        return {
+          status: "passed",
+          taskId: task.id,
+          message: "官方预检任务通过：该素材未被 Seedance 2.0 按真人人脸参考素材拦截。",
+        };
+      }
+      if (result.status === "failed") {
+        const message = result.errorMsg || "Seedance 预检任务失败。";
+        return {
+          status: isHumanComplianceMessage(message) ? "human_detected" : "blocked",
+          taskId: task.id,
+          message,
+        };
+      }
+      await wait(5000);
+    }
+
+    return {
+      status: "error",
+      taskId: task.id,
+      message: "Seedance 预检任务超时，未能确认素材是否会被真人合规审核拦截。",
+    };
+  } catch (error: any) {
+    const message = error?.message || "Seedance 预检提交失败。";
+    return {
+      status: isHumanComplianceMessage(message) ? "human_detected" : "error",
+      message,
+    };
+  }
 };

@@ -14,6 +14,8 @@
     "desktop:dev": "concurrently -k \"npm run dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env QALAM_DESKTOP_URL=http://127.0.0.1:5173 electron .\"",
     "desktop:pack": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "desktop:dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "desktop:dist:win": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win zip --x64 --publish never",
+    "desktop:dist:win:installer": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --x64 --publish never",
     "desktop:dist:signed": "npm run build && electron-builder"
   },
   "build": {
@@ -40,6 +42,7 @@
       ]
     },
     "win": {
+      "icon": "electron/assets/icon.ico",
       "target": [
         "nsis"
       ]

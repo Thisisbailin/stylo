@@ -11,6 +11,7 @@ import {
   ReactFlowProvider,
   ConnectionMode,
   XYPosition,
+  ConnectionLineType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
@@ -44,6 +45,7 @@ import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { ScriptCanvas } from "./ScriptCanvas";
+import { CanvasBackgroundField } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
@@ -120,18 +122,36 @@ const pickInputHandle = (
 
 const getNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
   if (typeof document === "undefined") return null;
-  const elements = document.elementsFromPoint(clientX, clientY);
-  for (const element of elements) {
-    const nodeElement = element.closest?.(".react-flow__node") as HTMLElement | null;
-    const nodeId = nodeElement?.getAttribute("data-id");
-    if (!nodeElement || !nodeId || nodeId === excludedNodeId) continue;
+  const magneticPadding = 46;
+  let closest: { nodeId: string; side: "left" | "right"; distance: number } | null = null;
+
+  document.querySelectorAll<HTMLElement>(".react-flow__node").forEach((nodeElement) => {
+    const nodeId = nodeElement.getAttribute("data-id");
+    if (!nodeId || nodeId === excludedNodeId) return;
     const rect = nodeElement.getBoundingClientRect();
-    return {
+
+    const insideMagneticBounds =
+      clientX >= rect.left - magneticPadding &&
+      clientX <= rect.right + magneticPadding &&
+      clientY >= rect.top - magneticPadding &&
+      clientY <= rect.bottom + magneticPadding;
+
+    if (!insideMagneticBounds) return;
+
+    const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    const distance = Math.hypot(dx, dy);
+
+    if (!closest || distance < closest.distance) {
+      closest = {
       nodeId,
       side: clientX < rect.left + rect.width / 2 ? "left" : "right",
-    };
-  }
-  return null;
+        distance,
+      };
+    }
+  });
+
+  return closest ? { nodeId: closest.nodeId, side: closest.side } : null;
 };
 
 interface NodeFlowProps {
@@ -180,6 +200,11 @@ interface NodeFlowProps {
     nonce: number;
   };
 }
+
+type ConnectionTargetGlow = {
+  nodeId: string;
+  side: "left" | "right";
+};
 
 type ThemeKey = "dark" | "light" | "sand" | "creative" | "calm" | "lively";
 type PatternKey = "dots" | "grid" | "cross" | "lines" | "diagonal" | "none";
@@ -516,8 +541,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [showMiniMap, setShowMiniMap] = useState(false);
   const keepPeripheralWidgetsOpen = showMiniMap;
   const [isLocked, setIsLocked] = useState(false);
-  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [snapToGrid] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionTargetGlow, setConnectionTargetGlow] = useState<ConnectionTargetGlow | null>(null);
+  const connectionSourceNodeIdRef = useRef<string | null>(null);
+  const previousConnectionTargetGlowRef = useRef<ConnectionTargetGlow | null>(null);
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
@@ -544,9 +572,52 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     [connectNodes, revision]
   );
 
-  const handleConnectStart = useCallback(() => {
+  const handleConnectStart = useCallback((_: unknown, params?: { nodeId?: string | null }) => {
+    connectionSourceNodeIdRef.current = params?.nodeId || null;
     setIsConnecting(true);
   }, []);
+
+  useEffect(() => {
+    if (!isConnecting) {
+      setConnectionTargetGlow(null);
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const hitNode = getNodeHitAtPoint(event.clientX, event.clientY, connectionSourceNodeIdRef.current);
+      setConnectionTargetGlow((current) => {
+        if (!hitNode) return current ? null : current;
+        if (current?.nodeId === hitNode.nodeId && current.side === hitNode.side) return current;
+        return hitNode;
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, [isConnecting]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const previous = previousConnectionTargetGlowRef.current;
+    if (previous && previous.nodeId !== connectionTargetGlow?.nodeId) {
+      const previousNode = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(previous.nodeId)}"]`);
+      previousNode?.removeAttribute("data-connection-target-side");
+    }
+
+    if (connectionTargetGlow) {
+      const nextNode = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(connectionTargetGlow.nodeId)}"]`);
+      nextNode?.setAttribute("data-connection-target-side", connectionTargetGlow.side);
+    }
+
+    previousConnectionTargetGlowRef.current = connectionTargetGlow;
+
+    return () => {
+      if (!connectionTargetGlow) return;
+      const node = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(connectionTargetGlow.nodeId)}"]`);
+      node?.removeAttribute("data-connection-target-side");
+    };
+  }, [connectionTargetGlow]);
 
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
@@ -704,6 +775,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       setIsConnecting(false);
+      connectionSourceNodeIdRef.current = null;
+      setConnectionTargetGlow(null);
       if (connectionState.isValid || !connectionState.fromNode) return;
       // Extract clientX/clientY from the event correctly (it can be MouseEvent or TouchEvent)
       const e = event as any;
@@ -722,28 +795,47 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         const fromNode = nodes.find((node) => node.id === connectionState.fromNode?.id);
         const hitFlowNode = nodes.find((node) => node.id === hitNode.nodeId);
         if (fromNode && hitFlowNode) {
-          const fromNodeHandles = getNodeHandles(fromNode.type);
-          const hitNodeHandles = getNodeHandles(hitFlowNode.type);
           const preferredHandleType = fromHandleType || inferHandleTypeFromNodeType(fromNode.type) || inferHandleTypeFromNodeType(hitFlowNode.type);
-          const connection = isFromSource
-            ? {
-                source: fromNode.id,
-                sourceHandle: (isTypedHandle(fromHandleId) ? fromHandleId : null) || pickOutputHandle(fromNodeHandles.outputs, preferredHandleType),
-                target: hitFlowNode.id,
-                targetHandle: pickInputHandle(hitNodeHandles.inputs, preferredHandleType),
-              }
-            : {
-                source: hitFlowNode.id,
-                sourceHandle: pickOutputHandle(hitNodeHandles.outputs, preferredHandleType),
-                target: fromNode.id,
-                targetHandle: (isTypedHandle(fromHandleId) ? fromHandleId : null) || pickInputHandle(fromNodeHandles.inputs, preferredHandleType),
-              };
 
-          if (connection.sourceHandle && connection.targetHandle && isValidConnection(connection)) {
-            connectNodes(connection, { expectedRevision: useNodeFlowStore.getState().revision });
-            return;
+          const buildConnection = (
+            sourceNode: typeof fromNode,
+            targetNode: typeof hitFlowNode
+          ): Connection | null => {
+            if (sourceNode.id === targetNode.id) return null;
+
+            const sourceHandles = getNodeHandles(sourceNode.type);
+            const targetHandles = getNodeHandles(targetNode.type);
+            const sourceHandle =
+              sourceNode.id === fromNode.id && isFromSource && isTypedHandle(fromHandleId)
+                ? fromHandleId
+                : pickOutputHandle(sourceHandles.outputs, preferredHandleType);
+            const targetHandle =
+              targetNode.id === fromNode.id && !isFromSource && isTypedHandle(fromHandleId)
+                ? fromHandleId
+                : pickInputHandle(targetHandles.inputs, preferredHandleType);
+
+            if (!sourceHandle || !targetHandle) return null;
+            return {
+              source: sourceNode.id,
+              sourceHandle,
+              target: targetNode.id,
+              targetHandle,
+            };
+          };
+
+          const sidePreferredConnections =
+            hitNode.side === "right"
+              ? [buildConnection(hitFlowNode, fromNode), buildConnection(fromNode, hitFlowNode)]
+              : [buildConnection(fromNode, hitFlowNode), buildConnection(hitFlowNode, fromNode)];
+
+          for (const connection of sidePreferredConnections) {
+            if (connection && isValidConnection(connection)) {
+              connectNodes(connection, { expectedRevision: useNodeFlowStore.getState().revision });
+              return;
+            }
           }
         }
+        return;
       }
       const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
       setConnectionDrop({
@@ -1042,47 +1134,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const backgroundStyle = useMemo(() => {
     const base = activeTheme.bg;
-    const currentViewport = liveViewport ?? { x: 0, y: 0, zoom: 1 };
-    const scale = currentViewport.zoom > 0 ? currentViewport.zoom : 1;
-    const offsetX = currentViewport.x ?? 0;
-    const offsetY = currentViewport.y ?? 0;
-    const applyOffset = (token: string, offset: number) => {
-      const trimmed = token.trim();
-      const value = Number.parseFloat(trimmed);
-      if (Number.isNaN(value)) return trimmed;
-      const unit = trimmed.replace(String(value), "") || "px";
-      return `${value + offset}${unit}`;
-    };
-    const buildPosition = (position: string | undefined) => {
-      const basePosition = position ?? "0 0";
-      return basePosition
-        .split(",")
-        .map((chunk) => {
-          const parts = chunk.trim().split(/\s+/);
-          const x = parts[0] ?? "0";
-          const y = parts[1] ?? "0";
-          return `${applyOffset(x, offsetX)} ${applyOffset(y, offsetY)}`;
-        })
-        .join(", ");
-    };
-    if (bgPattern === "none") {
-      return {
-        backgroundColor: base,
-        backgroundImage: "none",
-        backgroundSize: "auto",
-        backgroundPosition: "0 0",
-        baseColor: base,
-      };
-    }
-    const pat = patternDefinitions[bgPattern as Exclude<PatternKey, "none">] || patternDefinitions.dots;
     return {
       backgroundColor: base,
-      backgroundImage: pat.image,
-      backgroundSize: pat.size(scale),
-      backgroundPosition: buildPosition(pat.position),
+      backgroundImage: "none",
+      backgroundSize: "auto",
+      backgroundPosition: "0 0",
       baseColor: base,
     };
-  }, [activeTheme, bgPattern, liveViewport, patternDefinitions]);
+  }, [activeTheme.bg]);
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -1246,6 +1305,16 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         data-connecting={isConnecting}
         style={backgroundStyle}
       >
+        <CanvasBackgroundField
+          pattern={bgPattern}
+          baseColor={activeTheme.bg}
+          primaryColor={activeTheme.pattern}
+          secondaryColor={activeTheme.patternSoft}
+          accentColor={activeTheme.accentSoft}
+          viewport={liveViewport}
+          alignmentGuide={surfacePlane === "flow" ? snapGuide : null}
+          active={!showThemeModal}
+        />
         {surfacePlane === "flow" ? (
           <ReactFlow
             nodes={displayNodes}
@@ -1277,9 +1346,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             connectionMode={ConnectionMode.Loose}
+            connectionLineType={ConnectionLineType.Bezier}
             connectionLineStyle={{
-              stroke: "rgba(74, 222, 128, 0.96)",
-              strokeWidth: 3,
+              stroke: "rgba(74, 222, 128, 0.88)",
+              strokeWidth: 2.6,
               strokeLinecap: "round",
               strokeLinejoin: "round",
             }}
@@ -1389,6 +1459,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           setProjectData={setProjectData}
           getAuthToken={getAuthToken}
           initialEpisodeId={editingScriptEpisodeId}
+          isQalamOpen={!isQalamCollapsed}
+          onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
+          onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
+          onSubmitToQalam={(text) => setQalamSubmitRequest({ id: Date.now(), text })}
           onClose={() => setEditingScriptEpisodeId(null)}
         />
       ) : null}
@@ -1396,7 +1470,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         <>
           <div
             className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={(keepPeripheralWidgetsOpen || snapToGrid) && !isQalamFirstMode}
+            data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
             data-qalam-first={isQalamFirstMode}
           >
             <div className="absolute bottom-4 left-4 pointer-events-none">
@@ -1422,8 +1496,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                   onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
                   readingMode={readingMode}
                   onToggleReadingMode={handleToggleReadingMode}
-                  snapToGrid={snapToGrid}
-                  onToggleSnapToGrid={() => setSnapToGrid((prev) => !prev)}
                 />
               </div>
               </div>

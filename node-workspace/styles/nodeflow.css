@@ -361,6 +361,15 @@ body.qalam-resizing * {
   cursor: grabbing !important;
 }
 
+.canvas-background-field {
+  contain: strict;
+  overflow: hidden;
+}
+
+.canvas-background-field canvas {
+  opacity: 1;
+}
+
 .nodeflow-snap-guides {
   overflow: hidden;
 }
@@ -547,15 +556,29 @@ body.qalam-resizing * {
   }
 }
 
+@keyframes qalam-node-port-breathe {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scaleY(0.86);
+  }
+  44% {
+    opacity: 0.9;
+    transform: scaleY(1);
+  }
+}
+
 /* Handles - Minimal and integrated */
 .react-flow__handle {
-  width: 58px !important;
-  height: calc(100% - 28px) !important;
-  min-height: 92px !important;
+  width: 34px !important;
+  height: calc(100% - 34px) !important;
+  min-height: 0 !important;
   border-radius: 999px !important;
   border: 0 !important;
   background: transparent !important;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   opacity: 0;
   box-shadow: none !important;
   overflow: visible;
@@ -568,42 +591,52 @@ body.qalam-resizing * {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 11px;
-  height: 2px;
+  width: 2px;
+  height: 42px;
   border-radius: 999px;
-  background: rgba(220, 252, 231, 0.94);
+  background: linear-gradient(
+    180deg,
+    rgba(74, 222, 128, 0),
+    rgba(74, 222, 128, 0.88),
+    rgba(74, 222, 128, 0)
+  );
   transform: translate(-50%, -50%);
-  box-shadow: none;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.18);
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .react-flow__handle::after {
-  width: 2px;
-  height: 11px;
+  width: 28px;
+  height: 70px;
+  background: radial-gradient(ellipse at center, rgba(74, 222, 128, 0.32), rgba(74, 222, 128, 0.08) 46%, transparent 72%);
+  filter: blur(8px);
+  box-shadow: none;
 }
 
 .react-flow__handle-left {
-  transform: translate(calc(-100% + 18px), -50%);
+  transform: translate(-12px, -50%);
 }
 
 .react-flow__handle-right {
-  transform: translate(calc(100% - 18px), -50%);
+  transform: translate(12px, -50%);
 }
 
 .react-flow__node:hover .react-flow__handle-left {
-  transform: translate(calc(-100% + 10px), -50%);
+  transform: translate(-16px, -50%);
   opacity: 1;
 }
 
 .react-flow__node:hover .react-flow__handle-right {
-  transform: translate(calc(100% - 10px), -50%);
+  transform: translate(16px, -50%);
   opacity: 1;
 }
 
 .react-flow__node:hover .react-flow__handle::before,
 .react-flow__node:hover .react-flow__handle::after {
-  opacity: 1;
+  opacity: 0.72;
 }
 
 .react-flow__handle[data-handletype="image"] {
@@ -622,22 +655,34 @@ body.qalam-resizing * {
 .node-flow-canvas[data-connecting="true"] .react-flow__handle {
   animation: none !important;
   box-shadow: none !important;
-  opacity: 1;
+  opacity: 0;
 }
 
 .node-flow-canvas[data-connecting="true"] .react-flow__handle::before,
 .node-flow-canvas[data-connecting="true"] .react-flow__handle::after {
-  opacity: 0.92;
-  transform: translate(-50%, -50%) scale(1.15);
+  opacity: 0;
+}
+
+.node-flow-canvas[data-connecting="true"] .react-flow__node:hover .react-flow__handle {
+  opacity: 1;
+}
+
+.node-flow-canvas[data-connecting="true"] .react-flow__node:hover .react-flow__handle::before,
+.node-flow-canvas[data-connecting="true"] .react-flow__node:hover .react-flow__handle::after {
+  opacity: 0.84;
+  transform: translate(-50%, -50%) scale(1.08);
 }
 
 .node-flow-canvas[data-connecting="true"] .react-flow__connection-path {
-  stroke: rgba(74, 222, 128, 0.96) !important;
-  stroke-width: 3.5px !important;
+  stroke: rgba(74, 222, 128, 0.9) !important;
+  stroke-width: 2.6px !important;
   stroke-linecap: round;
-  stroke-dasharray: 8 10;
-  filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.55));
-  animation: node-connection-pulse 1.05s linear infinite;
+  stroke-linejoin: round;
+  stroke-dasharray: 9 13;
+  filter:
+    drop-shadow(0 0 5px rgba(74, 222, 128, 0.28))
+    drop-shadow(0 0 14px rgba(74, 222, 128, 0.2));
+  animation: node-connection-pulse 1.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
 /* Edges - Strong and visible */
@@ -758,6 +803,53 @@ body.qalam-resizing * {
   box-shadow: var(--node-shadow);
   backdrop-filter: none;
   z-index: 0;
+}
+
+.node-card-shell::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  width: 72px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleY(0.72);
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 220ms ease;
+  z-index: 0;
+}
+
+.react-flow__node[data-connection-target-side="left"] .node-card-shell::after {
+  left: -24px;
+  background: linear-gradient(
+    to right,
+    rgba(74, 222, 128, 0),
+    rgba(74, 222, 128, 0.32),
+    rgba(74, 222, 128, 0.08),
+    rgba(74, 222, 128, 0)
+  );
+  filter: blur(10px) drop-shadow(0 0 14px rgba(74, 222, 128, 0.28));
+  opacity: 0.86;
+  transform: scaleY(1);
+  animation: qalam-node-port-breathe 1.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.react-flow__node[data-connection-target-side="right"] .node-card-shell::after {
+  right: -24px;
+  background: linear-gradient(
+    to left,
+    rgba(74, 222, 128, 0),
+    rgba(74, 222, 128, 0.32),
+    rgba(74, 222, 128, 0.08),
+    rgba(74, 222, 128, 0)
+  );
+  filter: blur(10px) drop-shadow(0 0 14px rgba(74, 222, 128, 0.28));
+  opacity: 0.86;
+  transform: scaleY(1);
+  animation: qalam-node-port-breathe 1.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
 .node-flow-canvas[data-zoomed="true"] .node-card-shell::before {
@@ -1131,14 +1223,14 @@ body.qalam-resizing * {
   width: 100%;
   min-height: 2.25rem;
   white-space: pre-wrap;
-  color: #1e150f;
+  color: var(--app-text-primary);
 }
 
 .writing-fountain-line--scene_heading {
   margin-top: 0.55rem;
-  border-top: 1px solid rgba(126, 99, 74, 0.18);
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
   padding-top: 0.36rem;
-  color: #3a2618;
+  color: var(--app-text-primary);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1147,29 +1239,65 @@ body.qalam-resizing * {
 .writing-fountain-line--character {
   width: 36%;
   margin-left: 39%;
-  color: #21160f;
+  color: color-mix(in srgb, var(--app-text-primary) 94%, var(--app-accent) 6%);
   font-weight: 800;
   letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
+.writing-fountain-line--dual_dialogue {
+  width: 38%;
+  margin-left: 56%;
+  color: color-mix(in srgb, var(--app-text-primary) 92%, var(--app-accent) 8%);
+  font-weight: 850;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.writing-fountain-line--dual_dialogue::after {
+  content: "DUAL";
+  display: inline-flex;
+  margin-left: 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 28%, transparent);
+  border-radius: 999px;
+  padding: 0.05rem 0.38rem;
+  color: color-mix(in srgb, var(--app-text-secondary) 82%, transparent);
+  font-size: 0.62em;
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+}
+
 .writing-fountain-line--dialogue {
   width: 54%;
   margin-left: 23%;
-  color: #1e150f;
+  color: var(--app-text-primary);
 }
 
 .writing-fountain-line--parenthetical {
   width: 36%;
   margin-left: 31%;
-  color: #5b4632;
+  color: color-mix(in srgb, var(--app-text-secondary) 88%, var(--app-text-primary) 12%);
   font-style: italic;
+}
+
+.writing-fountain-line--lyric {
+  width: 62%;
+  margin-left: 19%;
+  color: color-mix(in srgb, var(--app-text-secondary) 90%, var(--app-accent) 10%);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+.writing-fountain-line--lyric::before {
+  content: "♪";
+  margin-right: 0.56rem;
+  color: color-mix(in srgb, var(--app-text-muted) 84%, transparent);
 }
 
 .writing-fountain-line--transition {
   width: 42%;
   margin-left: auto;
-  color: #552820;
+  color: color-mix(in srgb, var(--app-text-primary) 88%, var(--app-accent) 12%);
   text-align: right;
   font-weight: 750;
   letter-spacing: 0.08em;
@@ -1177,7 +1305,7 @@ body.qalam-resizing * {
 }
 
 .writing-fountain-line--centered {
-  color: #3d2b1f;
+  color: var(--app-text-primary);
   text-align: center;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -1186,15 +1314,26 @@ body.qalam-resizing * {
 .writing-fountain-line--note {
   width: auto;
   max-width: 76%;
-  border-left: 2px solid rgba(123, 101, 76, 0.34);
+  border-left: 2px solid color-mix(in srgb, var(--app-accent) 30%, transparent);
   padding-left: 0.8rem;
-  color: #665039;
+  color: var(--app-text-secondary);
   font-style: italic;
+}
+
+.writing-fountain-line--boneyard {
+  width: auto;
+  max-width: 86%;
+  border-left: 2px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+  padding-left: 0.8rem;
+  color: var(--app-text-muted);
+  font-style: italic;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 42%, transparent);
 }
 
 .writing-fountain-line--section {
   margin-top: 0.9rem;
-  color: #2d1d13;
+  color: var(--app-text-primary);
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1203,7 +1342,7 @@ body.qalam-resizing * {
 .writing-fountain-line--synopsis {
   width: auto;
   max-width: 82%;
-  color: #654a31;
+  color: var(--app-text-secondary);
   font-style: italic;
 }
 
@@ -1215,8 +1354,35 @@ body.qalam-resizing * {
   content: "";
   display: block;
   width: 100%;
-  border-top: 1px dashed rgba(122, 95, 68, 0.46);
+  border-top: 1px dashed color-mix(in srgb, var(--app-border-strong) 72%, transparent);
   transform: translateY(1.05rem);
+}
+
+.writing-inline-note {
+  display: inline;
+  border-radius: 0.45em;
+  background: color-mix(in srgb, var(--app-accent-soft) 48%, transparent);
+  padding: 0.04em 0.32em;
+  color: var(--app-text-secondary);
+  font-style: italic;
+}
+
+.writing-inline-bold,
+.writing-inline-bold-italic {
+  color: var(--app-text-primary);
+  font-weight: 850;
+}
+
+.writing-inline-italic,
+.writing-inline-bold-italic {
+  font-style: italic;
+}
+
+.writing-inline-underline {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  text-decoration-color: color-mix(in srgb, var(--app-accent) 52%, transparent);
 }
 
 .writing-token {
@@ -1276,20 +1442,11 @@ body.qalam-resizing * {
 }
 
 .writing-canvas-backdrop {
-  background:
-    radial-gradient(circle at top center, color-mix(in srgb, var(--app-accent-soft) 56%, transparent), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 96%, white 4%), color-mix(in srgb, var(--app-bg) 98%, black 2%));
+  background: var(--app-bg);
 }
 
 .writing-canvas-backdrop::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--app-pattern) 70%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--app-pattern) 58%, transparent) 1px, transparent 1px);
-  background-size: 52px 52px, 52px 52px;
-  opacity: 0.3;
+  display: none;
 }
 
 .writing-floating-controls {
@@ -1361,7 +1518,7 @@ body.qalam-resizing * {
   flex-direction: column;
   min-width: 0;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding-top: 10px;
 }
 
@@ -1380,37 +1537,22 @@ body.qalam-resizing * {
   position: sticky;
   top: 10px;
   z-index: 40;
-  border: 1px solid color-mix(in srgb, var(--app-border) 66%, transparent);
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--app-panel) 72%, transparent);
-  padding: 10px 14px;
-  box-shadow:
-    0 16px 36px rgba(8, 8, 10, 0.18),
-    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  transition: opacity 220ms ease, transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+  min-height: 0;
+  justify-content: flex-end;
+  padding: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
 }
 
 .writing-room.is-focus-mode.is-editor-focused .writing-floating-header:not(:hover):not(:focus-within) {
-  opacity: 0.42;
+  opacity: 0.5;
   transform: translateY(-6px) scale(0.992);
-  border-color: color-mix(in srgb, var(--app-border) 34%, transparent);
-  background: color-mix(in srgb, var(--app-panel) 42%, transparent);
-  box-shadow:
-    0 10px 28px rgba(8, 8, 10, 0.08),
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
-}
-
-.writing-floating-header > div:first-child {
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .writing-floating-header .writing-header-actions {
-  max-width: min(48vw, 470px);
+  max-width: min(100%, 980px);
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding: 2px;
   scrollbar-width: thin;
 }
 
@@ -1429,12 +1571,11 @@ body.qalam-resizing * {
 }
 
 .writing-card-title-input {
-  margin-top: 3px;
   width: 100%;
   border: 0;
   background: transparent;
   color: var(--app-text-primary);
-  font-size: clamp(24px, 3vw, 38px);
+  font-size: clamp(24px, 3vw, 40px);
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -1448,27 +1589,38 @@ body.qalam-resizing * {
 .writing-header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 0 0 auto;
+  pointer-events: auto;
 }
 
 .writing-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  width: auto;
+  min-width: 34px;
   height: 34px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--app-panel-muted) 78%, transparent);
+  background: color-mix(in srgb, var(--app-bg) 62%, transparent);
+  padding: 0 11px;
   color: var(--app-text-secondary);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
 }
 
 .writing-icon-button:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-border-strong));
-  background: color-mix(in srgb, var(--app-panel-soft) 86%, transparent);
+  background: color-mix(in srgb, var(--app-panel-soft) 72%, var(--app-bg));
   color: var(--app-text-primary);
 }
 
@@ -1498,8 +1650,8 @@ body.qalam-resizing * {
   gap: 7px;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
-  background: color-mix(in srgb, var(--app-panel-muted) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border) 60%, transparent);
+  background: color-mix(in srgb, var(--app-bg) 62%, transparent);
   padding: 0 12px;
   font-size: 10px;
   font-weight: 800;
@@ -1525,6 +1677,13 @@ body.qalam-resizing * {
 
 .writing-scene-count {
   min-width: 42px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--app-border) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-bg) 48%, transparent);
   text-align: center;
   font-size: 12px;
   font-weight: 650;
@@ -1548,28 +1707,32 @@ body.qalam-resizing * {
 
 .writing-paper-stack {
   display: grid;
-  gap: 28px;
+  gap: 18px;
   width: min(100%, 980px);
+}
+
+.writing-paper-title-row {
+  width: min(100%, 980px);
+  padding: 4px 6px 0;
 }
 
 .writing-script-paper {
   position: relative;
   isolation: isolate;
   scroll-margin-top: 132px;
+  --writing-paper-pad-x: clamp(30px, 4.1vw, 52px);
+  --writing-editor-pad-top: 34px;
+  --writing-editor-pad-bottom: 42px;
+  --writing-editor-min-height: 700px;
   width: min(100%, 980px);
   min-height: 760px;
-  border: 1px solid rgba(221, 212, 198, 0.96);
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 82%, transparent);
   border-radius: 7px;
-  background:
-    linear-gradient(90deg, rgba(134, 58, 45, 0.08) 0 1px, transparent 1px 100%),
-    repeating-linear-gradient(180deg, transparent 0 35px, rgba(124, 108, 88, 0.12) 35px 36px),
-    linear-gradient(180deg, #fffdf7 0%, #f8f3e9 100%);
-  background-position: 72px 0, 0 0, 0 0;
+  background: color-mix(in srgb, var(--app-panel-strong) 86%, var(--app-bg) 14%);
   box-shadow:
-    0 26px 70px rgba(16, 11, 7, 0.22),
-    0 2px 6px rgba(16, 11, 7, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94);
-  color: #211a13;
+    0 22px 58px rgba(8, 8, 10, 0.18),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  color: var(--app-text-primary);
   transition:
     border-color 180ms ease,
     box-shadow 180ms ease,
@@ -1580,11 +1743,10 @@ body.qalam-resizing * {
 }
 
 .writing-script-paper.is-active {
-  border-color: rgba(174, 143, 104, 0.92);
+  border-color: color-mix(in srgb, var(--app-accent) 48%, var(--app-border-strong));
   box-shadow:
-    0 30px 80px rgba(16, 11, 7, 0.28),
-    0 2px 6px rgba(16, 11, 7, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+    0 24px 64px rgba(8, 8, 10, 0.22),
+    inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
 }
 
 .writing-room.is-focus-mode .writing-script-paper:not(.is-active) {
@@ -1600,25 +1762,11 @@ body.qalam-resizing * {
 }
 
 .writing-script-paper::before {
-  content: "";
-  position: absolute;
-  inset: 14px 14px auto;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(127, 98, 70, 0.28), transparent);
-  z-index: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .writing-script-paper::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 16% 10%, rgba(118, 83, 43, 0.05), transparent 28%),
-    linear-gradient(90deg, rgba(93, 59, 31, 0.035), transparent 12%, transparent 88%, rgba(93, 59, 31, 0.028));
-  z-index: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .writing-scene-strip {
@@ -1629,7 +1777,7 @@ body.qalam-resizing * {
   justify-content: flex-start;
   gap: 14px;
   overflow-x: auto;
-  border-bottom: 1px solid rgba(129, 106, 76, 0.2);
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
   padding: 18px 38px 10px;
   scrollbar-width: thin;
   transition: opacity 220ms ease, transform 220ms ease, border-color 220ms ease;
@@ -1647,7 +1795,7 @@ body.qalam-resizing * {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #211a13;
+  color: var(--app-text-primary);
   font-family: "Geist Mono", "SFMono-Regular", "SF Mono", Consolas, monospace;
   font-size: 13px;
   font-weight: 760;
@@ -1657,7 +1805,7 @@ body.qalam-resizing * {
 }
 
 .writing-scene-input::placeholder {
-  color: rgba(90, 68, 46, 0.42);
+  color: var(--app-text-muted);
 }
 
 .writing-scene-input--cast {
@@ -1682,7 +1830,7 @@ body.qalam-resizing * {
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
-  color: rgba(95, 70, 50, 0.44);
+  color: var(--app-text-muted);
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
 
@@ -1732,24 +1880,14 @@ body.qalam-resizing * {
 
 .writing-format-dock .writing-format-bar {
   pointer-events: auto;
-  max-width: min(100%, 720px);
-  border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--app-panel) 78%, transparent);
-  padding: 8px;
-  box-shadow:
-    0 20px 44px rgba(8, 8, 10, 0.22),
-    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+  max-width: min(100%, 860px);
+  padding: 2px;
+  transition: transform 220ms ease;
 }
 
 .writing-format-dock:hover .writing-format-bar,
 .writing-format-dock:focus-within .writing-format-bar {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-border-strong));
-  background: color-mix(in srgb, var(--app-panel) 88%, transparent);
 }
 
 .writing-format-button {
@@ -1760,14 +1898,16 @@ body.qalam-resizing * {
   gap: 6px;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 68%, transparent);
-  background: color-mix(in srgb, var(--app-panel-muted) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
+  background: color-mix(in srgb, var(--app-bg) 60%, transparent);
   padding: 0 11px;
   font-size: 10px;
   font-weight: 760;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--app-text-secondary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
@@ -1789,7 +1929,7 @@ body.qalam-resizing * {
 .writing-format-button.is-active {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--app-accent) 46%, var(--app-border-strong));
-  background: color-mix(in srgb, var(--app-accent-soft) 34%, var(--app-panel-muted));
+  background: color-mix(in srgb, var(--app-accent-soft) 38%, var(--app-bg));
   color: var(--app-text-primary);
 }
 
@@ -1802,7 +1942,7 @@ body.qalam-resizing * {
   position: relative;
   z-index: 1;
   margin: 0;
-  min-height: 700px;
+  min-height: var(--writing-editor-min-height);
   border-radius: 0;
   overflow: visible;
 }
@@ -1813,30 +1953,35 @@ body.qalam-resizing * {
 
 .writing-script-paper .writing-editor,
 .writing-script-paper .writing-editor-highlight {
-  min-height: 100%;
+  min-height: var(--writing-editor-min-height);
+  padding:
+    var(--writing-editor-pad-top)
+    var(--writing-paper-pad-x)
+    var(--writing-editor-pad-bottom);
   font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
   font-size: 17px;
   line-height: 36px;
   letter-spacing: 0;
+  box-sizing: border-box;
 }
 
 .writing-script-paper .writing-editor {
-  caret-color: #241b13;
+  caret-color: var(--app-text-primary);
 }
 
 .writing-script-paper .writing-editor::placeholder {
-  color: rgba(86, 67, 48, 0.42);
-  -webkit-text-fill-color: rgba(86, 67, 48, 0.42);
+  color: var(--app-text-muted);
+  -webkit-text-fill-color: var(--app-text-muted);
 }
 
 .writing-script-paper .writing-editor-highlight {
-  color: #1e150f;
+  color: var(--app-text-primary);
   font-weight: 500;
 }
 
 .writing-script-paper .writing-editor-highlight .text-mention {
-  color: #211a13;
-  text-decoration-color: rgba(130, 91, 52, 0.34);
+  color: var(--app-text-primary);
+  text-decoration-color: color-mix(in srgb, var(--app-accent) 38%, transparent);
 }
 
 .writing-paper-preview {
@@ -2053,9 +2198,7 @@ body.qalam-resizing * {
   }
 
   .writing-floating-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
+    align-items: flex-end;
   }
 
   .writing-card-title-input {
@@ -2074,13 +2217,12 @@ body.qalam-resizing * {
   }
 
   .writing-script-paper {
-    background-position: 34px 0, 0 0, 0 0;
+    --writing-paper-pad-x: 22px;
+    --writing-editor-pad-top: 28px;
   }
 
   .writing-script-paper .writing-editor,
   .writing-script-paper .writing-editor-highlight {
-    padding-right: 22px;
-    padding-left: 22px;
     font-size: 15px;
     line-height: 32px;
   }
@@ -2088,6 +2230,11 @@ body.qalam-resizing * {
   .writing-fountain-line--character {
     width: 48%;
     margin-left: 34%;
+  }
+
+  .writing-fountain-line--dual_dialogue {
+    width: 54%;
+    margin-left: 32%;
   }
 
   .writing-fountain-line--dialogue {
@@ -2098,6 +2245,11 @@ body.qalam-resizing * {
   .writing-fountain-line--parenthetical {
     width: 54%;
     margin-left: 22%;
+  }
+
+  .writing-fountain-line--lyric {
+    width: 76%;
+    margin-left: 12%;
   }
 }
 
@@ -3022,6 +3174,8 @@ body.qalam-resizing * {
 
 .node-card-port {
   z-index: 3 !important;
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 .node-card-port--ghost {
@@ -3032,21 +3186,11 @@ body.qalam-resizing * {
 
 .node-card-port--multi {
   border-radius: 999px !important;
-  box-shadow:
-    0 0 0 8px rgba(74, 222, 128, 0.08),
-    0 10px 26px rgba(34, 197, 94, 0.22) !important;
+  box-shadow: none !important;
 }
 
 .media-input-empty {
   border-radius: 24px;
-}
-
-.react-flow__handle-left.node-card-port--multi {
-  transform: translate(calc(-100% + 10px), -50%) !important;
-}
-
-.react-flow__handle-right.node-card-port--multi {
-  transform: translate(calc(100% - 10px), -50%) !important;
 }
 
 .node-title-input {
@@ -3159,14 +3303,14 @@ body.qalam-resizing * {
 @keyframes node-connection-pulse {
   0% {
     stroke-dashoffset: 0;
-    opacity: 0.7;
+    opacity: 0.62;
   }
-  50% {
-    opacity: 1;
+  38% {
+    opacity: 0.96;
   }
   100% {
-    stroke-dashoffset: -18;
-    opacity: 0.72;
+    stroke-dashoffset: -22;
+    opacity: 0.68;
   }
 }
 

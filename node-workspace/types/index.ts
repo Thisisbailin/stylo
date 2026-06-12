@@ -37,6 +37,10 @@ export interface ImageInputNodeData extends BaseNodeData {
   image: string | null;
   filename: string | null;
   dimensions: { width: number; height: number } | null;
+  complianceCheckStatus?: "idle" | "checking" | "passed" | "human_detected" | "blocked" | "error";
+  complianceCheckMessage?: string | null;
+  complianceCheckTaskId?: string | null;
+  complianceCheckedAt?: number | null;
   identityTag?: string;
   identityId?: string;
   label?: string;

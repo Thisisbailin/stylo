@@ -107,18 +107,36 @@ const getScriptNodeHandles = (nodeId: string) => {
 
 const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
   if (typeof document === "undefined") return null;
-  const elements = document.elementsFromPoint(clientX, clientY);
-  for (const element of elements) {
-    const nodeElement = element.closest?.(".react-flow__node") as HTMLElement | null;
-    const nodeId = nodeElement?.getAttribute("data-id");
-    if (!nodeElement || !nodeId || nodeId === excludedNodeId) continue;
+  const magneticPadding = 46;
+  let closest: { nodeId: string; side: "left" | "right"; distance: number } | null = null;
+
+  document.querySelectorAll<HTMLElement>(".react-flow__node").forEach((nodeElement) => {
+    const nodeId = nodeElement.getAttribute("data-id");
+    if (!nodeId || nodeId === excludedNodeId) return;
     const rect = nodeElement.getBoundingClientRect();
-    return {
+
+    const insideMagneticBounds =
+      clientX >= rect.left - magneticPadding &&
+      clientX <= rect.right + magneticPadding &&
+      clientY >= rect.top - magneticPadding &&
+      clientY <= rect.bottom + magneticPadding;
+
+    if (!insideMagneticBounds) return;
+
+    const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    const distance = Math.hypot(dx, dy);
+
+    if (!closest || distance < closest.distance) {
+      closest = {
       nodeId,
       side: clientX < rect.left + rect.width / 2 ? "left" : "right",
-    };
-  }
-  return null;
+        distance,
+      };
+    }
+  });
+
+  return closest ? { nodeId: closest.nodeId, side: closest.side } : null;
 };
 
 const getDefaultScriptPosition = (index: number) => ({
@@ -223,7 +241,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
   const minZoom = 0.25;
   const maxZoom = 2.5;
   const [isLocked, setIsLocked] = useState(false);
-  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [snapToGrid] = useState(true);
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
@@ -583,24 +601,39 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
       const hitNode = getScriptNodeHitAtPoint(clientX, clientY, connectionState.fromNode.id);
       if (hitNode) {
         const fromNodeId = connectionState.fromNode.id;
-        const fromHandles = getScriptNodeHandles(fromNodeId);
-        const hitHandles = getScriptNodeHandles(hitNode.nodeId);
         const preferred = fromHandleType || (isImageNodeId(fromNodeId) ? "image" : "text");
-        const connection = isFromSource
-          ? {
-              source: fromNodeId,
-              sourceHandle: pickOutputHandle(fromHandles.outputs, preferred),
-              target: hitNode.nodeId,
-              targetHandle: pickInputHandle(hitHandles.inputs, preferred),
-            }
-          : {
-              source: hitNode.nodeId,
-              sourceHandle: pickOutputHandle(hitHandles.outputs, preferred),
-              target: fromNodeId,
-              targetHandle: pickInputHandle(fromHandles.inputs, preferred, fromHandleId),
-            };
 
-        if (connection.sourceHandle && connection.targetHandle && commitScriptConnection(connection)) return;
+        const buildConnection = (sourceNodeId: string, targetNodeId: string): Connection | null => {
+          if (sourceNodeId === targetNodeId) return null;
+          const sourceHandles = getScriptNodeHandles(sourceNodeId);
+          const targetHandles = getScriptNodeHandles(targetNodeId);
+          const sourceHandle =
+            sourceNodeId === fromNodeId && isFromSource && (fromHandleId === "image" || fromHandleId === "text")
+              ? fromHandleId
+              : pickOutputHandle(sourceHandles.outputs, preferred);
+          const targetHandle =
+            targetNodeId === fromNodeId && !isFromSource
+              ? pickInputHandle(targetHandles.inputs, preferred, fromHandleId)
+              : pickInputHandle(targetHandles.inputs, preferred);
+
+          if (!sourceHandle || !targetHandle) return null;
+          return {
+            source: sourceNodeId,
+            sourceHandle,
+            target: targetNodeId,
+            targetHandle,
+          };
+        };
+
+        const sidePreferredConnections =
+          hitNode.side === "right"
+            ? [buildConnection(hitNode.nodeId, fromNodeId), buildConnection(fromNodeId, hitNode.nodeId)]
+            : [buildConnection(fromNodeId, hitNode.nodeId), buildConnection(hitNode.nodeId, fromNodeId)];
+
+        for (const connection of sidePreferredConnections) {
+          if (connection && commitScriptConnection(connection)) return;
+        }
+        return;
       }
       setConnectionDrop({
         position: { x: clientX, y: clientY },
@@ -702,7 +735,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
 
       <div
         className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-        data-keep-open={showMiniMap || snapToGrid}
+        data-keep-open={showMiniMap}
         data-qalam-first="false"
       >
         <div className="absolute bottom-4 left-4 pointer-events-none">
@@ -718,8 +751,6 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
                 onToggleLock={() => setIsLocked((value) => !value)}
                 readingMode={readingMode}
                 onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-                snapToGrid={snapToGrid}
-                onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
                 showMiniMap={showMiniMap}
                 onToggleMiniMap={() => setShowMiniMap((value) => !value)}
               />

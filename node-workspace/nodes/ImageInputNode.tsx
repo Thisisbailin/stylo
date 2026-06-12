@@ -2,7 +2,8 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "
 import { BaseNode } from "./BaseNode";
 import { ImageInputNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { AtSign, ImagePlus, Upload } from "lucide-react";
+import { AtSign, CheckCircle2, ImagePlus, ShieldAlert, ShieldCheck, Upload } from "lucide-react";
+import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import {
   buildMentionIndex,
   buildMentionTargets,
@@ -139,12 +140,13 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const pendingSelectionRef = useRef<number | null>(null);
   const skipNextCursorUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
-  const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext } = useNodeFlowStore();
+  const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext, appConfig } = useNodeFlowStore();
 
   const [labelDraft, setLabelDraft] = useState(data.label || "");
   const [cursorPos, setCursorPos] = useState(labelDraft.length);
   const [isFocused, setIsFocused] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
+  const [isCheckingCompliance, setIsCheckingCompliance] = useState(false);
   const dimensionLabel = useMemo(() => {
     if (!data.dimensions?.width || !data.dimensions?.height) return null;
     return `${data.dimensions.width} × ${data.dimensions.height}`;
@@ -374,6 +376,10 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
           image: result,
           filename: file.name,
           dimensions: { width: img.width, height: img.height },
+          complianceCheckStatus: "idle",
+          complianceCheckMessage: null,
+          complianceCheckTaskId: null,
+          complianceCheckedAt: null,
           label: data.label || baseName,
         });
       };
@@ -382,6 +388,57 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     reader.readAsDataURL(file);
     e.target.value = "";
   };
+
+  const runHumanComplianceCheck = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!data.image || isCheckingCompliance) return;
+    setIsCheckingCompliance(true);
+    updateNodeData(id, {
+      complianceCheckStatus: "checking",
+      complianceCheckMessage: "正在提交 Seedance 低规格预检任务...",
+      complianceCheckTaskId: null,
+      complianceCheckedAt: null,
+    });
+    try {
+      const result = await SeedanceVideoService.checkSeedanceImageHumanCompliance(
+        data.image,
+        {
+          ...(appConfig?.videoConfig || {}),
+          baseUrl: undefined,
+          model: "doubao-seedance-2-0-fast-260128",
+        }
+      );
+      updateNodeData(id, {
+        complianceCheckStatus: result.status,
+        complianceCheckMessage: result.message,
+        complianceCheckTaskId: result.taskId || null,
+        complianceCheckedAt: Date.now(),
+      });
+    } catch (error: any) {
+      updateNodeData(id, {
+        complianceCheckStatus: "error",
+        complianceCheckMessage: error?.message || "真人合规性预检失败。",
+        complianceCheckedAt: Date.now(),
+      });
+    } finally {
+      setIsCheckingCompliance(false);
+    }
+  };
+
+  const complianceTone =
+    data.complianceCheckStatus === "passed"
+      ? "text-emerald-300"
+      : data.complianceCheckStatus === "human_detected" || data.complianceCheckStatus === "blocked"
+        ? "text-red-300"
+        : data.complianceCheckStatus === "checking"
+          ? "text-amber-300"
+          : "text-[var(--node-text-secondary)]";
+  const ComplianceIcon =
+    data.complianceCheckStatus === "passed"
+      ? CheckCircle2
+      : data.complianceCheckStatus === "human_detected" || data.complianceCheckStatus === "blocked"
+        ? ShieldAlert
+        : ShieldCheck;
 
   return (
     <BaseNode title={nodeTitle} onTitleChange={(title) => updateNodeData(id, { title })} outputs={["image"]} selected={selected} variant="media">
@@ -455,6 +512,16 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
               <div className="image-input-actions">
                 <button
                   type="button"
+                  onClick={runHumanComplianceCheck}
+                  disabled={!data.image || isCheckingCompliance || data.complianceCheckStatus === "checking"}
+                  className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag disabled:opacity-60"
+                  title="提交一次 Seedance 低规格任务，探测官方是否按真人人脸参考素材拦截。任务通过时可能产生一次最小生成成本。"
+                >
+                  <ShieldCheck size={12} />
+                  {isCheckingCompliance || data.complianceCheckStatus === "checking" ? "Checking" : "真人预检"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
                 >
@@ -462,6 +529,25 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
                   Replace
                 </button>
               </div>
+              {(data.complianceCheckStatus && data.complianceCheckStatus !== "idle") || data.complianceCheckMessage ? (
+                <div className={`mt-2 flex items-start gap-2 rounded-[12px] border border-white/10 bg-black/20 px-2 py-1.5 text-[9px] leading-5 ${complianceTone}`}>
+                  <ComplianceIcon size={12} className="mt-1 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold">
+                      {data.complianceCheckStatus === "human_detected"
+                        ? "疑似真人素材"
+                        : data.complianceCheckStatus === "blocked"
+                          ? "素材被官方审核拦截"
+                          : data.complianceCheckStatus === "passed"
+                            ? "预检通过"
+                            : data.complianceCheckStatus === "checking"
+                              ? "预检中"
+                              : "预检异常"}
+                    </div>
+                    <div className="break-words text-white/60">{data.complianceCheckMessage}</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (

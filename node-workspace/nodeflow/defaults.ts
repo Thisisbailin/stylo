@@ -24,6 +24,10 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         image: null,
         filename: null,
         dimensions: null,
+        complianceCheckStatus: "idle",
+        complianceCheckMessage: null,
+        complianceCheckTaskId: null,
+        complianceCheckedAt: null,
         label: "",
       } as ImageInputNodeData;
     case "audioInput":

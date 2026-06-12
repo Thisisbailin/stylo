@@ -682,7 +682,7 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   const minZoom = 0.2;
   const maxZoom = 1.4;
   const [isLocked, setIsLocked] = React.useState(false);
-  const [snapToGrid, setSnapToGrid] = React.useState(false);
+  const [snapToGrid] = React.useState(true);
   const [snapGuide, setSnapGuide] = React.useState<EdgeAlignmentGuide | null>(null);
   const [showMiniMap, setShowMiniMap] = React.useState(false);
   const [zoomValue, setZoomValue] = React.useState(() => getViewport().zoom ?? 1);
@@ -832,7 +832,7 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
         {isCanvas ? (
           <div
             className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={showMiniMap || snapToGrid}
+            data-keep-open={showMiniMap}
             data-qalam-first="false"
           >
             <div className="absolute bottom-4 left-4 pointer-events-none">
@@ -848,8 +848,6 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
                     onToggleLock={() => setIsLocked((value) => !value)}
                     readingMode={readingMode}
                     onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-                    snapToGrid={snapToGrid}
-                    onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
                     showMiniMap={showMiniMap}
                     onToggleMiniMap={() => setShowMiniMap((value) => !value)}
                   />

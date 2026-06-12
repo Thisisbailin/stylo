@@ -4,6 +4,54 @@ const { pathToFileURL } = require("url");
 const desktopConfig = require("./desktop.config.cjs");
 
 const DEFAULT_DEV_URL = "http://127.0.0.1:5173";
+const DESKTOP_CHROME_CSS = `
+  html.qalam-desktop {
+    --qalam-window-control-mac-left: 84px;
+    --qalam-window-control-win-right: 150px;
+  }
+
+  html.qalam-desktop body {
+    -webkit-app-region: no-drag;
+  }
+
+  html.qalam-desktop header.fixed.top-0,
+  html.qalam-desktop .qalam-header-shell,
+  html.qalam-desktop .writing-floating-header,
+  html.qalam-desktop .writing-info-header {
+    -webkit-app-region: drag;
+  }
+
+  html.qalam-desktop header.fixed.top-0 *,
+  html.qalam-desktop .qalam-header-shell *,
+  html.qalam-desktop .writing-floating-header *,
+  html.qalam-desktop .writing-info-header *,
+  html.qalam-desktop button,
+  html.qalam-desktop input,
+  html.qalam-desktop textarea,
+  html.qalam-desktop select,
+  html.qalam-desktop a,
+  html.qalam-desktop [role="button"],
+  html.qalam-desktop [contenteditable="true"],
+  html.qalam-desktop .react-flow,
+  html.qalam-desktop canvas {
+    -webkit-app-region: no-drag;
+  }
+
+  html.qalam-desktop-darwin .qalam-header-shell {
+    box-sizing: border-box;
+    padding-left: var(--qalam-window-control-mac-left);
+  }
+
+  html.qalam-desktop-win32 header.fixed.top-0 {
+    box-sizing: border-box;
+    padding-right: calc(var(--qalam-window-control-win-right) + 1rem) !important;
+  }
+
+  html.qalam-desktop-win32 .qalam-header-shell {
+    box-sizing: border-box;
+    padding-right: var(--qalam-window-control-win-right);
+  }
+`;
 
 const normalizeStartUrl = (value) => {
   if (!value || typeof value !== "string") return null;
@@ -52,6 +100,22 @@ const createMainWindow = () => {
     title: "Qalam",
     backgroundColor: "#0f1115",
     show: false,
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 14, y: 14 }
+        }
+      : {}),
+    ...(process.platform === "win32"
+      ? {
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: "#0f1115",
+            symbolColor: "#f8fafc",
+            height: 42
+          }
+        }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -70,6 +134,16 @@ const createMainWindow = () => {
       return { action: "deny" };
     }
     return { action: "allow" };
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents
+      .executeJavaScript(
+        `document.documentElement.classList.add("qalam-desktop", "qalam-desktop-${process.platform}");`,
+        true
+      )
+      .catch(() => {});
+    mainWindow.webContents.insertCSS(DESKTOP_CHROME_CSS).catch(() => {});
   });
 
   mainWindow.loadURL(startUrl);
