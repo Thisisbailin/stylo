@@ -361,6 +361,43 @@ body.qalam-resizing * {
   cursor: grabbing !important;
 }
 
+.nodeflow-snap-guides {
+  overflow: hidden;
+}
+
+.nodeflow-snap-guide {
+  position: absolute;
+  background: color-mix(in srgb, var(--app-accent-strong) 82%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-accent-soft) 78%, transparent);
+  opacity: 0.86;
+}
+
+.nodeflow-snap-guide--vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.nodeflow-snap-guide--horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.nodeflow-snap-guide-label {
+  position: absolute;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-panel);
+  color: var(--app-text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  padding: 5px 7px;
+  box-shadow: var(--app-shadow);
+}
+
 /* Handles - Minimal and integrated */
 .react-flow__handle {
   width: 30px !important;
@@ -896,57 +933,79 @@ body.qalam-resizing * {
   width: 100%;
   min-height: 2.25rem;
   white-space: pre-wrap;
+  color: #1e150f;
 }
 
 .writing-fountain-line--scene_heading {
+  margin-top: 0.55rem;
+  border-top: 1px solid rgba(126, 99, 74, 0.18);
+  padding-top: 0.36rem;
+  color: #3a2618;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .writing-fountain-line--character {
-  width: 42%;
-  margin-left: 36%;
+  width: 36%;
+  margin-left: 39%;
+  color: #21160f;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
 .writing-fountain-line--dialogue {
-  width: 52%;
-  margin-left: 24%;
+  width: 54%;
+  margin-left: 23%;
+  color: #1e150f;
 }
 
 .writing-fountain-line--parenthetical {
-  width: 42%;
-  margin-left: 30%;
-  color: color-mix(in srgb, var(--app-text-primary) 78%, transparent);
+  width: 36%;
+  margin-left: 31%;
+  color: #5b4632;
+  font-style: italic;
 }
 
 .writing-fountain-line--transition {
+  width: 42%;
+  margin-left: auto;
+  color: #552820;
   text-align: right;
   font-weight: 750;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .writing-fountain-line--centered {
+  color: #3d2b1f;
   text-align: center;
   font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .writing-fountain-line--note {
-  color: var(--app-text-muted);
+  width: auto;
+  max-width: 76%;
+  border-left: 2px solid rgba(123, 101, 76, 0.34);
+  padding-left: 0.8rem;
+  color: #665039;
   font-style: italic;
 }
 
 .writing-fountain-line--section {
+  margin-top: 0.9rem;
+  color: #2d1d13;
   font-weight: 850;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .writing-fountain-line--synopsis {
-  color: var(--app-text-secondary);
+  width: auto;
+  max-width: 82%;
+  color: #654a31;
   font-style: italic;
 }
 
@@ -958,7 +1017,7 @@ body.qalam-resizing * {
   content: "";
   display: block;
   width: 100%;
-  border-top: 1px dashed color-mix(in srgb, var(--app-text-muted) 52%, transparent);
+  border-top: 1px dashed rgba(122, 95, 68, 0.46);
   transform: translateY(1.05rem);
 }
 
@@ -1007,6 +1066,7 @@ body.qalam-resizing * {
 .writing-room {
   isolation: isolate;
   pointer-events: none;
+  scroll-behavior: smooth;
 }
 
 .writing-canvas-backdrop {
@@ -1057,8 +1117,9 @@ body.qalam-resizing * {
 
 .writing-stage {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  padding: 0 0 96px;
 }
 
 .writing-studio-grid {
@@ -1066,8 +1127,8 @@ body.qalam-resizing * {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   width: min(100%, 1480px);
-  height: min(860px, calc(100dvh - 56px));
-  min-height: 640px;
+  min-height: calc(100dvh - 72px);
+  align-items: start;
 }
 
 .writing-studio-grid.is-info-open {
@@ -1089,22 +1150,56 @@ body.qalam-resizing * {
   -webkit-backdrop-filter: blur(18px);
 }
 
-.writing-script-card {
+.writing-script-shell {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
 }
 
-.writing-card-header,
+.writing-floating-header,
 .writing-info-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 72px;
-  padding: 16px 22px;
+  width: min(100%, 980px);
+  min-height: 64px;
+  padding: 10px 4px;
+}
+
+.writing-floating-header {
+  position: sticky;
+  top: 10px;
+  z-index: 40;
+  border: 1px solid color-mix(in srgb, var(--app-border) 66%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--app-panel) 72%, transparent);
+  padding: 10px 14px;
+  box-shadow:
+    0 16px 36px rgba(8, 8, 10, 0.18),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.writing-floating-header > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.writing-floating-header .writing-header-actions {
+  max-width: min(48vw, 470px);
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .writing-info-header {
+  width: auto;
+  padding: 16px 22px;
   border-bottom: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
 }
 
@@ -1118,13 +1213,13 @@ body.qalam-resizing * {
 
 .writing-card-title-input {
   margin-top: 3px;
-  width: min(52vw, 680px);
+  width: 100%;
   border: 0;
   background: transparent;
   color: var(--app-text-primary);
-  font-size: 24px;
+  font-size: clamp(24px, 3vw, 38px);
   font-weight: 650;
-  letter-spacing: 0;
+  letter-spacing: -0.02em;
   line-height: 1.2;
   outline: none;
 }
@@ -1206,25 +1301,77 @@ body.qalam-resizing * {
   line-height: 1.5;
 }
 
+.writing-paper-stack {
+  display: grid;
+  gap: 28px;
+  width: min(100%, 980px);
+}
+
 .writing-script-paper {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  flex-direction: column;
-  padding: clamp(12px, 1.8vw, 26px) clamp(28px, 6vw, 96px) clamp(24px, 3.4vw, 52px);
+  position: relative;
+  isolation: isolate;
+  scroll-margin-top: 132px;
+  width: min(100%, 980px);
+  min-height: 760px;
+  border: 1px solid rgba(221, 212, 198, 0.96);
+  border-radius: 7px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--app-panel-strong) 92%, white 8%), color-mix(in srgb, var(--app-panel) 92%, white 8%)),
-    linear-gradient(to bottom, transparent 0 35px, color-mix(in srgb, var(--app-border) 30%, transparent) 35px 36px);
-  background-size: auto, 100% 36px;
+    linear-gradient(90deg, rgba(134, 58, 45, 0.08) 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(180deg, transparent 0 35px, rgba(124, 108, 88, 0.12) 35px 36px),
+    linear-gradient(180deg, #fffdf7 0%, #f8f3e9 100%);
+  background-position: 72px 0, 0 0, 0 0;
+  box-shadow:
+    0 26px 70px rgba(16, 11, 7, 0.22),
+    0 2px 6px rgba(16, 11, 7, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  color: #211a13;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.writing-script-paper.is-active {
+  border-color: rgba(174, 143, 104, 0.92);
+  box-shadow:
+    0 30px 80px rgba(16, 11, 7, 0.28),
+    0 2px 6px rgba(16, 11, 7, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.writing-script-paper::before {
+  content: "";
+  position: absolute;
+  inset: 14px 14px auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(127, 98, 70, 0.28), transparent);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.writing-script-paper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 16% 10%, rgba(118, 83, 43, 0.05), transparent 28%),
+    linear-gradient(90deg, rgba(93, 59, 31, 0.035), transparent 12%, transparent 88%, rgba(93, 59, 31, 0.028));
+  z-index: 0;
+  pointer-events: none;
 }
 
 .writing-scene-strip {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
-  padding-bottom: 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(129, 106, 76, 0.2);
+  padding: 18px 38px 10px;
+  scrollbar-width: thin;
 }
 
 .writing-scene-input {
@@ -1233,17 +1380,17 @@ body.qalam-resizing * {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--app-text-primary);
+  color: #211a13;
   font-family: "Geist Mono", "SFMono-Regular", "SF Mono", Consolas, monospace;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 760;
   letter-spacing: 0;
   text-transform: uppercase;
   outline: none;
 }
 
 .writing-scene-input::placeholder {
-  color: var(--app-text-muted);
+  color: rgba(90, 68, 46, 0.42);
 }
 
 .writing-scene-input--cast {
@@ -1267,9 +1414,33 @@ body.qalam-resizing * {
   align-items: center;
   gap: 6px;
   overflow-x: auto;
-  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
-  padding: 9px 16px;
+  padding: 0 2px;
   scrollbar-width: thin;
+}
+
+.writing-format-dock {
+  position: fixed;
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 70;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.writing-format-dock .writing-format-bar {
+  pointer-events: auto;
+  max-width: min(100%, 720px);
+  border: 1px solid color-mix(in srgb, var(--app-border) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-panel) 78%, transparent);
+  padding: 8px;
+  box-shadow:
+    0 20px 44px rgba(8, 8, 10, 0.22),
+    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .writing-format-button {
@@ -1299,9 +1470,12 @@ body.qalam-resizing * {
 }
 
 .writing-script-paper .writing-paper-body {
+  position: relative;
+  z-index: 1;
   margin: 0;
-  flex: 1;
+  min-height: 700px;
   border-radius: 0;
+  overflow: visible;
 }
 
 .writing-script-paper .writing-paper-body::before {
@@ -1311,30 +1485,53 @@ body.qalam-resizing * {
 .writing-script-paper .writing-editor,
 .writing-script-paper .writing-editor-highlight {
   min-height: 100%;
-  font-family: "Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: "Courier Prime", "Courier Final Draft", "Courier New", Courier, monospace;
+  font-size: 17px;
+  line-height: 36px;
+  letter-spacing: 0;
 }
 
 .writing-script-paper .writing-editor {
-  caret-color: var(--app-text-primary);
+  caret-color: #241b13;
 }
 
 .writing-script-paper .writing-editor::placeholder {
-  color: var(--app-text-muted);
-  -webkit-text-fill-color: var(--app-text-muted);
+  color: rgba(86, 67, 48, 0.42);
+  -webkit-text-fill-color: rgba(86, 67, 48, 0.42);
 }
 
 .writing-script-paper .writing-editor-highlight {
-  color: var(--app-text-primary);
+  color: #1e150f;
+  font-weight: 500;
 }
 
 .writing-script-paper .writing-editor-highlight .text-mention {
-  color: var(--app-text-primary);
-  text-decoration-color: color-mix(in srgb, var(--app-accent) 36%, transparent);
+  color: #211a13;
+  text-decoration-color: rgba(130, 91, 52, 0.34);
+}
+
+.writing-paper-preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 700px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.writing-paper-preview .writing-editor-highlight {
+  display: block;
+  min-height: 700px;
 }
 
 .writing-info-card {
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
   padding-bottom: 18px;
 }
 
@@ -1485,13 +1682,68 @@ body.qalam-resizing * {
 @media (max-width: 1080px) {
   .writing-studio-grid {
     grid-template-columns: 1fr;
-    height: calc(100dvh - 40px);
     min-height: 0;
-    overflow: auto;
   }
 
   .writing-info-card {
+    position: relative;
+    top: auto;
+    max-height: none;
     min-height: 520px;
+  }
+}
+
+@media (max-width: 760px) {
+  .writing-stage {
+    padding-top: 0;
+  }
+
+  .writing-floating-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .writing-card-title-input {
+    width: calc(100vw - 32px);
+  }
+
+  .writing-header-actions {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .writing-paper-stack,
+  .writing-script-paper {
+    width: min(100%, calc(100vw - 24px));
+  }
+
+  .writing-script-paper {
+    background-position: 34px 0, 0 0, 0 0;
+  }
+
+  .writing-script-paper .writing-editor,
+  .writing-script-paper .writing-editor-highlight {
+    padding-right: 22px;
+    padding-left: 22px;
+    font-size: 15px;
+    line-height: 32px;
+  }
+
+  .writing-fountain-line--character {
+    width: 48%;
+    margin-left: 34%;
+  }
+
+  .writing-fountain-line--dialogue {
+    width: 72%;
+    margin-left: 14%;
+  }
+
+  .writing-fountain-line--parenthetical {
+    width: 54%;
+    margin-left: 22%;
   }
 }
 

@@ -27,7 +27,7 @@ type Props = {
   section: KnowledgeCanvasSection;
   onSectionChange: (section: KnowledgeCanvasSection) => void;
   focusRequest?: KnowledgeSurfaceFocusRequest | null;
-  composerSlot?: React.ReactNode;
+  agentSlot?: React.ReactNode;
 };
 
 const sectionMeta: Record<
@@ -76,7 +76,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
   section,
   onSectionChange,
   focusRequest,
-  composerSlot,
+  agentSlot,
 }) => {
   const revision = useKnowledgeStore((state) => state.revision);
   const nodes = useKnowledgeStore((state) => state.nodes);
@@ -224,6 +224,7 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
         selectedNodeRef={effectiveFocusNodeRef}
         onSelectNodeRef={handleSelectNodeRef}
         variant="canvas"
+        agentSlot={agentSlot}
         layoutMode={
           section === "overview"
             ? "backbone"
@@ -277,7 +278,6 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
               </select>
             ) : null}
           </div>
-          {composerSlot ? <div className="pointer-events-auto w-full">{composerSlot}</div> : null}
         </div>
       </div>
 

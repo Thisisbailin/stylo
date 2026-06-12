@@ -97,8 +97,11 @@ export const ViewportControls: React.FC<Props> = ({
         <button
           type="button"
           onClick={onToggleSnapToGrid}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
-          title={snapToGrid ? "关闭网格对齐" : "开启网格对齐"}
+          aria-pressed={snapToGrid}
+          className={`flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px ${
+            snapToGrid ? "bg-[var(--app-accent-soft)] text-[var(--app-accent-strong)] ring-1 ring-[var(--app-border-strong)]" : ""
+          }`}
+          title={snapToGrid ? "网格对齐已开启，拖动节点会显示参考线" : "开启网格对齐"}
           aria-label={snapToGrid ? "关闭网格对齐" : "开启网格对齐"}
         >
           <Grid3X3 size={14} className={snapToGrid ? "text-[var(--app-accent-strong)]" : "text-[var(--app-text-secondary)]"} />

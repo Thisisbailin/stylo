@@ -2,15 +2,22 @@ import React, { useEffect, useRef } from "react";
 import { AudioLines, BookOpen, LayoutPanelTop, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
 import { NodeType } from "../types";
 
-type Props = {
-  position: { x: number; y: number };
-  onCreate: (type: NodeType) => void;
-  onClose: () => void;
+export type ConnectionDropMenuOption<T extends string = NodeType> = {
+  label: string;
+  hint: string;
+  type: T;
+  Icon: React.ComponentType<{ size?: number }>;
 };
 
-export const ConnectionDropMenu: React.FC<Props> = ({ position, onCreate, onClose }) => {
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const options: { label: string; hint: string; type: NodeType; Icon: React.ComponentType<{ size?: number }> }[] = [
+type Props<T extends string = NodeType> = {
+  position: { x: number; y: number };
+  onCreate: (type: T) => void;
+  onClose: () => void;
+  options?: ConnectionDropMenuOption<T>[];
+  subtitle?: string;
+};
+
+const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
     { label: "Script Panel", hint: "Episode and scene browser", type: "scriptBoard", Icon: BookOpen },
     { label: "Storyboard Table", hint: "Shot table board", type: "storyboardBoard", Icon: LayoutPanelTop },
     { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers },
@@ -27,6 +34,16 @@ export const ConnectionDropMenu: React.FC<Props> = ({ position, onCreate, onClos
     { label: "Seedance", hint: "Multimodal reference video", type: "seedanceVideoGen", Icon: Video },
     { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool },
   ];
+
+export const ConnectionDropMenu = <T extends string = NodeType>({
+  position,
+  onCreate,
+  onClose,
+  options,
+  subtitle = "Quick add from the flow",
+}: Props<T>) => {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const resolvedOptions = (options || defaultOptions) as ConnectionDropMenuOption<T>[];
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -46,10 +63,10 @@ export const ConnectionDropMenu: React.FC<Props> = ({ position, onCreate, onClos
     >
       <div className="connection-menu-header">
         <div className="connection-menu-title">Create Node</div>
-        <div className="connection-menu-subtitle">Quick add from the flow</div>
+        <div className="connection-menu-subtitle">{subtitle}</div>
       </div>
       <div className="connection-menu-list">
-        {options.map((opt) => (
+        {resolvedOptions.map((opt) => (
           <button
             key={opt.type}
             className="connection-menu-item"

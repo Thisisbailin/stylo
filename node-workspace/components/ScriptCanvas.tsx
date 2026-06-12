@@ -12,6 +12,7 @@ import {
   Node,
   NodeChange,
   NodeTypes,
+  OnConnectEnd,
   PanOnScrollMode,
   ReactFlow,
   ReactFlowProvider,
@@ -21,6 +22,7 @@ import { Plus, Upload } from "lucide-react";
 import type { Episode, ProjectData, ScriptCanvasState } from "../../types";
 import { BaseNode } from "../nodes/BaseNode";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import { ViewportControls } from "./ViewportControls";
 
 type ScriptPageData = {
@@ -40,11 +42,23 @@ type ScriptCanvasNode =
   | Node<InspirationImageData, "imageInput">;
 
 type ScriptCanvasEdge = Edge<Record<string, never>>;
+type ScriptCanvasCreateType = "scriptPage" | "scriptImage";
+type ScriptHandleType = "image" | "text";
+
+type ScriptConnectionDropState = {
+  position: { x: number; y: number };
+  flowPosition: { x: number; y: number };
+  handleType: ScriptHandleType | null;
+  connectionType: "source" | "target";
+  sourceNodeId: string | null;
+  sourceHandleId: string | null;
+};
 
 type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onOpenEpisode: (episodeId: number) => void;
+  agentSlot?: React.ReactNode;
 };
 
 const ensureCanvas = (canvas?: ScriptCanvasState): ScriptCanvasState => ({
@@ -58,6 +72,32 @@ const imageNodeId = (imageId: string) => `image-${imageId}`;
 
 const isImageNodeId = (id?: string | null) => !!id && id.startsWith("image-");
 const isTextNodeId = (id?: string | null) => !!id && id.startsWith("script-");
+const scriptCreateOptions: ConnectionDropMenuOption<ScriptCanvasCreateType>[] = [
+  { label: "Script Page", hint: "Create a new episode page", type: "scriptPage", Icon: Plus },
+  { label: "Image", hint: "Upload an inspiration image", type: "scriptImage", Icon: Upload },
+];
+
+const pickOutputHandle = (handles: ScriptHandleType[], preferred?: ScriptHandleType | null) => {
+  if (preferred && handles.includes(preferred)) return preferred;
+  return handles[0] || null;
+};
+
+const pickInputHandle = (
+  handles: ScriptHandleType[],
+  preferred?: ScriptHandleType | null,
+  existingHandleId?: string | null
+) => {
+  if (existingHandleId === "image" || existingHandleId === "text") {
+    if (handles.includes(existingHandleId) && (!preferred || existingHandleId === preferred)) return existingHandleId;
+  }
+  if (preferred && handles.includes(preferred)) return preferred;
+  return handles[0] || null;
+};
+
+const getScriptNodeHandles = (nodeId: string) => {
+  if (isImageNodeId(nodeId)) return { inputs: [] as ScriptHandleType[], outputs: ["image"] as ScriptHandleType[] };
+  return { inputs: ["image", "text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
+};
 
 const getDefaultScriptPosition = (index: number) => ({
   x: (index % 3) * 380,
@@ -153,14 +193,17 @@ const nodeTypes: NodeTypes = {
   imageInput: InspirationImageNode,
 };
 
-const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpenEpisode }) => {
+const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpenEpisode, agentSlot }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { getViewport, setViewport } = useReactFlow();
+  const pendingImagePositionRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingImageConnectionRef = useRef<ScriptConnectionDropState | null>(null);
+  const { getViewport, setViewport, screenToFlowPosition } = useReactFlow();
   const minZoom = 0.25;
   const maxZoom = 2.5;
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [showMiniMap, setShowMiniMap] = useState(false);
+  const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const readingMode = useNodeFlowStore((state) => state.readingMode);
   const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
@@ -224,13 +267,64 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     [setProjectData]
   );
 
-  const handleAddScriptPage = useCallback(() => {
+  const buildLinkForCreatedNode = useCallback(
+    (
+      currentLinks: ScriptCanvasState["links"],
+      createdNodeId: string,
+      dropState: ScriptConnectionDropState | null
+    ) => {
+      if (!dropState?.sourceNodeId) return currentLinks;
+
+      const existingNodeHandles = getScriptNodeHandles(dropState.sourceNodeId);
+      const createdNodeHandles = getScriptNodeHandles(createdNodeId);
+      const existingTypedHandle =
+        dropState.sourceHandleId === "image" || dropState.sourceHandleId === "text" ? dropState.sourceHandleId : null;
+      const preferredHandleType = dropState.handleType || existingTypedHandle;
+      let source: string | null = null;
+      let target: string | null = null;
+      let sourceHandle: ScriptHandleType | null = null;
+      let targetHandle: ScriptHandleType | null = null;
+
+      if (dropState.connectionType === "source") {
+        source = dropState.sourceNodeId;
+        target = createdNodeId;
+        sourceHandle = existingTypedHandle || pickOutputHandle(existingNodeHandles.outputs, preferredHandleType);
+        targetHandle = pickInputHandle(createdNodeHandles.inputs, preferredHandleType || sourceHandle);
+      } else {
+        source = createdNodeId;
+        target = dropState.sourceNodeId;
+        sourceHandle = pickOutputHandle(createdNodeHandles.outputs, preferredHandleType);
+        targetHandle =
+          existingTypedHandle ||
+          pickInputHandle(existingNodeHandles.inputs, preferredHandleType || sourceHandle, dropState.sourceHandleId);
+      }
+
+      if (!source || !target || !sourceHandle || !targetHandle) return currentLinks;
+
+      const id = `link-${source}-${target}`;
+      return [
+        ...currentLinks.filter((link) => link.id !== id),
+        {
+          id,
+          source,
+          target,
+          sourceHandle,
+          targetHandle,
+        },
+      ];
+    },
+    []
+  );
+
+  const handleAddScriptPage = useCallback((position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
+    let createdNodeId: string | null = null;
     setProjectData((previous) => {
       const nextId = previous.episodes.length
         ? Math.max(...previous.episodes.map((episode) => episode.id)) + 1
         : 1;
       const nextEpisode = createEmptyEpisode(nextId);
       const nextCanvas = ensureCanvas(previous.scriptCanvas);
+      createdNodeId = scriptNodeId(nextId);
       return {
         ...previous,
         episodes: [...previous.episodes, nextEpisode],
@@ -240,13 +334,15 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
             ...nextCanvas.pages,
             {
               episodeId: nextId,
-              position: getDefaultScriptPosition(previous.episodes.length),
+              position: position || getDefaultScriptPosition(previous.episodes.length),
             },
           ],
+          links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
         },
       };
     });
-  }, [setProjectData]);
+    return createdNodeId;
+  }, [buildLinkForCreatedNode, setProjectData]);
 
   const handleImageInput = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -261,6 +357,11 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         setProjectData((previous) => {
           const nextCanvas = ensureCanvas(previous.scriptCanvas);
           const id = `inspiration-${Date.now()}`;
+          const createdNodeId = imageNodeId(id);
+          const position = pendingImagePositionRef.current || getDefaultImagePosition(nextCanvas.images.length);
+          const dropState = pendingImageConnectionRef.current;
+          pendingImagePositionRef.current = null;
+          pendingImageConnectionRef.current = null;
           return {
             ...previous,
             scriptCanvas: {
@@ -271,10 +372,11 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
                   id,
                   imageUrl,
                   filename: file.name,
-                  position: getDefaultImagePosition(nextCanvas.images.length),
+                  position,
                   createdAt: Date.now(),
                 },
               ],
+              links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
             },
           };
         });
@@ -282,24 +384,31 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
       reader.readAsDataURL(file);
       event.target.value = "";
     },
-    [setProjectData]
+    [buildLinkForCreatedNode, setProjectData]
   );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<ScriptCanvasNode>[]) => {
       const hasPositionChange = changes.some((change) => change.type === "position" && change.position);
+      const removedEpisodeIds = changes
+        .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
+        .filter((change) => change.id.startsWith("script-"))
+        .map((change) => Number(change.id.replace(/^script-/, "")))
+        .filter((id) => Number.isFinite(id));
       const removedImageIds = changes
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("image-"))
         .map((change) => change.id.replace(/^image-/, ""));
 
-      if (!hasPositionChange && removedImageIds.length === 0) return;
+      if (!hasPositionChange && removedImageIds.length === 0 && removedEpisodeIds.length === 0) return;
 
       const nextNodes = applyNodeChanges(changes, nodes);
       const positionById = new Map(nextNodes.map((node) => [node.id, node.position]));
 
       persistCanvas((currentCanvas, previous) => {
         const removedImageSet = new Set(removedImageIds);
+        const removedEpisodeSet = new Set(removedEpisodeIds);
+        const nextEpisodes = previous.episodes.filter((episode) => !removedEpisodeSet.has(episode.id));
         const images = currentCanvas.images
           .filter((image) => !removedImageSet.has(image.id))
           .map((image) => ({
@@ -309,7 +418,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
 
         return {
           ...currentCanvas,
-          pages: previous.episodes.map((episode, index) => ({
+          pages: nextEpisodes.map((episode, index) => ({
             episodeId: episode.id,
             position:
               positionById.get(scriptNodeId(episode.id)) ||
@@ -317,11 +426,24 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
               getDefaultScriptPosition(index),
           })),
           images,
-          links: currentCanvas.links.filter((link) => !removedImageIds.some((id) => link.source === imageNodeId(id) || link.target === imageNodeId(id))),
+          links: currentCanvas.links.filter((link) => {
+            if (removedImageIds.some((id) => link.source === imageNodeId(id) || link.target === imageNodeId(id))) return false;
+            return !removedEpisodeIds.some((id) => link.source === scriptNodeId(id) || link.target === scriptNodeId(id));
+          }),
         };
       });
+
+      if (removedEpisodeIds.length) {
+        setProjectData((previous) => {
+          const removedEpisodeSet = new Set(removedEpisodeIds);
+          return {
+            ...previous,
+            episodes: previous.episodes.filter((episode) => !removedEpisodeSet.has(episode.id)),
+          };
+        });
+      }
     },
-    [nodes, persistCanvas]
+    [nodes, persistCanvas, setProjectData]
   );
 
   const handleEdgesChange = useCallback(
@@ -383,6 +505,46 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     [getViewport, setViewport]
   );
 
+  const handleConnectEnd: OnConnectEnd = useCallback(
+    (event, connectionState) => {
+      if (connectionState.isValid || !connectionState.fromNode) return;
+      const e = event as MouseEvent | TouchEvent;
+      const clientX = "clientX" in e ? e.clientX : e.touches?.[0]?.clientX;
+      const clientY = "clientY" in e ? e.clientY : e.touches?.[0]?.clientY;
+      if (typeof clientX !== "number" || typeof clientY !== "number") return;
+
+      const fromHandleId = connectionState.fromHandle?.id || null;
+      const fromHandleType = fromHandleId === "image" || fromHandleId === "text" ? fromHandleId : null;
+      const isFromSource = connectionState.fromHandle?.type === "source";
+      setConnectionDrop({
+        position: { x: clientX, y: clientY },
+        flowPosition: screenToFlowPosition({ x: clientX, y: clientY }),
+        handleType: fromHandleType,
+        connectionType: isFromSource ? "source" : "target",
+        sourceNodeId: connectionState.fromNode.id,
+        sourceHandleId: fromHandleId,
+      });
+    },
+    [screenToFlowPosition]
+  );
+
+  const handleDropCreate = useCallback(
+    (type: ScriptCanvasCreateType) => {
+      if (!connectionDrop) return;
+      if (type === "scriptPage") {
+        handleAddScriptPage(connectionDrop.flowPosition, connectionDrop);
+        setConnectionDrop(null);
+        return;
+      }
+
+      pendingImagePositionRef.current = connectionDrop.flowPosition;
+      pendingImageConnectionRef.current = connectionDrop;
+      setConnectionDrop(null);
+      fileInputRef.current?.click();
+    },
+    [connectionDrop, handleAddScriptPage]
+  );
+
   return (
     <div className="relative h-full w-full">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageInput} />
@@ -392,6 +554,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={handleConnect}
+        onConnectEnd={handleConnectEnd}
         onNodeClick={(_, node) => {
           if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
         }}
@@ -433,49 +596,41 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         ) : null}
       </ReactFlow>
 
+      {connectionDrop ? (
+        <ConnectionDropMenu
+          position={connectionDrop.position}
+          options={scriptCreateOptions}
+          subtitle="Create script canvas node"
+          onCreate={handleDropCreate}
+          onClose={() => setConnectionDrop(null)}
+        />
+      ) : null}
+
       <div
         className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-        data-keep-open={showMiniMap}
+        data-keep-open={showMiniMap || snapToGrid}
         data-qalam-first="false"
       >
         <div className="absolute bottom-4 left-4 pointer-events-none">
-          <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
-            <ViewportControls
-              zoom={zoomValue}
-              minZoom={minZoom}
-              maxZoom={maxZoom}
-              onZoomChange={handleZoomChange}
-              isLocked={isLocked}
-              onToggleLock={() => setIsLocked((value) => !value)}
-              readingMode={readingMode}
-              onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-              snapToGrid={snapToGrid}
-              onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
-              showMiniMap={showMiniMap}
-              onToggleMiniMap={() => setShowMiniMap((value) => !value)}
-            />
+          <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
+            {agentSlot}
+            <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
+              <ViewportControls
+                zoom={zoomValue}
+                minZoom={minZoom}
+                maxZoom={maxZoom}
+                onZoomChange={handleZoomChange}
+                isLocked={isLocked}
+                onToggleLock={() => setIsLocked((value) => !value)}
+                readingMode={readingMode}
+                onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
+                snapToGrid={snapToGrid}
+                onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
+                showMiniMap={showMiniMap}
+                onToggleMiniMap={() => setShowMiniMap((value) => !value)}
+              />
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="pointer-events-none absolute left-4 top-4 z-[14]">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/92 px-2 py-2 shadow-[var(--app-shadow)] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={handleAddScriptPage}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
-          >
-            <Plus size={15} />
-            Script
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
-          >
-            <Upload size={15} />
-            Image
-          </button>
         </div>
       </div>
 
@@ -483,7 +638,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <button
             type="button"
-            onClick={handleAddScriptPage}
+            onClick={() => handleAddScriptPage()}
             className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-4 text-[13px] font-semibold text-[var(--app-text-primary)] shadow-[var(--app-shadow)] transition hover:border-[var(--app-border-strong)]"
           >
             <Plus size={16} />

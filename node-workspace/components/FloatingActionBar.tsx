@@ -214,7 +214,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     };
   };
   const templatePopoverStyle = useMemo(() => getPopoverStyle(projectAnchorRect, 420), [projectAnchorRect]);
-  const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 720), [nodesAnchorRect]);
+  const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 580), [nodesAnchorRect]);
   const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, 420), [accountAnchorRect]);
 
   useEffect(() => {
@@ -760,11 +760,11 @@ export const FloatingActionBar: React.FC<Props> = ({
             className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
             style={{ ...panelStyle, ...palettePopoverStyle }}
           >
-              <div className="p-4 space-y-4">
+              <div className="max-h-[min(58vh,520px)] space-y-3 overflow-y-auto p-3">
               <div className="flex items-start justify-between gap-3 px-1">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
-                  <div className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-secondary)]">
+                  <div className="mt-1 max-w-[34ch] text-[11px] leading-5 text-[var(--app-text-secondary)]">
                     {nodePaletteMode === "knowledge"
                       ? "浏览项目面板类节点，并进入 Knowledge 长期记忆层调试入口。"
                       : "浏览 flow 节点，搭建输入、生成和引用链路。"}
@@ -817,16 +817,16 @@ export const FloatingActionBar: React.FC<Props> = ({
                               onClick();
                               closeMenus();
                             }}
-                            className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                            className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
                           >
-                            <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                              <Icon size={18} />
+                            <div className={`flex h-9 w-9 items-center justify-center rounded-[13px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                              <Icon size={16} />
                             </div>
-                            <div className="mt-4">
-                              <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                              <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                            <div className="mt-2.5">
+                              <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                              <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
                             </div>
-                            <div className="mt-4">
+                            <div className="mt-2.5">
                               <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
                                 {meta}
                               </span>
@@ -849,21 +849,21 @@ export const FloatingActionBar: React.FC<Props> = ({
                               onClick?.();
                               closeMenus();
                             }}
-                            className="group/node relative overflow-hidden rounded-[24px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-4 py-4 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                            className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="min-w-0">
-                                <div className={`flex h-11 w-11 items-center justify-center rounded-[16px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                                  <Icon size={18} />
+                                <div className={`flex h-9 w-9 items-center justify-center rounded-[13px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                                  <Icon size={16} />
                                 </div>
-                                <div className="mt-4">
-                                  <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                                  <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                                <div className="mt-2.5">
+                                  <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                                  <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
                                 </div>
                               </div>
                               <ChevronRight size={14} className="mt-1 shrink-0 text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
                             </div>
-                            <div className="mt-4">
+                            <div className="mt-2.5">
                               <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
                                 {meta}
                               </span>
@@ -874,7 +874,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                     {nodeActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
                       <button
                         key={label}
@@ -882,20 +882,20 @@ export const FloatingActionBar: React.FC<Props> = ({
                           onClick();
                           closeMenus();
                         }}
-                        className="group/node relative overflow-hidden rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                        className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-2.5 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
                       >
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-border)] ${surface} ${tone}`}>
-                          <Icon size={18} />
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-[12px] border border-[var(--app-border)] ${surface} ${tone}`}>
+                          <Icon size={15} />
                         </div>
-                        <div className="mt-3 min-w-0">
-                          <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                          <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">{hint}</div>
+                        <div className="mt-2 min-w-0">
+                          <div className="truncate text-[12px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
+                          <div className="mt-0.5 line-clamp-1 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
                         </div>
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
+                        <div className="mt-2.5 flex items-center justify-between">
+                          <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">
                             {meta}
                           </span>
-                          <ChevronRight size={14} className="text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
+                          <ChevronRight size={13} className="text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
                         </div>
                       </button>
                     ))}

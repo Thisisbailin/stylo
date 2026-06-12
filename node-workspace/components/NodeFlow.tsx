@@ -489,6 +489,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   const minZoom = 0.25;
   const maxZoom = 4;
+  const snapGridSize = 28;
   const [connectionDrop, setConnectionDrop] = useState<ConnectionDropState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
@@ -496,6 +497,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [snapGuide, setSnapGuide] = useState<XYPosition | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
   const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
@@ -524,6 +526,24 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleConnectStart = useCallback(() => {
     setIsConnecting(true);
   }, []);
+
+  const updateSnapGuide = useCallback(
+    (position: XYPosition) => {
+      if (!snapToGrid || isLocked) {
+        setSnapGuide(null);
+        return;
+      }
+      setSnapGuide({
+        x: Math.round(position.x / snapGridSize) * snapGridSize,
+        y: Math.round(position.y / snapGridSize) * snapGridSize,
+      });
+    },
+    [isLocked, snapToGrid]
+  );
+
+  useEffect(() => {
+    if (!snapToGrid) setSnapGuide(null);
+  }, [snapToGrid]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1038,12 +1058,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       return {
         right: 24,
         bottom: 80,
-        width: "min(420px,calc(100vw-24px))",
+        width: "min(360px,calc(100vw-24px))",
       };
     }
 
     const viewportPadding = 12;
-    const width = Math.min(420, window.innerWidth - viewportPadding * 2);
+    const width = Math.min(360, window.innerWidth - viewportPadding * 2);
     const left = Math.max(
       viewportPadding,
       Math.min(themeAnchor.left + themeAnchor.width / 2 - width / 2, window.innerWidth - viewportPadding - width)
@@ -1126,6 +1146,38 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     </div>
   );
 
+  const qalamAgentSlot = (
+    <QalamAgent
+      projectData={projectData}
+      setProjectData={setProjectData}
+      getAuthToken={getAuthToken}
+      onOpenStats={() => openAgentSettingsPanel("provider")}
+      settingsOpen={showAgentSettings}
+      openRequest={qalamOpenRequest}
+      closeRequest={qalamCloseRequest}
+      submitRequest={qalamSubmitRequest}
+      cancelRequest={qalamCancelRequest}
+      onCollapsedChange={(collapsed) => {
+        setIsQalamCollapsed(collapsed);
+        if (collapsed) {
+          if (isAutoQalamFirst) {
+            setDismissedAutoQalamFirst(true);
+          } else if (isQalamFirstMode) {
+            setIsQalamFirstManual(false);
+          }
+          return;
+        }
+        if (isAutoQalamFirst) {
+          setDismissedAutoQalamFirst(false);
+        }
+      }}
+      onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
+      onSendingChange={setIsQalamSending}
+      renderCollapsedTrigger
+      agentFirstMode={isQalamFirstMode}
+    />
+  );
+
   return (
     <div className="h-full w-full flex flex-col app-text-primary" style={backgroundStyle}>
       <div
@@ -1143,6 +1195,9 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             onConnect={handleConnect}
             onConnectStart={handleConnectStart}
             onConnectEnd={handleConnectEnd}
+            onNodeDragStart={(_, node) => updateSnapGuide(node.position)}
+            onNodeDrag={(_, node) => updateSnapGuide(node.position)}
+            onNodeDragStop={() => setSnapGuide(null)}
             onMove={(_, vp) => setLiveViewport(vp)}
             onMoveEnd={(_, vp) => {
               setLiveViewport(vp);
@@ -1151,7 +1206,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             minZoom={minZoom}
             maxZoom={maxZoom}
             snapToGrid={snapToGrid}
-            snapGrid={[28, 28]}
+            snapGrid={[snapGridSize, snapGridSize]}
             nodesDraggable={!isLocked}
             nodesConnectable={!isLocked}
             elementsSelectable={!isLocked}
@@ -1194,15 +1249,37 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
             projectData={projectData}
             setProjectData={setProjectData}
             onOpenEpisode={(episodeId) => setEditingScriptEpisodeId(episodeId)}
+            agentSlot={qalamAgentSlot}
           />
         ) : (
           <KnowledgeCanvasSurface
             section={knowledgeSection}
             onSectionChange={setKnowledgeSection}
             focusRequest={knowledgeFocusRequest}
-            composerSlot={qalamComposer}
+            agentSlot={qalamAgentSlot}
           />
         )}
+
+        {surfacePlane === "flow" && snapToGrid && snapGuide ? (
+          <div className="nodeflow-snap-guides pointer-events-none absolute inset-0 z-[9]" aria-hidden="true">
+            <div
+              className="nodeflow-snap-guide nodeflow-snap-guide--vertical"
+              style={{ transform: `translateX(${liveViewport.x + snapGuide.x * liveViewport.zoom}px)` }}
+            />
+            <div
+              className="nodeflow-snap-guide nodeflow-snap-guide--horizontal"
+              style={{ transform: `translateY(${liveViewport.y + snapGuide.y * liveViewport.zoom}px)` }}
+            />
+            <div
+              className="nodeflow-snap-guide-label"
+              style={{
+                transform: `translate(${liveViewport.x + snapGuide.x * liveViewport.zoom + 8}px, ${liveViewport.y + snapGuide.y * liveViewport.zoom + 8}px)`,
+              }}
+            >
+              {Math.round(snapGuide.x)}, {Math.round(snapGuide.y)}
+            </div>
+          </div>
+        ) : null}
 
         {surfacePlane === "flow" && connectionDrop && (
           <ConnectionDropMenu
@@ -1278,40 +1355,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         <>
           <div
             className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
+            data-keep-open={(keepPeripheralWidgetsOpen || snapToGrid) && !isQalamFirstMode}
             data-qalam-first={isQalamFirstMode}
           >
             <div className="absolute bottom-4 left-4 pointer-events-none">
               <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-              <QalamAgent
-                projectData={projectData}
-                setProjectData={setProjectData}
-                getAuthToken={getAuthToken}
-                onOpenStats={() => openAgentSettingsPanel("provider")}
-                settingsOpen={showAgentSettings}
-                openRequest={qalamOpenRequest}
-                closeRequest={qalamCloseRequest}
-                submitRequest={qalamSubmitRequest}
-                cancelRequest={qalamCancelRequest}
-                onCollapsedChange={(collapsed) => {
-                  setIsQalamCollapsed(collapsed);
-                  if (collapsed) {
-                    if (isAutoQalamFirst) {
-                      setDismissedAutoQalamFirst(true);
-                    } else if (isQalamFirstMode) {
-                      setIsQalamFirstManual(false);
-                    }
-                    return;
-                  }
-                  if (isAutoQalamFirst) {
-                    setDismissedAutoQalamFirst(false);
-                  }
-                }}
-                onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
-                onSendingChange={setIsQalamSending}
-                renderCollapsedTrigger
-                agentFirstMode={isQalamFirstMode}
-              />
+              {qalamAgentSlot}
               <div
                 className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                   keepPeripheralWidgetsOpen && !isQalamFirstMode
@@ -1447,21 +1496,21 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         <>
           <div className="theme-modal-backdrop fixed inset-0 z-50" onClick={() => setShowThemeModal(false)} />
           <div
-            className="theme-modal fixed z-50 max-h-[min(72dvh,720px)] overflow-x-hidden overflow-y-auto rounded-[28px] p-4 sm:p-4.5"
+            className="theme-modal fixed z-50 max-h-[min(58dvh,520px)] overflow-x-hidden overflow-y-auto rounded-[24px] p-3"
             style={themeModalStyle}
           >
             <div className="flex items-start gap-4">
               <div>
                 <div className="theme-modal-eyebrow">Workspace Styling</div>
-                <div className="mt-1.5 text-[22px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">主题与样式</div>
-                <p className="mt-1.5 max-w-[30ch] text-[12px] leading-5 text-[var(--app-text-secondary)]">
+                <div className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">主题与样式</div>
+                <p className="mt-1 max-w-[30ch] text-[11px] leading-5 text-[var(--app-text-secondary)]">
                   调整底色、表面层次和背景纹理。
                 </p>
               </div>
             </div>
-            <div className="mt-5">
-              <div className="mb-2.5 text-[10px] uppercase tracking-[0.26em] app-text-muted">颜色主题</div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+            <div className="mt-4">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.24em] app-text-muted">颜色主题</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(Object.keys(THEME_PRESETS) as ThemeKey[]).map((key) => {
                   const theme = THEME_PRESETS[key];
                   const isActive = bgTheme === key;
@@ -1469,7 +1518,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                     <button
                       key={key}
                       onClick={() => setBgTheme(key)}
-                      className="theme-preset-card flex min-h-[208px] flex-col rounded-[20px] border px-3 py-3 text-left transition"
+                      className="theme-preset-card flex min-h-[146px] flex-col rounded-[16px] border px-2.5 py-2.5 text-left transition"
                       data-active={isActive}
                       style={isActive ? {
                         borderColor: theme.accentStrong,
@@ -1477,26 +1526,26 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                         background: `linear-gradient(180deg, ${theme.panelSoft}, ${theme.panelMuted})`,
                       } : undefined}
                     >
-                      <div className="relative min-h-[58px]">
+                      <div className="relative min-h-[48px]">
                         <div className={isActive ? "pr-16" : undefined}>
-                          <div className="text-[14px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{theme.label}</div>
-                          <div className="mt-1 line-clamp-3 text-[10px] leading-4 text-[var(--app-text-muted)]">{theme.description}</div>
+                          <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{theme.label}</div>
+                          <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-muted)]">{theme.description}</div>
                         </div>
                         {isActive && (
                           <span
-                            className="absolute right-0 top-0 rounded-full px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em]"
+                            className="absolute right-0 top-0 rounded-full px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.16em]"
                             style={{ color: theme.accentStrong, background: theme.accentSoft }}
                           >
                             Active
                           </span>
                         )}
                       </div>
-                      <div className="mt-4 grid grid-cols-3 gap-1.5">
-                        <span className="h-8 rounded-[12px] border border-white/5" style={{ background: theme.bg }} />
-                        <span className="h-8 rounded-[12px] border border-white/5" style={{ background: theme.panel }} />
-                        <span className="h-8 rounded-[12px] border border-white/5" style={{ background: theme.accent }} />
+                      <div className="mt-3 grid grid-cols-3 gap-1.5">
+                        <span className="h-6 rounded-[10px] border border-white/5" style={{ background: theme.bg }} />
+                        <span className="h-6 rounded-[10px] border border-white/5" style={{ background: theme.panel }} />
+                        <span className="h-6 rounded-[10px] border border-white/5" style={{ background: theme.accent }} />
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-1.5 text-[9px] uppercase tracking-[0.16em] app-text-muted">
+                      <div className="mt-2 grid grid-cols-3 gap-1.5 text-[8px] uppercase tracking-[0.14em] app-text-muted">
                         <span>Base</span>
                         <span>Surface</span>
                         <span style={{ color: isActive ? theme.accentStrong : undefined }}>Accent</span>
@@ -1506,14 +1555,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                 })}
               </div>
             </div>
-            <div className="mt-5">
-              <div className="mb-2.5 text-[10px] uppercase tracking-[0.26em] app-text-muted">图案</div>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            <div className="mt-4">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.24em] app-text-muted">图案</div>
+              <div className="grid grid-cols-2 gap-2">
                 {patternOptions.map((item) => (
                   <button
                     key={item.key}
                     onClick={() => setBgPattern(item.key)}
-                    className="theme-pattern-card flex flex-col gap-2 rounded-[18px] border px-3 py-2.5 text-left transition"
+                    className="theme-pattern-card flex flex-col gap-1.5 rounded-[14px] border px-2.5 py-2 text-left transition"
                     data-active={bgPattern === item.key}
                     style={bgPattern === item.key ? {
                       borderColor: activeTheme.accentStrong,
@@ -1521,7 +1570,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                     } : undefined}
                   >
                     <span
-                      className="theme-pattern-preview h-10 rounded-[12px] border border-white/5"
+                      className="theme-pattern-preview h-7 rounded-[10px] border border-white/5"
                       style={item.key === "none"
                         ? {
                             background: `linear-gradient(180deg, ${activeTheme.panelStrong}, ${activeTheme.panelMuted})`,
@@ -1533,7 +1582,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                             backgroundPosition: `0 0, ${patternPreviewDefinitions[item.key as Exclude<PatternKey, "none">].position ?? "0 0"}`,
                           }}
                     />
-                    <span className="text-[13px] font-medium text-[var(--app-text-primary)]">{item.label}</span>
+                    <span className="text-[12px] font-medium text-[var(--app-text-primary)]">{item.label}</span>
                   </button>
                 ))}
               </div>

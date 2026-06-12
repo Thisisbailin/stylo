@@ -25,6 +25,7 @@ type Props = {
   onSelectNodeRef?: (nodeRef: string) => void;
   variant?: "panel" | "canvas";
   layoutMode?: "backbone" | "focus" | "revisions" | "anchor" | "full";
+  agentSlot?: React.ReactNode;
 };
 
 const CARD_WIDTH = 320;
@@ -669,6 +670,7 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
   onSelectNodeRef,
   variant = "panel",
   layoutMode = "full",
+  agentSlot,
 }) => {
   const { getViewport, setViewport } = useReactFlow();
   const minZoom = 0.2;
@@ -793,25 +795,28 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
         {isCanvas ? (
           <div
             className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={showMiniMap}
+            data-keep-open={showMiniMap || snapToGrid}
             data-qalam-first="false"
           >
             <div className="absolute bottom-4 left-4 pointer-events-none">
-              <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                <ViewportControls
-                  zoom={zoomValue}
-                  minZoom={minZoom}
-                  maxZoom={maxZoom}
-                  onZoomChange={handleZoomChange}
-                  isLocked={isLocked}
-                  onToggleLock={() => setIsLocked((value) => !value)}
-                  readingMode={readingMode}
-                  onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-                  snapToGrid={snapToGrid}
-                  onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
-                  showMiniMap={showMiniMap}
-                  onToggleMiniMap={() => setShowMiniMap((value) => !value)}
-                />
+              <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
+                {agentSlot}
+                <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                  <ViewportControls
+                    zoom={zoomValue}
+                    minZoom={minZoom}
+                    maxZoom={maxZoom}
+                    onZoomChange={handleZoomChange}
+                    isLocked={isLocked}
+                    onToggleLock={() => setIsLocked((value) => !value)}
+                    readingMode={readingMode}
+                    onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
+                    snapToGrid={snapToGrid}
+                    onToggleSnapToGrid={() => setSnapToGrid((value) => !value)}
+                    showMiniMap={showMiniMap}
+                    onToggleMiniMap={() => setShowMiniMap((value) => !value)}
+                  />
+                </div>
               </div>
             </div>
           </div>

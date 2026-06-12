@@ -541,7 +541,10 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
+  const writingRoomRef = useRef<HTMLDivElement>(null);
   const episodeRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const scenePaperRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const pendingSceneSelectionRef = useRef<string | null>(null);
   const submitRequestIdRef = useRef(0);
   const agentLineTimerRef = useRef<number | null>(null);
 
@@ -591,6 +594,17 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   }, [draft, initialEpisodeId]);
 
   useEffect(() => {
+    if (selectedEpisode.scenes.some((scene) => scene.id === selectedSceneId)) {
+      if (pendingSceneSelectionRef.current === selectedSceneId) {
+        pendingSceneSelectionRef.current = null;
+      }
+      return;
+    }
+
+    if (pendingSceneSelectionRef.current === selectedSceneId) {
+      return;
+    }
+
     if (!selectedEpisode.scenes.some((scene) => scene.id === selectedSceneId)) {
       setSelectedSceneId(selectedEpisode.scenes[0]?.id || `${selectedEpisode.id}-1`);
     }
@@ -605,6 +619,24 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     if (!node) return;
     node.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [selectedEpisodeId]);
+
+  useEffect(() => {
+    const node = scenePaperRefs.current[selectedSceneId];
+    if (!node) return;
+    const room = writingRoomRef.current;
+    if (!room) {
+      node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      return;
+    }
+
+    const roomRect = room.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const headerOffset = viewportSize.width < 760 ? 150 : 126;
+    room.scrollTo({
+      top: Math.max(0, room.scrollTop + nodeRect.top - roomRect.top - headerOffset),
+      behavior: "smooth",
+    });
+  }, [selectedEpisode.scenes.length, selectedSceneId, viewportSize.width]);
 
   useEffect(() => {
     if (!agentLine) return;
@@ -673,11 +705,15 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   const addScene = () => {
     const nextSceneIndex = selectedEpisode.scenes.length + 1;
     const nextScene = createEmptyScene(selectedEpisode.id, nextSceneIndex);
+    pendingSceneSelectionRef.current = nextScene.id;
     patchEpisode(selectedEpisode.id, (episode) => ({
       ...episode,
       scenes: [...episode.scenes, nextScene],
     }));
     setSelectedSceneId(nextScene.id);
+    requestAnimationFrame(() => {
+      setSelectedSceneId(nextScene.id);
+    });
   };
 
   const fountainScript = useMemo(
@@ -848,6 +884,33 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
     );
   };
 
+  useEffect(() => {
+    const editor = editorRef.current;
+    const highlight = highlightRef.current;
+    if (!editor) return;
+
+    editor.style.height = "auto";
+    const nextHeight = Math.max(640, editor.scrollHeight);
+    editor.style.height = `${nextHeight}px`;
+    if (highlight) {
+      highlight.style.height = `${nextHeight}px`;
+    }
+
+    setAgentLine((current) =>
+      current ? { ...current, top: computeAgentLineTop(editor, current.anchor) } : current
+    );
+  }, [computeAgentLineTop, selectedScene.body, selectedScene.id]);
+
+  const handleSceneIdChange = useCallback(
+    (previousId: string, nextId: string) => {
+      patchScene(selectedEpisode.id, previousId, (scene) => ({ ...scene, id: nextId }));
+      if (selectedSceneId === previousId) {
+        setSelectedSceneId(nextId);
+      }
+    },
+    [selectedEpisode.id, selectedSceneId]
+  );
+
   const renderWritingLine = useCallback(
     (line: string, lineIndex: number, kind: FountainLineKind) => {
       if (!line) return <span className="writing-line-empty"> </span>;
@@ -900,6 +963,20 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       })
     );
   }, [renderWritingLine, selectedScene.body]);
+
+  const renderSceneHighlight = useCallback(
+    (scene: WritingScene) => {
+      const lines = scene.body.split(/\r?\n/);
+      return joinNodes(
+        lines.map((line, index) => {
+          const previous = getPreviousNonEmptyLine(lines, index);
+          const kind = getFountainLineKind(line, previous);
+          return <React.Fragment key={`${scene.id}-line-${index}`}>{renderWritingLine(line, index, kind)}</React.Fragment>;
+        })
+      );
+    },
+    [renderWritingLine]
+  );
 
   const openWritingQalam = useCallback((freshConversation: boolean) => {
     setIsWritingQalamOpen(true);
@@ -1145,7 +1222,7 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
   };
 
   return (
-    <div className="writing-room fixed inset-0 z-[61] overflow-hidden text-[var(--app-text-primary)]">
+    <div ref={writingRoomRef} className="writing-room fixed inset-0 z-[61] overflow-y-auto overflow-x-hidden text-[var(--app-text-primary)]">
       <div className="writing-canvas-backdrop absolute inset-0" aria-hidden="true" />
       {isWritingQalamOpen ? (
         <QalamAgent
@@ -1168,14 +1245,14 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
       ) : null}
 
       <div className="relative min-h-[100dvh]">
-        <main className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 py-5 md:px-6 md:py-7">
+        <main className="pointer-events-none relative z-[1] flex min-h-[100dvh] justify-center px-4 py-5 md:px-6 md:py-7">
           <div
-            className="writing-stage pointer-events-auto h-full w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            className="writing-stage pointer-events-auto min-h-[calc(100dvh-40px)] w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
             style={stageStyle}
           >
             <div className={`writing-studio-grid ${isInfoPanelOpen ? "is-info-open" : ""}`}>
-              <section className="writing-card writing-script-card">
-                <header className="writing-card-header">
+              <section className="writing-script-shell">
+                <header className="writing-floating-header">
                   <div>
                     <div className="writing-card-kicker">Script</div>
                     <input
@@ -1250,49 +1327,182 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                   </div>
                 </header>
 
-                <div className="writing-script-paper">
-                  <div className="writing-scene-strip">
-                    <input
-                      value={selectedScene.id}
-                      onChange={(event) =>
-                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, id: event.target.value }))
-                      }
-                      className="writing-scene-input writing-scene-input--id"
-                      placeholder={`${selectedEpisode.id}-1`}
-                    />
-                    <input
-                      value={selectedScene.location}
-                      onChange={(event) =>
-                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, location: event.target.value }))
-                      }
-                      className="writing-scene-input writing-scene-input--short"
-                      placeholder="INT."
-                    />
-                    <input
-                      value={selectedScene.title}
-                      onChange={(event) =>
-                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, title: event.target.value }))
-                      }
-                      className="writing-scene-input"
-                      placeholder="APARTMENT"
-                    />
-                    <input
-                      value={selectedScene.timeOfDay}
-                      onChange={(event) =>
-                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, timeOfDay: event.target.value }))
-                      }
-                      className="writing-scene-input writing-scene-input--short"
-                      placeholder="DAY"
-                    />
-                    <input
-                      value={selectedScene.castLine}
-                      onChange={(event) =>
-                        patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, castLine: event.target.value }))
-                      }
-                      className="writing-scene-input writing-scene-input--cast"
-                      placeholder="CAST"
-                    />
-                  </div>
+                <div className="writing-paper-stack">
+                  {selectedEpisode.scenes.map((scene) => {
+                    const isActiveScene = scene.id === selectedScene.id;
+                    return (
+                      <div
+                        key={scene.id}
+                        ref={(node) => {
+                          scenePaperRefs.current[scene.id] = node;
+                        }}
+                        className={`writing-script-paper ${isActiveScene ? "is-active" : ""}`}
+                        onMouseDown={() => {
+                          if (!isActiveScene) {
+                            setSelectedSceneId(scene.id);
+                            setAgentLine(null);
+                          }
+                        }}
+                      >
+                        <div className="writing-scene-strip">
+                          <input
+                            value={scene.id}
+                            onFocus={() => setSelectedSceneId(scene.id)}
+                            onChange={(event) => handleSceneIdChange(scene.id, event.target.value)}
+                            className="writing-scene-input writing-scene-input--id"
+                            placeholder={`${selectedEpisode.id}-1`}
+                          />
+                          <input
+                            value={scene.location}
+                            onFocus={() => setSelectedSceneId(scene.id)}
+                            onChange={(event) =>
+                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, location: event.target.value }))
+                            }
+                            className="writing-scene-input writing-scene-input--short"
+                            placeholder="INT."
+                          />
+                          <input
+                            value={scene.title}
+                            onFocus={() => setSelectedSceneId(scene.id)}
+                            onChange={(event) =>
+                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, title: event.target.value }))
+                            }
+                            className="writing-scene-input"
+                            placeholder="APARTMENT"
+                          />
+                          <input
+                            value={scene.timeOfDay}
+                            onFocus={() => setSelectedSceneId(scene.id)}
+                            onChange={(event) =>
+                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, timeOfDay: event.target.value }))
+                            }
+                            className="writing-scene-input writing-scene-input--short"
+                            placeholder="DAY"
+                          />
+                          <input
+                            value={scene.castLine}
+                            onFocus={() => setSelectedSceneId(scene.id)}
+                            onChange={(event) =>
+                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, castLine: event.target.value }))
+                            }
+                            className="writing-scene-input writing-scene-input--cast"
+                            placeholder="CAST"
+                          />
+                        </div>
+
+                        <div className="writing-paper-body relative flex-1">
+                          {isActiveScene ? (
+                            <>
+                              <div
+                                ref={highlightRef}
+                                aria-hidden="true"
+                                className="writing-editor-highlight pointer-events-none absolute left-0 right-0 top-0 z-0 overflow-hidden whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9"
+                              >
+                                {highlightedDraftBody}
+                              </div>
+                              <textarea
+                                ref={editorRef}
+                                value={selectedScene.body}
+                                onChange={(event) =>
+                                  patchScene(selectedEpisode.id, selectedScene.id, (current) => ({ ...current, body: event.target.value }))
+                                }
+                                onScroll={syncEditorScroll}
+                                onMouseDown={() => {
+                                  if (agentLine) setAgentLine(null);
+                                }}
+                                onClick={(event) => {
+                                  setDismissedMentionStart(null);
+                                  setCursorPos(event.currentTarget.selectionStart || 0);
+                                }}
+                                onSelect={(event) => {
+                                  setDismissedMentionStart(null);
+                                  setCursorPos(event.currentTarget.selectionStart || 0);
+                                }}
+                                onKeyUp={(event) => {
+                                  if (event.key !== "Escape") setDismissedMentionStart(null);
+                                  setCursorPos(event.currentTarget.selectionStart || 0);
+                                }}
+                                onKeyDown={handleEditorKeyDown}
+                                rows={18}
+                                placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
+                                className="writing-editor relative z-10 w-full overflow-hidden border-none bg-transparent px-10 pb-10 pt-8 font-sans text-[17px] leading-9 outline-none"
+                              />
+
+                              {agentLine ? (
+                                <div
+                                  className={`writing-agent-line absolute left-6 right-6 z-20 ${agentLine.phase === "sent" ? "is-sent" : ""}`}
+                                  style={{ top: `${agentLine.top}px` }}
+                                >
+                                  <div className="writing-agent-line__label">Qalam Dialogue</div>
+                                  <textarea
+                                    ref={agentComposerRef}
+                                    value={agentLine.text}
+                                    onChange={(event) =>
+                                      setAgentLine((current) =>
+                                        current ? { ...current, text: event.target.value, phase: "active" } : current
+                                      )
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" && !event.shiftKey) {
+                                        event.preventDefault();
+                                        submitAgentLine();
+                                        return;
+                                      }
+                                      if (event.key === "Escape") {
+                                        event.preventDefault();
+                                        closeAgentLine();
+                                      }
+                                    }}
+                                    placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
+                                    className="writing-agent-line__input"
+                                  />
+                                </div>
+                              ) : null}
+
+                              {mentionState && filteredCharacters.length > 0 ? (
+                                <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-10 top-8 z-30 w-[320px]">
+                                  <div className="mention-picker-header">
+                                    <div className="mention-picker-title">Character Mentions</div>
+                                    <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter insert, Esc dismiss</div>
+                                  </div>
+                                  <div className="mention-picker-grid">
+                                    {filteredCharacters.map((character, index) => (
+                                      <button
+                                        key={character.id}
+                                        type="button"
+                                        onMouseDown={(event) => {
+                                          event.preventDefault();
+                                          insertMention(character.name);
+                                        }}
+                                        className={`mention-picker-item ${index === activeMentionIndex ? "is-active" : ""}`}
+                                        title={buildCharacterDetail(character)}
+                                      >
+                                        <span className="font-semibold">@{character.name}</span>
+                                        <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="writing-paper-preview"
+                              onClick={() => setSelectedSceneId(scene.id)}
+                            >
+                              <span className="writing-editor-highlight whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9">
+                                {renderSceneHighlight(scene)}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="writing-format-dock">
                   <div className="writing-format-bar">
                     {FOUNTAIN_QUICK_FORMATS.map((kind) => (
                       <button
@@ -1310,99 +1520,6 @@ export const WritingPanel: React.FC<Props> = ({ projectData, setProjectData, onC
                       </button>
                     ))}
                   </div>
-                  <div className="writing-paper-body relative flex-1">
-                      <div
-                        ref={highlightRef}
-                        aria-hidden="true"
-                        className="writing-editor-highlight pointer-events-none absolute inset-0 z-0 overflow-auto whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9"
-                      >
-                        {highlightedDraftBody}
-                      </div>
-                      <textarea
-                        ref={editorRef}
-                        value={selectedScene.body}
-                        onChange={(event) =>
-                          patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: event.target.value }))
-                        }
-                        onScroll={syncEditorScroll}
-                        onMouseDown={() => {
-                          if (agentLine) setAgentLine(null);
-                        }}
-                        onClick={(event) => {
-                          setDismissedMentionStart(null);
-                          setCursorPos(event.currentTarget.selectionStart || 0);
-                        }}
-                        onSelect={(event) => {
-                          setDismissedMentionStart(null);
-                          setCursorPos(event.currentTarget.selectionStart || 0);
-                        }}
-                        onKeyUp={(event) => {
-                          if (event.key !== "Escape") setDismissedMentionStart(null);
-                          setCursorPos(event.currentTarget.selectionStart || 0);
-                        }}
-                        onKeyDown={handleEditorKeyDown}
-                        rows={18}
-                        placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
-                        className="writing-editor relative z-10 h-full w-full border-none bg-transparent px-10 pb-10 pt-8 font-sans text-[17px] leading-9 outline-none"
-                      />
-
-                      {agentLine ? (
-                        <div
-                          className={`writing-agent-line absolute left-6 right-6 z-20 ${agentLine.phase === "sent" ? "is-sent" : ""}`}
-                          style={{ top: `${agentLine.top}px` }}
-                        >
-                          <div className="writing-agent-line__label">Qalam Dialogue</div>
-                          <textarea
-                            ref={agentComposerRef}
-                            value={agentLine.text}
-                            onChange={(event) =>
-                              setAgentLine((current) =>
-                                current ? { ...current, text: event.target.value, phase: "active" } : current
-                              )
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" && !event.shiftKey) {
-                                event.preventDefault();
-                                submitAgentLine();
-                                return;
-                              }
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                closeAgentLine();
-                              }
-                            }}
-                            placeholder="Keep typing here to talk to Qalam. Press Enter to send, Esc to return to the script."
-                            className="writing-agent-line__input"
-                          />
-                        </div>
-                      ) : null}
-
-                      {mentionState && filteredCharacters.length > 0 ? (
-                        <div className="mention-picker animate-in fade-in slide-in-from-top-1 absolute left-10 top-8 z-30 w-[320px]">
-                          <div className="mention-picker-header">
-                            <div className="mention-picker-title">Character Mentions</div>
-                            <div className="text-[10px] text-[var(--app-text-muted)]">↑↓ select, Enter insert, Esc dismiss</div>
-                          </div>
-                          <div className="mention-picker-grid">
-                            {filteredCharacters.map((character, index) => (
-                              <button
-                                key={character.id}
-                                type="button"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  insertMention(character.name);
-                                }}
-                                className={`mention-picker-item ${index === activeMentionIndex ? "is-active" : ""}`}
-                                title={buildCharacterDetail(character)}
-                              >
-                                <span className="font-semibold">@{character.name}</span>
-                                <span className="text-[10px] text-[var(--node-text-secondary)]">{character.role || "Character"}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
                 </div>
               </section>
 
