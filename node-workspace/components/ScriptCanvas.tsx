@@ -3,33 +3,24 @@ import {
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
-  Background,
   Connection,
-  ConnectionMode,
   Edge,
   EdgeChange,
-  MiniMap,
   Node,
   NodeChange,
   NodeTypes,
   OnConnectEnd,
-  PanOnScrollMode,
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
+  XYPosition,
 } from "@xyflow/react";
 import { Plus, Upload } from "lucide-react";
 import type { Episode, ProjectData, ScriptCanvasState } from "../../types";
 import { BaseNode } from "../nodes/BaseNode";
-import { useNodeFlowStore } from "../store/nodeFlowStore";
 import {
   alignPositionChangesToNodeEdges,
   getEdgeAlignedPosition,
-  type EdgeAlignmentGuide,
 } from "../utils/edgeAlignment";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
-import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
-import { ViewportControls } from "./ViewportControls";
+import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
 
 type ScriptPageData = {
   title: string;
@@ -64,7 +55,8 @@ type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onOpenEpisode: (episodeId: number) => void;
-  agentSlot?: React.ReactNode;
+  canvasControls: SharedCanvasControls;
+  screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
 };
 
 const ensureCanvas = (canvas?: ScriptCanvasState): ScriptCanvasState => ({
@@ -233,22 +225,22 @@ const nodeTypes: NodeTypes = {
   imageInput: InspirationImageNode,
 };
 
-const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpenEpisode, agentSlot }) => {
+export const useScriptCanvasSurface = ({
+  projectData,
+  setProjectData,
+  onOpenEpisode,
+  canvasControls,
+  screenToFlowPosition,
+}: Props): CanvasSurfaceConfig => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagePositionRef = useRef<{ x: number; y: number } | null>(null);
   const pendingImageConnectionRef = useRef<ScriptConnectionDropState | null>(null);
-  const { getViewport, setViewport, screenToFlowPosition } = useReactFlow();
-  const minZoom = 0.25;
-  const maxZoom = 2.5;
-  const [isLocked, setIsLocked] = useState(false);
-  const [snapToGrid] = useState(true);
-  const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
-  const [showMiniMap, setShowMiniMap] = useState(false);
+  const {
+    isLocked,
+    snapToGrid,
+    onAlignmentGuideChange,
+  } = canvasControls;
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
-  const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
-  const [liveViewport, setLiveViewport] = useState(() => getViewport());
-  const readingMode = useNodeFlowStore((state) => state.readingMode);
-  const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
   const canvas = useMemo(() => ensureCanvas(projectData.scriptCanvas), [projectData.scriptCanvas]);
 
   const nodes = useMemo<ScriptCanvasNode[]>(() => {
@@ -432,7 +424,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
   const handleNodesChange = useCallback(
     (changes: NodeChange<ScriptCanvasNode>[]) => {
       const aligned = alignPositionChangesToNodeEdges(changes, nodes, snapToGrid && !isLocked);
-      setSnapGuide(aligned.guide);
+      onAlignmentGuideChange(aligned.guide);
       const effectiveChanges = aligned.changes;
       const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
       const removedEpisodeIds = changes
@@ -488,7 +480,7 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
         });
       }
     },
-    [isLocked, nodes, persistCanvas, setProjectData, snapToGrid]
+    [isLocked, nodes, onAlignmentGuideChange, persistCanvas, setProjectData, snapToGrid]
   );
 
   const handleEdgesChange = useCallback(
@@ -559,33 +551,25 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     [commitScriptConnection]
   );
 
-  const handleZoomChange = useCallback(
-    (value: number) => {
-      const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
-      setZoomValue(nextZoom);
-      setViewport({ ...getViewport(), zoom: nextZoom }, { duration: 180 });
-    },
-    [getViewport, setViewport]
-  );
   const updateSnapGuide = useCallback(
     (nodeId: string, position: { x: number; y: number }) => {
       if (!snapToGrid || isLocked) {
-        setSnapGuide(null);
+        onAlignmentGuideChange(null);
         return;
       }
       const node = nodes.find((item) => item.id === nodeId);
       if (!node) {
-        setSnapGuide(null);
+        onAlignmentGuideChange(null);
         return;
       }
-      setSnapGuide(getEdgeAlignedPosition(node, nodes, position).guide);
+      onAlignmentGuideChange(getEdgeAlignedPosition(node, nodes, position).guide);
     },
-    [isLocked, nodes, snapToGrid]
+    [isLocked, nodes, onAlignmentGuideChange, snapToGrid]
   );
 
   useEffect(() => {
-    if (!snapToGrid) setSnapGuide(null);
-  }, [snapToGrid]);
+    if (!snapToGrid) onAlignmentGuideChange(null);
+  }, [onAlignmentGuideChange, snapToGrid]);
 
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
@@ -664,64 +648,9 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
     [connectionDrop, handleAddScriptPage]
   );
 
-  return (
-    <div className="relative h-full w-full">
+  const overlays = (
+    <>
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageInput} />
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onConnect={handleConnect}
-        onConnectEnd={handleConnectEnd}
-        onNodeClick={(_, node) => {
-          if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
-        }}
-        onMove={(_, viewport) => {
-          setZoomValue(viewport.zoom);
-          setLiveViewport(viewport);
-        }}
-        onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
-        onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
-        onNodeDragStop={() => setSnapGuide(null)}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
-        minZoom={minZoom}
-        maxZoom={maxZoom}
-        nodesDraggable={!isLocked}
-        nodesConnectable={!isLocked}
-        elementsSelectable={!isLocked}
-        panOnDrag={!isLocked}
-        panOnScroll={!isLocked}
-        panOnScrollMode={PanOnScrollMode.Free}
-        zoomOnScroll={false}
-        zoomOnPinch={!isLocked}
-        zoomOnDoubleClick={!isLocked}
-        connectionMode={ConnectionMode.Loose}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background color="var(--app-pattern)" gap={28} size={1.4} />
-        {showMiniMap ? (
-          <div
-            className="nodeflow-minimap-drawer"
-            data-open={showMiniMap}
-            style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
-          >
-            <MiniMap
-              className="nodeflow-minimap"
-              style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
-              maskColor="rgba(255,255,255,0.04)"
-              nodeStrokeColor="#38bdf8"
-              nodeColor="#0ea5e9"
-            />
-          </div>
-        ) : null}
-      </ReactFlow>
-
-      {snapToGrid ? (
-        <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
-      ) : null}
 
       {connectionDrop ? (
         <ConnectionDropMenu
@@ -732,32 +661,6 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
           onClose={() => setConnectionDrop(null)}
         />
       ) : null}
-
-      <div
-        className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-        data-keep-open={showMiniMap}
-        data-qalam-first="false"
-      >
-        <div className="absolute bottom-4 left-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-            {agentSlot}
-            <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
-              <ViewportControls
-                zoom={zoomValue}
-                minZoom={minZoom}
-                maxZoom={maxZoom}
-                onZoomChange={handleZoomChange}
-                isLocked={isLocked}
-                onToggleLock={() => setIsLocked((value) => !value)}
-                readingMode={readingMode}
-                onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-                showMiniMap={showMiniMap}
-                onToggleMiniMap={() => setShowMiniMap((value) => !value)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
 
       {nodes.length === 0 ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -771,12 +674,27 @@ const ScriptCanvasInner: React.FC<Props> = ({ projectData, setProjectData, onOpe
           </button>
         </div>
       ) : null}
-    </div>
+    </>
   );
-};
 
-export const ScriptCanvas: React.FC<Props> = (props) => (
-  <ReactFlowProvider>
-    <ScriptCanvasInner {...props} />
-  </ReactFlowProvider>
-);
+  return {
+    key: "script",
+    nodes,
+    edges,
+    nodeTypes,
+    onNodesChange: handleNodesChange as CanvasSurfaceConfig["onNodesChange"],
+    onEdgesChange: handleEdgesChange as CanvasSurfaceConfig["onEdgesChange"],
+    onConnect: handleConnect,
+    onConnectEnd: handleConnectEnd,
+    onNodeClick: (_, node) => {
+      if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
+    },
+    onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
+    onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
+    onNodeDragStop: () => onAlignmentGuideChange(null),
+    nodesDraggable: !isLocked,
+    nodesConnectable: !isLocked,
+    elementsSelectable: !isLocked,
+    overlays,
+  };
+};

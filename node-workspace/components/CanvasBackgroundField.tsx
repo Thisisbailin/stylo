@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
 
 type ViewportLike = {
@@ -16,8 +16,13 @@ type Props = {
   secondaryColor: string;
   accentColor: string;
   viewport: ViewportLike;
+  viewportRef?: React.RefObject<ViewportLike>;
   alignmentGuide?: EdgeAlignmentGuide | null;
   active?: boolean;
+};
+
+export type CanvasBackgroundFieldHandle = {
+  requestDraw: () => void;
 };
 
 type PointerState = {
@@ -66,7 +71,7 @@ const getMovedPoint = (
     const distance = Math.hypot(dx, dy);
     if (distance > 64 && distance < radius) {
       const falloff = Math.pow(1 - distance / radius, 2.6);
-      const push = 5.4 * falloff * pointerStrength;
+      const push = 7.2 * falloff * pointerStrength;
       nextX -= (dx / distance) * push;
       nextY -= (dy / distance) * push;
     }
@@ -256,16 +261,17 @@ const drawDiagonalPattern = (
   }
 };
 
-export const CanvasBackgroundField: React.FC<Props> = ({
+export const CanvasBackgroundField = forwardRef<CanvasBackgroundFieldHandle, Props>(({
   pattern,
   baseColor,
   primaryColor,
   secondaryColor,
   accentColor,
   viewport,
+  viewportRef,
   alignmentGuide,
   active = true,
-}) => {
+}, ref) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -284,6 +290,10 @@ export const CanvasBackgroundField: React.FC<Props> = ({
   });
 
   propsRef.current = { pattern, baseColor, primaryColor, secondaryColor, accentColor, viewport, alignmentGuide, active };
+
+  useImperativeHandle(ref, () => ({
+    requestDraw: () => scheduleDrawRef.current(),
+  }), []);
 
   useEffect(() => {
     reducedMotionRef.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -312,13 +322,14 @@ export const CanvasBackgroundField: React.FC<Props> = ({
       }
 
       const current = propsRef.current;
+      const currentViewport = viewportRef?.current || current.viewport;
       const pointer = pointerRef.current;
       const now = performance.now();
       const canAnimate = current.active && !reducedMotionRef.current;
-      pointer.targetStrength = canAnimate && pointer.inside && now - pointer.lastMoveAt < 1100 ? 0.72 : 0;
-      pointer.x += (pointer.targetX - pointer.x) * 0.08;
-      pointer.y += (pointer.targetY - pointer.y) * 0.08;
-      pointer.strength += (pointer.targetStrength - pointer.strength) * 0.045;
+      pointer.targetStrength = canAnimate && pointer.inside && now - pointer.lastMoveAt < 1100 ? 0.86 : 0;
+      pointer.x += (pointer.targetX - pointer.x) * 0.13;
+      pointer.y += (pointer.targetY - pointer.y) * 0.13;
+      pointer.strength += (pointer.targetStrength - pointer.strength) * 0.075;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
@@ -326,22 +337,22 @@ export const CanvasBackgroundField: React.FC<Props> = ({
       ctx.fillRect(0, 0, width, height);
 
       if (current.pattern !== "none") {
-        const step = getStep(current.pattern, current.viewport.zoom);
-        const offsetX = positiveModulo(current.viewport.x, step);
-        const offsetY = positiveModulo(current.viewport.y, step);
+        const step = getStep(current.pattern, currentViewport.zoom);
+        const offsetX = positiveModulo(currentViewport.x, step);
+        const offsetY = positiveModulo(currentViewport.y, step);
 
         ctx.save();
         ctx.globalCompositeOperation = "source-over";
         if (current.pattern === "dots") {
-          drawDotPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, current.viewport);
+          drawDotPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
         } else if (current.pattern === "grid") {
-          drawGridPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, current.viewport);
+          drawGridPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
         } else if (current.pattern === "cross") {
-          drawCrossPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, current.viewport);
+          drawCrossPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
         } else if (current.pattern === "lines") {
-          drawLinePattern(ctx, width, height, step, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, current.viewport);
+          drawLinePattern(ctx, width, height, step, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
         } else if (current.pattern === "diagonal") {
-          drawDiagonalPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, current.viewport);
+          drawDiagonalPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
         }
         ctx.restore();
       }
@@ -418,4 +429,6 @@ export const CanvasBackgroundField: React.FC<Props> = ({
       <canvas ref={canvasRef} className="block h-full w-full" />
     </div>
   );
-};
+});
+
+CanvasBackgroundField.displayName = "CanvasBackgroundField";

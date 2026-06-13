@@ -39,6 +39,14 @@
   color: var(--text-primary);
   font-family: "Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
   text-rendering: geometricPrecision;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.node-flow-canvas .react-flow,
+.node-flow-canvas .react-flow__pane {
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 /* React Flow nodes */

@@ -44,8 +44,8 @@ import { ConnectionDropMenu } from "./ConnectionDropMenu";
 import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
-import { ScriptCanvas } from "./ScriptCanvas";
-import { CanvasBackgroundField } from "./CanvasBackgroundField";
+import { useScriptCanvasSurface } from "./ScriptCanvas";
+import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
@@ -56,7 +56,7 @@ import type { ModuleKey } from "./ModuleBar";
 import { FolderOpen, FileText, List } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
-import { KnowledgeCanvasSurface, type KnowledgeCanvasSection } from "../knowledge/surface/KnowledgeCanvasSurface";
+import { useKnowledgeCanvasSurface, type KnowledgeCanvasSection } from "../knowledge/surface/KnowledgeCanvasSurface";
 import {
   deriveKnowledgeSurfaceFocusFromFlowNode,
   type KnowledgeSurfaceFocusRequest,
@@ -66,6 +66,7 @@ import {
   getEdgeAlignedPosition,
   type EdgeAlignmentGuide,
 } from "../utils/edgeAlignment";
+import type { CanvasSurfaceConfig, SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
 
 const nodeTypes: NodeTypes = {
   imageInput: ImageInputNode,
@@ -549,6 +550,9 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
+  const liveViewportRef = useRef(liveViewport);
+  const viewportCommitTimeoutRef = useRef<number | null>(null);
+  const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
   const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
   const selectedFlowNode = useMemo(
     () => nodes.find((node) => node.selected) || nodes.find((node) => node.id === currentNodeId) || null,
@@ -622,6 +626,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
   }, [snapToGrid]);
+
+  useEffect(() => {
+    setSnapGuide(null);
+  }, [surfacePlane]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -712,6 +720,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
 
   useEffect(() => {
     if (!viewport) return;
+    liveViewportRef.current = viewport;
     setLiveViewport(viewport);
   }, [viewport]);
 
@@ -719,6 +728,15 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     if (!liveViewport) return;
     setZoomValue(liveViewport.zoom);
   }, [liveViewport]);
+
+  useEffect(() => {
+    return () => {
+      if (viewportCommitTimeoutRef.current != null) {
+        window.clearTimeout(viewportCommitTimeoutRef.current);
+        viewportCommitTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const resizeComposer = useCallback((el?: HTMLTextAreaElement | null) => {
     if (!el) return;
@@ -978,13 +996,68 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleZoomChange = useCallback(
     (value: number) => {
       const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
-      setZoomValue(nextZoom);
-      const current = getViewport();
+      const current = liveViewportRef.current || getViewport();
       const nextViewport = { ...current, zoom: nextZoom };
+      liveViewportRef.current = nextViewport;
+      setLiveViewport(nextViewport);
+      setZoomValue(nextZoom);
       setViewport(nextViewport, { duration: 120 });
       setViewportState(nextViewport);
     },
     [getViewport, maxZoom, minZoom, setViewport, setViewportState]
+  );
+
+  const handleSharedViewportChange = useCallback(
+    (nextViewport: SharedCanvasViewport, options?: { commit?: boolean }) => {
+      liveViewportRef.current = nextViewport;
+      backgroundFieldRef.current?.requestDraw();
+      if (options?.commit) {
+        setLiveViewport(nextViewport);
+        setZoomValue(nextViewport.zoom);
+        setViewportState(nextViewport);
+      }
+    },
+    [setViewportState]
+  );
+
+  const handleCanvasWheelCapture = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      if (isLocked || !event.ctrlKey) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      const pointerX = event.clientX - rect.left;
+      const pointerY = event.clientY - rect.top;
+      const current = liveViewportRef.current || getViewport();
+      const normalizedDelta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+      const zoomFactor = Math.exp(-normalizedDelta * 0.002);
+      const nextZoom = Math.min(maxZoom, Math.max(minZoom, current.zoom * zoomFactor));
+      if (!Number.isFinite(nextZoom) || Math.abs(nextZoom - current.zoom) < 0.0001) return;
+
+      const flowX = (pointerX - current.x) / current.zoom;
+      const flowY = (pointerY - current.y) / current.zoom;
+      const nextViewport = {
+        x: pointerX - flowX * nextZoom,
+        y: pointerY - flowY * nextZoom,
+        zoom: nextZoom,
+      };
+
+      setViewport(nextViewport, { duration: 0 });
+      handleSharedViewportChange(nextViewport);
+      if (viewportCommitTimeoutRef.current != null) {
+        window.clearTimeout(viewportCommitTimeoutRef.current);
+      }
+      viewportCommitTimeoutRef.current = window.setTimeout(() => {
+        viewportCommitTimeoutRef.current = null;
+        const committed = liveViewportRef.current;
+        setLiveViewport(committed);
+        setZoomValue(committed.zoom);
+        setViewportState(committed);
+      }, 120);
+    },
+    [getViewport, handleSharedViewportChange, isLocked, maxZoom, minZoom, setViewport, setViewportState]
   );
 
   const handleToggleLock = useCallback(() => {
@@ -994,6 +1067,21 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleToggleReadingMode = useCallback(() => {
     setReadingMode(readingMode === "identity" ? "full" : "identity");
   }, [readingMode, setReadingMode]);
+
+  const sharedCanvasControls = useMemo<SharedCanvasControls>(
+    () => ({
+      viewport: liveViewport,
+      minZoom,
+      maxZoom,
+      isLocked,
+      snapToGrid,
+      showMiniMap,
+      onViewportChange: handleSharedViewportChange,
+      onViewportApiChange: () => {},
+      onAlignmentGuideChange: setSnapGuide,
+    }),
+    [handleSharedViewportChange, isLocked, liveViewport, maxZoom, minZoom, showMiniMap, snapToGrid]
+  );
 
   const openKnowledgePlane = useCallback(
     (section: KnowledgeCanvasSection) => {
@@ -1056,6 +1144,67 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     },
     [displayNodes, isLocked, onNodesChange, snapToGrid]
   );
+
+  const flowSurface = useMemo<CanvasSurfaceConfig>(
+    () => ({
+      key: "flow",
+      nodes: displayNodes,
+      edges: displayEdges,
+      nodeTypes,
+      edgeTypes,
+      onNodesChange: handleFlowNodesChange as CanvasSurfaceConfig["onNodesChange"],
+      onEdgesChange: onLinksChange as CanvasSurfaceConfig["onEdgesChange"],
+      onConnect: handleConnect,
+      onConnectStart: handleConnectStart,
+      onConnectEnd: handleConnectEnd,
+      onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
+      onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
+      onNodeDragStop: () => setSnapGuide(null),
+      nodesDraggable: !isLocked,
+      nodesConnectable: !isLocked,
+      elementsSelectable: !isLocked,
+      connectionLineType: ConnectionLineType.Bezier,
+      connectionLineStyle: {
+        stroke: "rgba(74, 222, 128, 0.88)",
+        strokeWidth: 2.6,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+      },
+    }),
+    [
+      displayEdges,
+      displayNodes,
+      handleConnect,
+      handleConnectEnd,
+      handleConnectStart,
+      handleFlowNodesChange,
+      isLocked,
+      onLinksChange,
+      updateSnapGuide,
+    ]
+  );
+
+  const scriptSurface = useScriptCanvasSurface({
+    projectData,
+    setProjectData,
+    onOpenEpisode: (episodeId) => setEditingScriptEpisodeId(episodeId),
+    canvasControls: sharedCanvasControls,
+    screenToFlowPosition,
+  });
+
+  const knowledgeSurface = useKnowledgeCanvasSurface({
+    section: knowledgeSection,
+    onSectionChange: setKnowledgeSection,
+    focusRequest: knowledgeFocusRequest,
+    canvasControls: sharedCanvasControls,
+  });
+
+  const activeSurface =
+    surfacePlane === "script"
+      ? scriptSurface
+      : surfacePlane === "knowledge"
+        ? knowledgeSurface
+        : flowSurface;
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const patternDefinitions = useMemo(
@@ -1265,7 +1414,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     </div>
   );
 
-  const qalamAgentSlot = (
+  const qalamGlobalHeader = (
     <QalamAgent
       projectData={projectData}
       setProjectData={setProjectData}
@@ -1304,91 +1453,77 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         data-zoomed={zoomValue > 1}
         data-connecting={isConnecting}
         style={backgroundStyle}
+        onWheelCapture={handleCanvasWheelCapture}
       >
         <CanvasBackgroundField
+          ref={backgroundFieldRef}
           pattern={bgPattern}
           baseColor={activeTheme.bg}
           primaryColor={activeTheme.pattern}
           secondaryColor={activeTheme.patternSoft}
           accentColor={activeTheme.accentSoft}
           viewport={liveViewport}
-          alignmentGuide={surfacePlane === "flow" ? snapGuide : null}
+          viewportRef={liveViewportRef}
+          alignmentGuide={snapGuide}
           active={!showThemeModal}
         />
-        {surfacePlane === "flow" ? (
-          <ReactFlow
-            nodes={displayNodes}
-            edges={displayEdges}
-            onNodesChange={handleFlowNodesChange}
-            onEdgesChange={onLinksChange}
-            onConnect={handleConnect}
-            onConnectStart={handleConnectStart}
-            onConnectEnd={handleConnectEnd}
-            onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
-            onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
-            onNodeDragStop={() => setSnapGuide(null)}
-            onMove={(_, vp) => setLiveViewport(vp)}
-            onMoveEnd={(_, vp) => {
-              setLiveViewport(vp);
-              setViewportState(vp);
-            }}
-            minZoom={minZoom}
-            maxZoom={maxZoom}
-            nodesDraggable={!isLocked}
-            nodesConnectable={!isLocked}
-            elementsSelectable={!isLocked}
-            panOnDrag={!isLocked}
-            panOnScroll={!isLocked}
-            panOnScrollMode={PanOnScrollMode.Free}
-            zoomOnScroll={false}
-            zoomOnPinch={!isLocked}
-            zoomOnDoubleClick={!isLocked}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            connectionMode={ConnectionMode.Loose}
-            connectionLineType={ConnectionLineType.Bezier}
-            connectionLineStyle={{
-              stroke: "rgba(74, 222, 128, 0.88)",
-              strokeWidth: 2.6,
-              strokeLinecap: "round",
-              strokeLinejoin: "round",
-            }}
-            proOptions={{ hideAttribution: true }}
-            data-active-mode="default"
-          >
-            {showMiniMap && (
-              <div
-                className="nodeflow-minimap-drawer"
-                data-open={showMiniMap}
-                style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
-              >
-                <MiniMap
-                  className="nodeflow-minimap"
-                  style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
-                  maskColor="rgba(255,255,255,0.04)"
-                  nodeStrokeColor="#38bdf8"
-                  nodeColor="#0ea5e9"
-                />
-              </div>
-            )}
-          </ReactFlow>
-        ) : surfacePlane === "script" ? (
-          <ScriptCanvas
-            projectData={projectData}
-            setProjectData={setProjectData}
-            onOpenEpisode={(episodeId) => setEditingScriptEpisodeId(episodeId)}
-            agentSlot={qalamAgentSlot}
-          />
-        ) : (
-          <KnowledgeCanvasSurface
-            section={knowledgeSection}
-            onSectionChange={setKnowledgeSection}
-            focusRequest={knowledgeFocusRequest}
-            agentSlot={qalamAgentSlot}
-          />
-        )}
+        <ReactFlow
+          nodes={activeSurface.nodes}
+          edges={activeSurface.edges}
+          onNodesChange={activeSurface.onNodesChange}
+          onEdgesChange={activeSurface.onEdgesChange}
+          onConnect={activeSurface.onConnect}
+          onConnectStart={activeSurface.onConnectStart}
+          onConnectEnd={activeSurface.onConnectEnd}
+          onNodeClick={activeSurface.onNodeClick}
+          onNodeDragStart={activeSurface.onNodeDragStart}
+          onNodeDrag={activeSurface.onNodeDrag}
+          onNodeDragStop={activeSurface.onNodeDragStop}
+          onMove={(_, vp) => handleSharedViewportChange(vp)}
+          onMoveEnd={(_, vp) => {
+            handleSharedViewportChange(vp, { commit: true });
+          }}
+          minZoom={minZoom}
+          maxZoom={maxZoom}
+          nodesDraggable={activeSurface.nodesDraggable ?? !isLocked}
+          nodesConnectable={activeSurface.nodesConnectable ?? !isLocked}
+          elementsSelectable={activeSurface.elementsSelectable ?? !isLocked}
+          panOnDrag={!isLocked}
+          panOnScroll={!isLocked}
+          panOnScrollMode={activeSurface.panOnScrollMode ?? PanOnScrollMode.Free}
+          zoomOnScroll={false}
+          zoomOnPinch={!isLocked}
+          zoomOnDoubleClick={!isLocked}
+          nodeTypes={activeSurface.nodeTypes}
+          edgeTypes={activeSurface.edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          connectionLineType={activeSurface.connectionLineType ?? ConnectionLineType.Bezier}
+          defaultViewport={liveViewport}
+          connectionLineStyle={activeSurface.connectionLineStyle}
+          onlyRenderVisibleElements={activeSurface.onlyRenderVisibleElements}
+          proOptions={{ hideAttribution: true }}
+          data-active-mode={activeSurface.key}
+        >
+          {showMiniMap && (
+            <div
+              className="nodeflow-minimap-drawer"
+              data-open={showMiniMap}
+              style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
+            >
+              <MiniMap
+                className="nodeflow-minimap"
+                style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
+                maskColor="rgba(255,255,255,0.04)"
+                nodeStrokeColor="#38bdf8"
+                nodeColor="#0ea5e9"
+              />
+            </div>
+          )}
+          {activeSurface.miniMap}
+        </ReactFlow>
+        {activeSurface.overlays}
 
-        {surfacePlane === "flow" && snapToGrid ? (
+        {snapToGrid ? (
           <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
         ) : null}
 
@@ -1444,6 +1579,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         </div>
       </div>
 
+      {qalamGlobalHeader}
+
       {surfacePlane === "flow" ? <MultiSelectToolbar /> : null}
       <AgentSettingsPanel
         isOpen={showAgentSettings}
@@ -1465,43 +1602,40 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           onClose={() => setEditingScriptEpisodeId(null)}
         />
       ) : null}
-      {surfacePlane === "flow" ? (
-        <>
-          <div
-            className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
-            data-qalam-first={isQalamFirstMode}
-          >
-            <div className="absolute bottom-4 left-4 pointer-events-none">
-              <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-              {qalamAgentSlot}
-              <div
-                className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                  keepPeripheralWidgetsOpen && !isQalamFirstMode
-                    ? "opacity-100"
-                    : !isQalamFirstMode
-                      ? "pointer-events-none opacity-0"
-                      : "pointer-events-none opacity-0"
-                }`}
-              >
-                <ViewportControls
-                  zoom={zoomValue}
-                  minZoom={minZoom}
-                  maxZoom={maxZoom}
-                  onZoomChange={handleZoomChange}
-                  isLocked={isLocked}
-                  onToggleLock={handleToggleLock}
-                  showMiniMap={showMiniMap}
-                  onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
-                  readingMode={readingMode}
-                  onToggleReadingMode={handleToggleReadingMode}
-                />
-              </div>
-              </div>
+      <div
+        className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
+        data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
+        data-qalam-first={isQalamFirstMode}
+      >
+        <div className="absolute bottom-4 left-4 pointer-events-none">
+          <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
+            <div
+              className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                keepPeripheralWidgetsOpen && !isQalamFirstMode
+                  ? "opacity-100"
+                  : !isQalamFirstMode
+                    ? "opacity-0"
+                    : "opacity-0"
+              }`}
+            >
+              <ViewportControls
+                zoom={zoomValue}
+                minZoom={minZoom}
+                maxZoom={maxZoom}
+                onZoomChange={handleZoomChange}
+                isLocked={isLocked}
+                onToggleLock={handleToggleLock}
+                showMiniMap={showMiniMap}
+                onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
+                readingMode={readingMode}
+                onToggleReadingMode={handleToggleReadingMode}
+              />
             </div>
           </div>
-          {surfacePlane === "flow" ? (
-            <>
+        </div>
+      </div>
+      {surfacePlane === "flow" ? (
+        <>
           <div
             className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
               isQalamFirstMode ? "px-4" : ""
@@ -1598,8 +1732,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               </div>
             </div>
           </div>
-            </>
-          ) : null}
         </>
       ) : null}
       <Toast />

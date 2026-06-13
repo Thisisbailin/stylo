@@ -9,7 +9,7 @@ import {
   Network,
 } from "lucide-react";
 import { useKnowledgeStore } from "../../store/knowledgeStore";
-import { KnowledgeFlowProjection } from "./KnowledgeFlowProjection";
+import { useKnowledgeFlowSurface } from "./KnowledgeFlowProjection";
 import {
   buildKnowledgeAnchorMapProjection,
   buildKnowledgeAnchorTimelineProjection,
@@ -20,6 +20,7 @@ import {
 } from "../maps";
 import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
 import type { KnowledgeSurfaceFocusRequest } from "./focus";
+import type { CanvasSurfaceConfig, SharedCanvasControls } from "../../components/canvas/types";
 
 export type KnowledgeCanvasSection = "overview" | "nodes" | "links" | "maps";
 
@@ -27,7 +28,7 @@ type Props = {
   section: KnowledgeCanvasSection;
   onSectionChange: (section: KnowledgeCanvasSection) => void;
   focusRequest?: KnowledgeSurfaceFocusRequest | null;
-  agentSlot?: React.ReactNode;
+  canvasControls: SharedCanvasControls;
 };
 
 const sectionMeta: Record<
@@ -72,12 +73,12 @@ const SectionIcon: React.FC<{ section: KnowledgeCanvasSection; size?: number }> 
   return <Layers3 size={size} strokeWidth={2.1} />;
 };
 
-export const KnowledgeCanvasSurface: React.FC<Props> = ({
+export const useKnowledgeCanvasSurface = ({
   section,
   onSectionChange,
   focusRequest,
-  agentSlot,
-}) => {
+  canvasControls,
+}: Props): CanvasSurfaceConfig => {
   const revision = useKnowledgeStore((state) => state.revision);
   const nodes = useKnowledgeStore((state) => state.nodes);
   const links = useKnowledgeStore((state) => state.links);
@@ -222,29 +223,28 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
     setInspectorOpen(true);
   }, []);
 
-  return (
-    <div className="absolute inset-0 z-[2] overflow-hidden">
-      <KnowledgeFlowProjection
-        title={projection.title}
-        nodes={projection.nodes}
-        links={projection.links}
-        selectedNodeRef={effectiveFocusNodeRef}
-        onSelectNodeRef={handleSelectNodeRef}
-        variant="canvas"
-        agentSlot={agentSlot}
-        layoutMode={
-          section === "overview"
-            ? "backbone"
-            : section === "nodes"
-              ? "focus"
-              : section === "links"
-                ? "revisions"
-                : section === "maps"
-                  ? "anchor"
-                  : "full"
-        }
-      />
+  const flowSurface = useKnowledgeFlowSurface({
+    title: projection.title,
+    nodes: projection.nodes,
+    links: projection.links,
+    selectedNodeRef: effectiveFocusNodeRef,
+    onSelectNodeRef: handleSelectNodeRef,
+    variant: "canvas",
+    canvasControls,
+    layoutMode:
+      section === "overview"
+        ? "backbone"
+        : section === "nodes"
+          ? "focus"
+          : section === "links"
+            ? "revisions"
+            : section === "maps"
+              ? "anchor"
+              : "full",
+  });
 
+  const overlays = (
+    <>
       <div className="pointer-events-none absolute inset-x-0 bottom-4 z-40 flex justify-center px-4">
         <div className="flex w-[min(760px,calc(100vw-32px))] flex-col items-center gap-2">
           <div className="qalam-surface pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-full p-1.5">
@@ -444,6 +444,12 @@ export const KnowledgeCanvasSurface: React.FC<Props> = ({
           </div>
         </div>
       </aside>
-    </div>
+    </>
   );
+
+  return {
+    ...flowSurface,
+    key: "knowledge",
+    overlays,
+  };
 };

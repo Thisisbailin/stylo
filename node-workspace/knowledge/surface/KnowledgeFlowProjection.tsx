@@ -1,12 +1,6 @@
 ﻿import React from "react";
 import {
   applyNodeChanges,
-  Background,
-  MiniMap,
-  PanOnScrollMode,
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
   type Edge,
   type Node,
   type NodeChange,
@@ -15,13 +9,11 @@ import type { KnowledgeLink, KnowledgeNode } from "../types";
 import { formatKnowledgeKindLabel, formatKnowledgeOriginLabel } from "./labels";
 import type { NodeFlowReadingMode } from "../../nodeflow/sessionState";
 import { useNodeFlowStore } from "../../store/nodeFlowStore";
-import { EdgeAlignmentGuides } from "../../components/EdgeAlignmentGuides";
-import { ViewportControls } from "../../components/ViewportControls";
 import {
   alignPositionChangesToNodeEdges,
   getEdgeAlignedPosition,
-  type EdgeAlignmentGuide,
 } from "../../utils/edgeAlignment";
+import type { CanvasSurfaceConfig, SharedCanvasControls } from "../../components/canvas/types";
 
 type Props = {
   title?: string;
@@ -31,7 +23,7 @@ type Props = {
   onSelectNodeRef?: (nodeRef: string) => void;
   variant?: "panel" | "canvas";
   layoutMode?: "backbone" | "focus" | "revisions" | "anchor" | "full";
-  agentSlot?: React.ReactNode;
+  canvasControls: SharedCanvasControls;
 };
 
 const CARD_WIDTH = 320;
@@ -668,28 +660,22 @@ const toCanvasLinks = (links: KnowledgeLink[]): Edge[] =>
     },
   }));
 
-const KnowledgeFlowProjectionInner: React.FC<Props> = ({
-  title = "Knowledge Flow Projection",
+export const useKnowledgeFlowSurface = ({
   nodes,
   links,
   selectedNodeRef,
   onSelectNodeRef,
   variant = "panel",
   layoutMode = "full",
-  agentSlot,
-}) => {
-  const { getViewport, setViewport } = useReactFlow();
-  const minZoom = 0.2;
-  const maxZoom = 1.4;
-  const [isLocked, setIsLocked] = React.useState(false);
-  const [snapToGrid] = React.useState(true);
-  const [snapGuide, setSnapGuide] = React.useState<EdgeAlignmentGuide | null>(null);
-  const [showMiniMap, setShowMiniMap] = React.useState(false);
-  const [zoomValue, setZoomValue] = React.useState(() => getViewport().zoom ?? 1);
-  const [liveViewport, setLiveViewport] = React.useState(() => getViewport());
+  canvasControls,
+}: Props): CanvasSurfaceConfig => {
+  const {
+    isLocked,
+    snapToGrid,
+    onAlignmentGuideChange,
+  } = canvasControls;
   const [positionOverrides, setPositionOverrides] = React.useState<Record<string, { x: number; y: number }>>({});
   const readingMode = useNodeFlowStore((state) => state.readingMode);
-  const setReadingMode = useNodeFlowStore((state) => state.setReadingMode);
   const canvasNodes = React.useMemo(
     () => toCanvasNodes(nodes, links, selectedNodeRef, layoutMode, readingMode, positionOverrides),
     [layoutMode, links, nodes, positionOverrides, readingMode, selectedNodeRef]
@@ -705,18 +691,10 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
     });
   }, [nodes]);
 
-  const handleZoomChange = React.useCallback(
-    (value: number) => {
-      const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
-      setZoomValue(nextZoom);
-      setViewport({ ...getViewport(), zoom: nextZoom }, { duration: 180 });
-    },
-    [getViewport, setViewport]
-  );
   const handleNodesChange = React.useCallback(
     (changes: NodeChange[]) => {
       const aligned = alignPositionChangesToNodeEdges(changes, canvasNodes, snapToGrid && !isLocked);
-      setSnapGuide(aligned.guide);
+      onAlignmentGuideChange(aligned.guide);
       const nextNodes = applyNodeChanges(aligned.changes, canvasNodes);
       setPositionOverrides((current) => {
         const next = { ...current };
@@ -726,143 +704,43 @@ const KnowledgeFlowProjectionInner: React.FC<Props> = ({
         return next;
       });
     },
-    [canvasNodes, isLocked, snapToGrid]
+    [canvasNodes, isLocked, onAlignmentGuideChange, snapToGrid]
   );
   const updateSnapGuide = React.useCallback(
     (nodeId: string, position: { x: number; y: number }) => {
       if (!snapToGrid || isLocked) {
-        setSnapGuide(null);
+        onAlignmentGuideChange(null);
         return;
       }
       const node = canvasNodes.find((item) => item.id === nodeId);
       if (!node) {
-        setSnapGuide(null);
+        onAlignmentGuideChange(null);
         return;
       }
-      setSnapGuide(getEdgeAlignedPosition(node, canvasNodes, position).guide);
+      onAlignmentGuideChange(getEdgeAlignedPosition(node, canvasNodes, position).guide);
     },
-    [canvasNodes, isLocked, snapToGrid]
+    [canvasNodes, isLocked, onAlignmentGuideChange, snapToGrid]
   );
 
   React.useEffect(() => {
-    if (!snapToGrid) setSnapGuide(null);
-  }, [snapToGrid]);
+    if (!snapToGrid) onAlignmentGuideChange(null);
+  }, [onAlignmentGuideChange, snapToGrid]);
 
-  return (
-    <div
-      className={
-        isCanvas
-          ? "relative h-full w-full"
-          : "relative rounded-lg border border-[var(--app-border)] bg-[var(--app-panel)]/88 p-4"
-      }
-    >
-      {!isCanvas ? (
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-secondary)]">
-              Knowledge Canvas
-            </div>
-            <div className="mt-1 truncate text-[13px] font-semibold text-[var(--app-text-primary)]">
-              {title}
-            </div>
-          </div>
-          <div className="shrink-0 text-[10px] text-[var(--app-text-secondary)]">
-            {nodes.length} nodes / {links.length} links
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        className={
-          isCanvas
-            ? "h-full w-full overflow-hidden"
-            : "h-[420px] overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-panel-muted)]"
-        }
-      >
-        <ReactFlow
-          nodes={canvasNodes}
-          edges={canvasLinks}
-          onNodesChange={handleNodesChange}
-          fitView
-          fitViewOptions={{ padding: 0.22, maxZoom: 1.08, minZoom: 0.24 }}
-          nodesDraggable={isCanvas && !isLocked}
-          nodesConnectable={false}
-          elementsSelectable={!isLocked}
-          zoomOnDoubleClick={false}
-          zoomOnPinch={!isLocked}
-          panOnDrag={!isLocked}
-          panOnScroll={!isLocked}
-          panOnScrollMode={PanOnScrollMode.Free}
-          onMove={(_, viewport) => {
-            setZoomValue(viewport.zoom);
-            setLiveViewport(viewport);
-          }}
-          onNodeDragStart={(_, node) => updateSnapGuide(node.id, node.position)}
-          onNodeDrag={(_, node) => updateSnapGuide(node.id, node.position)}
-          onNodeDragStop={() => setSnapGuide(null)}
-          onNodeClick={(_, node) => {
-            const ref = nodes.find((item) => item.id === node.id)?.ref;
-            if (ref) onSelectNodeRef?.(ref);
-          }}
-          onlyRenderVisibleElements
-          proOptions={{ hideAttribution: true }}
-          minZoom={minZoom}
-          maxZoom={maxZoom}
-        >
-          {showMiniMap || !isCanvas ? (
-            <MiniMap
-              pannable
-              zoomable
-              nodeColor={() => "var(--app-text-muted)"}
-              maskColor="rgba(0,0,0,0.16)"
-              style={{
-                background: "var(--app-panel)",
-                border: "1px solid var(--app-border)",
-                borderRadius: 8,
-              }}
-            />
-          ) : null}
-          <Background gap={28} size={1} color="var(--app-pattern)" />
-        </ReactFlow>
-
-        {isCanvas && snapToGrid ? (
-          <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
-        ) : null}
-
-        {isCanvas ? (
-          <div
-            className="qalam-viewport-control-zone absolute bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-            data-keep-open={showMiniMap}
-            data-qalam-first="false"
-          >
-            <div className="absolute bottom-4 left-4 pointer-events-none">
-              <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-                {agentSlot}
-                <div className="qalam-bottom-controls pointer-events-none opacity-0 transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                  <ViewportControls
-                    zoom={zoomValue}
-                    minZoom={minZoom}
-                    maxZoom={maxZoom}
-                    onZoomChange={handleZoomChange}
-                    isLocked={isLocked}
-                    onToggleLock={() => setIsLocked((value) => !value)}
-                    readingMode={readingMode}
-                    onToggleReadingMode={() => setReadingMode(readingMode === "identity" ? "full" : "identity")}
-                    showMiniMap={showMiniMap}
-                    onToggleMiniMap={() => setShowMiniMap((value) => !value)}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
+  return {
+    key: "knowledge",
+    nodes: canvasNodes,
+    edges: canvasLinks,
+    onNodesChange: handleNodesChange as CanvasSurfaceConfig["onNodesChange"],
+    nodesDraggable: isCanvas && !isLocked,
+    nodesConnectable: false,
+    elementsSelectable: !isLocked,
+    onlyRenderVisibleElements: true,
+    onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
+    onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
+    onNodeDragStop: () => onAlignmentGuideChange(null),
+    onNodeClick: (_, node) => {
+      const ref = nodes.find((item) => item.id === node.id)?.ref;
+      if (ref) onSelectNodeRef?.(ref);
+    },
+  };
 };
-
-export const KnowledgeFlowProjection: React.FC<Props> = (props) => (
-  <ReactFlowProvider>
-    <KnowledgeFlowProjectionInner {...props} />
-  </ReactFlowProvider>
-);
