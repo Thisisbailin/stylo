@@ -89,6 +89,44 @@ const normalizeScriptCanvasPosition = (value: any, fallback = { x: 0, y: 0 }) =>
   y: typeof value?.y === "number" && Number.isFinite(value.y) ? value.y : fallback.y,
 });
 
+const normalizeScriptTimeline = (value: any, nodeIds: Set<string>): ProjectData["scriptCanvas"] extends infer Canvas
+  ? Canvas extends { timeline?: infer Timeline }
+    ? Timeline
+    : never
+  : never => {
+  if (!value || typeof value !== "object") return undefined as never;
+  const durationMin = Math.max(30, Math.min(300, Math.round(Number(value.durationMin) || 120)));
+  const rawBlocks = Array.isArray(value.blocks) ? value.blocks : [];
+  let cursor = 0;
+  const blocks = rawBlocks
+    .map((block: any, index: number) => {
+      const duration = Math.max(3, Math.round(Number(block?.durationMin) || 12));
+      const next = {
+        id: ensureStableId(block?.id, "timeline-block"),
+        title: toSafeString(block?.title || `时间区块 ${index + 1}`),
+        content: toSafeString(block?.content),
+        startMin: cursor,
+        durationMin: duration,
+        color: toSafeString(block?.color || "slate"),
+        order: typeof block?.order === "number" && Number.isFinite(block.order) ? block.order : index,
+        linkedNodeIds: Array.isArray(block?.linkedNodeIds)
+          ? Array.from(new Set(block.linkedNodeIds.map((nodeId: any) => toSafeString(nodeId)).filter((nodeId: string) => nodeIds.has(nodeId))))
+          : [],
+      };
+      cursor += duration;
+      return next;
+    })
+    .sort((a: any, b: any) => a.order - b.order)
+    .map((block: any, index: number) => ({ ...block, order: index }));
+
+  return {
+    id: toSafeString(value.id || "film-structure"),
+    title: toSafeString(value.title || "影片时间轴"),
+    durationMin,
+    blocks,
+  } as never;
+};
+
 const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
   const pages = Array.isArray(value?.pages)
     ? value.pages
@@ -127,7 +165,9 @@ const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
         .filter((link: any) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
 
-  return { pages, images, links };
+  const timeline = normalizeScriptTimeline(value?.timeline, nodeIds);
+
+  return timeline ? { pages, images, links, timeline } : { pages, images, links };
 };
 
 const normalizeAliases = (values: unknown[], seed: string[]) => {

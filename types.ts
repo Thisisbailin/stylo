@@ -134,10 +134,29 @@ export interface ScriptCanvasLink {
   targetHandle?: "image" | "text";
 }
 
+export interface ScriptTimelineBlock {
+  id: string;
+  title: string;
+  content: string;
+  startMin: number;
+  durationMin: number;
+  color: string;
+  order: number;
+  linkedNodeIds: string[];
+}
+
+export interface ScriptTimelineState {
+  id: string;
+  title: string;
+  durationMin: number;
+  blocks: ScriptTimelineBlock[];
+}
+
 export interface ScriptCanvasState {
   pages: ScriptCanvasPageNode[];
   images: ScriptCanvasImageNode[];
   links: ScriptCanvasLink[];
+  timeline?: ScriptTimelineState;
 }
 
 // --- Unified Role Identity Types ---
