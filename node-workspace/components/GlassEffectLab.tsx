@@ -25,11 +25,11 @@ const controlChipClass =
   "pointer-events-auto rounded-[22px] border border-white/10 bg-[rgba(20,22,25,0.56)] px-4 py-3 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.16)] backdrop-blur-xl";
 
 export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
-  const [preset, setPreset] = useState<GlassDiffusionPresetKey>("mist");
+  const [preset, setPreset] = useState<GlassDiffusionPresetKey>("qalam");
   const [posX, setPosX] = useState(36);
   const [posY, setPosY] = useState(82);
-  const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.mist.width);
-  const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.mist.height);
+  const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.qalam.width);
+  const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.qalam.height);
   const [blur, setBlur] = useState(QALAM_GLASS_LAB_CONFIG.blur);
   const [fillAlpha, setFillAlpha] = useState(QALAM_GLASS_LAB_CONFIG.fillAlpha);
   const [saturate, setSaturate] = useState(QALAM_GLASS_LAB_CONFIG.saturate);
@@ -71,6 +71,13 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     setFade(next.fade);
     setEdgeAlpha(next.edgeAlpha);
     setCurve(next.curve);
+    if (key === "qalam") {
+      setShadowX(QALAM_GLASS_LAB_SHADOW.offsetX);
+      setShadowY(QALAM_GLASS_LAB_SHADOW.offsetY);
+      setShadowBlur(QALAM_GLASS_LAB_SHADOW.blur);
+      setShadowAlpha(QALAM_GLASS_LAB_SHADOW.alpha);
+      setShadowSpread(QALAM_GLASS_LAB_SHADOW.spread);
+    }
   };
 
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -163,7 +170,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         <button type="button" onClick={onClose} className={`${controlChipClass} text-[11px] uppercase tracking-[0.2em] text-white/72`}>
           Close Glass Lab
         </button>
-        {(["bare", "mist", "veil"] as GlassDiffusionPresetKey[]).map((key) => (
+        {(["bare", "mist", "veil", "qalam"] as GlassDiffusionPresetKey[]).map((key) => (
           <button
             key={key}
             type="button"

@@ -37,6 +37,9 @@ type AgentLineState = {
   phase: "active" | "sent";
 };
 
+const SCENE_BOUNDARY_OPTIONS = ["INT.", "EXT.", "INT./EXT.", "I/E"];
+const SCENE_TIME_OPTIONS = ["DAY", "NIGHT", "DAWN", "DUSK", "MORNING", "AFTERNOON", "EVENING", "LATER"];
+
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const buildCharacterDetail = (character?: Character) => {
@@ -769,7 +772,7 @@ export const WritingPanel: React.FC<Props> = ({
 
     const roomRect = paperStack.getBoundingClientRect();
     const nodeRect = node.getBoundingClientRect();
-    const headerOffset = viewportSize.width < 760 ? 28 : 34;
+    const headerOffset = viewportSize.width < 760 ? 70 : 76;
     paperStack.scrollTo({
       top: Math.max(0, paperStack.scrollTop + nodeRect.top - roomRect.top - headerOffset),
       behavior: "smooth",
@@ -1489,6 +1492,16 @@ export const WritingPanel: React.FC<Props> = ({
                     </button>
                   </div>
                 </header>
+                <datalist id="writing-scene-boundary-options">
+                  {SCENE_BOUNDARY_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+                <datalist id="writing-scene-time-options">
+                  {SCENE_TIME_OPTIONS.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
 
                 <div ref={paperStackRef} className="writing-paper-stack">
                   <div className="writing-paper-title-row">
@@ -1518,49 +1531,66 @@ export const WritingPanel: React.FC<Props> = ({
                         }}
                       >
                         <div className="writing-scene-strip">
-                          <input
-                            value={scene.id}
-                            onFocus={() => setSelectedSceneId(scene.id)}
-                            onChange={(event) => handleSceneIdChange(scene.id, event.target.value)}
-                            className="writing-scene-input writing-scene-input--id"
-                            placeholder={`${selectedEpisode.id}-1`}
-                          />
-                          <input
-                            value={scene.location}
-                            onFocus={() => setSelectedSceneId(scene.id)}
-                            onChange={(event) =>
-                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, location: event.target.value }))
-                            }
-                            className="writing-scene-input writing-scene-input--short"
-                            placeholder="INT."
-                          />
-                          <input
-                            value={scene.title}
-                            onFocus={() => setSelectedSceneId(scene.id)}
-                            onChange={(event) =>
-                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, title: event.target.value }))
-                            }
-                            className="writing-scene-input"
-                            placeholder="APARTMENT"
-                          />
-                          <input
-                            value={scene.timeOfDay}
-                            onFocus={() => setSelectedSceneId(scene.id)}
-                            onChange={(event) =>
-                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, timeOfDay: event.target.value }))
-                            }
-                            className="writing-scene-input writing-scene-input--short"
-                            placeholder="DAY"
-                          />
-                          <input
-                            value={scene.castLine}
-                            onFocus={() => setSelectedSceneId(scene.id)}
-                            onChange={(event) =>
-                              patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, castLine: event.target.value }))
-                            }
-                            className="writing-scene-input writing-scene-input--cast"
-                            placeholder="CAST"
-                          />
+                          <label className="writing-scene-field writing-scene-field--id">
+                            <span className="writing-scene-field__label">Scene</span>
+                            <input
+                              value={scene.id}
+                              onFocus={() => setSelectedSceneId(scene.id)}
+                              onChange={(event) => handleSceneIdChange(scene.id, event.target.value)}
+                              className="writing-scene-input writing-scene-input--id"
+                              placeholder={`${selectedEpisode.id}-1`}
+                            />
+                          </label>
+                          <label className="writing-scene-field writing-scene-field--boundary">
+                            <span className="writing-scene-field__label">Type</span>
+                            <input
+                              value={scene.location}
+                              list="writing-scene-boundary-options"
+                              onFocus={() => setSelectedSceneId(scene.id)}
+                              onChange={(event) =>
+                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, location: event.target.value }))
+                              }
+                              className="writing-scene-input writing-scene-input--short"
+                              placeholder="INT."
+                            />
+                          </label>
+                          <label className="writing-scene-field writing-scene-field--location">
+                            <span className="writing-scene-field__label">Location</span>
+                            <input
+                              value={scene.title}
+                              onFocus={() => setSelectedSceneId(scene.id)}
+                              onChange={(event) =>
+                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, title: event.target.value }))
+                              }
+                              className="writing-scene-input"
+                              placeholder="APARTMENT"
+                            />
+                          </label>
+                          <label className="writing-scene-field writing-scene-field--time">
+                            <span className="writing-scene-field__label">Time</span>
+                            <input
+                              value={scene.timeOfDay}
+                              list="writing-scene-time-options"
+                              onFocus={() => setSelectedSceneId(scene.id)}
+                              onChange={(event) =>
+                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, timeOfDay: event.target.value }))
+                              }
+                              className="writing-scene-input writing-scene-input--short"
+                              placeholder="DAY"
+                            />
+                          </label>
+                          <label className="writing-scene-field writing-scene-field--cast">
+                            <span className="writing-scene-field__label">Cast</span>
+                            <input
+                              value={scene.castLine}
+                              onFocus={() => setSelectedSceneId(scene.id)}
+                              onChange={(event) =>
+                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, castLine: event.target.value }))
+                              }
+                              className="writing-scene-input writing-scene-input--cast"
+                              placeholder="CAST"
+                            />
+                          </label>
                           <button
                             type="button"
                             onMouseDown={(event) => event.preventDefault()}

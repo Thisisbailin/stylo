@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
@@ -450,9 +451,11 @@ export const QalamAgent: React.FC<Props> = ({
   const handledSubmitRequestRef = useRef<number>(0);
   const phaseTimerRef = useRef<number | null>(null);
   const messagePanelRef = useRef<HTMLDivElement | null>(null);
+  const glassAnchorRef = useRef<HTMLDivElement | null>(null);
   const approvalSyncRef = useRef<string[]>([]);
   const handledConversationResetRef = useRef<number | null>(null);
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
+  const [glassAnchorFrame, setGlassAnchorFrame] = useState({ left: 0, top: 0 });
   const effectiveCollapsed = collapsed;
   const bridge = useMemo<QalamAgentBridge>(
     () => createQalamAgentBridge({
@@ -660,6 +663,27 @@ export const QalamAgent: React.FC<Props> = ({
     const observer = new ResizeObserver(() => update());
     observer.observe(node);
     return () => observer.disconnect();
+  }, [collapsed, messages.length, panelPhase]);
+
+  useEffect(() => {
+    const node = glassAnchorRef.current;
+    if (!node) return;
+
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      setGlassAnchorFrame({ left: rect.left, top: rect.top });
+    };
+
+    update();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => update());
+    observer.observe(node);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, [collapsed, messages.length, panelPhase]);
 
   useEffect(() => {
@@ -1016,7 +1040,7 @@ export const QalamAgent: React.FC<Props> = ({
   const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
   const qalamGlassConfig = useMemo(
     () => ({
-      ...GLASS_DIFFUSION_PRESETS.mist,
+      ...GLASS_DIFFUSION_PRESETS.qalam,
       ...QALAM_GLASS_LAB_CONFIG,
     }),
     []
@@ -1039,6 +1063,8 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const qalamGlassOffsetX = -qalamGlassSafeInsetX;
   const qalamGlassOffsetY = -qalamTitleBandHeight - qalamGlassSafeInsetTop;
+  const qalamGlassLeft = glassAnchorFrame.left + qalamGlassOffsetX;
+  const qalamGlassTop = glassAnchorFrame.top + qalamGlassOffsetY;
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,
@@ -1097,23 +1123,69 @@ export const QalamAgent: React.FC<Props> = ({
   }, [openPanel, submitRequest, submitText]);
 
   const isOpenPhase = panelPhase === "open";
+  const qalamGlassOverlay =
+    typeof document !== "undefined" && !effectiveCollapsed && qalamGlassWidth > 0 && qalamGlassHeight > 0
+      ? createPortal(
+          <div
+            className="pointer-events-none fixed z-[79] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={{
+              left: qalamGlassLeft,
+              top: qalamGlassTop,
+              width: qalamGlassWidth,
+              height: qalamGlassHeight,
+              opacity: effectiveCollapsed ? 0 : 1,
+            }}
+            aria-hidden="true"
+          >
+            <GlassDiffusionField
+              className="absolute inset-0"
+              width={qalamGlassWidth}
+              height={qalamGlassHeight}
+              config={{
+                blur: qalamGlassConfig.blur,
+                fillAlpha: qalamGlassConfig.fillAlpha,
+                saturate: qalamGlassConfig.saturate,
+                fadeInsetX: qalamGlassConfig.fadeInsetX,
+                fadeInsetY: qalamGlassConfig.fadeInsetY,
+                fade: qalamGlassConfig.fade,
+                edgeAlpha: qalamGlassConfig.edgeAlpha,
+                curve: qalamGlassConfig.curve,
+              }}
+              showBoundary={false}
+            />
+            <MaterialGlassShadow
+              width={qalamGlassWidth}
+              height={qalamGlassHeight}
+              curve={qalamGlassConfig.curve}
+              offsetX={qalamGlassShadow.offsetX}
+              offsetY={qalamGlassShadow.offsetY}
+              blur={qalamGlassShadow.blur}
+              alpha={qalamGlassShadow.alpha}
+              spread={qalamGlassShadow.spread}
+            />
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
-    <div
-      className={panelClassName}
-      style={{
-        ...resolvedPanelStyle,
-        transition: `opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
-        pointerEvents: "none",
-        overflow: "visible",
-        background: "transparent",
-        boxShadow: "none",
-        backdropFilter: "none",
-        WebkitBackdropFilter: "none",
-        fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
-      }}
-    >
-      <div className="relative">
+    <>
+      {qalamGlassOverlay}
+      <div
+        className={panelClassName}
+        style={{
+          ...resolvedPanelStyle,
+          transition: `opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
+          pointerEvents: "none",
+          overflow: "visible",
+          background: "transparent",
+          boxShadow: "none",
+          backdropFilter: "none",
+          WebkitBackdropFilter: "none",
+          fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
+        }}
+      >
+        <div className="relative">
         <div
           className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
           style={{ top: titleOrigin.y, minHeight: titleOrigin.height }}
@@ -1141,48 +1213,11 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
         <div
-          className={`px-4 pb-4 pt-[38px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            effectiveCollapsed ? "pointer-events-none translate-y-2 opacity-0" : "pointer-events-auto translate-y-0 opacity-100"
+          className={`px-4 pb-4 pt-[38px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            effectiveCollapsed ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
           }`}
         >
-          <div className="relative">
-            <div
-              className="pointer-events-none absolute z-[1] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              style={{
-                left: qalamGlassOffsetX,
-                top: qalamGlassOffsetY,
-                width: qalamGlassWidth,
-                height: qalamGlassHeight,
-                opacity: effectiveCollapsed ? 0 : 1,
-              }}
-            >
-              <GlassDiffusionField
-                className="absolute inset-0"
-                width={qalamGlassWidth}
-                height={qalamGlassHeight}
-                config={{
-                  blur: qalamGlassConfig.blur,
-                  fillAlpha: qalamGlassConfig.fillAlpha,
-                  saturate: qalamGlassConfig.saturate,
-                  fadeInsetX: qalamGlassConfig.fadeInsetX,
-                  fadeInsetY: qalamGlassConfig.fadeInsetY,
-                  fade: qalamGlassConfig.fade,
-                  edgeAlpha: qalamGlassConfig.edgeAlpha,
-                  curve: qalamGlassConfig.curve,
-                }}
-                showBoundary
-              />
-              <MaterialGlassShadow
-                width={qalamGlassWidth}
-                height={qalamGlassHeight}
-                curve={qalamGlassConfig.curve}
-                offsetX={qalamGlassShadow.offsetX}
-                offsetY={qalamGlassShadow.offsetY}
-                blur={qalamGlassShadow.blur}
-                alpha={qalamGlassShadow.alpha}
-                spread={qalamGlassShadow.spread}
-              />
-            </div>
+          <div ref={glassAnchorRef} className="relative">
             <div
               ref={messagePanelRef}
               className="relative z-10 rounded-[30px] bg-transparent"
@@ -1200,6 +1235,7 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

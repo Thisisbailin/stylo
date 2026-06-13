@@ -10,10 +10,20 @@ import {
   NodeChange,
   NodeTypes,
   OnConnectEnd,
+  OnConnectStart,
   XYPosition,
 } from "@xyflow/react";
-import { BookOpenText, Clock3, GripVertical, Link2, Palette, Plus, Scissors, Trash2, Upload, X } from "lucide-react";
-import type { Episode, ProjectData, ScriptCanvasState, ScriptTimelineBlock, ScriptTimelineState } from "../../types";
+import { Bot, FileText, Film, GripVertical, Image as ImageIcon, Network, Plus, Scissors, SendHorizontal, Trash2, Upload } from "lucide-react";
+import type {
+  Episode,
+  ProjectData,
+  ScriptCanvasState,
+  ScriptCanvasTextNode,
+  ScriptSpatialBlock,
+  ScriptTimelineBlock,
+  ScriptTimelineHead,
+  ScriptTimelineState,
+} from "../../types";
 import { BaseNode } from "../nodes/BaseNode";
 import {
   alignPositionChangesToNodeEdges,
@@ -34,12 +44,22 @@ type InspirationImageData = {
   filename?: string;
 };
 
+type MarkdownTextData = {
+  title: string;
+  content: string;
+  preview: string;
+  documentId: string;
+  onTitleChange: (documentId: string, title: string) => void;
+  onContentChange: (documentId: string, content: string) => void;
+};
+
 type ScriptCanvasNode =
   | Node<ScriptPageData, "text">
-  | Node<InspirationImageData, "imageInput">;
+  | Node<InspirationImageData, "imageInput">
+  | Node<MarkdownTextData, "mdText">;
 
 type ScriptCanvasEdge = Edge<Record<string, never>>;
-type ScriptCanvasCreateType = "scriptPage" | "scriptImage";
+type ScriptCanvasCreateType = "scriptPage" | "scriptImage" | "mdText";
 type ScriptHandleType = "image" | "text";
 
 type ScriptConnectionDropState = {
@@ -51,10 +71,19 @@ type ScriptConnectionDropState = {
   sourceHandleId: string | null;
 };
 
+type ScriptTimelineGuideLine = {
+  id: string;
+  targetId: string;
+  nodeId: string;
+  path: string;
+  color: string;
+  isActive: boolean;
+};
+
 type ScriptTimelineNodeSummary = {
   id: string;
   title: string;
-  kind: "剧本" | "图片";
+  kind: "剧本" | "图片" | "档案";
 };
 
 type Props = {
@@ -63,22 +92,32 @@ type Props = {
   onOpenEpisode: (episodeId: number) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
+  isWritingEditorOpen?: boolean;
+  onCollapseCanvasCards?: () => void;
+  onRestoreCanvasCards?: () => void;
+  onOpenAgent?: () => void;
+  onSubmitAgentMessage?: (text: string) => void;
 };
 
 const ensureCanvas = (canvas?: ScriptCanvasState): ScriptCanvasState => ({
   pages: Array.isArray(canvas?.pages) ? canvas.pages : [],
   images: Array.isArray(canvas?.images) ? canvas.images : [],
+  textNodes: Array.isArray(canvas?.textNodes) ? canvas.textNodes : [],
   links: Array.isArray(canvas?.links) ? canvas.links : [],
   timeline: canvas?.timeline,
 });
 
 const scriptNodeId = (episodeId: number) => `script-${episodeId}`;
 const imageNodeId = (imageId: string) => `image-${imageId}`;
+const markdownNodeId = (documentId: string) => `md-${documentId}`;
 
 const isImageNodeId = (id?: string | null) => !!id && id.startsWith("image-");
-const isTextNodeId = (id?: string | null) => !!id && id.startsWith("script-");
+const isScriptPageNodeId = (id?: string | null) => !!id && id.startsWith("script-");
+const isMarkdownNodeId = (id?: string | null) => !!id && id.startsWith("md-");
+const isTextNodeId = (id?: string | null) => isScriptPageNodeId(id) || isMarkdownNodeId(id);
 const scriptCreateOptions: ConnectionDropMenuOption<ScriptCanvasCreateType>[] = [
   { label: "剧本文档", hint: "创建一个新的分集稿纸", type: "scriptPage", Icon: Plus },
+  { label: "档案文档", hint: "连接空间轴的全局 Markdown 档案", type: "mdText", Icon: Plus },
   { label: "灵感图片", hint: "上传写作参考图", type: "scriptImage", Icon: Upload },
 ];
 
@@ -93,6 +132,11 @@ const TIMELINE_COLORS = [
 
 const MIN_TIMELINE_BLOCK_MINUTES = 3;
 const DEFAULT_TIMELINE_DURATION = 120;
+const DEFAULT_TIMELINE_HEAD: ScriptTimelineHead = {
+  title: "项目索引",
+  content: "项目根文档，组织空间轴与时间轴的文件树。",
+  linkedNodeIds: [],
+};
 
 const createTimelineBlock = (
   id: string,
@@ -111,6 +155,31 @@ const createTimelineBlock = (
   order,
   linkedNodeIds: [],
 });
+
+const createSpaceBlock = (
+  id: string,
+  title: string,
+  order: number,
+  width: number,
+  color: string,
+  content = ""
+): ScriptSpatialBlock => ({
+  id,
+  title,
+  content,
+  color,
+  order,
+  width,
+  linkedNodeIds: [],
+});
+
+const createDefaultSpaceBlocks = (): ScriptSpatialBlock[] => [
+  createSpaceBlock("space-spec", "规格", 0, 0.72, "slate", "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。"),
+  createSpaceBlock("space-world", "世界观", 1, 1, "moss", "影片整体背景、规则与设定。"),
+  createSpaceBlock("space-characters", "角色档案", 2, 1.15, "amber", "主要角色、动机、关系与小传。"),
+  createSpaceBlock("space-locations", "场景地图", 3, 0.9, "blue", "空间、地点、动线与场景关系。"),
+  createSpaceBlock("space-style", "风格备忘录", 4, 0.95, "rose", "影像、语气、对白、节奏和参考。"),
+];
 
 const distributeRemainder = (blocks: ScriptTimelineBlock[], targetDuration: number) => {
   const next = blocks.map((block) => ({ ...block, durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(block.durationMin)) }));
@@ -156,10 +225,30 @@ const recalculateTimelineBlocks = (blocks: ScriptTimelineBlock[], durationMin: n
   });
 };
 
+const normalizeSpaceBlocks = (blocks?: ScriptSpatialBlock[]) =>
+  (() => {
+    const base = Array.isArray(blocks) && blocks.length ? blocks : createDefaultSpaceBlocks();
+    const hasSpec = base.some((block) => block.id === "space-spec" || block.title === "规格");
+    return hasSpec ? base : [createDefaultSpaceBlocks()[0], ...base];
+  })()
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((block, index) => ({
+      id: block.id || `space-block-${index + 1}`,
+      title: block.title || `全局视角 ${index + 1}`,
+      content: block.content || "",
+      color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
+      order: index,
+      width: Math.max(0.45, Number(block.width) || 1),
+      linkedNodeIds: Array.isArray(block.linkedNodeIds) ? Array.from(new Set(block.linkedNodeIds)) : [],
+    }));
+
 const createDefaultTimeline = (): ScriptTimelineState => ({
   id: "film-structure",
   title: "影片时间轴",
   durationMin: DEFAULT_TIMELINE_DURATION,
+  head: DEFAULT_TIMELINE_HEAD,
+  spaceBlocks: createDefaultSpaceBlocks(),
   blocks: recalculateTimelineBlocks(
     [
       createTimelineBlock("timeline-opening", "开场设定", 15, 0, "amber", "建立世界、语气和主人公最初的缺口。"),
@@ -174,10 +263,17 @@ const createDefaultTimeline = (): ScriptTimelineState => ({
 const ensureTimeline = (timeline?: ScriptTimelineState): ScriptTimelineState => {
   if (!timeline || !Array.isArray(timeline.blocks) || !timeline.blocks.length) return createDefaultTimeline();
   const durationMin = Math.max(30, Math.min(300, Math.round(Number(timeline.durationMin) || DEFAULT_TIMELINE_DURATION)));
+  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   return {
     id: timeline.id || "film-structure",
     title: timeline.title || "影片时间轴",
     durationMin,
+    head: {
+      title: head.title || DEFAULT_TIMELINE_HEAD.title,
+      content: head.content || "",
+      linkedNodeIds: [],
+    },
+    spaceBlocks: normalizeSpaceBlocks(timeline.spaceBlocks),
     blocks: recalculateTimelineBlocks(
       timeline.blocks.map((block, index) => ({
         id: block.id || `timeline-block-${index + 1}`,
@@ -199,6 +295,61 @@ const formatTimelineTime = (minute: number) => {
   const hours = Math.floor(safe / 60);
   const mins = safe % 60;
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+const getNodeLine = (nodeId: string, nodeById: Map<string, ScriptTimelineNodeSummary>) => {
+  const node = nodeById.get(nodeId);
+  return `${node?.kind || "文档"}：${node?.title || nodeId}`;
+};
+
+const buildTimelineMarkdown = (timeline: ScriptTimelineState, nodeSummaries: ScriptTimelineNodeSummary[]) => {
+  const nodeById = new Map(nodeSummaries.map((node) => [node.id, node]));
+  const spaceBlocks = normalizeSpaceBlocks(timeline.spaceBlocks);
+  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
+  const linkedNodeIds = new Set([
+    ...spaceBlocks.flatMap((block) => block.linkedNodeIds),
+    ...timeline.blocks.flatMap((block) => block.linkedNodeIds),
+  ]);
+  const unlinkedNodes = nodeSummaries.filter((node) => !linkedNodeIds.has(node.id));
+
+  return [
+    `# 项目`,
+    "",
+    `- 根：${head.title}`,
+    `- 总时长：${timeline.durationMin} min`,
+    `- 空间区块：${spaceBlocks.length}`,
+    `- 时间区块：${timeline.blocks.length}`,
+    `- 已建立父子关系：${linkedNodeIds.size}`,
+    "",
+    `## ${head.title} / 全局层`,
+    "",
+    ...spaceBlocks.flatMap((block) => [
+      `### ${block.title}`,
+      "",
+      ...(block.linkedNodeIds.length
+        ? block.linkedNodeIds.map((nodeId) => `- ${getNodeLine(nodeId, nodeById)}`)
+        : ["- 未连接子文档"]),
+      "",
+    ]),
+    `## 时间轴`,
+    "",
+    ...timeline.blocks.flatMap((block) => [
+      `### ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}`,
+      "",
+      ...(block.linkedNodeIds.length
+        ? block.linkedNodeIds.map((nodeId) => `- ${getNodeLine(nodeId, nodeById)}`)
+        : ["- 未连接子文档"]),
+      "",
+    ]),
+    ...(unlinkedNodes.length
+      ? [
+          "## 未归入时间轴",
+          "",
+          ...unlinkedNodes.map((node) => `- ${node.kind}：${node.title}`),
+          "",
+        ]
+      : []),
+  ].join("\n");
 };
 
 const pickOutputHandle = (handles: ScriptHandleType[], preferred?: ScriptHandleType | null) => {
@@ -257,15 +408,21 @@ const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeI
   return closest ? { nodeId: closest.nodeId, side: closest.side } : null;
 };
 
-const getTimelineBlockHitAtPoint = (clientX: number, clientY: number) => {
+type ScriptAxisTarget =
+  | { type: "head"; id: "head" }
+  | { type: "time"; id: string }
+  | { type: "space"; id: string };
+
+const getScriptAxisTargetHitAtPoint = (clientX: number, clientY: number): ScriptAxisTarget | null => {
   if (typeof document === "undefined") return null;
   const magneticPadding = 18;
-  let closest: { blockId: string; distance: number } | null = null;
+  let closest: { target: ScriptAxisTarget; distance: number } | null = null;
 
-  document.querySelectorAll<HTMLElement>("[data-timeline-block-id]").forEach((blockElement) => {
-    const blockId = blockElement.getAttribute("data-timeline-block-id");
-    if (!blockId) return;
-    const rect = blockElement.getBoundingClientRect();
+  document.querySelectorAll<HTMLElement>("[data-axis-target-type]").forEach((element) => {
+    const type = element.getAttribute("data-axis-target-type");
+    const id = element.getAttribute("data-axis-target-id");
+    if (!id || (type !== "head" && type !== "time" && type !== "space")) return;
+    const rect = element.getBoundingClientRect();
     const inside =
       clientX >= rect.left - magneticPadding &&
       clientX <= rect.right + magneticPadding &&
@@ -276,10 +433,12 @@ const getTimelineBlockHitAtPoint = (clientX: number, clientY: number) => {
     const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
     const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
     const distance = Math.hypot(dx, dy);
-    if (!closest || distance < closest.distance) closest = { blockId, distance };
+    if (!closest || distance < closest.distance) {
+      closest = { target: { type, id } as ScriptAxisTarget, distance };
+    }
   });
 
-  return closest?.blockId || null;
+  return closest?.target || null;
 };
 
 const getDefaultScriptPosition = (index: number) => ({
@@ -290,6 +449,11 @@ const getDefaultScriptPosition = (index: number) => ({
 const getDefaultImagePosition = (index: number) => ({
   x: -420,
   y: index * 330,
+});
+
+const getDefaultMarkdownPosition = (index: number) => ({
+  x: 420 + (index % 2) * 360,
+  y: 120 + Math.floor(index / 2) * 300,
 });
 
 const getLegacyScriptPosition = (index: number) => ({
@@ -319,6 +483,12 @@ const compactScriptPreview = (episode: Episode) => {
     "";
   const clean = source.replace(/\s+/g, " ").trim();
   if (!clean) return "打开全屏编辑器开始写作。";
+  return clean.length > 180 ? `${clean.slice(0, 180)}...` : clean;
+};
+
+const compactMarkdownPreview = (content: string) => {
+  const clean = content.replace(/\s+/g, " ").trim();
+  if (!clean) return "写下角色、场景、风格、规格或任何全局档案。";
   return clean.length > 180 ? `${clean.slice(0, 180)}...` : clean;
 };
 
@@ -352,6 +522,29 @@ const ScriptPageNode: React.FC<any> = ({ data, selected }) => (
   </BaseNode>
 );
 
+const MarkdownTextNode: React.FC<any> = ({ data, selected }) => (
+  <BaseNode
+    title={data.title || "档案文档"}
+    onTitleChange={(title) => data.onTitleChange?.(data.documentId, title)}
+    inputs={["image", "text"]}
+    outputs={["text"]}
+    selected={selected}
+    variant="text"
+    nodeType="text"
+  >
+    <div className="text-node-shell script-md-node-shell relative flex-1">
+      <textarea
+        className="text-node-editor script-md-node-editor nodrag"
+        value={data.content || ""}
+        placeholder="Markdown"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => data.onContentChange?.(data.documentId, event.target.value)}
+      />
+    </div>
+  </BaseNode>
+);
+
 const InspirationImageNode: React.FC<any> = ({ data, selected }) => (
   <BaseNode title={data.title || "image"} outputs={["image"]} selected={selected} variant="media" nodeType="imageInput">
     <div className="image-input-shell relative h-full w-full">
@@ -373,6 +566,7 @@ const InspirationImageNode: React.FC<any> = ({ data, selected }) => (
 
 const nodeTypes: NodeTypes = {
   text: ScriptPageNode,
+  mdText: MarkdownTextNode,
   imageInput: InspirationImageNode,
 };
 
@@ -381,18 +575,40 @@ type ScriptTimelineDockProps = {
   nodeSummaries: ScriptTimelineNodeSummary[];
   activeBlockId: string;
   onActiveBlockChange: (blockId: string) => void;
-  onDurationChange: (durationMin: number) => void;
+  onUpdateHead: (patch: Partial<ScriptTimelineHead>) => void;
   onUpdateBlock: (blockId: string, patch: Partial<ScriptTimelineBlock>) => void;
+  onUpdateSpaceBlock: (blockId: string, patch: Partial<ScriptSpatialBlock>) => void;
+  onAddSpaceBlock: (afterBlockId?: string) => void;
   onSplitBlock: (blockId: string) => void;
+  onSplitSpaceBlock: (blockId: string) => void;
   onDeleteBlock: (blockId: string) => void;
-  onToggleNodeLink: (blockId: string, nodeId: string) => void;
+  onDeleteSpaceBlock: (blockId: string) => void;
   onReorderBlock: (sourceBlockId: string, targetBlockId: string) => void;
+  onReorderSpaceBlock: (sourceBlockId: string, targetBlockId: string) => void;
   onResizeStart: (blockId: string, edge: "left" | "right", clientX: number, trackWidth: number) => void;
+  onSpaceResizeStart: (blockId: string, edge: "left" | "right", clientX: number, trackWidth: number) => void;
+  axisRevealRequest: number;
+  onCreateArchiveNode: () => void;
+  onCreateScriptNode: () => void;
+  onCreateImageNode: () => void;
+  onOpenAgent?: () => void;
+  onSubmitAgentMessage?: (text: string) => void;
+  onOpenMarkdownCard?: () => void;
+  onCloseMarkdownCard?: () => void;
 };
+
+type ScriptAxisMode = "time" | "space";
 
 type ScriptTimelineMenuState =
   | { type: "head"; x: number; y: number }
   | { type: "block"; blockId: string; x: number; y: number };
+
+type ScriptNodeCreateMenuState = { x: number; y: number } | null;
+
+type ScriptTimelineEditTarget =
+  | { type: "head" }
+  | { type: "time"; id: string }
+  | { type: "space"; id: string };
 
 const getTimelineMenuStyle = (x: number, y: number, menuWidth = 390): CSSProperties => {
   const viewportWidth = typeof window === "undefined" ? 1280 : window.innerWidth;
@@ -408,27 +624,61 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
   nodeSummaries,
   activeBlockId,
   onActiveBlockChange,
-  onDurationChange,
+  onUpdateHead,
   onUpdateBlock,
+  onUpdateSpaceBlock,
+  onAddSpaceBlock,
   onSplitBlock,
+  onSplitSpaceBlock,
   onDeleteBlock,
-  onToggleNodeLink,
+  onDeleteSpaceBlock,
   onReorderBlock,
+  onReorderSpaceBlock,
   onResizeStart,
+  onSpaceResizeStart,
+  axisRevealRequest,
+  onCreateArchiveNode,
+  onCreateScriptNode,
+  onCreateImageNode,
+  onOpenAgent,
+  onSubmitAgentMessage,
+  onOpenMarkdownCard,
+  onCloseMarkdownCard,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<number | null>(null);
+  const lineSignatureRef = useRef("");
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [activeAxis, setActiveAxis] = useState<ScriptAxisMode>("time");
   const [menuState, setMenuState] = useState<ScriptTimelineMenuState | null>(null);
-  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingTarget, setEditingTarget] = useState<ScriptTimelineEditTarget | null>(null);
+  const [isTimelineDocumentOpen, setIsTimelineDocumentOpen] = useState(false);
+  const [timelineGuideLines, setTimelineGuideLines] = useState<ScriptTimelineGuideLine[]>([]);
+  const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
+  const [agentTailInput, setAgentTailInput] = useState("");
+  const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptNodeCreateMenuState>(null);
+  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
+  const spaceBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceBlocks), [timeline.spaceBlocks]);
   const activeBlock = timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0];
   const actionBlock =
-    menuState?.type === "block" ? timeline.blocks.find((block) => block.id === menuState.blockId) || null : null;
-  const editingBlock = timeline.blocks.find((block) => block.id === editingBlockId) || null;
-  const linkedNodes = useMemo(
-    () => (actionBlock?.linkedNodeIds || []).map((nodeId) => nodeSummaries.find((node) => node.id === nodeId)).filter(Boolean) as ScriptTimelineNodeSummary[],
-    [actionBlock?.linkedNodeIds, nodeSummaries]
-  );
+    menuState?.type === "block"
+      ? activeAxis === "time"
+        ? timeline.blocks.find((block) => block.id === menuState.blockId) || null
+        : spaceBlocks.find((block) => block.id === menuState.blockId) || null
+      : null;
+  const editingBlock =
+    editingTarget?.type === "time"
+      ? timeline.blocks.find((block) => block.id === editingTarget.id) || null
+      : editingTarget?.type === "space"
+        ? spaceBlocks.find((block) => block.id === editingTarget.id) || null
+        : null;
+  const timelineMarkdown = useMemo(() => buildTimelineMarkdown(timeline, nodeSummaries), [nodeSummaries, timeline]);
+
+  const closeMarkdownCard = useCallback(() => {
+    setEditingTarget(null);
+    setIsTimelineDocumentOpen(false);
+    onCloseMarkdownCard?.();
+  }, [onCloseMarkdownCard]);
 
   useEffect(
     () => () => {
@@ -436,6 +686,139 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
     },
     []
   );
+
+  useEffect(() => {
+    if (!axisRevealRequest) return;
+    setIsAgentTailOpen(false);
+    setActiveAxis((current) => (current === "time" ? "space" : "time"));
+    setMenuState(null);
+    setEditingTarget(null);
+    setIsTimelineDocumentOpen(false);
+  }, [axisRevealRequest]);
+
+  useEffect(() => {
+    if (!menuState && !nodeCreateMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          ".script-timeline-floating-menu, .script-timeline-block-menu-wrap, .script-timeline-node-popover, .script-timeline-block, .script-timeline-head-block, .script-timeline-tail"
+        )
+      ) {
+        return;
+      }
+      setMenuState(null);
+      setNodeCreateMenu(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [menuState, nodeCreateMenu]);
+
+  useEffect(() => {
+    if (!editingBlock && !isTimelineDocumentOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".script-timeline-md-card")) return;
+      closeMarkdownCard();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMarkdownCard();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeMarkdownCard, editingBlock, isTimelineDocumentOpen]);
+
+  useEffect(() => {
+    const targets = [
+      ...timeline.blocks.map((block) => ({ type: "time" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
+      ...spaceBlocks.map((block) => ({ type: "space" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
+    ].filter((target) => target.linkedNodeIds.length);
+
+    if (!targets.length) {
+      lineSignatureRef.current = "";
+      setTimelineGuideLines([]);
+      return;
+    }
+
+    let animationFrame = 0;
+    let isMounted = true;
+
+    const measureLines = () => {
+      if (!isMounted) return;
+      const nextLines: ScriptTimelineGuideLine[] = [];
+      targets.forEach((target) => {
+        const targetElement =
+          (target.type === activeAxis
+            ? document.querySelector<HTMLElement>(`[data-axis-target-type="${target.type}"][data-axis-target-id="${target.id}"]`)
+            : null) ||
+          document.querySelector<HTMLElement>('[data-axis-target-type="head"][data-axis-target-id="head"]');
+        if (!targetElement) return;
+        const targetRect = targetElement.getBoundingClientRect();
+        const targetX = targetRect.left + targetRect.width / 2;
+        const targetY = targetRect.top + 5;
+
+        target.linkedNodeIds.forEach((nodeId) => {
+          const nodeElement = Array.from(document.querySelectorAll<HTMLElement>(".react-flow__node")).find(
+            (element) => element.getAttribute("data-id") === nodeId
+          );
+          if (!nodeElement) return;
+          const nodeRect = nodeElement.getBoundingClientRect();
+          const nodeCenterX = nodeRect.left + nodeRect.width / 2;
+          const nodeCenterY = nodeRect.top + nodeRect.height / 2;
+          if (
+            nodeRect.width < 48 ||
+            nodeRect.height < 40 ||
+            nodeRect.right <= 0 ||
+            nodeRect.left >= window.innerWidth ||
+            nodeRect.bottom <= 0 ||
+            nodeRect.top >= targetY - 18 ||
+            nodeCenterX <= 0 ||
+            nodeCenterX >= window.innerWidth ||
+            nodeCenterY <= 0 ||
+            nodeCenterY >= window.innerHeight
+          ) {
+            return;
+          }
+          const topElement = document.elementFromPoint(nodeCenterX, nodeCenterY);
+          const visibleNodeElement = topElement?.closest(".react-flow__node");
+          if (visibleNodeElement && visibleNodeElement.getAttribute("data-id") !== nodeId) return;
+          if (!visibleNodeElement && topElement && !nodeElement.contains(topElement)) return;
+          const nodeX = nodeCenterX;
+          const nodeY = Math.min(nodeRect.bottom, targetY - 24);
+          const midY = nodeY + (targetY - nodeY) * 0.56;
+          nextLines.push({
+            id: `${target.type}-${target.id}-${nodeId}`,
+            targetId: `${target.type}:${target.id}`,
+            nodeId,
+            color: target.color,
+            isActive: target.type === "time" && target.id === activeBlockId,
+            path: `M ${nodeX.toFixed(1)} ${nodeY.toFixed(1)} C ${nodeX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${targetY.toFixed(1)}`,
+          });
+        });
+      });
+
+      const signature = JSON.stringify(nextLines);
+      if (signature !== lineSignatureRef.current) {
+        lineSignatureRef.current = signature;
+        setTimelineGuideLines(nextLines);
+      }
+      animationFrame = window.requestAnimationFrame(measureLines);
+    };
+
+    animationFrame = window.requestAnimationFrame(measureLines);
+    return () => {
+      isMounted = false;
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [activeAxis, activeBlockId, head.linkedNodeIds, spaceBlocks, timeline.blocks]);
 
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
@@ -448,9 +831,35 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
     onResizeStart(blockId, edge, event.clientX, trackWidth);
   };
 
+  const handleSpaceResizePointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    blockId: string,
+    edge: "left" | "right"
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const trackWidth = trackRef.current?.getBoundingClientRect().width || 1;
+    onSpaceResizeStart(blockId, edge, event.clientX, trackWidth);
+  };
+
   const handleHeadClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    setMenuState({ type: "head", x: event.clientX, y: event.clientY });
-    setEditingBlockId(null);
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    event.preventDefault();
+    clickTimerRef.current = window.setTimeout(() => {
+      setIsAgentTailOpen(false);
+      setActiveAxis((current) => (current === "time" ? "space" : "time"));
+      setMenuState(null);
+      setEditingTarget(null);
+      setIsTimelineDocumentOpen(false);
+    }, 170);
+  };
+
+  const handleHeadDoubleClick = () => {
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    onOpenMarkdownCard?.();
+    setMenuState(null);
+    setEditingTarget(null);
+    setIsTimelineDocumentOpen(true);
   };
 
   const handleBlockClick = (event: React.MouseEvent<HTMLDivElement>, blockId: string) => {
@@ -461,40 +870,104 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       setMenuState((current) =>
         current?.type === "block" && current.blockId === blockId ? null : { type: "block", blockId, x: clientX, y: clientY }
       );
-      setEditingBlockId(null);
+      setEditingTarget(null);
     }, 170);
   };
 
   const handleBlockDoubleClick = (blockId: string) => {
     if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
-    onActiveBlockChange(blockId);
+    onOpenMarkdownCard?.();
+    if (activeAxis === "time") onActiveBlockChange(blockId);
     setMenuState(null);
-    setEditingBlockId(blockId);
+    setIsTimelineDocumentOpen(false);
+    setEditingTarget({ type: activeAxis, id: blockId });
+  };
+
+  const handleTailNodeClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setNodeCreateMenu((current) =>
+      current ? null : { x: event.clientX, y: event.clientY }
+    );
+    setMenuState(null);
+    setEditingTarget(null);
+    setIsTimelineDocumentOpen(false);
+  };
+
+  const runNodeCreateAction = (action: () => void) => {
+    action();
+    setNodeCreateMenu(null);
+  };
+
+  const handleAgentTailSend = () => {
+    const text = agentTailInput.trim();
+    if (text) {
+      onSubmitAgentMessage?.(text);
+      setAgentTailInput("");
+      return;
+    }
+    onOpenAgent?.();
   };
 
   return (
     <div className="script-timeline-dock">
-      <div className="script-timeline-filmstrip" aria-label="影片时间轴">
-        <button type="button" className="script-timeline-head-block" onClick={handleHeadClick} title="查看时间轴索引与总时长">
-          <span className="script-timeline-head-block__mark">
-            <BookOpenText size={15} strokeWidth={1.8} />
-          </span>
-          <span className="script-timeline-head-block__text">
-            <small>INDEX</small>
-            <strong>{timeline.durationMin}min</strong>
-          </span>
-          <em>{timeline.blocks.length}段</em>
-        </button>
+      {timelineGuideLines.length ? (
+        <svg className="script-timeline-connection-layer" aria-hidden="true">
+          {timelineGuideLines.map((line) => (
+            <path
+              key={line.id}
+              className={`script-timeline-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
+              d={line.path}
+            />
+          ))}
+        </svg>
+      ) : null}
 
-        <div ref={trackRef} className="script-timeline-track">
-          {timeline.blocks.map((block) => {
-            const width = Math.max(6, (block.durationMin / timeline.durationMin) * 100);
-            const isActive = block.id === activeBlock?.id;
+      <div className="script-timeline-filmstrip" aria-label="影片时间轴">
+        <div className={`script-timeline-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
+          <button
+            type="button"
+            className="script-timeline-head-block"
+            data-axis-target-type="head"
+            data-axis-target-id="head"
+            data-axis-active={activeAxis}
+            onClick={handleHeadClick}
+            onDoubleClick={handleHeadDoubleClick}
+            title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
+          >
+            <svg className="script-timeline-head-icon" viewBox="0 0 56 100" aria-hidden="true">
+              <path
+                className="script-timeline-head-icon__fill"
+                d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
+              />
+              <path
+                className="script-timeline-head-icon__line"
+                d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
+              />
+              <g className="script-timeline-head-icon__perfs">
+                <rect x="13" y="20" width="5" height="13" rx="2.5" />
+                <rect x="24" y="19" width="5" height="14" rx="2.5" />
+                <rect x="35" y="20" width="5" height="13" rx="2.5" />
+                <rect x="25" y="72" width="5" height="14" rx="2.5" />
+                <rect x="36" y="72" width="5" height="14" rx="2.5" />
+              </g>
+            </svg>
+          </button>
+
+          {!isAgentTailOpen ? (
+            <div ref={trackRef} className="script-timeline-track">
+              {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex) => {
+            const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
+            const width =
+              activeAxis === "time"
+                ? Math.max(6, ((block as ScriptTimelineBlock).durationMin / timeline.durationMin) * 100)
+                : Math.max(8, ((block as ScriptSpatialBlock).width / spaceWidthTotal) * 100);
+            const timeBlock = block as ScriptTimelineBlock;
+            const isActive = activeAxis === "time" && block.id === activeBlock?.id;
             const linkedCount = block.linkedNodeIds.length;
             return (
               <div
                 key={block.id}
-                data-timeline-block-id={block.id}
+                data-axis-target-type={activeAxis}
+                data-axis-target-id={block.id}
                 draggable
                 onDragStart={(event) => {
                   setDraggingBlockId(block.id);
@@ -508,119 +981,172 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                 onDrop={(event) => {
                   event.preventDefault();
                   const sourceId = event.dataTransfer.getData("text/plain") || draggingBlockId;
-                  if (sourceId && sourceId !== block.id) onReorderBlock(sourceId, block.id);
+                  if (sourceId && sourceId !== block.id) {
+                    if (activeAxis === "time") onReorderBlock(sourceId, block.id);
+                    else onReorderSpaceBlock(sourceId, block.id);
+                  }
                   setDraggingBlockId(null);
                 }}
                 onDragEnd={() => setDraggingBlockId(null)}
                 onClick={(event) => handleBlockClick(event, block.id)}
                 onDoubleClick={() => handleBlockDoubleClick(block.id)}
                 className={`script-timeline-block is-${block.color} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
-                style={{ flexBasis: `${width}%` }}
+                style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
               >
                 <button
                   type="button"
                   className="script-timeline-resize script-timeline-resize--left"
-                  aria-label="调整区间起点"
-                  onPointerDown={(event) => handleResizePointerDown(event, block.id, "left")}
+                  aria-label={activeAxis === "time" ? "调整区间起点" : "调整空间块宽度"}
+                  onPointerDown={(event) =>
+                    activeAxis === "time"
+                      ? handleResizePointerDown(event, block.id, "left")
+                      : handleSpaceResizePointerDown(event, block.id, "left")
+                  }
                 />
                 <div className="script-timeline-block__inner">
                   <div className="script-timeline-block__meta">
                     <GripVertical size={13} strokeWidth={1.8} />
                     <span>
-                      {formatTimelineTime(block.startMin)}-{formatTimelineTime(block.startMin + block.durationMin)}
+                      {activeAxis === "time"
+                        ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
+                        : "全局视角"}
                     </span>
                   </div>
                   <strong>{block.title}</strong>
                   <div className="script-timeline-block__foot">
-                    <span>{block.durationMin}min</span>
+                    <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
                     <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
                   </div>
                 </div>
                 <button
                   type="button"
                   className="script-timeline-resize script-timeline-resize--right"
-                  aria-label="调整区间终点"
-                  onPointerDown={(event) => handleResizePointerDown(event, block.id, "right")}
+                  aria-label={activeAxis === "time" ? "调整区间终点" : "调整空间块宽度"}
+                  onPointerDown={(event) =>
+                    activeAxis === "time"
+                      ? handleResizePointerDown(event, block.id, "right")
+                      : handleSpaceResizePointerDown(event, block.id, "right")
+                  }
                 />
               </div>
             );
-          })}
+              })}
+            </div>
+          ) : null}
         </div>
 
-        <div className="script-timeline-end-cap" aria-hidden="true" />
+        <div className={`script-timeline-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
+          {isAgentTailOpen ? (
+            <div className="script-timeline-tail-composer">
+              <textarea
+                value={agentTailInput}
+                rows={1}
+                placeholder="询问 Qalam"
+                onChange={(event) => setAgentTailInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleAgentTailSend();
+                  }
+                  if (event.key === "Escape") {
+                    setIsAgentTailOpen(false);
+                    setAgentTailInput("");
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="script-timeline-tail-send"
+                onClick={handleAgentTailSend}
+                title={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
+                aria-label={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
+              >
+                <SendHorizontal size={15} strokeWidth={1.9} />
+              </button>
+            </div>
+          ) : (
+            <div className="script-timeline-tail-labels">
+              <button type="button" onClick={handleTailNodeClick} title="新增节点" aria-label="新增节点">
+                <Network size={15} strokeWidth={1.85} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAgentTailOpen(true);
+                  setMenuState(null);
+                  setNodeCreateMenu(null);
+                  setEditingTarget(null);
+                  setIsTimelineDocumentOpen(false);
+                }}
+                title="打开轴尾 Agent"
+                aria-label="打开轴尾 Agent"
+              >
+                <Bot size={15} strokeWidth={1.85} />
+              </button>
+            </div>
+          )}
+        </div>
+
       </div>
 
-      {menuState?.type === "head" ? (
-        <section className="script-timeline-floating-menu script-timeline-head-menu" style={getTimelineMenuStyle(menuState.x, menuState.y, 390)} aria-label="时间轴索引">
-          <header>
-            <div>
-              <p>胶片头</p>
-              <h3>{timeline.title}</h3>
-            </div>
-            <button type="button" onClick={() => setMenuState(null)} title="关闭">
-              <X size={14} strokeWidth={1.8} />
+      {nodeCreateMenu ? (
+        <div className="script-timeline-node-menu-wrap" style={getTimelineMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 250)}>
+          <section className="script-timeline-floating-menu script-timeline-node-popover">
+            <button type="button" onClick={() => runNodeCreateAction(onCreateArchiveNode)}>
+              <FileText size={15} strokeWidth={1.85} />
+              <span>
+                <strong>档案文档</strong>
+                <small>空间轴全局 Markdown</small>
+              </span>
             </button>
-          </header>
-          <div className="script-timeline-duration-field">
-            <label>
-              <span>总时长</span>
-              <input
-                type="number"
-                min={30}
-                max={300}
-                step={5}
-                value={timeline.durationMin}
-                onChange={(event) => onDurationChange(Number(event.target.value))}
-              />
-            </label>
-            <em>{timeline.blocks.length} 个结构区间</em>
-          </div>
-          <div className="script-timeline-index-list">
-            {timeline.blocks.map((block) => (
-              <button
-                key={block.id}
-                type="button"
-                onClick={() => onActiveBlockChange(block.id)}
-                className={`is-${block.color} ${block.id === activeBlock?.id ? "is-active" : ""}`}
-              >
-                <span>{formatTimelineTime(block.startMin)}-{formatTimelineTime(block.startMin + block.durationMin)}</span>
-                <strong>{block.title}</strong>
-                <em>{block.linkedNodeIds.length ? `${block.linkedNodeIds.length} 个节点` : "未连接"}</em>
-              </button>
-            ))}
-          </div>
-        </section>
+            <button type="button" onClick={() => runNodeCreateAction(onCreateScriptNode)}>
+              <Film size={15} strokeWidth={1.85} />
+              <span>
+                <strong>剧本文档</strong>
+                <small>进入剧本写作节点</small>
+              </span>
+            </button>
+            <button type="button" onClick={() => runNodeCreateAction(onCreateImageNode)}>
+              <ImageIcon size={15} strokeWidth={1.85} />
+              <span>
+                <strong>灵感图片</strong>
+                <small>上传画布参考图</small>
+              </span>
+            </button>
+          </section>
+        </div>
       ) : null}
 
       {actionBlock && menuState?.type === "block" ? (
-        <div className="script-timeline-block-menu-wrap" style={getTimelineMenuStyle(menuState.x, menuState.y, 650)}>
+        <div className="script-timeline-block-menu-wrap" style={getTimelineMenuStyle(menuState.x, menuState.y, 230)}>
           <section className="script-timeline-floating-menu script-timeline-action-popover">
-            <header>
-              <div>
-                <p>{formatTimelineTime(actionBlock.startMin)}-{formatTimelineTime(actionBlock.startMin + actionBlock.durationMin)}</p>
-                <h3>{actionBlock.title}</h3>
-              </div>
-              <button type="button" onClick={() => setMenuState(null)} title="关闭">
-                <X size={14} strokeWidth={1.8} />
-              </button>
-            </header>
             <div className="script-timeline-action-row">
-              <button type="button" onClick={() => onSplitBlock(actionBlock.id)} disabled={actionBlock.durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}>
+              {activeAxis === "space" ? (
+                <button
+                  type="button"
+                  onClick={() => onAddSpaceBlock(actionBlock.id)}
+                  title="新增全局块"
+                >
+                  <Plus size={14} strokeWidth={1.8} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => (activeAxis === "time" ? onSplitBlock(actionBlock.id) : onSplitSpaceBlock(actionBlock.id))}
+                disabled={activeAxis === "time" && (actionBlock as ScriptTimelineBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
+                title={activeAxis === "time" ? "拆分区间" : "拆分全局块"}
+              >
                 <Scissors size={14} strokeWidth={1.8} />
-                <span>拆分区间</span>
               </button>
-              <button type="button" onClick={() => setEditingBlockId(actionBlock.id)}>
-                <BookOpenText size={14} strokeWidth={1.8} />
-                <span>编辑卡片</span>
-              </button>
-              <button type="button" onClick={() => onDeleteBlock(actionBlock.id)} disabled={timeline.blocks.length <= 1} className="is-danger">
+              <button
+                type="button"
+                onClick={() => (activeAxis === "time" ? onDeleteBlock(actionBlock.id) : onDeleteSpaceBlock(actionBlock.id))}
+                disabled={activeAxis === "time" ? timeline.blocks.length <= 1 : spaceBlocks.length <= 1}
+                className="is-danger"
+                title={activeAxis === "time" ? "删除区间" : "删除全局块"}
+              >
                 <Trash2 size={14} strokeWidth={1.8} />
-                <span>删除区间</span>
               </button>
-            </div>
-            <div className="script-timeline-side-title">
-              <Palette size={14} strokeWidth={1.8} />
-              <span>标记颜色</span>
             </div>
             <div className="script-timeline-color-list">
               {TIMELINE_COLORS.map((color) => (
@@ -628,64 +1154,50 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                   key={color.value}
                   type="button"
                   className={`script-timeline-color is-${color.value} ${actionBlock.color === color.value ? "is-active" : ""}`}
-                  onClick={() => onUpdateBlock(actionBlock.id, { color: color.value })}
+                  onClick={() =>
+                    activeAxis === "time"
+                      ? onUpdateBlock(actionBlock.id, { color: color.value })
+                      : onUpdateSpaceBlock(actionBlock.id, { color: color.value })
+                  }
                   title={color.name}
                 />
               ))}
             </div>
-            <div className="script-timeline-side-title">
-              <Link2 size={14} strokeWidth={1.8} />
-              <span>连接节点</span>
-            </div>
-            <div className="script-timeline-linked-list">
-              {linkedNodes.length ? (
-                linkedNodes.map((node) => (
-                  <button key={node.id} type="button" onClick={() => onToggleNodeLink(actionBlock.id, node.id)} title="点击移除连接">
-                    <span>{node.kind}</span>
-                    {node.title}
-                  </button>
-                ))
-              ) : (
-                <p>从画布节点端口拖出连线，放到这个时间块上。</p>
-              )}
-            </div>
           </section>
-          <aside className="script-timeline-note-card">
-            <p>结构笔记</p>
-            <div>{actionBlock.content.trim() || "这一段还没有结构笔记。双击时间块打开编辑卡片。"}</div>
-          </aside>
         </div>
       ) : null}
 
-      {editingBlock ? (
-        <section className="script-timeline-edit-card" role="dialog" aria-label="编辑时间区块">
-          <header>
-            <div>
-              <p>编辑时间区块</p>
-              <h3>{formatTimelineTime(editingBlock.startMin)}-{formatTimelineTime(editingBlock.startMin + editingBlock.durationMin)}</h3>
-            </div>
-            <button type="button" onClick={() => setEditingBlockId(null)} title="关闭编辑">
-              <X size={15} strokeWidth={1.8} />
-            </button>
-          </header>
-          <div className="script-timeline-field">
-            <label>区间标题</label>
-            <input
-              value={editingBlock.title}
-              onChange={(event) => onUpdateBlock(editingBlock.id, { title: event.target.value })}
-            />
+      {isTimelineDocumentOpen ? (
+        <section className="script-timeline-md-card script-timeline-md-card--readonly" role="dialog" aria-label="时间轴原始文档">
+          <input className="script-timeline-md-title" value={head.title} readOnly />
+          <div className="script-timeline-md-body">
+            <textarea value={timelineMarkdown} readOnly />
           </div>
-          <div className="script-timeline-field">
-            <label>结构笔记</label>
+        </section>
+      ) : null}
+
+      {editingBlock ? (
+        <section className="script-timeline-md-card" role="dialog" aria-label="编辑时间区块">
+            <input
+              className="script-timeline-md-title"
+              value={editingBlock.title}
+              onChange={(event) =>
+                editingTarget?.type === "time"
+                  ? onUpdateBlock(editingBlock.id, { title: event.target.value })
+                  : onUpdateSpaceBlock(editingBlock.id, { title: event.target.value })
+              }
+            />
+          <div className="script-timeline-md-body">
             <textarea
               value={editingBlock.content}
-              onChange={(event) => onUpdateBlock(editingBlock.id, { content: event.target.value })}
-              placeholder="写下这一段影片承担的主题、人物状态、冲突和视觉方向。支持 Markdown。"
+              onChange={(event) =>
+                editingTarget?.type === "time"
+                  ? onUpdateBlock(editingBlock.id, { content: event.target.value })
+                  : onUpdateSpaceBlock(editingBlock.id, { content: event.target.value })
+              }
+              placeholder="Markdown"
             />
           </div>
-          <footer>
-            <span>这张卡片来自当前时间块，关闭后仍回到胶片条。</span>
-          </footer>
         </section>
       ) : null}
     </div>
@@ -698,6 +1210,11 @@ export const useScriptCanvasSurface = ({
   onOpenEpisode,
   canvasControls,
   screenToFlowPosition,
+  isWritingEditorOpen,
+  onCollapseCanvasCards,
+  onRestoreCanvasCards,
+  onOpenAgent,
+  onSubmitAgentMessage,
 }: Props): CanvasSurfaceConfig => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagePositionRef = useRef<{ x: number; y: number } | null>(null);
@@ -709,8 +1226,46 @@ export const useScriptCanvasSurface = ({
   } = canvasControls;
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
+  const [axisRevealRequest, setAxisRevealRequest] = useState(0);
+  const axisRevealTriggeredRef = useRef(false);
   const canvas = useMemo(() => ensureCanvas(projectData.scriptCanvas), [projectData.scriptCanvas]);
   const timeline = useMemo(() => ensureTimeline(canvas.timeline), [canvas.timeline]);
+
+  const handleMarkdownTitleChange = useCallback(
+    (documentId: string, title: string) => {
+      setProjectData((previous) => {
+        const currentCanvas = ensureCanvas(previous.scriptCanvas);
+        return {
+          ...previous,
+          scriptCanvas: {
+            ...currentCanvas,
+            textNodes: (currentCanvas.textNodes || []).map((node) =>
+              node.id === documentId ? { ...node, title: title.trim() || node.title } : node
+            ),
+          },
+        };
+      });
+    },
+    [setProjectData]
+  );
+
+  const handleMarkdownContentChange = useCallback(
+    (documentId: string, content: string) => {
+      setProjectData((previous) => {
+        const currentCanvas = ensureCanvas(previous.scriptCanvas);
+        return {
+          ...previous,
+          scriptCanvas: {
+            ...currentCanvas,
+            textNodes: (currentCanvas.textNodes || []).map((node) =>
+              node.id === documentId ? { ...node, content } : node
+            ),
+          },
+        };
+      });
+    },
+    [setProjectData]
+  );
 
   const nodes = useMemo<ScriptCanvasNode[]>(() => {
     const pagePositionById = new Map(canvas.pages.map((page) => [page.episodeId, page.position]));
@@ -739,8 +1294,29 @@ export const useScriptCanvasSurface = ({
       },
     }));
 
-    return [...pageNodes, ...imageNodes];
-  }, [canvas.images, canvas.pages, projectData.episodes]);
+    const markdownNodes: ScriptCanvasNode[] = (canvas.textNodes || []).map((textNode, index) => ({
+      id: markdownNodeId(textNode.id),
+      type: "mdText",
+      position: textNode.position || getDefaultMarkdownPosition(index),
+      data: {
+        documentId: textNode.id,
+        title: textNode.title || "档案文档",
+        content: textNode.content || "",
+        preview: compactMarkdownPreview(textNode.content || ""),
+        onTitleChange: handleMarkdownTitleChange,
+        onContentChange: handleMarkdownContentChange,
+      },
+    }));
+
+    return [...pageNodes, ...imageNodes, ...markdownNodes];
+  }, [
+    canvas.images,
+    canvas.pages,
+    canvas.textNodes,
+    handleMarkdownContentChange,
+    handleMarkdownTitleChange,
+    projectData.episodes,
+  ]);
 
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
   const nodeSummaries = useMemo<ScriptTimelineNodeSummary[]>(
@@ -750,8 +1326,10 @@ export const useScriptCanvasSurface = ({
         title:
           node.type === "imageInput"
             ? ((node.data as InspirationImageData).filename || (node.data as InspirationImageData).title || "灵感图片")
+            : node.type === "mdText"
+              ? ((node.data as MarkdownTextData).title || "档案文档")
             : ((node.data as ScriptPageData).title || `第${(node.data as ScriptPageData).episodeId}集`),
-        kind: node.type === "imageInput" ? "图片" : "剧本",
+        kind: node.type === "imageInput" ? "图片" : node.type === "mdText" ? "档案" : "剧本",
       })),
     [nodes]
   );
@@ -805,30 +1383,62 @@ export const useScriptCanvasSurface = ({
     [persistCanvas]
   );
 
-  const handleTimelineDurationChange = useCallback(
-    (durationMin: number) => {
-      const nextDuration = Math.max(30, Math.min(300, Math.round(durationMin || DEFAULT_TIMELINE_DURATION)));
-      persistTimeline((current) => {
-        const ratio = nextDuration / current.durationMin;
-        return {
-          ...current,
-          durationMin: nextDuration,
-          blocks: current.blocks.map((block) => ({
-            ...block,
-            durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(block.durationMin * ratio)),
-          })),
-        };
-      });
-    },
-    [persistTimeline]
-  );
-
   const handleTimelineBlockUpdate = useCallback(
     (blockId: string, patch: Partial<ScriptTimelineBlock>) => {
       persistTimeline((current) => ({
         ...current,
         blocks: current.blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
       }));
+    },
+    [persistTimeline]
+  );
+
+  const handleTimelineHeadUpdate = useCallback(
+    (patch: Partial<ScriptTimelineHead>) => {
+      persistTimeline((current) => ({
+        ...current,
+        head: {
+          ...(current.head || DEFAULT_TIMELINE_HEAD),
+          ...patch,
+          linkedNodeIds: Array.isArray(patch.linkedNodeIds)
+            ? Array.from(new Set(patch.linkedNodeIds))
+            : current.head?.linkedNodeIds || DEFAULT_TIMELINE_HEAD.linkedNodeIds,
+        },
+      }));
+    },
+    [persistTimeline]
+  );
+
+  const handleSpaceBlockUpdate = useCallback(
+    (blockId: string, patch: Partial<ScriptSpatialBlock>) => {
+      persistTimeline((current) => ({
+        ...current,
+        spaceBlocks: normalizeSpaceBlocks(current.spaceBlocks).map((block) =>
+          block.id === blockId ? { ...block, ...patch } : block
+        ),
+      }));
+    },
+    [persistTimeline]
+  );
+
+  const handleSpaceBlockAdd = useCallback(
+    (afterBlockId?: string) => {
+      persistTimeline((current) => {
+        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const insertIndex = afterBlockId ? blocks.findIndex((block) => block.id === afterBlockId) + 1 : blocks.length;
+        const safeIndex = insertIndex > 0 ? insertIndex : blocks.length;
+        const nextBlock = createSpaceBlock(
+          `space-block-${Date.now()}`,
+          "新的全局视角",
+          safeIndex,
+          0.9,
+          TIMELINE_COLORS[blocks.length % TIMELINE_COLORS.length].value,
+          ""
+        );
+        const nextBlocks = blocks.slice();
+        nextBlocks.splice(safeIndex, 0, nextBlock);
+        return { ...current, spaceBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+      });
     },
     [persistTimeline]
   );
@@ -861,6 +1471,31 @@ export const useScriptCanvasSurface = ({
     [persistTimeline]
   );
 
+  const handleSpaceBlockSplit = useCallback(
+    (blockId: string) => {
+      persistTimeline((current) => {
+        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const index = blocks.findIndex((block) => block.id === blockId);
+        if (index < 0) return current;
+        const block = blocks[index];
+        const firstWidth = Math.max(0.45, block.width / 2);
+        const nextBlock: ScriptSpatialBlock = {
+          ...block,
+          id: `space-block-${Date.now()}`,
+          title: `${block.title} · 延展`,
+          content: "",
+          width: firstWidth,
+          linkedNodeIds: [],
+          order: block.order + 0.5,
+        };
+        blocks[index] = { ...block, width: firstWidth };
+        blocks.splice(index + 1, 0, nextBlock);
+        return { ...current, spaceBlocks: blocks.map((item, order) => ({ ...item, order })) };
+      });
+    },
+    [persistTimeline]
+  );
+
   const handleTimelineBlockDelete = useCallback(
     (blockId: string) => {
       persistTimeline((current) => {
@@ -879,34 +1514,53 @@ export const useScriptCanvasSurface = ({
     [persistTimeline]
   );
 
-  const handleTimelineNodeToggle = useCallback(
-    (blockId: string, nodeId: string) => {
-      persistTimeline((current) => ({
-        ...current,
-        blocks: current.blocks.map((block) => {
-          if (block.id !== blockId) return block;
-          const currentIds = new Set(block.linkedNodeIds || []);
-          if (currentIds.has(nodeId)) currentIds.delete(nodeId);
-          else currentIds.add(nodeId);
-          return { ...block, linkedNodeIds: Array.from(currentIds) };
-        }),
-      }));
+  const handleSpaceBlockDelete = useCallback(
+    (blockId: string) => {
+      persistTimeline((current) => {
+        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        if (blocks.length <= 1) return current;
+        const removed = blocks.find((block) => block.id === blockId);
+        const nextBlocks = blocks.filter((block) => block.id !== blockId);
+        if (removed && nextBlocks.length) {
+          nextBlocks[nextBlocks.length - 1] = {
+            ...nextBlocks[nextBlocks.length - 1],
+            width: nextBlocks[nextBlocks.length - 1].width + removed.width,
+          };
+        }
+        return { ...current, spaceBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+      });
     },
     [persistTimeline]
   );
 
-  const commitTimelineBlockConnection = useCallback(
-    (blockId: string, nodeId: string) => {
+  const commitAxisTargetConnection = useCallback(
+    (target: ScriptAxisTarget, nodeId: string) => {
       if (!nodeIdSet.has(nodeId)) return false;
+      if (target.type === "head") {
+        setAxisRevealRequest(Date.now());
+        return true;
+      }
       persistTimeline((current) => ({
         ...current,
-        blocks: current.blocks.map((block) => {
-          if (block.id !== blockId) return block;
-          if (block.linkedNodeIds.includes(nodeId)) return block;
-          return { ...block, linkedNodeIds: [...block.linkedNodeIds, nodeId] };
-        }),
+        head: current.head || DEFAULT_TIMELINE_HEAD,
+        blocks:
+          target.type === "time"
+            ? current.blocks.map((block) => {
+                if (block.id !== target.id) return block;
+                if (block.linkedNodeIds.includes(nodeId)) return block;
+                return { ...block, linkedNodeIds: [...block.linkedNodeIds, nodeId] };
+              })
+            : current.blocks,
+        spaceBlocks:
+          target.type === "space"
+            ? normalizeSpaceBlocks(current.spaceBlocks).map((block) => {
+                if (block.id !== target.id) return block;
+                if (block.linkedNodeIds.includes(nodeId)) return block;
+                return { ...block, linkedNodeIds: [...block.linkedNodeIds, nodeId] };
+              })
+            : normalizeSpaceBlocks(current.spaceBlocks),
       }));
-      setActiveTimelineBlockId(blockId);
+      if (target.type === "time") setActiveTimelineBlockId(target.id);
       return true;
     },
     [nodeIdSet, persistTimeline]
@@ -930,13 +1584,63 @@ export const useScriptCanvasSurface = ({
     [persistTimeline]
   );
 
+  const handleSpaceBlockReorder = useCallback(
+    (sourceBlockId: string, targetBlockId: string) => {
+      persistTimeline((current) => {
+        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const sourceIndex = blocks.findIndex((block) => block.id === sourceBlockId);
+        const targetIndex = blocks.findIndex((block) => block.id === targetBlockId);
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
+        const [moved] = blocks.splice(sourceIndex, 1);
+        blocks.splice(targetIndex, 0, moved);
+        return { ...current, spaceBlocks: blocks.map((block, order) => ({ ...block, order })) };
+      });
+    },
+    [persistTimeline]
+  );
+
   const handleTimelineResizeStart = useCallback(
     (blockId: string, edge: "left" | "right", startX: number, trackWidth: number) => {
       const originalTimeline = timeline;
       const originalBlocks = timeline.blocks.map((block) => ({ ...block }));
       const blockIndex = originalBlocks.findIndex((block) => block.id === blockId);
       const neighborIndex = edge === "left" ? blockIndex - 1 : blockIndex + 1;
-      if (blockIndex < 0 || neighborIndex < 0 || neighborIndex >= originalBlocks.length) return;
+      if (blockIndex < 0) return;
+
+      if (edge === "right" && neighborIndex >= originalBlocks.length) {
+        const handlePointerMove = (event: PointerEvent) => {
+          const deltaMinutes = Math.round(((event.clientX - startX) / Math.max(1, trackWidth)) * originalTimeline.durationMin);
+          const blocks = originalBlocks.map((block) => ({ ...block }));
+          const nextLastDuration = Math.max(
+            MIN_TIMELINE_BLOCK_MINUTES,
+            originalBlocks[blockIndex].durationMin + deltaMinutes
+          );
+          const nextDuration = Math.max(
+            30,
+            originalTimeline.durationMin + (nextLastDuration - originalBlocks[blockIndex].durationMin)
+          );
+          blocks[blockIndex].durationMin = nextLastDuration;
+          persistCanvas((currentCanvas) => ({
+            ...currentCanvas,
+            timeline: {
+              ...originalTimeline,
+              durationMin: nextDuration,
+              blocks: recalculateTimelineBlocks(blocks, nextDuration),
+            },
+          }));
+        };
+
+        const stopPointerMove = () => {
+          document.removeEventListener("pointermove", handlePointerMove);
+          document.removeEventListener("pointerup", stopPointerMove);
+        };
+
+        document.addEventListener("pointermove", handlePointerMove);
+        document.addEventListener("pointerup", stopPointerMove, { once: true });
+        return;
+      }
+
+      if (neighborIndex < 0 || neighborIndex >= originalBlocks.length) return;
       const pairTotal = originalBlocks[blockIndex].durationMin + originalBlocks[neighborIndex].durationMin;
 
       const handlePointerMove = (event: PointerEvent) => {
@@ -974,7 +1678,41 @@ export const useScriptCanvasSurface = ({
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", stopPointerMove, { once: true });
     },
-    [persistTimeline, timeline]
+    [persistCanvas, persistTimeline, timeline]
+  );
+
+  const handleSpaceResizeStart = useCallback(
+    (blockId: string, edge: "left" | "right", startX: number, trackWidth: number) => {
+      const originalBlocks = normalizeSpaceBlocks(timeline.spaceBlocks).map((block) => ({ ...block }));
+      const blockIndex = originalBlocks.findIndex((block) => block.id === blockId);
+      const neighborIndex = edge === "left" ? blockIndex - 1 : blockIndex + 1;
+      if (blockIndex < 0 || neighborIndex < 0 || neighborIndex >= originalBlocks.length) return;
+      const pairTotal = originalBlocks[blockIndex].width + originalBlocks[neighborIndex].width;
+
+      const handlePointerMove = (event: PointerEvent) => {
+        const deltaWeight = ((event.clientX - startX) / Math.max(1, trackWidth)) * originalBlocks.length;
+        const blocks = originalBlocks.map((block) => ({ ...block }));
+        if (edge === "right") {
+          const nextWidth = Math.max(0.45, Math.min(pairTotal - 0.45, originalBlocks[blockIndex].width + deltaWeight));
+          blocks[blockIndex].width = nextWidth;
+          blocks[neighborIndex].width = pairTotal - nextWidth;
+        } else {
+          const nextWidth = Math.max(0.45, Math.min(pairTotal - 0.45, originalBlocks[blockIndex].width - deltaWeight));
+          blocks[blockIndex].width = nextWidth;
+          blocks[neighborIndex].width = pairTotal - nextWidth;
+        }
+        persistTimeline((current) => ({ ...current, spaceBlocks: blocks }));
+      };
+
+      const stopPointerMove = () => {
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", stopPointerMove);
+      };
+
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", stopPointerMove, { once: true });
+    },
+    [persistTimeline, timeline.spaceBlocks]
   );
 
   const buildLinkForCreatedNode = useCallback(
@@ -1054,6 +1792,68 @@ export const useScriptCanvasSurface = ({
     return createdNodeId;
   }, [buildLinkForCreatedNode, setProjectData]);
 
+  const handleAddMarkdownNode = useCallback(
+    (position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
+      const id = `text-${Date.now()}`;
+      const createdNodeId = markdownNodeId(id);
+      const now = Date.now();
+      setProjectData((previous) => {
+        const nextCanvas = ensureCanvas(previous.scriptCanvas);
+        const nextNode: ScriptCanvasTextNode = {
+          id,
+          title: "档案文档",
+          content: "",
+          position: position || getDefaultMarkdownPosition(nextCanvas.textNodes?.length || 0),
+          createdAt: now,
+        };
+        return {
+          ...previous,
+          scriptCanvas: {
+            ...nextCanvas,
+            textNodes: [...(nextCanvas.textNodes || []), nextNode],
+            links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
+          },
+        };
+      });
+      return createdNodeId;
+    },
+    [buildLinkForCreatedNode, setProjectData]
+  );
+
+  const handleAddMarkdownNodeFromTail = useCallback(() => {
+    const position =
+      typeof window === "undefined"
+        ? undefined
+        : screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: Math.max(120, window.innerHeight / 2 - 120),
+          });
+    handleAddMarkdownNode(position);
+  }, [handleAddMarkdownNode, screenToFlowPosition]);
+
+  const handleAddScriptPageFromTail = useCallback(() => {
+    const position =
+      typeof window === "undefined"
+        ? undefined
+        : screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: Math.max(120, window.innerHeight / 2 - 120),
+          });
+    handleAddScriptPage(position);
+  }, [handleAddScriptPage, screenToFlowPosition]);
+
+  const handleAddImageFromTail = useCallback(() => {
+    pendingImagePositionRef.current =
+      typeof window === "undefined"
+        ? null
+        : screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: Math.max(120, window.innerHeight / 2 - 120),
+          });
+    pendingImageConnectionRef.current = null;
+    fileInputRef.current?.click();
+  }, [screenToFlowPosition]);
+
   const handleImageInput = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -1112,8 +1912,12 @@ export const useScriptCanvasSurface = ({
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("image-"))
         .map((change) => change.id.replace(/^image-/, ""));
+      const removedMarkdownIds = changes
+        .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
+        .filter((change) => change.id.startsWith("md-"))
+        .map((change) => change.id.replace(/^md-/, ""));
 
-      if (!hasPositionChange && removedImageIds.length === 0 && removedEpisodeIds.length === 0) return;
+      if (!hasPositionChange && removedImageIds.length === 0 && removedEpisodeIds.length === 0 && removedMarkdownIds.length === 0) return;
 
       const nextNodes = applyNodeChanges(effectiveChanges, nodes);
       const positionById = new Map(nextNodes.map((node) => [node.id, node.position]));
@@ -1121,6 +1925,7 @@ export const useScriptCanvasSurface = ({
       persistCanvas((currentCanvas, previous) => {
         const removedImageSet = new Set(removedImageIds);
         const removedEpisodeSet = new Set(removedEpisodeIds);
+        const removedMarkdownSet = new Set(removedMarkdownIds);
         const nextEpisodes = previous.episodes.filter((episode) => !removedEpisodeSet.has(episode.id));
         const images = currentCanvas.images
           .filter((image) => !removedImageSet.has(image.id))
@@ -1128,9 +1933,16 @@ export const useScriptCanvasSurface = ({
             ...image,
             position: positionById.get(imageNodeId(image.id)) || image.position,
           }));
+        const textNodes = (currentCanvas.textNodes || [])
+          .filter((node) => !removedMarkdownSet.has(node.id))
+          .map((node, index) => ({
+            ...node,
+            position: positionById.get(markdownNodeId(node.id)) || node.position || getDefaultMarkdownPosition(index),
+          }));
         const removedNodeIds = new Set([
           ...removedImageIds.map((id) => imageNodeId(id)),
           ...removedEpisodeIds.map((id) => scriptNodeId(id)),
+          ...removedMarkdownIds.map((id) => markdownNodeId(id)),
         ]);
 
         return {
@@ -1143,13 +1955,25 @@ export const useScriptCanvasSurface = ({
               getDefaultScriptPosition(index),
           })),
           images,
+          textNodes,
           links: currentCanvas.links.filter((link) => {
             if (removedImageIds.some((id) => link.source === imageNodeId(id) || link.target === imageNodeId(id))) return false;
-            return !removedEpisodeIds.some((id) => link.source === scriptNodeId(id) || link.target === scriptNodeId(id));
+            if (removedEpisodeIds.some((id) => link.source === scriptNodeId(id) || link.target === scriptNodeId(id))) return false;
+            return !removedMarkdownIds.some((id) => link.source === markdownNodeId(id) || link.target === markdownNodeId(id));
           }),
           timeline: currentCanvas.timeline
             ? {
                 ...ensureTimeline(currentCanvas.timeline),
+                head: {
+                  ...(ensureTimeline(currentCanvas.timeline).head || DEFAULT_TIMELINE_HEAD),
+                  linkedNodeIds: (ensureTimeline(currentCanvas.timeline).head?.linkedNodeIds || []).filter(
+                    (nodeId) => !removedNodeIds.has(nodeId)
+                  ),
+                },
+                spaceBlocks: normalizeSpaceBlocks(ensureTimeline(currentCanvas.timeline).spaceBlocks).map((block) => ({
+                  ...block,
+                  linkedNodeIds: block.linkedNodeIds.filter((nodeId) => !removedNodeIds.has(nodeId)),
+                })),
                 blocks: ensureTimeline(currentCanvas.timeline).blocks.map((block) => ({
                   ...block,
                   linkedNodeIds: block.linkedNodeIds.filter((nodeId) => !removedNodeIds.has(nodeId)),
@@ -1260,6 +2084,45 @@ export const useScriptCanvasSurface = ({
     if (!snapToGrid) onAlignmentGuideChange(null);
   }, [onAlignmentGuideChange, snapToGrid]);
 
+  const revealAxisFromHead = useCallback(() => {
+    if (axisRevealTriggeredRef.current) return;
+    axisRevealTriggeredRef.current = true;
+    setAxisRevealRequest(Date.now());
+  }, []);
+
+  const handleConnectStart: OnConnectStart = useCallback(() => {
+    axisRevealTriggeredRef.current = false;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (axisRevealTriggeredRef.current) return;
+      const hitAxisTarget = getScriptAxisTargetHitAtPoint(event.clientX, event.clientY);
+      if (hitAxisTarget?.type === "head") revealAxisFromHead();
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (axisRevealTriggeredRef.current) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const hitAxisTarget = getScriptAxisTargetHitAtPoint(touch.clientX, touch.clientY);
+      if (hitAxisTarget?.type === "head") revealAxisFromHead();
+    };
+    const cleanup = () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", cleanup);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", cleanup);
+      document.removeEventListener("touchcancel", cleanup);
+      window.setTimeout(() => {
+        axisRevealTriggeredRef.current = false;
+      }, 0);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", cleanup, { once: true });
+    document.addEventListener("touchmove", handleTouchMove, { passive: true });
+    document.addEventListener("touchend", cleanup, { once: true });
+    document.addEventListener("touchcancel", cleanup, { once: true });
+  }, [revealAxisFromHead]);
+
   const handleConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
       if (connectionState.isValid || !connectionState.fromNode) return;
@@ -1271,8 +2134,12 @@ export const useScriptCanvasSurface = ({
       const fromHandleId = connectionState.fromHandle?.id || null;
       const fromHandleType = fromHandleId === "image" || fromHandleId === "text" ? fromHandleId : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
-      const hitTimelineBlockId = getTimelineBlockHitAtPoint(clientX, clientY);
-      if (hitTimelineBlockId && commitTimelineBlockConnection(hitTimelineBlockId, connectionState.fromNode.id)) {
+      const hitAxisTarget = getScriptAxisTargetHitAtPoint(clientX, clientY);
+      if (hitAxisTarget?.type === "head") {
+        revealAxisFromHead();
+        return;
+      }
+      if (hitAxisTarget && commitAxisTargetConnection(hitAxisTarget, connectionState.fromNode.id)) {
         return;
       }
 
@@ -1322,7 +2189,7 @@ export const useScriptCanvasSurface = ({
         sourceHandleId: fromHandleId,
       });
     },
-    [commitScriptConnection, commitTimelineBlockConnection, screenToFlowPosition]
+    [commitAxisTargetConnection, commitScriptConnection, revealAxisFromHead, screenToFlowPosition]
   );
 
   const handleDropCreate = useCallback(
@@ -1333,13 +2200,27 @@ export const useScriptCanvasSurface = ({
         setConnectionDrop(null);
         return;
       }
+      if (type === "mdText") {
+        handleAddMarkdownNode(connectionDrop.flowPosition, connectionDrop);
+        setConnectionDrop(null);
+        return;
+      }
 
       pendingImagePositionRef.current = connectionDrop.flowPosition;
       pendingImageConnectionRef.current = connectionDrop;
       setConnectionDrop(null);
       fileInputRef.current?.click();
     },
-    [connectionDrop, handleAddScriptPage]
+    [connectionDrop, handleAddMarkdownNode, handleAddScriptPage]
+  );
+
+  const handleScriptNodeClick = useCallback(
+    (node: ScriptCanvasNode) => {
+      const linkedBlock = timeline.blocks.find((block) => block.linkedNodeIds.includes(node.id));
+      if (linkedBlock) setActiveTimelineBlockId(linkedBlock.id);
+      if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
+    },
+    [onOpenEpisode, timeline.blocks]
   );
 
   const overlays = (
@@ -1369,19 +2250,34 @@ export const useScriptCanvasSurface = ({
         </div>
       ) : null}
 
-      <ScriptTimelineDock
-        timeline={timeline}
-        nodeSummaries={nodeSummaries}
-        activeBlockId={activeTimelineBlockId}
-        onActiveBlockChange={setActiveTimelineBlockId}
-        onDurationChange={handleTimelineDurationChange}
-        onUpdateBlock={handleTimelineBlockUpdate}
-        onSplitBlock={handleTimelineBlockSplit}
-        onDeleteBlock={handleTimelineBlockDelete}
-        onToggleNodeLink={handleTimelineNodeToggle}
-        onReorderBlock={handleTimelineBlockReorder}
-        onResizeStart={handleTimelineResizeStart}
-      />
+      {!isWritingEditorOpen ? (
+        <ScriptTimelineDock
+          timeline={timeline}
+          nodeSummaries={nodeSummaries}
+          activeBlockId={activeTimelineBlockId}
+          onActiveBlockChange={setActiveTimelineBlockId}
+          onUpdateHead={handleTimelineHeadUpdate}
+          onUpdateBlock={handleTimelineBlockUpdate}
+          onUpdateSpaceBlock={handleSpaceBlockUpdate}
+          onAddSpaceBlock={handleSpaceBlockAdd}
+          onSplitBlock={handleTimelineBlockSplit}
+          onSplitSpaceBlock={handleSpaceBlockSplit}
+          onDeleteBlock={handleTimelineBlockDelete}
+          onDeleteSpaceBlock={handleSpaceBlockDelete}
+          onReorderBlock={handleTimelineBlockReorder}
+          onReorderSpaceBlock={handleSpaceBlockReorder}
+          onResizeStart={handleTimelineResizeStart}
+          onSpaceResizeStart={handleSpaceResizeStart}
+          axisRevealRequest={axisRevealRequest}
+          onCreateArchiveNode={handleAddMarkdownNodeFromTail}
+          onCreateScriptNode={handleAddScriptPageFromTail}
+          onCreateImageNode={handleAddImageFromTail}
+          onOpenAgent={onOpenAgent}
+          onSubmitAgentMessage={onSubmitAgentMessage}
+          onOpenMarkdownCard={onCollapseCanvasCards}
+          onCloseMarkdownCard={onRestoreCanvasCards}
+        />
+      ) : null}
     </>
   );
 
@@ -1393,10 +2289,9 @@ export const useScriptCanvasSurface = ({
     onNodesChange: handleNodesChange as CanvasSurfaceConfig["onNodesChange"],
     onEdgesChange: handleEdgesChange as CanvasSurfaceConfig["onEdgesChange"],
     onConnect: handleConnect,
+    onConnectStart: handleConnectStart,
     onConnectEnd: handleConnectEnd,
-    onNodeClick: (_, node) => {
-      if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
-    },
+    onNodeClick: (_, node) => handleScriptNodeClick(node as ScriptCanvasNode),
     onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
     onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
     onNodeDragStop: () => onAlignmentGuideChange(null),

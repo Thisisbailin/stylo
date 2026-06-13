@@ -1,6 +1,6 @@
 import React, { useId, useMemo } from "react";
 
-export type GlassDiffusionPresetKey = "bare" | "mist" | "veil";
+export type GlassDiffusionPresetKey = "bare" | "mist" | "veil" | "qalam";
 
 export type GlassDiffusionConfig = {
   width: number;
@@ -76,27 +76,39 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
     fadeInsetY: 54,
     fade: 28,
     edgeAlpha: 0.36,
-    curve: 4.2,
+    curve: 24.2,
+  },
+  qalam: {
+    width: 380,
+    height: 560,
+    blur: 12,
+    fillAlpha: 0,
+    saturate: 113,
+    fadeInsetX: 42,
+    fadeInsetY: 103,
+    fade: 48,
+    edgeAlpha: 0.04,
+    curve: 5.4,
   },
 };
 
 export const QALAM_GLASS_LAB_CONFIG: Omit<GlassDiffusionConfig, "width" | "height"> = {
-  blur: 96,
-  fillAlpha: 0.08,
-  saturate: 107,
-  fadeInsetX: 20,
-  fadeInsetY: 68,
+  blur: 12,
+  fillAlpha: 0,
+  saturate: 113,
+  fadeInsetX: 42,
+  fadeInsetY: 103,
   fade: 48,
-  edgeAlpha: 0.12,
+  edgeAlpha: 0.04,
   curve: 5.4,
 };
 
 export const QALAM_GLASS_LAB_SHADOW = {
-  offsetX: 1,
-  offsetY: 0,
+  offsetX: 24,
+  offsetY: 18,
   blur: 96,
-  alpha: 0.16,
-  spread: 16,
+  alpha: 0.22,
+  spread: 64,
 };
 
 type Props = {
@@ -184,46 +196,46 @@ export const GlassDiffusionField: React.FC<Props> = ({
   boundaryColor,
 }) => {
   const { blur, curve, edgeAlpha, fade, fadeInsetX, fadeInsetY, fillAlpha, saturate } = config;
+  const overscanPad = Math.ceil(Math.max(24, blur * 1.25, fade * 2));
+  const fieldWidth = width + overscanPad * 2;
+  const fieldHeight = height + overscanPad * 2;
 
   const fieldMask = useMemo(() => {
     if (width <= 0 || height <= 0) return "none";
-    const innerWidth = Math.max(24, width - fadeInsetX * 2);
-    const innerHeight = Math.max(24, height - fadeInsetY * 2);
-    const innerX = (width - innerWidth) / 2;
-    const innerY = (height - innerHeight) / 2;
-    const edgeBlur = Math.max(0.1, fade);
-    const outerPath = buildSuperellipsePath(width, height, curve);
-    const innerPath = buildSuperellipsePath(innerWidth, innerHeight, curve, innerX, innerY);
+    const bodyWidth = Math.max(24, width - fadeInsetX);
+    const bodyHeight = Math.max(24, height - fadeInsetY);
+    const bodyX = overscanPad + (width - bodyWidth) / 2;
+    const bodyY = overscanPad + (height - bodyHeight) / 2;
+    const edgeBlur = Math.max(1, fade + blur * 0.4);
+    const bodyPath = buildSuperellipsePath(bodyWidth, bodyHeight, curve, bodyX, bodyY);
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="${fieldWidth}" height="${fieldHeight}" viewBox="0 0 ${fieldWidth} ${fieldHeight}">
         <defs>
-          <clipPath id="outer-clip">
-            <path d="${outerPath}"/>
-          </clipPath>
-          <filter id="melt" x="-20%" y="-20%" width="140%" height="140%">
+          <filter id="melt" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="${edgeBlur}" edgeMode="none" result="soft"/>
             <feComponentTransfer in="soft" result="alpha-shaped">
-              <feFuncA type="gamma" amplitude="1" exponent="0.92" offset="0"/>
+              <feFuncA type="gamma" amplitude="1.42" exponent="0.76" offset="0"/>
             </feComponentTransfer>
           </filter>
         </defs>
-        <g clip-path="url(#outer-clip)">
-          <path d="${innerPath}" fill="white" filter="url(#melt)"/>
-        </g>
+        <path d="${bodyPath}" fill="white" filter="url(#melt)"/>
       </svg>
     `.trim();
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-  }, [curve, fade, fadeInsetX, fadeInsetY, height, width]);
+  }, [blur, curve, fade, fadeInsetX, fadeInsetY, fieldHeight, fieldWidth, height, overscanPad, width]);
 
   const boundaryPath = useMemo(() => {
     if (width <= 0 || height <= 0) return "";
-    return buildSuperellipsePath(width, height, curve);
-  }, [curve, height, width]);
+    return buildSuperellipsePath(width, height, curve, overscanPad, overscanPad);
+  }, [curve, height, overscanPad, width]);
 
   const fieldStyle = useMemo<React.CSSProperties>(
     () => ({
       position: "absolute",
-      inset: 0,
+      left: -overscanPad,
+      top: -overscanPad,
+      width: fieldWidth,
+      height: fieldHeight,
       background: `rgba(255,255,255,${fillAlpha})`,
       backdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
       WebkitBackdropFilter: `blur(${blur}px) saturate(${saturate}%)`,
@@ -237,18 +249,24 @@ export const GlassDiffusionField: React.FC<Props> = ({
       maskPosition: "center",
       pointerEvents: "none",
     }),
-    [blur, fieldMask, fillAlpha, saturate]
+    [blur, fieldHeight, fieldMask, fieldWidth, fillAlpha, overscanPad, saturate]
   );
 
   if (width <= 0 || height <= 0) return null;
 
   return (
-    <div className={className} style={style} aria-hidden="true">
+    <div className={className} style={{ ...style, overflow: "visible" }} aria-hidden="true">
       {showField ? <div style={fieldStyle} /> : null}
       {showBoundary ? (
         <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          viewBox={`0 0 ${width} ${height}`}
+          className="pointer-events-none absolute overflow-visible"
+          style={{
+            left: -overscanPad,
+            top: -overscanPad,
+            width: fieldWidth,
+            height: fieldHeight,
+          }}
+          viewBox={`0 0 ${fieldWidth} ${fieldHeight}`}
           preserveAspectRatio="none"
         >
           <path

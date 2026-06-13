@@ -126,6 +126,14 @@ export interface ScriptCanvasImageNode {
   createdAt: number;
 }
 
+export interface ScriptCanvasTextNode {
+  id: string;
+  title: string;
+  content: string;
+  position: ScriptCanvasPosition;
+  createdAt: number;
+}
+
 export interface ScriptCanvasLink {
   id: string;
   source: string;
@@ -145,16 +153,35 @@ export interface ScriptTimelineBlock {
   linkedNodeIds: string[];
 }
 
+export interface ScriptTimelineHead {
+  title: string;
+  content: string;
+  linkedNodeIds: string[];
+}
+
+export interface ScriptSpatialBlock {
+  id: string;
+  title: string;
+  content: string;
+  color: string;
+  order: number;
+  width: number;
+  linkedNodeIds: string[];
+}
+
 export interface ScriptTimelineState {
   id: string;
   title: string;
   durationMin: number;
+  head?: ScriptTimelineHead;
+  spaceBlocks?: ScriptSpatialBlock[];
   blocks: ScriptTimelineBlock[];
 }
 
 export interface ScriptCanvasState {
   pages: ScriptCanvasPageNode[];
   images: ScriptCanvasImageNode[];
+  textNodes?: ScriptCanvasTextNode[];
   links: ScriptCanvasLink[];
   timeline?: ScriptTimelineState;
 }

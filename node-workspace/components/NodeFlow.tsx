@@ -1068,6 +1068,14 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     setReadingMode(readingMode === "identity" ? "full" : "identity");
   }, [readingMode, setReadingMode]);
 
+  const handleCollapseCanvasCards = useCallback(() => {
+    setReadingMode("identity");
+  }, [setReadingMode]);
+
+  const handleRestoreCanvasCards = useCallback(() => {
+    setReadingMode("full");
+  }, [setReadingMode]);
+
   const sharedCanvasControls = useMemo<SharedCanvasControls>(
     () => ({
       viewport: liveViewport,
@@ -1190,6 +1198,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     onOpenEpisode: (episodeId) => setEditingScriptEpisodeId(episodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
+    isWritingEditorOpen: editingScriptEpisodeId !== null,
+    onCollapseCanvasCards: handleCollapseCanvasCards,
+    onRestoreCanvasCards: handleRestoreCanvasCards,
+    onOpenAgent: () => setQalamOpenRequest((count) => count + 1),
+    onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), text }),
   });
 
   const knowledgeSurface = useKnowledgeCanvasSurface({

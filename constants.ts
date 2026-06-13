@@ -16,6 +16,7 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
   scriptCanvas: {
     pages: [],
     images: [],
+    textNodes: [],
     links: [],
   },
   shotGuide: '',

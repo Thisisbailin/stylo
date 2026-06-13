@@ -119,10 +119,58 @@ const normalizeScriptTimeline = (value: any, nodeIds: Set<string>): ProjectData[
     .sort((a: any, b: any) => a.order - b.order)
     .map((block: any, index: number) => ({ ...block, order: index }));
 
+  const head = value.head && typeof value.head === "object"
+    ? {
+        title: toSafeString(value.head.title || "项目索引"),
+        content: toSafeString(value.head.content),
+        linkedNodeIds: [],
+      }
+    : {
+        title: "项目索引",
+        content: "项目根文档，组织空间轴与时间轴的文件树。",
+        linkedNodeIds: [],
+      };
+
+  const rawSpaceBlocks = Array.isArray(value.spaceBlocks)
+    ? value.spaceBlocks.some((block: any) => block?.id === "space-spec" || block?.title === "规格")
+      ? value.spaceBlocks
+      : [
+          {
+            id: "space-spec",
+            title: "规格",
+            content: "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。",
+            color: "slate",
+            order: -1,
+            width: 0.72,
+            linkedNodeIds: [],
+          },
+          ...value.spaceBlocks,
+        ]
+    : undefined;
+
+  const spaceBlocks = rawSpaceBlocks
+    ? rawSpaceBlocks
+        .map((block: any, index: number) => ({
+          id: ensureStableId(block?.id, "space-block"),
+          title: toSafeString(block?.title || `全局视角 ${index + 1}`),
+          content: toSafeString(block?.content),
+          color: toSafeString(block?.color || "slate"),
+          order: typeof block?.order === "number" && Number.isFinite(block.order) ? block.order : index,
+          width: Math.max(0.45, Number(block?.width) || 1),
+          linkedNodeIds: Array.isArray(block?.linkedNodeIds)
+            ? Array.from(new Set(block.linkedNodeIds.map((nodeId: any) => toSafeString(nodeId)).filter((nodeId: string) => nodeIds.has(nodeId))))
+            : [],
+        }))
+        .sort((a: any, b: any) => a.order - b.order)
+        .map((block: any, index: number) => ({ ...block, order: index }))
+    : undefined;
+
   return {
     id: toSafeString(value.id || "film-structure"),
     title: toSafeString(value.title || "影片时间轴"),
     durationMin,
+    head,
+    ...(spaceBlocks ? { spaceBlocks } : {}),
     blocks,
   } as never;
 };
@@ -149,9 +197,24 @@ const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
         .filter((image: any) => !!image.imageUrl)
     : [];
 
+  const textNodes = Array.isArray(value?.textNodes)
+    ? value.textNodes
+        .map((node: any) => ({
+          id: ensureStableId(node?.id, "script-text"),
+          title:
+            toSafeString(node?.title || "档案文档") === "文本卡片"
+              ? "档案文档"
+              : toSafeString(node?.title || "档案文档"),
+          content: toSafeString(node?.content),
+          position: normalizeScriptCanvasPosition(node?.position),
+          createdAt: typeof node?.createdAt === "number" ? node.createdAt : Date.now(),
+        }))
+    : [];
+
   const nodeIds = new Set<string>([
     ...pages.map((page: any) => `script-${page.episodeId}`),
     ...images.map((image: any) => `image-${image.id}`),
+    ...textNodes.map((node: any) => `md-${node.id}`),
   ]);
   const links = Array.isArray(value?.links)
     ? value.links
@@ -167,7 +230,7 @@ const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
 
   const timeline = normalizeScriptTimeline(value?.timeline, nodeIds);
 
-  return timeline ? { pages, images, links, timeline } : { pages, images, links };
+  return timeline ? { pages, images, textNodes, links, timeline } : { pages, images, textNodes, links };
 };
 
 const normalizeAliases = (values: unknown[], seed: string[]) => {
