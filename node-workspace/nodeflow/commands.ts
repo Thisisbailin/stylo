@@ -23,9 +23,7 @@ type CommandState = NodeFlowMutableState & {
 type AllocateNodeId = (nodeType: NodeType) => string;
 
 const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
-  knowledge: { width: 360, height: 260 },
   scriptBoard: { width: 920 },
-  storyboardBoard: { width: 1080 },
   identityCard: { width: 760 },
   audioInput: { width: 340 },
   videoInput: { width: 360 },

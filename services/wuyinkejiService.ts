@@ -90,7 +90,7 @@ export const submitImageTask = async (
     }
 
     try {
-        console.log("--- [Phase 4] Submit Image Task (Nano Banana) ---");
+        console.log("--- [Multimodal] Submit Image Task (Nano Banana) ---");
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
         };

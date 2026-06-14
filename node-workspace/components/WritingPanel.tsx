@@ -223,7 +223,6 @@ const draftToProjectEpisodes = (episodes: WritingEpisode[]): Episode[] =>
         .join("\n\n"),
       scenes,
       characters: cast,
-      shots: [],
       status: "pending",
     };
   });
@@ -276,12 +275,8 @@ const mergeEpisodes = (previous: Episode[], parsed: Episode[]) => {
     return {
       ...episode,
       summary: prev?.summary,
-      shots: prev?.shots || [],
       status: prev?.status || "pending",
       errorMsg: prev?.errorMsg,
-      shotGenUsage: prev?.shotGenUsage,
-      soraGenUsage: prev?.soraGenUsage,
-      storyboardGenUsage: prev?.storyboardGenUsage,
     };
   });
 };

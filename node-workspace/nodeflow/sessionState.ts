@@ -23,9 +23,6 @@ export const createEmptyNodeFlowContextSnapshot = (): NodeFlowContextSnapshot =>
   episodes: [],
   designAssets: [],
   globalStyleGuide: "",
-  shotGuide: "",
-  soraGuide: "",
-  storyboardGuide: "",
   dramaGuide: "",
   context: {
     projectSummary: "",

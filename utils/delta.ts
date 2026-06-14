@@ -1,16 +1,11 @@
-import { Episode, ProjectData, ProjectRoleIdentity, Scene, Shot } from "../types";
-import { normalizeVideoParams } from "./projectData";
+import { Episode, ProjectData, ProjectRoleIdentity, Scene } from "../types";
 
-export type EpisodeDelta = Omit<Episode, "shots" | "scenes">;
+export type EpisodeDelta = Omit<Episode, "scenes">;
 export type SceneDelta = Scene & { episodeId: number };
-export type ShotDelta = Shot & { episodeId: number };
 
 export type ProjectMetaDelta = {
   fileName: string;
   rawScript: string;
-  shotGuide: string;
-  soraGuide: string;
-  storyboardGuide: string;
   dramaGuide: string;
   globalStyleGuide: string;
   designAssets: ProjectData["designAssets"];
@@ -23,7 +18,6 @@ export type ProjectMetaDelta = {
   };
   contextUsage: ProjectData["contextUsage"];
   phase1Usage: ProjectData["phase1Usage"];
-  phase4Usage: ProjectData["phase4Usage"];
   phase5Usage: ProjectData["phase5Usage"];
   stats: ProjectData["stats"];
 };
@@ -32,12 +26,10 @@ export type ProjectDelta = {
   meta?: ProjectMetaDelta;
   episodes?: EpisodeDelta[];
   scenes?: SceneDelta[];
-  shots?: ShotDelta[];
   roles?: ProjectRoleIdentity[];
   deleted?: {
     episodes?: number[];
     scenes?: { episodeId: number; sceneId: string }[];
-    shots?: { episodeId: number; shotId: string }[];
     roles?: string[];
   };
 };
@@ -53,9 +45,6 @@ const stableStringify = (value: unknown) => {
 const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   fileName: data.fileName,
   rawScript: data.rawScript,
-  shotGuide: data.shotGuide,
-  soraGuide: data.soraGuide,
-  storyboardGuide: data.storyboardGuide,
   dramaGuide: data.dramaGuide,
   globalStyleGuide: data.globalStyleGuide,
   designAssets: data.designAssets,
@@ -68,7 +57,6 @@ const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   },
   contextUsage: data.contextUsage,
   phase1Usage: data.phase1Usage,
-  phase4Usage: data.phase4Usage,
   phase5Usage: data.phase5Usage,
   stats: data.stats,
 });
@@ -80,9 +68,6 @@ const toEpisodeDelta = (episode: Episode): EpisodeDelta => ({
   summary: episode.summary,
   status: episode.status,
   errorMsg: episode.errorMsg,
-  shotGenUsage: episode.shotGenUsage,
-  soraGenUsage: episode.soraGenUsage,
-  storyboardGenUsage: episode.storyboardGenUsage,
 });
 
 const toSceneDelta = (episodeId: number, scene: Scene): SceneDelta => ({
@@ -94,12 +79,6 @@ const toSceneDelta = (episodeId: number, scene: Scene): SceneDelta => ({
   timeOfDay: scene.timeOfDay,
   location: scene.location,
   metadata: scene.metadata,
-});
-
-const toShotDelta = (episodeId: number, shot: Shot): ShotDelta => ({
-  ...shot,
-  episodeId,
-  videoParams: normalizeVideoParams(shot.videoParams),
 });
 
 const mapByKey = <T>(items: T[], keyFn: (item: T) => string) => {
@@ -114,7 +93,6 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
       meta: buildMeta(current),
       episodes: current.episodes.map(toEpisodeDelta),
       scenes: current.episodes.flatMap((ep) => ep.scenes.map((scene) => toSceneDelta(ep.id, scene))),
-      shots: current.episodes.flatMap((ep) => ep.shots.map((shot) => toShotDelta(ep.id, shot))),
       roles: current.context.roles,
       deleted: {},
     };
@@ -170,27 +148,6 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
   if (sceneUpserts.length > 0) delta.scenes = sceneUpserts;
   if (sceneDeletes.length > 0) delta.deleted!.scenes = sceneDeletes;
 
-  const currentShots = current.episodes.flatMap((ep) => ep.shots.map((shot) => toShotDelta(ep.id, shot)));
-  const baseShots = base.episodes.flatMap((ep) => ep.shots.map((shot) => toShotDelta(ep.id, shot)));
-  const currentShotsMap = mapByKey(currentShots, (shot) => `${shot.episodeId}::${shot.id}`);
-  const baseShotsMap = mapByKey(baseShots, (shot) => `${shot.episodeId}::${shot.id}`);
-  const shotUpserts: ShotDelta[] = [];
-  const shotDeletes: { episodeId: number; shotId: string }[] = [];
-
-  currentShotsMap.forEach((shot, key) => {
-    const baseShot = baseShotsMap.get(key);
-    if (!baseShot || stableStringify(shot) !== stableStringify(baseShot)) {
-      shotUpserts.push(shot);
-    }
-  });
-  baseShotsMap.forEach((shot, key) => {
-    if (!currentShotsMap.has(key)) {
-      shotDeletes.push({ episodeId: shot.episodeId, shotId: shot.id });
-    }
-  });
-  if (shotUpserts.length > 0) delta.shots = shotUpserts;
-  if (shotDeletes.length > 0) delta.deleted!.shots = shotDeletes;
-
   const currentRolesMap = mapByKey(current.context.roles, (role) => role.id);
   const baseRolesMap = mapByKey(base.context.roles, (role) => role.id);
   const roleUpserts: ProjectRoleIdentity[] = [];
@@ -220,7 +177,6 @@ export const isDeltaEmpty = (delta: ProjectDelta) => {
   if (delta.meta) return false;
   if (delta.episodes && delta.episodes.length > 0) return false;
   if (delta.scenes && delta.scenes.length > 0) return false;
-  if (delta.shots && delta.shots.length > 0) return false;
   if (delta.roles && delta.roles.length > 0) return false;
   if (delta.deleted && Object.values(delta.deleted).some((list) => list && list.length > 0)) return false;
   return true;

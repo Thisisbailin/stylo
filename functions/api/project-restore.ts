@@ -56,9 +56,6 @@ const getDeviceId = (request: Request, body?: any) => {
 type ProjectMeta = {
   fileName: string;
   rawScript: string;
-  shotGuide: string;
-  soraGuide: string;
-  storyboardGuide: string;
   dramaGuide: string;
   globalStyleGuide: string;
   designAssets: Array<Record<string, unknown>>;
@@ -71,7 +68,6 @@ type ProjectMeta = {
   };
   contextUsage: Record<string, unknown>;
   phase1Usage: Record<string, unknown>;
-  phase4Usage: Record<string, unknown>;
   phase5Usage: Record<string, unknown>;
   stats: Record<string, unknown>;
 };
@@ -79,16 +75,10 @@ type ProjectMeta = {
 const emptyTokenUsage = { promptTokens: 0, responseTokens: 0, totalTokens: 0 };
 const emptyStats = {
   context: { total: 0, success: 0, error: 0 },
-  shotGen: { total: 0, success: 0, error: 0 },
-  soraGen: { total: 0, success: 0, error: 0 },
-  storyboardGen: { total: 0, success: 0, error: 0 },
 };
 const DEFAULT_META: ProjectMeta = {
   fileName: "",
   rawScript: "",
-  shotGuide: "",
-  soraGuide: "",
-  storyboardGuide: "",
   dramaGuide: "",
   globalStyleGuide: "",
   designAssets: [],
@@ -101,7 +91,6 @@ const DEFAULT_META: ProjectMeta = {
   },
   contextUsage: emptyTokenUsage,
   phase1Usage: {},
-  phase4Usage: emptyTokenUsage,
   phase5Usage: emptyTokenUsage,
   stats: emptyStats
 };
@@ -118,9 +107,6 @@ const safeJsonParse = <T>(value: unknown, fallback: T): T => {
 const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   fileName: typeof projectData?.fileName === "string" ? projectData.fileName : "",
   rawScript: typeof projectData?.rawScript === "string" ? projectData.rawScript : "",
-  shotGuide: typeof projectData?.shotGuide === "string" ? projectData.shotGuide : "",
-  soraGuide: typeof projectData?.soraGuide === "string" ? projectData.soraGuide : "",
-  storyboardGuide: typeof projectData?.storyboardGuide === "string" ? projectData.storyboardGuide : "",
   dramaGuide: typeof projectData?.dramaGuide === "string" ? projectData.dramaGuide : "",
   globalStyleGuide: typeof projectData?.globalStyleGuide === "string" ? projectData.globalStyleGuide : "",
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
@@ -133,7 +119,6 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   },
   contextUsage: projectData?.contextUsage || emptyTokenUsage,
   phase1Usage: projectData?.phase1Usage || {},
-  phase4Usage: projectData?.phase4Usage || emptyTokenUsage,
   phase5Usage: projectData?.phase5Usage || emptyTokenUsage,
   stats: { ...emptyStats, ...(projectData?.stats || {}) }
 });
@@ -141,7 +126,6 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
 const collectProjectParts = (projectData: any) => {
   const episodes = Array.isArray(projectData?.episodes) ? projectData.episodes : [];
   const scenes: Array<{ episodeId: number; scene: any }> = [];
-  const shots: Array<{ episodeId: number; shot: any }> = [];
 
   episodes.forEach((episode: any) => {
     const episodeId = episode?.id;
@@ -151,30 +135,18 @@ const collectProjectParts = (projectData: any) => {
     });
   });
 
-  episodes.forEach((episode: any) => {
-    const episodeId = episode?.id;
-    if (!Array.isArray(episode?.shots)) return;
-    episode.shots.forEach((shot: any) => {
-      shots.push({ episodeId, shot });
-    });
-  });
-
   const episodeRows = episodes.map((episode: any) => ({
     id: episode.id,
     title: episode.title,
     content: episode.content,
     summary: episode.summary,
     status: episode.status,
-    errorMsg: episode.errorMsg,
-    shotGenUsage: episode.shotGenUsage,
-    soraGenUsage: episode.soraGenUsage,
-    storyboardGenUsage: episode.storyboardGenUsage
+    errorMsg: episode.errorMsg
   }));
 
   return {
     episodes: episodeRows,
     scenes,
-    shots,
     roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
   };
 };
@@ -188,9 +160,6 @@ async function ensureTables(env: Env) {
   ).run();
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_project_scenes (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, scene_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id, scene_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_shots (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, shot_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id, shot_id))"
   ).run();
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_project_characters (user_id TEXT NOT NULL, char_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, char_id))"
@@ -218,7 +187,6 @@ const ensureSchema = async (env: Env) => {
   await ensureColumn(env, "user_project_meta", "last_op_id", "TEXT");
   await ensureColumn(env, "user_project_episodes", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_scenes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_shots", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_characters", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_locations", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_snapshots", "data", "TEXT");
@@ -276,12 +244,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     .bind(userId)
     .all();
 
-  const shotsResult = await env.DB.prepare(
-    "SELECT episode_id, shot_id, data FROM user_project_shots WHERE user_id = ?1"
-  )
-    .bind(userId)
-    .all();
-
   const episodesMap = new Map<number, any>();
   (episodesResult?.results || []).forEach((row: any) => {
     const epData = safeJsonParse<Record<string, unknown>>(row.data, {});
@@ -292,11 +254,7 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
       summary: epData.summary,
       status: epData.status || "pending",
       errorMsg: epData.errorMsg,
-      shotGenUsage: epData.shotGenUsage,
-      soraGenUsage: epData.soraGenUsage,
-      storyboardGenUsage: epData.storyboardGenUsage,
-      scenes: [],
-      shots: []
+      scenes: []
     });
   });
 
@@ -307,7 +265,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
         title: "",
         content: "",
         scenes: [],
-        shots: [],
         status: "pending"
       });
     }
@@ -324,12 +281,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     });
   });
 
-  (shotsResult?.results || []).forEach((row: any) => {
-    const shotData = safeJsonParse<Record<string, unknown>>(row.data, {});
-    const episode = getEpisode(row.episode_id);
-    episode.shots.push({ ...shotData, id: row.shot_id });
-  });
-
   const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
 
   const projectData = {
@@ -341,9 +292,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
       episodeSummaries: meta.context?.episodeSummaries || [],
       roles: metaRoles,
     },
-    shotGuide: meta.shotGuide || "",
-    soraGuide: meta.soraGuide || "",
-    storyboardGuide: meta.storyboardGuide || "",
     dramaGuide: meta.dramaGuide || "",
     globalStyleGuide: meta.globalStyleGuide || "",
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
@@ -351,7 +299,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     nodeDefaults: meta.nodeDefaults && typeof meta.nodeDefaults === "object" ? meta.nodeDefaults : null,
     contextUsage: meta.contextUsage || emptyTokenUsage,
     phase1Usage: meta.phase1Usage || {},
-    phase4Usage: meta.phase4Usage || emptyTokenUsage,
     phase5Usage: meta.phase5Usage || emptyTokenUsage,
     stats: { ...emptyStats, ...(meta.stats || {}) }
   };
@@ -416,7 +363,6 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     await context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId).run();
     await context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_shots WHERE user_id = ?1").bind(userId).run();
     await context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1").bind(userId).run();
     await context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1").bind(userId).run();
 
@@ -433,14 +379,6 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         "INSERT INTO user_project_scenes (user_id, episode_id, scene_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)"
       )
         .bind(userId, scene.episodeId, scene.scene.id, JSON.stringify(scene.scene), updatedAt)
-        .run();
-    }
-
-    for (const shot of parts.shots) {
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_shots (user_id, episode_id, shot_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)"
-      )
-        .bind(userId, shot.episodeId, shot.shot.id, JSON.stringify(shot.shot), updatedAt)
         .run();
     }
 

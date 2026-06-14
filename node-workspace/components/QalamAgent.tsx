@@ -16,7 +16,6 @@ import {
 import { QalamChatContent } from "./qalam/QalamChatContent";
 import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./qalam/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { useKnowledgeStore } from "../store/knowledgeStore";
 import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
 import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
@@ -51,12 +50,12 @@ const WORK_HINT_KEYWORDS = [
   "场景",
   "角色",
   "剧集",
-  "镜头",
-  "分镜",
+  "画面",
+  "视觉",
   "对白",
   "台词",
-  "知识",
-  "knowledge",
+  "档案",
+  "archive",
   "角色库",
   "场景库",
   "总结",
@@ -473,44 +472,7 @@ export const QalamAgent: React.FC<Props> = ({
         viewport: viewport || undefined,
         activeView,
       }),
-      getKnowledgeSnapshot: () => {
-        const state = useKnowledgeStore.getState();
-        return {
-          revision: state.revision,
-          nodes: state.nodes,
-          links: state.links,
-        };
-      },
       getPendingExecutionApprovals: () => Object.values(pendingExecutionApprovals),
-      createDerivedKnowledgeNode: (input) => {
-        const state = useKnowledgeStore.getState();
-        if (input.anchorType && input.anchorRef) {
-          return state.createDerivedNodeForAnchor(input);
-        }
-        return state.createDerivedNode(input);
-      },
-      createDerivedKnowledgeLink: (input) => useKnowledgeStore.getState().createDerivedLink(input),
-      removeDerivedKnowledgeLink: (input) => useKnowledgeStore.getState().removeDerivedLink(input),
-      supersedeDerivedKnowledgeNode: (input) => {
-        const state = useKnowledgeStore.getState();
-        if (input.anchorType && input.anchorRef) {
-          return state.supersedeDerivedNodeForAnchor(input);
-        }
-        const node = state.supersedeDerivedNode(input);
-        const nextState = useKnowledgeStore.getState();
-        const previousNode = nextState.nodes.find((item) => item.id === input.nodeId || item.ref === input.nodeRef);
-        const supersedeLink = [...nextState.links]
-          .reverse()
-          .find((link) => link.type === (input.relationType || "supersedes") && link.fromNodeId === node.id);
-        if (!previousNode || !supersedeLink) {
-          throw new Error("Knowledge supersede completed but the resulting lifecycle chain could not be resolved.");
-        }
-        return {
-          previousNode,
-          node,
-          link: supersedeLink,
-        };
-      },
       updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
       addNode,
       updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
@@ -553,14 +515,6 @@ export const QalamAgent: React.FC<Props> = ({
             viewport: viewport || undefined,
             activeView: activeView ?? null,
           }) satisfies NodeFlowFile,
-        getKnowledgeSnapshot: () => {
-          const state = useKnowledgeStore.getState();
-          return {
-            revision: state.revision,
-            nodes: state.nodes,
-            links: state.links,
-          };
-        },
       }),
     [
       activeView,
@@ -906,9 +860,6 @@ export const QalamAgent: React.FC<Props> = ({
       if (runResult.updatedProjectData) {
         setProjectData(runResult.updatedProjectData);
       }
-      if (runResult.updatedKnowledge) {
-        useKnowledgeStore.getState().applyKnowledgeSnapshot(runResult.updatedKnowledge);
-      }
       if (runResult.updatedNodeFlow) {
         importNodeFlow(runResult.updatedNodeFlow);
       }
@@ -1088,7 +1039,6 @@ export const QalamAgent: React.FC<Props> = ({
     return (
       (projectData.contextUsage?.totalTokens || 0) +
       sumPhase(projectData.phase1Usage) +
-      (projectData.phase4Usage?.totalTokens || 0) +
       (projectData.phase5Usage?.totalTokens || 0)
     );
   }, [projectData]);
@@ -1205,7 +1155,7 @@ export const QalamAgent: React.FC<Props> = ({
                 type="button"
                 onClick={onOpenStats}
                 className="pointer-events-auto inline-flex h-8 items-center rounded-full border border-white/8 bg-white/6 px-3 text-[11px] text-[var(--app-text-secondary)] backdrop-blur-md transition hover:border-white/12 hover:bg-white/9 hover:text-[var(--app-text-primary)]"
-                title="打开 Agent Setting"
+                title="打开 Setting"
               >
                 <span>{formatNumber(tokenUsage)}</span>
               </button>

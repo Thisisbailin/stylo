@@ -1,5 +1,4 @@
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
-import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 import type { NodeFlowFile } from "../../node-workspace/types";
 import type {
@@ -11,8 +10,9 @@ import type {
 import { LIST_PROJECT_RESOURCE_TARGETS } from "../tools/listProjectResources";
 import { READ_PROJECT_RESOURCE_TARGETS } from "../tools/readProjectResource";
 import { SEARCH_PROJECT_RESOURCE_FACETS, SEARCH_PROJECT_RESOURCE_LAYERS } from "../tools/searchProjectResource";
-import { EDIT_KNOWLEDGE_TARGETS } from "../tools/editKnowledgeResource";
+import { EDIT_SCRIPT_TARGETS } from "../tools/editScriptResource";
 import { OPERATE_NODEFLOW_TARGETS, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
+import { buildScriptResourceLinks, buildScriptResourceNodes } from "../tools/scriptResources";
 
 const PROJECT_SUMMARY_LIMIT = 480;
 const EPISODE_SUMMARY_LIMIT = 200;
@@ -49,8 +49,8 @@ const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
     scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS],
   },
   edit: {
-    tools: ["edit_knowledge_resource"],
-    resources: [...EDIT_KNOWLEDGE_TARGETS],
+    tools: ["edit_script_resource"],
+    resources: [...EDIT_SCRIPT_TARGETS],
   },
   operate: {
     tools: ["operate_project_resource"],
@@ -77,7 +77,6 @@ export const summarizeRecentSuccessfulActions = (messages: AgentSessionMessage[]
 
 export const buildAgentEnvironment = ({
   projectData,
-  knowledgeSnapshot,
   nodeFlowSnapshot,
   executionApprovals,
   runtimeMode,
@@ -85,7 +84,6 @@ export const buildAgentEnvironment = ({
   sessionMessages,
 }: {
   projectData: ProjectData;
-  knowledgeSnapshot: KnowledgeSnapshot;
   nodeFlowSnapshot: NodeFlowFile;
   executionApprovals?: NodeFlowExecutionApprovalProposal[];
   runtimeMode: "browser" | "edge_full";
@@ -116,12 +114,11 @@ export const buildAgentEnvironment = ({
     (count, episode) => count + (episode.scenes || []).length,
     0
   );
-  const canonicalKnowledgeNodeCount = knowledgeSnapshot.nodes.filter(
-    (node) => node.origin === "canonical-source"
-  ).length;
-  const derivedKnowledgeNodeCount = knowledgeSnapshot.nodes.filter(
-    (node) => node.origin === "agent-derived"
-  ).length;
+  const scriptNodes = buildScriptResourceNodes(projectData);
+  const scriptLinks = buildScriptResourceLinks(projectData);
+  const sourceNodeCount = scriptNodes.filter((node) => node.resourceType === "source_node").length;
+  const archiveNodeCount = scriptNodes.filter((node) => node.resourceType === "archive_node").length;
+  const spaceBlockCount = scriptNodes.filter((node) => node.resourceType === "space_block").length;
 
   const capabilityManifest = buildCapabilityManifest();
   const enabledToolSet = new Set(enabledTools);
@@ -135,19 +132,21 @@ export const buildAgentEnvironment = ({
       episodeSummaries,
       primaryRoles,
       sceneRoles,
-      knowledgeCoverage: {
+      scriptCoverage: {
         hasProjectSummary: Boolean(projectData.context?.projectSummary?.trim()),
         episodeSummaryCount: (projectData.context?.episodeSummaries || []).filter((item) => item.summary?.trim()).length,
         primaryRoleCount: roles.filter((role) => role.kind === "person").length,
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
+        archiveCount: archiveNodeCount,
+        spaceBlockCount,
       },
       readingLayers: {
-        knowledge: {
-          nodeCount: knowledgeSnapshot.nodes.length,
-          linkCount: knowledgeSnapshot.links.length,
-          canonicalNodeCount: canonicalKnowledgeNodeCount,
-          derivedNodeCount: derivedKnowledgeNodeCount,
-          canonicalBackbone: "source.script -> source.episode -> source.scene",
+        script: {
+          nodeCount: scriptNodes.length,
+          linkCount: scriptLinks.length,
+          sourceNodeCount,
+          archiveNodeCount,
+          spaceBlockCount,
         },
         nodeflow: {
           nodeCount: nodeFlowSnapshot.nodes.length,
@@ -159,14 +158,14 @@ export const buildAgentEnvironment = ({
         centerSurface: "Nodes",
         planes: {
           front: "Flow",
-          back: "Knowledge",
+          back: "Script",
         },
         actions: {
           read: {
-            covers: ["knowledge", "nodeflow"],
+            covers: ["script", "nodeflow"],
           },
           edit: {
-            target: "knowledge",
+            target: "script",
           },
           operate: {
             target: "nodeflow",

@@ -1,5 +1,4 @@
 import type {
-  KnowledgeNodeData,
   NodeFlowContextSnapshot,
   NodeFlowLink,
   NodeFlowFile,
@@ -49,19 +48,12 @@ const trimString = (value: unknown) => {
 };
 
 const getNodeData = (node: NodeFlowNode) => (node.data || {}) as Record<string, unknown>;
-const getKnowledgeNodeData = (node: NodeFlowNode) => getNodeData(node) as KnowledgeNodeData;
 
 export const getNodeFlowNodeRef = (node: NodeFlowNode) => trimString(getNodeData(node).qalamNodeRef) || node.id;
 
-export const getNodeFlowNodePlane = (node: NodeFlowNode): NodeFlowNodeRecord["plane"] => {
-  if (node.type !== "knowledge") return "execution";
-  return getKnowledgeNodeData(node).plane || "semantic";
-};
+export const getNodeFlowNodePlane = (_node: NodeFlowNode): NodeFlowNodeRecord["plane"] => "execution";
 
-export const getNodeFlowNodeAssetType = (node: NodeFlowNode) => {
-  if (node.type !== "knowledge") return `execution.${node.type}`;
-  return trimString(getKnowledgeNodeData(node).assetType) || `semantic.${node.type}`;
-};
+export const getNodeFlowNodeAssetType = (node: NodeFlowNode) => `execution.${node.type}`;
 
 export const getNodeFlowNodeTitle = (node: NodeFlowNode, context?: NodeFlowContextSnapshot) =>
   resolveNodeFlowNodeTitle(node, context);
@@ -70,14 +62,6 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
 
   switch (node.type) {
-    case "knowledge":
-      return {
-        content: trimString(data.content) || "",
-        summary: trimString(data.summary) || null,
-        tags: Array.isArray(data.tags) ? data.tags.slice(0, 12) : [],
-        sourceRefs: Array.isArray(data.sourceRefs) ? data.sourceRefs.slice(0, 12) : [],
-        fields: data.fields ?? {},
-      };
     case "text":
       return {
         text: trimString(data.text) || "",
@@ -86,12 +70,6 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
       return {
         episodeId: data.episodeId ?? null,
         sceneId: data.sceneId ?? null,
-      };
-    case "storyboardBoard":
-      return {
-        episodeId: data.episodeId ?? null,
-        sceneId: data.sceneId ?? null,
-        displayMode: data.displayMode ?? null,
       };
     case "identityCard":
       return {
@@ -126,20 +104,6 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         sourceImage: data.sourceImage ?? null,
         outputImage: data.outputImage ?? null,
         annotationCount: Array.isArray(data.annotations) ? data.annotations.length : 0,
-      };
-    case "shot":
-      return {
-        shotId: data.shotId ?? null,
-        duration: data.duration ?? "",
-        shotType: data.shotType ?? "",
-        focalLength: data.focalLength ?? "",
-        movement: data.movement ?? "",
-        composition: data.composition ?? "",
-        blocking: data.blocking ?? "",
-        dialogue: data.dialogue ?? "",
-        sound: data.sound ?? "",
-        soraPrompt: data.soraPrompt ?? "",
-        storyboardPrompt: data.storyboardPrompt ?? "",
       };
     case "imageGen":
     case "nanoBananaImageGen":

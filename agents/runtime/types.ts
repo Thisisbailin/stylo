@@ -1,6 +1,5 @@
 import type { Session } from "@openai/agents";
 import type { ProjectData, QalamToolSettings } from "../../types";
-import type { KnowledgeSnapshot } from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile } from "../../node-workspace/types";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 
@@ -41,19 +40,21 @@ export type AgentEnvironmentProjectDigest = {
     summary: string;
     episodeUsage?: string;
   }>;
-  knowledgeCoverage: {
+  scriptCoverage: {
     hasProjectSummary: boolean;
     episodeSummaryCount: number;
     primaryRoleCount: number;
     sceneRoleCount: number;
+    archiveCount: number;
+    spaceBlockCount: number;
   };
   readingLayers: {
-    knowledge: {
+    script: {
       nodeCount: number;
       linkCount: number;
-      canonicalNodeCount: number;
-      derivedNodeCount: number;
-      canonicalBackbone: string;
+      sourceNodeCount: number;
+      archiveNodeCount: number;
+      spaceBlockCount: number;
     };
     nodeflow: {
       nodeCount: number;
@@ -65,14 +66,14 @@ export type AgentEnvironmentProjectDigest = {
     centerSurface: "Nodes";
     planes: {
       front: "Flow";
-      back: "Knowledge";
+      back: "Script";
     };
     actions: {
       read: {
-        covers: Array<"knowledge" | "nodeflow">;
+        covers: Array<"script" | "nodeflow">;
       };
       edit: {
-        target: "knowledge";
+        target: "script";
       };
       operate: {
         target: "nodeflow";
@@ -187,7 +188,6 @@ export type QalamRunResult = {
   outputItems: AgentOutputItem[];
   toolCalls: AgentExecutedToolCall[];
   updatedProjectData?: ProjectData;
-  updatedKnowledge?: KnowledgeSnapshot;
   updatedNodeFlow?: NodeFlowFile;
   updatedExecutionApprovals?: NodeFlowExecutionApprovalProposal[];
   tracing?: {

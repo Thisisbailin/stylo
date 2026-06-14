@@ -10,9 +10,7 @@ import {
   ProjectData,
   RequestStats,
   Scene,
-  Shot,
   TokenUsage,
-  VideoParams
 } from "../types";
 
 type MergeResult<T> = {
@@ -126,20 +124,6 @@ const mergeOptionalBooleanPreferTrue = (
 const EPISODE_STATUS_ORDER: Episode["status"][] = [
   "pending",
   "generating",
-  "review_shots",
-  "confirmed_shots",
-  "generating_storyboard",
-  "review_storyboard",
-  "generating_sora",
-  "review_sora",
-  "completed",
-  "error"
-];
-
-const VIDEO_STATUS_ORDER: NonNullable<Shot["videoStatus"]>[] = [
-  "idle",
-  "queued",
-  "generating",
   "completed",
   "error"
 ];
@@ -174,28 +158,6 @@ const mergeStatusByOrder = <T extends string>(
   return remoteIndex > localIndex ? remote : local;
 };
 
-const normalizeVideoParams = (params?: VideoParams) => {
-  if (!params) return undefined;
-  const { inputImage, ...rest } = params;
-  return rest;
-};
-
-const mergeVideoParams = (
-  remote?: VideoParams,
-  local?: VideoParams,
-  path?: string,
-  conflicts?: string[]
-) => {
-  if (!remote && !local) return undefined;
-  if (!remote) return local;
-  if (!local) return remote;
-  const remoteNorm = normalizeVideoParams(remote);
-  const localNorm = normalizeVideoParams(local);
-  if (isEqual(remoteNorm, localNorm)) return local;
-  if (path && conflicts) conflicts.push(path);
-  return remote;
-};
-
 const mergeTokenUsage = (remote?: TokenUsage, local?: TokenUsage): TokenUsage | undefined => {
   if (!remote && !local) return undefined;
   return {
@@ -221,10 +183,7 @@ const mergePhase1Usage = (remote?: Phase1Usage, local?: Phase1Usage): Phase1Usag
 });
 
 const mergePerformanceMetrics = (remote?: PerformanceMetrics, local?: PerformanceMetrics): PerformanceMetrics => ({
-  context: mergeRequestStats(remote?.context, local?.context),
-  shotGen: mergeRequestStats(remote?.shotGen, local?.shotGen),
-  soraGen: mergeRequestStats(remote?.soraGen, local?.soraGen),
-  storyboardGen: mergeRequestStats(remote?.storyboardGen, local?.storyboardGen)
+  context: mergeRequestStats(remote?.context, local?.context)
 });
 
 const mergeArrayByKey = <T>(
@@ -287,42 +246,6 @@ const mergeScenes = (remote: Scene[], local: Scene[], path: string): MergeResult
     path
   );
 
-const mergeShots = (remote: Shot[], local: Shot[], path: string): MergeResult<Shot[]> =>
-  mergeArrayByKey(
-    remote || [],
-    local || [],
-    (shot) => shot.id,
-    (remoteShot, localShot, itemPath) => {
-      const conflicts: string[] = [];
-      const merged: Shot = {
-        id: remoteShot.id,
-        duration: mergeString(remoteShot.duration, localShot.duration, `${itemPath}.duration`, conflicts, "prefer-remote"),
-        shotType: mergeString(remoteShot.shotType, localShot.shotType, `${itemPath}.shotType`, conflicts, "prefer-remote"),
-        focalLength: mergeString(remoteShot.focalLength, localShot.focalLength, `${itemPath}.focalLength`, conflicts, "prefer-remote"),
-        movement: mergeString(remoteShot.movement, localShot.movement, `${itemPath}.movement`, conflicts, "prefer-remote"),
-        composition: mergeString(remoteShot.composition, localShot.composition, `${itemPath}.composition`, conflicts, "keep-both"),
-        blocking: mergeString(remoteShot.blocking, localShot.blocking, `${itemPath}.blocking`, conflicts, "keep-both"),
-        dialogue: mergeString(remoteShot.dialogue, localShot.dialogue, `${itemPath}.dialogue`, conflicts, "keep-both"),
-        sound: mergeString(remoteShot.sound, localShot.sound, `${itemPath}.sound`, conflicts, "keep-both"),
-        lightingVfx: mergeString(remoteShot.lightingVfx, localShot.lightingVfx, `${itemPath}.lightingVfx`, conflicts, "keep-both"),
-        editingNotes: mergeString(remoteShot.editingNotes, localShot.editingNotes, `${itemPath}.editingNotes`, conflicts, "keep-both"),
-        notes: mergeString(remoteShot.notes, localShot.notes, `${itemPath}.notes`, conflicts, "keep-both"),
-        soraPrompt: mergeString(remoteShot.soraPrompt, localShot.soraPrompt, `${itemPath}.soraPrompt`, conflicts, "keep-both"),
-        storyboardPrompt: mergeString(remoteShot.storyboardPrompt, localShot.storyboardPrompt, `${itemPath}.storyboardPrompt`, conflicts, "keep-both"),
-        finalVideoPrompt: mergeOptionalString(remoteShot.finalVideoPrompt, localShot.finalVideoPrompt, `${itemPath}.finalVideoPrompt`, conflicts, "keep-both"),
-        videoParams: mergeVideoParams(remoteShot.videoParams, localShot.videoParams, `${itemPath}.videoParams`, conflicts),
-        isApproved: mergeOptionalBooleanPreferTrue(remoteShot.isApproved, localShot.isApproved, `${itemPath}.isApproved`, conflicts),
-        videoStatus: mergeStatusByOrder(remoteShot.videoStatus, localShot.videoStatus, VIDEO_STATUS_ORDER, `${itemPath}.videoStatus`, conflicts),
-        videoUrl: mergeOptionalString(remoteShot.videoUrl, localShot.videoUrl, `${itemPath}.videoUrl`, conflicts, "prefer-remote", false),
-        videoId: mergeOptionalString(remoteShot.videoId, localShot.videoId, `${itemPath}.videoId`, conflicts, "prefer-remote", false),
-        videoStartTime: mergeOptionalNumberMax(remoteShot.videoStartTime, localShot.videoStartTime, `${itemPath}.videoStartTime`, conflicts),
-        videoErrorMsg: mergeOptionalString(remoteShot.videoErrorMsg, localShot.videoErrorMsg, `${itemPath}.videoErrorMsg`, conflicts, "prefer-remote", false)
-      };
-      return { merged, conflicts };
-    },
-    path
-  );
-
 const mergeEpisodes = (remote: Episode[], local: Episode[], path: string): MergeResult<Episode[]> =>
   mergeArrayByKey(
     remote || [],
@@ -331,8 +254,7 @@ const mergeEpisodes = (remote: Episode[], local: Episode[], path: string): Merge
     (remoteEp, localEp, itemPath) => {
       const conflicts: string[] = [];
       const sceneResult = mergeScenes(remoteEp.scenes || [], localEp.scenes || [], `${itemPath}.scenes`);
-      const shotResult = mergeShots(remoteEp.shots || [], localEp.shots || [], `${itemPath}.shots`);
-      conflicts.push(...sceneResult.conflicts, ...shotResult.conflicts);
+      conflicts.push(...sceneResult.conflicts);
 
       const merged: Episode = {
         id: remoteEp.id,
@@ -340,12 +262,8 @@ const mergeEpisodes = (remote: Episode[], local: Episode[], path: string): Merge
         content: mergeString(remoteEp.content, localEp.content, `${itemPath}.content`, conflicts, "keep-both"),
         scenes: sceneResult.merged,
         summary: mergeOptionalString(remoteEp.summary, localEp.summary, `${itemPath}.summary`, conflicts, "keep-both"),
-        shots: shotResult.merged,
         status: mergeStatusByOrder(remoteEp.status, localEp.status, EPISODE_STATUS_ORDER, `${itemPath}.status`, conflicts) || remoteEp.status,
-        errorMsg: remoteEp.errorMsg ?? localEp.errorMsg,
-        shotGenUsage: mergeTokenUsage(remoteEp.shotGenUsage, localEp.shotGenUsage),
-        soraGenUsage: mergeTokenUsage(remoteEp.soraGenUsage, localEp.soraGenUsage),
-        storyboardGenUsage: mergeTokenUsage(remoteEp.storyboardGenUsage, localEp.storyboardGenUsage)
+        errorMsg: remoteEp.errorMsg ?? localEp.errorMsg
       };
       return { merged, conflicts };
     },
@@ -510,11 +428,7 @@ export const mergeProjectData = (remote: ProjectData, local: ProjectData): Merge
     context: contextResult.merged,
     contextUsage: mergeTokenUsage(remote.contextUsage, local.contextUsage),
     phase1Usage: mergePhase1Usage(remote.phase1Usage, local.phase1Usage),
-    phase4Usage: mergeTokenUsage(remote.phase4Usage, local.phase4Usage),
     phase5Usage: mergeTokenUsage(remote.phase5Usage, local.phase5Usage),
-    shotGuide: mergeString(remote.shotGuide, local.shotGuide, "shotGuide", conflicts, "keep-both"),
-    soraGuide: mergeString(remote.soraGuide, local.soraGuide, "soraGuide", conflicts, "keep-both"),
-    storyboardGuide: mergeString(remote.storyboardGuide, local.storyboardGuide, "storyboardGuide", conflicts, "keep-both"),
     dramaGuide: mergeOptionalString(remote.dramaGuide, local.dramaGuide, "dramaGuide", conflicts, "keep-both"),
     globalStyleGuide: mergeOptionalString(remote.globalStyleGuide, local.globalStyleGuide, "globalStyleGuide", conflicts, "keep-both"),
     stats: mergePerformanceMetrics(remote.stats, local.stats)

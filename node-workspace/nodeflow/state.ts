@@ -17,6 +17,25 @@ const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
   seedanceVideoGen: 640,
 };
 
+const NODE_TYPES = new Set<NodeType>([
+  "imageInput",
+  "audioInput",
+  "videoInput",
+  "annotation",
+  "text",
+  "scriptBoard",
+  "identityCard",
+  "imageGen",
+  "nanoBananaImageGen",
+  "wanImageGen",
+  "soraVideoGen",
+  "wanReferenceVideoGen",
+  "viduVideoGen",
+  "seedanceVideoGen",
+]);
+
+const isNodeType = (type: unknown): type is NodeType => typeof type === "string" && NODE_TYPES.has(type as NodeType);
+
 export const getNodeFlowNodeDimensions = (node: NodeFlowNode) => {
   const styleWidth = typeof node.style?.width === "number" ? node.style.width : undefined;
   const styleHeight = typeof node.style?.height === "number" ? node.style.height : undefined;
@@ -57,7 +76,8 @@ export const sanitizeNodeFlowNodeStyle = (type: NodeType, style?: NodeFlowNodeSt
   return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
 };
 
-export const normalizeNodeFlowNode = (node: NodeFlowNode): NodeFlowNode => {
+export const normalizeNodeFlowNode = (node: NodeFlowNode): NodeFlowNode | null => {
+  if (!isNodeType((node as { type?: unknown }).type)) return null;
   const base = createDefaultNodeFlowNodeData(node.type);
   const data = base ? { ...base, ...(node.data || {}) } : node.data || {};
   const position = node.position || { x: 0, y: 0 };
@@ -86,7 +106,9 @@ export const normalizeNodeFlowLink = (link: NodeFlowLink, index: number): NodeFl
 
 export const normalizeNodeFlowData = (nodeFlow: NodeFlowFile) => {
   const nodes = dedupeNodeFlowRefs(
-    Array.isArray(nodeFlow.nodes) ? nodeFlow.nodes.map(normalizeNodeFlowNode) : []
+    Array.isArray(nodeFlow.nodes)
+      ? nodeFlow.nodes.map(normalizeNodeFlowNode).filter((node): node is NodeFlowNode => Boolean(node))
+      : []
   );
   const nodeIds = new Set(nodes.map((node) => node.id));
   const links = Array.isArray(nodeFlow.links)

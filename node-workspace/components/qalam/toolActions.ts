@@ -753,7 +753,6 @@ export const getEpisodeScript = (data: ProjectData, args: any): ReadResult => {
     title: episode.title,
     content: clipText(episode.content || "", maxChars),
     sceneCount: (episode.scenes || []).length,
-    shotCount: (episode.shots || []).length,
   };
 
   if (includeCharacters) {
@@ -970,7 +969,7 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
   const includeList = Array.isArray(args?.include) ? args.include : [];
   const include = new Set(includeList.map((item: any) => String(item)));
   const queryScopes = new Set(
-    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations", "knowledge"]).map(
+    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations", "archives"]).map(
       (item: any) => String(item)
     )
   );
@@ -1151,7 +1150,7 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
       }
     }
 
-    if (matches.length < maxMatches && queryScopes.has("knowledge")) {
+    if (matches.length < maxMatches && queryScopes.has("archives")) {
       const projectSummary = data.context?.projectSummary || "";
       if (projectSummary && toLower(projectSummary).includes(lowerQuery)) {
         matches.push({

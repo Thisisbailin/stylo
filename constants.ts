@@ -19,9 +19,6 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     textNodes: [],
     links: [],
   },
-  shotGuide: '',
-  soraGuide: '',
-  storyboardGuide: '',
   dramaGuide: '',
   globalStyleGuide: '', // Initialize as empty
 
@@ -34,14 +31,10 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     locList: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
     locDeepDive: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
   },
-  phase4Usage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
   phase5Usage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
 
   stats: {
-    context: { total: 0, success: 0, error: 0 },
-    shotGen: { total: 0, success: 0, error: 0 },
-    soraGen: { total: 0, success: 0, error: 0 },
-    storyboardGen: { total: 0, success: 0, error: 0 }
+    context: { total: 0, success: 0, error: 0 }
   }
 };
 

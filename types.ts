@@ -37,35 +37,6 @@ export interface VideoParams {
   inputImageUrl?: string; // Optional: URL reference for image-to-video endpoints
 }
 
-export interface Shot {
-  id: string; // e.g., "1-1-01" (SceneID-ShotNumber)
-  duration: string;
-  shotType: string; // 景别 (Shot Size)
-  focalLength: string; // 焦段
-  movement: string; // 运镜
-  composition: string; // 机位/构图
-  blocking: string; // 调度/表演
-  dialogue: string; // 台词/OS
-  sound: string; // 声音
-  lightingVfx: string; // 光色/VFX
-  editingNotes: string; // 剪辑
-  notes: string; // 备注（氛围/情绪）
-  soraPrompt: string;
-  storyboardPrompt: string; // Phase 4: GPT-4o-style storyboard prompt (Chinese)
-
-  // Phase 5: Video Gen Fields
-  videoStatus?: 'idle' | 'queued' | 'generating' | 'completed' | 'error'; // Added 'queued'
-  videoUrl?: string;
-  videoId?: string; // New: Store the API ID for Remixing
-  videoStartTime?: number; // New: Timestamp when generation started
-  videoErrorMsg?: string;
-
-  // User customizations for Video
-  finalVideoPrompt?: string; // The actual prompt used (user edited)
-  videoParams?: VideoParams;
-  isApproved?: boolean; // User marked as satisfied
-}
-
 export interface SceneMetadata {
   rawTitle: string;
   tokens: string[];
@@ -88,25 +59,15 @@ export interface Episode {
   scenes: Scene[]; // Parsed scenes
   characters?: string[]; // Parsed character list for this episode (optional)
   summary?: string; // Generated summary
-  shots: Shot[];
   status:
     | 'pending'
     | 'generating'
-    | 'review_shots'
-    | 'confirmed_shots'
-    | 'generating_storyboard'
-    | 'review_storyboard'
-    | 'generating_sora'
-    | 'review_sora'
     | 'completed'
     | 'error';
   errorMsg?: string;
-  shotGenUsage?: TokenUsage;
-  soraGenUsage?: TokenUsage;
-  storyboardGenUsage?: TokenUsage;
 }
 
-export type ActiveTab = 'knowledge' | 'visuals' | 'video' | 'lab' | 'stats' | 'projector';
+export type ActiveTab = 'visuals' | 'video' | 'lab' | 'stats';
 
 export interface ScriptCanvasPosition {
   x: number;
@@ -279,9 +240,6 @@ export interface Phase1Usage {
 
 export interface PerformanceMetrics {
   context: RequestStats;
-  shotGen: RequestStats;
-  soraGen: RequestStats;
-  storyboardGen: RequestStats;
 }
 
 export interface ProjectData {
@@ -296,14 +254,8 @@ export interface ProjectData {
   contextUsage?: TokenUsage; // Total usage (Phase 1 + Easter Eggs)
   phase1Usage: Phase1Usage; // Detailed breakdown of Phase 1
 
-  // New usage tracking fields
-  phase4Usage?: TokenUsage; // Visual Assets (Multimodal)
   phase5Usage?: TokenUsage; // Video Studio (Reserved for Prompt Refinement or API cost mapping)
 
-  // Standard Operating Procedures (SOPs) - Loaded from files
-  shotGuide: string;
-  soraGuide: string;
-  storyboardGuide: string;
   dramaGuide?: string;
 
   // Project-Specific Assets (User Uploaded)
@@ -548,7 +500,7 @@ export interface MultimodalConfig {
 export interface AppConfig {
   textConfig: TextServiceConfig;
   videoConfig: VideoServiceConfig;
-  multimodalConfig: MultimodalConfig; // New Phase 4 Config
+  multimodalConfig: MultimodalConfig;
   viduConfig?: ViduServiceConfig;
   videoProvider?: 'default' | 'vidu' | 'seedance';
   rememberApiKeys?: boolean;
@@ -557,11 +509,7 @@ export interface AppConfig {
 
 export enum WorkflowStep {
   IDLE,
-  SETUP_CONTEXT, // Phase 1 (Now Multi-step)
-  GENERATE_SHOTS, // Phase 2
-  GENERATE_SORA, // Phase 3
-  GENERATE_STORYBOARD, // Phase 4 (Storyboard prompts)
-  GENERATE_VIDEO, // Phase 5 (New)
+  SETUP_CONTEXT,
   COMPLETED
 }
 

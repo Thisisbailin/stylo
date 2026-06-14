@@ -37,7 +37,7 @@ export type SharedCanvasControls = {
   onAlignmentGuideChange: (guide: EdgeAlignmentGuide | null) => void;
 };
 
-export type CanvasSurfaceKey = "flow" | "script" | "knowledge";
+export type CanvasSurfaceKey = "flow" | "script";
 
 export type CanvasSurfaceConfig = {
   key: CanvasSurfaceKey;

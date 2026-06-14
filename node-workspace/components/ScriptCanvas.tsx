@@ -71,7 +71,7 @@ type ScriptConnectionDropState = {
   sourceHandleId: string | null;
 };
 
-type ScriptTimelineGuideLine = {
+type ScriptFoundationGuideLine = {
   id: string;
   targetId: string;
   nodeId: string;
@@ -80,7 +80,7 @@ type ScriptTimelineGuideLine = {
   isActive: boolean;
 };
 
-type ScriptTimelineNodeSummary = {
+type ScriptFoundationNodeSummary = {
   id: string;
   title: string;
   kind: "剧本" | "图片" | "档案";
@@ -297,12 +297,12 @@ const formatTimelineTime = (minute: number) => {
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 };
 
-const getNodeLine = (nodeId: string, nodeById: Map<string, ScriptTimelineNodeSummary>) => {
+const getNodeLine = (nodeId: string, nodeById: Map<string, ScriptFoundationNodeSummary>) => {
   const node = nodeById.get(nodeId);
   return `${node?.kind || "文档"}：${node?.title || nodeId}`;
 };
 
-const buildTimelineMarkdown = (timeline: ScriptTimelineState, nodeSummaries: ScriptTimelineNodeSummary[]) => {
+const buildTimelineMarkdown = (timeline: ScriptTimelineState, nodeSummaries: ScriptFoundationNodeSummary[]) => {
   const nodeById = new Map(nodeSummaries.map((node) => [node.id, node]));
   const spaceBlocks = normalizeSpaceBlocks(timeline.spaceBlocks);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
@@ -472,7 +472,6 @@ const createEmptyEpisode = (id: number): Episode => ({
   title: `第${id}集`,
   content: "",
   scenes: [],
-  shots: [],
   status: "pending",
 });
 
@@ -570,9 +569,9 @@ const nodeTypes: NodeTypes = {
   imageInput: InspirationImageNode,
 };
 
-type ScriptTimelineDockProps = {
+type ScriptFoundationProps = {
   timeline: ScriptTimelineState;
-  nodeSummaries: ScriptTimelineNodeSummary[];
+  nodeSummaries: ScriptFoundationNodeSummary[];
   activeBlockId: string;
   onActiveBlockChange: (blockId: string) => void;
   onUpdateHead: (patch: Partial<ScriptTimelineHead>) => void;
@@ -599,18 +598,18 @@ type ScriptTimelineDockProps = {
 
 type ScriptAxisMode = "time" | "space";
 
-type ScriptTimelineMenuState =
+type ScriptFoundationMenuState =
   | { type: "head"; x: number; y: number }
   | { type: "block"; blockId: string; x: number; y: number };
 
-type ScriptNodeCreateMenuState = { x: number; y: number } | null;
+type ScriptFoundationCreateMenuState = { x: number; y: number } | null;
 
-type ScriptTimelineEditTarget =
+type ScriptFoundationEditTarget =
   | { type: "head" }
   | { type: "time"; id: string }
   | { type: "space"; id: string };
 
-const getTimelineMenuStyle = (x: number, y: number, menuWidth = 390): CSSProperties => {
+const getFoundationMenuStyle = (x: number, y: number, menuWidth = 390): CSSProperties => {
   const viewportWidth = typeof window === "undefined" ? 1280 : window.innerWidth;
   const viewportHeight = typeof window === "undefined" ? 720 : window.innerHeight;
   return {
@@ -619,7 +618,7 @@ const getTimelineMenuStyle = (x: number, y: number, menuWidth = 390): CSSPropert
   } as CSSProperties;
 };
 
-const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
+const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   timeline,
   nodeSummaries,
   activeBlockId,
@@ -647,16 +646,16 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<number | null>(null);
-  const lineSignatureRef = useRef("");
+  const foundationLineSignatureRef = useRef("");
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [activeAxis, setActiveAxis] = useState<ScriptAxisMode>("time");
-  const [menuState, setMenuState] = useState<ScriptTimelineMenuState | null>(null);
-  const [editingTarget, setEditingTarget] = useState<ScriptTimelineEditTarget | null>(null);
+  const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
+  const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
   const [isTimelineDocumentOpen, setIsTimelineDocumentOpen] = useState(false);
-  const [timelineGuideLines, setTimelineGuideLines] = useState<ScriptTimelineGuideLine[]>([]);
+  const [foundationGuideLines, setFoundationGuideLines] = useState<ScriptFoundationGuideLine[]>([]);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [agentTailInput, setAgentTailInput] = useState("");
-  const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptNodeCreateMenuState>(null);
+  const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const spaceBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceBlocks), [timeline.spaceBlocks]);
   const activeBlock = timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0];
@@ -703,7 +702,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       const target = event.target as HTMLElement | null;
       if (
         target?.closest(
-          ".script-timeline-floating-menu, .script-timeline-block-menu-wrap, .script-timeline-node-popover, .script-timeline-block, .script-timeline-head-block, .script-timeline-tail"
+          ".script-foundation-floating-menu, .script-foundation-block-menu-wrap, .script-foundation-node-popover, .script-foundation-block, .script-foundation-head-block, .script-foundation-tail"
         )
       ) {
         return;
@@ -721,7 +720,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".script-timeline-md-card")) return;
+      if (target?.closest(".script-foundation-md-card")) return;
       closeMarkdownCard();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -743,8 +742,8 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
     ].filter((target) => target.linkedNodeIds.length);
 
     if (!targets.length) {
-      lineSignatureRef.current = "";
-      setTimelineGuideLines([]);
+      foundationLineSignatureRef.current = "";
+      setFoundationGuideLines([]);
       return;
     }
 
@@ -753,7 +752,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
 
     const measureLines = () => {
       if (!isMounted) return;
-      const nextLines: ScriptTimelineGuideLine[] = [];
+      const nextLines: ScriptFoundationGuideLine[] = [];
       targets.forEach((target) => {
         const targetElement =
           (target.type === activeAxis
@@ -806,9 +805,9 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       });
 
       const signature = JSON.stringify(nextLines);
-      if (signature !== lineSignatureRef.current) {
-        lineSignatureRef.current = signature;
-        setTimelineGuideLines(nextLines);
+      if (signature !== foundationLineSignatureRef.current) {
+        foundationLineSignatureRef.current = signature;
+        setFoundationGuideLines(nextLines);
       }
       animationFrame = window.requestAnimationFrame(measureLines);
     };
@@ -908,24 +907,24 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
   };
 
   return (
-    <div className="script-timeline-dock">
-      {timelineGuideLines.length ? (
-        <svg className="script-timeline-connection-layer" aria-hidden="true">
-          {timelineGuideLines.map((line) => (
+    <div className="script-foundation-dock">
+      {foundationGuideLines.length ? (
+        <svg className="script-foundation-connection-layer" aria-hidden="true">
+          {foundationGuideLines.map((line) => (
             <path
               key={line.id}
-              className={`script-timeline-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
+              className={`script-foundation-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
               d={line.path}
             />
           ))}
         </svg>
       ) : null}
 
-      <div className="script-timeline-filmstrip" aria-label="影片时间轴">
-        <div className={`script-timeline-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
+      <div className="script-foundation-filmstrip" aria-label="剧本基地">
+        <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
           <button
             type="button"
-            className="script-timeline-head-block"
+            className="script-foundation-head-block"
             data-axis-target-type="head"
             data-axis-target-id="head"
             data-axis-active={activeAxis}
@@ -933,16 +932,16 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
             onDoubleClick={handleHeadDoubleClick}
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
-            <svg className="script-timeline-head-icon" viewBox="0 0 56 100" aria-hidden="true">
+            <svg className="script-foundation-head-icon" viewBox="0 0 56 100" aria-hidden="true">
               <path
-                className="script-timeline-head-icon__fill"
+                className="script-foundation-head-icon__fill"
                 d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
               />
               <path
-                className="script-timeline-head-icon__line"
+                className="script-foundation-head-icon__line"
                 d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
               />
-              <g className="script-timeline-head-icon__perfs">
+              <g className="script-foundation-head-icon__perfs">
                 <rect x="13" y="20" width="5" height="13" rx="2.5" />
                 <rect x="24" y="19" width="5" height="14" rx="2.5" />
                 <rect x="35" y="20" width="5" height="13" rx="2.5" />
@@ -953,7 +952,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
           </button>
 
           {!isAgentTailOpen ? (
-            <div ref={trackRef} className="script-timeline-track">
+            <div ref={trackRef} className="script-foundation-track">
               {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex) => {
             const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
             const width =
@@ -990,12 +989,12 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                 onDragEnd={() => setDraggingBlockId(null)}
                 onClick={(event) => handleBlockClick(event, block.id)}
                 onDoubleClick={() => handleBlockDoubleClick(block.id)}
-                className={`script-timeline-block is-${block.color} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
+                className={`script-foundation-block is-${block.color} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
                 style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
               >
                 <button
                   type="button"
-                  className="script-timeline-resize script-timeline-resize--left"
+                  className="script-foundation-resize script-foundation-resize--left"
                   aria-label={activeAxis === "time" ? "调整区间起点" : "调整空间块宽度"}
                   onPointerDown={(event) =>
                     activeAxis === "time"
@@ -1003,8 +1002,8 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                       : handleSpaceResizePointerDown(event, block.id, "left")
                   }
                 />
-                <div className="script-timeline-block__inner">
-                  <div className="script-timeline-block__meta">
+                <div className="script-foundation-block__inner">
+                  <div className="script-foundation-block__meta">
                     <GripVertical size={13} strokeWidth={1.8} />
                     <span>
                       {activeAxis === "time"
@@ -1013,14 +1012,14 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                     </span>
                   </div>
                   <strong>{block.title}</strong>
-                  <div className="script-timeline-block__foot">
+                  <div className="script-foundation-block__foot">
                     <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
                     <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="script-timeline-resize script-timeline-resize--right"
+                  className="script-foundation-resize script-foundation-resize--right"
                   aria-label={activeAxis === "time" ? "调整区间终点" : "调整空间块宽度"}
                   onPointerDown={(event) =>
                     activeAxis === "time"
@@ -1035,9 +1034,9 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
           ) : null}
         </div>
 
-        <div className={`script-timeline-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
+        <div className={`script-foundation-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
           {isAgentTailOpen ? (
-            <div className="script-timeline-tail-composer">
+            <div className="script-foundation-tail-composer">
               <textarea
                 value={agentTailInput}
                 rows={1}
@@ -1056,7 +1055,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
               />
               <button
                 type="button"
-                className="script-timeline-tail-send"
+                className="script-foundation-tail-send"
                 onClick={handleAgentTailSend}
                 title={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
                 aria-label={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
@@ -1065,7 +1064,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
               </button>
             </div>
           ) : (
-            <div className="script-timeline-tail-labels">
+            <div className="script-foundation-tail-labels">
               <button type="button" onClick={handleTailNodeClick} title="新增节点" aria-label="新增节点">
                 <Network size={15} strokeWidth={1.85} />
               </button>
@@ -1090,8 +1089,8 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       </div>
 
       {nodeCreateMenu ? (
-        <div className="script-timeline-node-menu-wrap" style={getTimelineMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 250)}>
-          <section className="script-timeline-floating-menu script-timeline-node-popover">
+        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 250)}>
+          <section className="script-foundation-floating-menu script-foundation-node-popover">
             <button type="button" onClick={() => runNodeCreateAction(onCreateArchiveNode)}>
               <FileText size={15} strokeWidth={1.85} />
               <span>
@@ -1118,9 +1117,9 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       ) : null}
 
       {actionBlock && menuState?.type === "block" ? (
-        <div className="script-timeline-block-menu-wrap" style={getTimelineMenuStyle(menuState.x, menuState.y, 230)}>
-          <section className="script-timeline-floating-menu script-timeline-action-popover">
-            <div className="script-timeline-action-row">
+        <div className="script-foundation-block-menu-wrap" style={getFoundationMenuStyle(menuState.x, menuState.y, 230)}>
+          <section className="script-foundation-floating-menu script-foundation-action-popover">
+            <div className="script-foundation-action-row">
               {activeAxis === "space" ? (
                 <button
                   type="button"
@@ -1148,12 +1147,12 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                 <Trash2 size={14} strokeWidth={1.8} />
               </button>
             </div>
-            <div className="script-timeline-color-list">
+            <div className="script-foundation-color-list">
               {TIMELINE_COLORS.map((color) => (
                 <button
                   key={color.value}
                   type="button"
-                  className={`script-timeline-color is-${color.value} ${actionBlock.color === color.value ? "is-active" : ""}`}
+                  className={`script-foundation-color is-${color.value} ${actionBlock.color === color.value ? "is-active" : ""}`}
                   onClick={() =>
                     activeAxis === "time"
                       ? onUpdateBlock(actionBlock.id, { color: color.value })
@@ -1168,18 +1167,18 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
       ) : null}
 
       {isTimelineDocumentOpen ? (
-        <section className="script-timeline-md-card script-timeline-md-card--readonly" role="dialog" aria-label="时间轴原始文档">
-          <input className="script-timeline-md-title" value={head.title} readOnly />
-          <div className="script-timeline-md-body">
+        <section className="script-foundation-md-card script-foundation-md-card--readonly" role="dialog" aria-label="时间轴原始文档">
+          <input className="script-foundation-md-title" value={head.title} readOnly />
+          <div className="script-foundation-md-body">
             <textarea value={timelineMarkdown} readOnly />
           </div>
         </section>
       ) : null}
 
       {editingBlock ? (
-        <section className="script-timeline-md-card" role="dialog" aria-label="编辑时间区块">
+        <section className="script-foundation-md-card" role="dialog" aria-label="编辑时间区块">
             <input
-              className="script-timeline-md-title"
+              className="script-foundation-md-title"
               value={editingBlock.title}
               onChange={(event) =>
                 editingTarget?.type === "time"
@@ -1187,7 +1186,7 @@ const ScriptTimelineDock: React.FC<ScriptTimelineDockProps> = ({
                   : onUpdateSpaceBlock(editingBlock.id, { title: event.target.value })
               }
             />
-          <div className="script-timeline-md-body">
+          <div className="script-foundation-md-body">
             <textarea
               value={editingBlock.content}
               onChange={(event) =>
@@ -1319,7 +1318,7 @@ export const useScriptCanvasSurface = ({
   ]);
 
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
-  const nodeSummaries = useMemo<ScriptTimelineNodeSummary[]>(
+  const nodeSummaries = useMemo<ScriptFoundationNodeSummary[]>(
     () =>
       nodes.map((node) => ({
         id: node.id,
@@ -2251,7 +2250,7 @@ export const useScriptCanvasSurface = ({
       ) : null}
 
       {!isWritingEditorOpen ? (
-        <ScriptTimelineDock
+        <ScriptFoundation
           timeline={timeline}
           nodeSummaries={nodeSummaries}
           activeBlockId={activeTimelineBlockId}

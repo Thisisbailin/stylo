@@ -8,7 +8,7 @@ import { findProjectedSourceNode } from "../../node-workspace/nodeflow/projectGr
 export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
 export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "remove", "connect", "unlink"] as const;
 export const OPERATE_NODEFLOW_TARGETS = ["nodeflow:node", "nodeflow:link"] as const;
-export const OPERATE_NODEFLOW_NODE_KINDS = ["text", "script_board", "storyboard_board", "character_card"] as const;
+export const OPERATE_NODEFLOW_NODE_KINDS = ["text", "script_board", "character_card"] as const;
 
 type OperateEntity = (typeof OPERATE_NODEFLOW_ENTITIES)[number];
 type OperateAction = (typeof OPERATE_NODEFLOW_ACTIONS)[number];
@@ -43,7 +43,7 @@ const operateProjectResourceParameters = {
     },
     node_kind: {
       type: "string",
-      description: "NodeFlow node kind to create. Supports text, script_board, storyboard_board, character_card, plus aliases script, storyboard, character.",
+      description: "NodeFlow node kind to create. Supports text, script_board, character_card, plus aliases script and character.",
     },
     node_id: {
       type: "string",
@@ -84,11 +84,11 @@ const operateProjectResourceParameters = {
     },
     episode_id: {
       type: "integer",
-      description: "Episode number for script_board or storyboard_board nodes, or for node patching.",
+      description: "Episode number for script_board nodes, or for node patching.",
     },
     scene_id: {
       type: "string",
-      description: "Optional scene id for storyboard_board patching.",
+      description: "Optional scene id for node patching.",
     },
     character_id: {
       type: "string",
@@ -137,7 +137,6 @@ const toPositiveInteger = (value: unknown) => {
 const normalizeNodeKind = (rawNodeKind: unknown): OperateNodeKind | "" => {
   const value = normalizeString(rawNodeKind);
   if (value === "script") return "script_board";
-  if (value === "storyboard") return "storyboard_board";
   if (value === "character") return "character_card";
   if ((OPERATE_NODEFLOW_NODE_KINDS as readonly string[]).includes(value)) {
     return value as OperateNodeKind;
@@ -260,7 +259,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       if (nodeKind === "text" && !text) {
         throw new Error("创建 text 节点时需要 text。");
       }
-      if ((nodeKind === "script_board" || nodeKind === "storyboard_board") && !episodeId) {
+      if (nodeKind === "script_board" && !episodeId) {
         throw new Error(`${nodeKind} 需要 episode_id。`);
       }
       if (nodeKind === "character_card" && !characterId) {
@@ -381,7 +380,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
 
 const resolveNodeType = (nodeKind: OperateNodeKind) => {
   if (nodeKind === "script_board") return "scriptBoard" as const;
-  if (nodeKind === "storyboard_board") return "storyboardBoard" as const;
   if (nodeKind === "character_card") return "identityCard" as const;
   return "text" as const;
 };
@@ -389,7 +387,6 @@ const resolveNodeType = (nodeKind: OperateNodeKind) => {
 const defaultTitle = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.title) return args.title;
   if (args.nodeKind === "script_board") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本";
-  if (args.nodeKind === "storyboard_board") return args.episodeId ? `第 ${args.episodeId} 集分镜表` : "分镜表";
   if (args.nodeKind === "character_card") return "角色卡片";
   return args.text?.slice(0, 24) || "文本";
 };
@@ -397,7 +394,6 @@ const defaultTitle = (args: Extract<ParsedArgs, { entity: "node"; action: "creat
 const defaultNodeRef = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.nodeRef) return args.nodeRef;
   if (args.nodeKind === "script_board") return `ep${args.episodeId || "x"}_script_board`;
-  if (args.nodeKind === "storyboard_board") return `ep${args.episodeId || "x"}_storyboard_board`;
   if (args.nodeKind === "character_card") {
     return `${slugifyRefToken(args.characterId || args.title || "character", "character")}_card`;
   }
@@ -445,11 +441,8 @@ export const operateProjectResourceToolDef = {
         x: args.x,
         y: args.y,
         parentId: args.parentId,
-        episodeId:
-          args.nodeKind === "script_board" || args.nodeKind === "storyboard_board"
-            ? args.episodeId
-            : undefined,
-        sceneId: args.nodeKind === "storyboard_board" ? args.sceneId : undefined,
+        episodeId: args.nodeKind === "script_board" ? args.episodeId : undefined,
+        sceneId: undefined,
         entityType: args.nodeKind === "character_card" ? "character" : undefined,
         entityId: args.nodeKind === "character_card" ? args.characterId : undefined,
       });

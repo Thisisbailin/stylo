@@ -179,7 +179,7 @@ export const ContentBoard: React.FC<Props> = ({ data, onSelectEpisode }) => {
                       onClick={() => onSelectEpisode(idx)}
                       className="text-xs text-[var(--accent-blue)] hover:text-sky-300 underline decoration-[var(--accent-blue)]/40"
                     >
-                      View Script & Shots
+                      View Script
                     </button>
                   </div>
                 </div>

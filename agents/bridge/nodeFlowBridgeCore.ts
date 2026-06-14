@@ -1,13 +1,5 @@
 import type { Connection } from "@xyflow/react";
 import type { ProjectData } from "../../types";
-import type {
-  KnowledgeAnchor,
-  KnowledgeLink,
-  KnowledgeNode,
-  KnowledgeNodeConfidence,
-  KnowledgeNodeStatus,
-  KnowledgeSnapshot,
-} from "../../node-workspace/knowledge/types";
 import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
@@ -49,56 +41,7 @@ import type {
 type NodeFlowBridgeDeps = {
   getProjectData: () => ProjectData;
   getNodeFlowSnapshot: () => NodeFlowFile;
-  getKnowledgeSnapshot: () => KnowledgeSnapshot;
   getPendingExecutionApprovals?: () => NodeFlowExecutionApprovalProposal[];
-  createDerivedKnowledgeNode: (input: {
-    id?: string;
-    ref?: string;
-    kind: string;
-    title: string;
-    content?: Record<string, unknown>;
-    meta?: Record<string, unknown>;
-    status?: KnowledgeNodeStatus;
-    confidence?: KnowledgeNodeConfidence;
-    anchors?: KnowledgeAnchor[];
-    anchorType?: KnowledgeAnchor["type"];
-    anchorRef?: string;
-    anchorSpan?: string;
-    createdAt?: number;
-    updatedAt?: number;
-  }) => KnowledgeNode;
-  createDerivedKnowledgeLink: (input: {
-    id?: string;
-    fromNodeId: string;
-    toNodeId: string;
-    type: string;
-    weight?: number;
-    status?: "active" | "superseded";
-    createdAt?: number;
-    updatedAt?: number;
-  }) => KnowledgeLink;
-  removeDerivedKnowledgeLink: (input: {
-    linkId: string;
-  }) => KnowledgeLink;
-  supersedeDerivedKnowledgeNode: (input: {
-    nodeId?: string;
-    nodeRef?: string;
-    id?: string;
-    ref?: string;
-    kind?: string;
-    title?: string;
-    content?: Record<string, unknown>;
-    meta?: Record<string, unknown>;
-    status?: KnowledgeNodeStatus;
-    confidence?: KnowledgeNodeConfidence;
-    anchors?: KnowledgeAnchor[];
-    anchorType?: KnowledgeAnchor["type"];
-    anchorRef?: string;
-    anchorSpan?: string;
-    relationType?: string;
-    createdAt?: number;
-    updatedAt?: number;
-  }) => { previousNode: KnowledgeNode; node: KnowledgeNode; link: KnowledgeLink };
   updateProjectData: (updater: (prev: ProjectData) => ProjectData) => void;
   addNode: (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
@@ -115,11 +58,9 @@ type NodeFlowBridgeDeps = {
 };
 
 const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
-  "knowledge",
   "text",
   "imageGen",
   "scriptBoard",
-  "storyboardBoard",
   "identityCard",
 ]);
 
@@ -143,37 +84,19 @@ const getNodeFlowPlacement = (
 
 const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string) =>
   (title || "").trim() ||
-  (type === "knowledge"
-    ? "Knowledge Asset"
-    : type === "text"
+  (type === "text"
     ? "文本节点"
     : type === "imageGen"
-      ? "Img Gen"
+        ? "Img Gen"
       : type === "scriptBoard"
         ? "剧本卡片"
-        : type === "storyboardBoard"
-          ? "分镜表格卡片"
-          : "身份卡片");
+        : "身份卡片");
 
 const buildNodeExtraData = (
   input: CreateNodeFlowNodeInput,
   resolvedTitle: string
 ): Partial<NodeFlowNodeData> => {
-  const { type, text, content, plane, assetType, tags, sourceRefs, status, confidence, locked, fields, aspectRatio, episodeId, sceneId, displayMode, entityType, entityId } = input;
-  if (type === "knowledge") {
-    return {
-      title: resolvedTitle,
-      plane: plane || "semantic",
-      assetType: (assetType || "semantic.note").trim() || "semantic.note",
-      content: (content || "").trim(),
-      tags: Array.isArray(tags) ? tags.filter(Boolean) : [],
-      sourceRefs: Array.isArray(sourceRefs) ? sourceRefs.filter(Boolean) : [],
-      status: status || "draft",
-      confidence: confidence || "medium",
-      locked: Boolean(locked),
-      fields: fields || {},
-    } as Partial<NodeFlowNodeData>;
-  }
+  const { type, text, aspectRatio, episodeId, entityType, entityId } = input;
   if (type === "text") {
     const trimmedText = (text || "").trim();
     if (!trimmedText) {
@@ -194,14 +117,6 @@ const buildNodeExtraData = (
     return {
       title: resolvedTitle,
       episodeId,
-    } as Partial<NodeFlowNodeData>;
-  }
-  if (type === "storyboardBoard") {
-    return {
-      title: resolvedTitle,
-      episodeId,
-      sceneId: (sceneId || "").trim() || undefined,
-      displayMode: displayMode === "workflow" ? "workflow" : "table",
     } as Partial<NodeFlowNodeData>;
   }
   return {
@@ -265,7 +180,7 @@ const createNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
-    throw new Error("createNodeFlowNode 当前仅支持 knowledge、text、imageGen、scriptBoard、storyboardBoard、identityCard。");
+    throw new Error("createNodeFlowNode 当前仅支持 text、imageGen、scriptBoard、identityCard。");
   }
   const position = getNodeFlowPlacement(snapshot, input.x, input.y);
   const resolvedTitle = resolveNodeTitle(input.type, input.title);
@@ -606,12 +521,7 @@ const clearNodeFlowExecutionApproval = (
 export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBridge => ({
   getProjectData: deps.getProjectData,
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
-  getKnowledgeSnapshot: deps.getKnowledgeSnapshot,
   getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],
-  createDerivedKnowledgeNode: (input) => deps.createDerivedKnowledgeNode(input),
-  createDerivedKnowledgeLink: (input) => deps.createDerivedKnowledgeLink(input),
-  removeDerivedKnowledgeLink: (input) => deps.removeDerivedKnowledgeLink(input),
-  supersedeDerivedKnowledgeNode: (input) => deps.supersedeDerivedKnowledgeNode(input),
   updateProjectData: deps.updateProjectData,
   addTextNode: (input) => createTextNode(deps, input),
   createNodeFlowNode: (input) => createNodeFlowNode(deps, input),

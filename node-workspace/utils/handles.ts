@@ -7,12 +7,9 @@ const IMAGE_SOURCE_NODE_TYPES = new Set([
 ]);
 
 const TEXT_SOURCE_NODE_TYPES = new Set([
-  "knowledge",
   "text",
   "scriptBoard",
-  "storyboardBoard",
   "identityCard",
-  "shot",
 ]);
 
 const AUDIO_SOURCE_NODE_TYPES = new Set(["audioInput"]);
@@ -64,13 +61,9 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: ["image"], outputs: ["image"] };
     case "prompt":
       return { inputs: [], outputs: ["text"] };
-    case "knowledge":
-      return { inputs: ["text"], outputs: ["text"] };
     case "text":
       return { inputs: ["text"], outputs: ["text"] };
     case "scriptBoard":
-      return { inputs: [], outputs: ["text"] };
-    case "storyboardBoard":
       return { inputs: [], outputs: ["text"] };
     case "identityCard":
       return { inputs: [], outputs: ["text"] };

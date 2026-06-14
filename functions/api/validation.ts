@@ -1,5 +1,3 @@
-import { SHOT_REQUIRED_STRING_KEYS } from "../../utils/shotSchema";
-
 type ValidationResult = { ok: true } | { ok: false; error: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -15,11 +13,7 @@ const PROJECT_PATCH_KEYS = new Set([
   "context",
   "contextUsage",
   "phase1Usage",
-  "phase4Usage",
   "phase5Usage",
-  "shotGuide",
-  "soraGuide",
-  "storyboardGuide",
   "dramaGuide",
   "globalStyleGuide",
   "designAssets",
@@ -47,18 +41,6 @@ export const validateProjectPayload = (data: unknown): ValidationResult => {
     if (ep.status !== undefined && !isString(ep.status)) {
       return { ok: false, error: `episodes[${i}].status is not a string` };
     }
-    if (!Array.isArray(ep.shots)) return { ok: false, error: `episodes[${i}].shots is not an array` };
-
-    for (let j = 0; j < ep.shots.length; j += 1) {
-      const shot = ep.shots[j];
-      if (!isRecord(shot)) return { ok: false, error: `episodes[${i}].shots[${j}] is not an object` };
-      const required = SHOT_REQUIRED_STRING_KEYS;
-      for (const key of required) {
-        if (!isString(shot[key])) {
-          return { ok: false, error: `episodes[${i}].shots[${j}].${key} is not a string` };
-        }
-      }
-    }
   }
 
   return { ok: true };
@@ -82,7 +64,7 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
   if (delta.meta !== undefined) {
     if (!isRecord(delta.meta)) return { ok: false, error: "delta.meta is not an object" };
     const meta = delta.meta as Record<string, unknown>;
-    const stringKeys = ["fileName", "rawScript", "shotGuide", "soraGuide", "storyboardGuide", "dramaGuide", "globalStyleGuide"];
+    const stringKeys = ["fileName", "rawScript", "dramaGuide", "globalStyleGuide"];
     for (const key of stringKeys) {
       if (meta[key] !== undefined && !isString(meta[key])) {
         return { ok: false, error: `delta.meta.${key} is not a string` };
@@ -132,21 +114,6 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
       if (!isString(scene.id)) return { ok: false, error: `delta.scenes[${i}].id is not a string` };
       if (!isString(scene.title)) return { ok: false, error: `delta.scenes[${i}].title is not a string` };
       if (!isString(scene.content)) return { ok: false, error: `delta.scenes[${i}].content is not a string` };
-    }
-  }
-
-  if (delta.shots !== undefined) {
-    if (!Array.isArray(delta.shots)) return { ok: false, error: "delta.shots is not an array" };
-    for (let i = 0; i < delta.shots.length; i += 1) {
-      const shot = delta.shots[i];
-      if (!isRecord(shot)) return { ok: false, error: `delta.shots[${i}] is not an object` };
-      if (!isNumber(shot.episodeId)) return { ok: false, error: `delta.shots[${i}].episodeId is not a number` };
-      const required = SHOT_REQUIRED_STRING_KEYS;
-      for (const key of required) {
-        if (!isString(shot[key])) {
-          return { ok: false, error: `delta.shots[${i}].${key} is not a string` };
-        }
-      }
     }
   }
 

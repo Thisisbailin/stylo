@@ -64,7 +64,6 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
         const parts: string[] = [];
         if (typeof detail.updatedAt === "number") parts.push(`v${detail.updatedAt}`);
         if (typeof detail.episodes === "number") parts.push(`eps ${detail.episodes}`);
-        if (typeof detail.shots === "number") parts.push(`shots ${detail.shots}`);
         if (typeof detail.version === "number") parts.push(`snapshot ${detail.version}`);
         if (typeof detail.mode === "string") parts.push(`mode ${detail.mode}`);
         if (typeof detail.reason === "string") parts.push(`reason: ${detail.reason}`);
@@ -382,7 +381,7 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                     {activeTab === 'multimodal' && (
                         <div className="space-y-4">
                             <div className="p-3 bg-[var(--bg-panel)]/70 border border-[var(--border-subtle)] rounded text-xs text-pink-200 mb-4">
-                                Phase 4 uses Multimodal Intelligence to generate visual concepts. Use an OpenRouter or OpenAI compatible API, or a dedicated image generation service like NanoBanana.
+                                Multimodal Intelligence generates visual concepts. Use an OpenRouter or OpenAI compatible API, or a dedicated image generation service like NanoBanana.
                             </div>
 
                             {/* Provider Switcher */}
@@ -805,15 +804,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, config, onConf
                                         <li className="flex items-start gap-3">
                                             <BrainCircuit size={16} className="text-emerald-500 shrink-0 mt-0.5" />
                                             <div>
-                                                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium block">Script Knowledge Extraction</span>
-                                                <span className="text-xs text-gray-500 block">Builds script-grounded knowledge for characters, scenes, and story structure.</span>
-                                            </div>
-                                        </li>
-                                        <li className="flex items-start gap-3">
-                                            <Film size={16} className="text-blue-500 shrink-0 mt-0.5" />
-                                            <div>
-                                                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium block">Automated Shot Lists</span>
-                                                <span className="text-xs text-gray-500 block">Converts text to professional shooting scripts.</span>
+                                                <span className="text-sm text-gray-800 dark:text-gray-200 font-medium block">Script Archive Structuring</span>
+                                                <span className="text-xs text-gray-500 block">Builds script-grounded archives for characters, scenes, and story structure.</span>
                                             </div>
                                         </li>
                                         <li className="flex items-start gap-3">

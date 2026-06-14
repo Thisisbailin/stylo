@@ -19,7 +19,6 @@ type NodeFlowBuilderDeps = {
 
 const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: number; height: number }> = {
   text: { width: 320, height: 240 },
-  shot: { width: 360, height: 320 },
   annotation: { width: 320, height: 240 },
   imageGen: { width: 320, height: 420 },
   wanImageGen: { width: 320, height: 420 },
@@ -32,7 +31,6 @@ const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: numbe
 const GAP = { x: 72, y: 56 };
 const NODE_HANDLES: Record<CreateNodeFlowMapNodeInput["type"], { inputs: string[]; outputs: string[] }> = {
   text: { inputs: ["text"], outputs: ["text"] },
-  shot: { inputs: ["image"], outputs: ["text"] },
   annotation: { inputs: ["image"], outputs: ["image"] },
   imageGen: { inputs: ["image", "text"], outputs: ["image"] },
   wanImageGen: { inputs: ["image", "text"], outputs: ["image"] },

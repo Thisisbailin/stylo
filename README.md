@@ -6,19 +6,18 @@ The current product is no longer related to Google AI Studio. This repository no
 
 - `Nodes`: the central infinite canvas with two planes
   - `Flow`: the user-facing workflow surface
-  - `Knowledge`: the read-only long-term-memory surface for observing the agent's current knowledge network
+  - `Script`: the project archive and script-organization surface
 - `Qalam Agent`: a single general-purpose project agent built on `@openai/agents`
-- `Projector`: an audio and media lab for voice and multimodal generation
 
 ## What The App Does
 
 - Import and organize project/script data
 - Build visual workflows in `Nodes / Flow`
-- Observe the agent's long-term memory graph in `Nodes / Knowledge`
+- Organize script archives in `Nodes / Script`
 - Run image, video, audio, and reference-based generation flows
 - Use `Qalam Agent` to collaborate across the same graph world:
-  - read canonical source facts
-  - read and evolve long-term knowledge
+  - read project archive facts
+  - edit script resources
   - operate the visible workflow canvas
 - Persist project state locally, with optional cloud sync
 
@@ -32,24 +31,22 @@ The project now revolves around one shared graph philosophy:
 - `link`
 - `map`
 
-This philosophy lands in two tightly related but layered systems:
+This philosophy lands in two tightly related systems:
 
-- `Knowledge`
-  - the lower-level long-term memory data layer for the agent
-  - agent-first
-  - schema-light
-  - not user-editable
+- `Script`
+  - the project archive and script organization surface
+  - user-facing on the space axis
+  - used by the agent for grounded project context
 - `NodeFlow`
   - the upper-level workflow canvas for user work and execution
-  - user-facing on the front side
-  - able to visually carry the knowledge projection on the back side
+  - user-facing flow design and execution
 
 In tool terms, the runtime aims to stay aligned to three atomic actions:
 
 - `read`
-  - unified graph reading across `Knowledge` and `NodeFlow`
+  - unified graph reading across `Script` and `NodeFlow`
 - `edit`
-  - knowledge-layer mutation for the agent's long-term memory graph
+  - script-resource mutation for project archives
 - `operate`
   - nodeflow-layer mutation for the visible workflow canvas
 
@@ -62,12 +59,8 @@ The public tool protocol is now intentionally graph-shaped instead of module-sha
   - uses `layer / entity / view`
   - reads `node / link / map / approval`
 - `edit`
-  - `edit_knowledge_resource`
-  - uses `entity / action`
-  - writes only `Knowledge` graph entities
-  - current atomic actions:
-    - node: `create / supersede`
-    - link: `connect / unlink`
+  - `edit_script_resource`
+  - writes project archive entities on the script surface
 - `operate`
   - `operate_project_resource`
   - uses `entity / action`
@@ -90,8 +83,8 @@ This means the agent and the user are no longer modeled as working in separate s
 They collaborate around the same central `Nodes` world:
 
 - the user works mainly on the `Flow` front side
-- the agent helps operate the front side
-- the agent also thinks, remembers, and accumulates long-term knowledge on the `Knowledge` back side
+- the agent reads and edits project archives through `Script`
+- the agent helps operate the visible workflow canvas
 
 ## Current Runtime Stack
 
@@ -109,7 +102,7 @@ Qalam currently supports multiple model/provider lanes depending on the task:
 
 - Agent/chat: `Qwen` or `OpenRouter`
 - Image and multimodal text generation: OpenAI-compatible or provider-specific endpoints configured in-app
-- Audio/projector flows: `Qwen`
+- Voice and audio flows: `Qwen`
 - Video generation: `Seedance`, `Vidu`, plus other service-specific paths already wired in the codebase
 
 Most provider keys can be supplied either:
@@ -247,9 +240,8 @@ The project sync endpoints create and evolve the required D1 tables in code, so 
 ## Product Structure
 
 - `App.tsx`: top-level application shell
-- `node-workspace/components/NodeFlow.tsx`: central two-plane `Nodes` canvas
+- `node-workspace/components/NodeFlow.tsx`: central `Script` + `Flow` canvas
 - `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
-- `components/ProjectorModule.tsx`: projector/audio lab
 - `node-workspace/components/AgentSettingsPanel.tsx`: provider, tool, and runtime settings
 - `agents/`: Qalam agent runtime, unified graph tools, memory, bridge, and guardrails
 

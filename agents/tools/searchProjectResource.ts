@@ -1,5 +1,10 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { searchKnowledgeResources } from "../../node-workspace/knowledge/resources";
+import {
+  buildScriptResourceLinks,
+  buildScriptResourceMaps,
+  buildScriptResourceNodes,
+  buildScriptResourceSearchText,
+} from "./scriptResources";
 import {
   buildGraphNodesFromWorkflow,
   buildProjectGraphIdentitySearchText,
@@ -8,7 +13,7 @@ import {
   buildProjectGraphSearchText,
 } from "../../node-workspace/nodeflow/projectGraph";
 
-export const SEARCH_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
+export const SEARCH_PROJECT_RESOURCE_LAYERS = ["script", "nodeflow"] as const;
 export const SEARCH_PROJECT_RESOURCE_FACETS = [
   "identity",
   "content",
@@ -35,7 +40,7 @@ const searchProjectResourceParameters = {
         type: "string",
         enum: [...SEARCH_PROJECT_RESOURCE_LAYERS],
       },
-      description: "Optional graph layers to search. Defaults to knowledge and nodeflow.",
+      description: "Optional project layers to search. Defaults to script and nodeflow.",
     },
     facets: {
       type: "array",
@@ -117,47 +122,84 @@ const parseArgs = (input: unknown) => {
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search across the shared project graph world when the exact locator is unknown. Public search centers on Knowledge and NodeFlow.",
+    "Search across the shared project world when the exact locator is unknown. Public search centers on Script and NodeFlow.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
-    const knowledge = bridge.getKnowledgeSnapshot();
+    const projectData = bridge.getProjectData();
     const matches: any[] = [];
     const radius = Math.max(80, Math.min(240, Math.floor(args.maxChars / 2)));
 
-    if (args.layers.includes("knowledge")) {
-      const knowledgeFacets = [
-        args.facets.includes("identity") ? "identity" : null,
-        args.facets.includes("content") ? "content" : null,
-        args.facets.includes("anchors") ? "anchors" : null,
-        args.facets.includes("links") ? "links" : null,
-      ].filter(Boolean) as Array<"identity" | "content" | "anchors" | "links">;
-
-      if (knowledgeFacets.length) {
-        for (const item of searchKnowledgeResources(knowledge, {
-          query: args.query,
-          scopes: knowledgeFacets,
-        }).items) {
+    if (args.layers.includes("script")) {
+      if (args.facets.includes("identity") || args.facets.includes("content") || args.facets.includes("detail")) {
+        for (const node of buildScriptResourceNodes(projectData)) {
           if (matches.length >= args.maxMatches) break;
+          const haystack = buildScriptResourceSearchText(node);
+          if (!haystack || !includesQuery(haystack, args.query)) continue;
           matches.push({
-            layer: "knowledge",
+            layer: "script",
             entity: "node",
-            target: "knowledge:node",
-            view: "identity",
-            node_id: item.node.id,
-            node_ref: item.node.ref,
-            title: item.node.title,
-            node_kind: item.node.kind,
-            matched_facets: item.matchedScopes,
-            snippet: item.matchedScopes.join(" · "),
+            target: "script:node",
+            view: args.facets.includes("content") || args.facets.includes("detail") ? "detail" : "identity",
+            node_id: node.nodeId,
+            node_ref: node.ref,
+            title: node.title,
+            node_kind: node.type,
+            resource_type: node.resourceType,
+            snippet: buildSnippet(haystack, args.query, radius),
             artifact: {
               kind: "node",
-              target: "knowledge:node",
-              id: item.node.id,
-              ref: item.node.ref,
-              title: item.node.title,
-              node_kind: item.node.kind,
+              target: "script:node",
+              id: node.nodeId,
+              ref: node.ref,
+              title: node.title,
+              node_kind: node.type,
+            },
+          });
+        }
+      }
+
+      if (args.facets.includes("links")) {
+        for (const link of buildScriptResourceLinks(projectData)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [link.id, link.fromRef, link.toRef, link.type, link.fromTitle, link.toTitle].filter(Boolean).join(" ");
+          if (!haystack || !includesQuery(haystack, args.query)) continue;
+          matches.push({
+            layer: "script",
+            entity: "link",
+            target: "script:link",
+            link_id: link.id,
+            snippet: buildSnippet(haystack, args.query, radius),
+            artifact: {
+              kind: "link",
+              target: "script:link",
+              id: link.id,
+              title: link.type,
+              source: { node_ref: link.fromRef },
+              destination: { node_ref: link.toRef },
+            },
+          });
+        }
+      }
+
+      if (args.facets.includes("maps")) {
+        for (const map of buildScriptResourceMaps(projectData)) {
+          if (matches.length >= args.maxMatches) break;
+          const haystack = [map.mapId, map.name, map.view].join(" ");
+          if (!includesQuery(haystack, args.query)) continue;
+          matches.push({
+            layer: "script",
+            entity: "map",
+            target: "script:map",
+            map_id: map.mapId,
+            title: map.name,
+            snippet: buildSnippet(haystack, args.query, radius),
+            artifact: {
+              kind: "map",
+              target: "script:map",
+              id: map.mapId,
+              title: map.name,
             },
           });
         }

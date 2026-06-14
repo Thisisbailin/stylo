@@ -1,16 +1,5 @@
 import type { ProjectData } from "../../types";
 import type {
-  KnowledgeAnchor,
-  KnowledgeLink,
-  KnowledgeNode,
-  KnowledgeNodeConfidence,
-  KnowledgeNodeStatus,
-  KnowledgeSnapshot,
-} from "../../node-workspace/knowledge/types";
-import type {
-  NodeAssetConfidence,
-  NodeAssetPlane,
-  NodeAssetStatus,
   NodeType,
   NodeFlowFile,
   NodeFlowViewport,
@@ -32,23 +21,13 @@ export type CreateTextNodeResult = {
 
 export type CreateNodeFlowNodeInput = {
   expectedRevision?: number;
-  type: Extract<NodeType, "knowledge" | "text" | "imageGen" | "scriptBoard" | "storyboardBoard" | "identityCard">;
+  type: Extract<NodeType, "text" | "imageGen" | "scriptBoard" | "identityCard">;
   nodeRef?: string;
   title?: string;
-  content?: string;
-  plane?: NodeAssetPlane;
-  assetType?: string;
-  tags?: string[];
-  sourceRefs?: string[];
-  status?: NodeAssetStatus;
-  confidence?: NodeAssetConfidence;
-  locked?: boolean;
-  fields?: Record<string, unknown>;
   text?: string;
   aspectRatio?: string;
   episodeId?: number;
   sceneId?: string;
-  displayMode?: "table" | "workflow";
   entityType?: "character" | "scene";
   entityId?: string;
   x?: number;
@@ -151,7 +130,7 @@ export type CreateNodeFlowMapNodeInput = {
   key: string;
   type: Extract<
     NodeType,
-    "text" | "shot" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
+    "text" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
   >;
   title?: string;
   text?: string;
@@ -231,60 +210,7 @@ export type RemoveNodeFlowLinkResult =
 export interface QalamAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
-  getKnowledgeSnapshot(): KnowledgeSnapshot;
   getPendingNodeFlowExecutionApprovals(): NodeFlowExecutionApprovalProposal[];
-  createDerivedKnowledgeNode(input: {
-    id?: string;
-    ref?: string;
-    kind: string;
-    title: string;
-    content?: Record<string, unknown>;
-    meta?: Record<string, unknown>;
-    status?: KnowledgeNodeStatus;
-    confidence?: KnowledgeNodeConfidence;
-    anchors?: KnowledgeAnchor[];
-    anchorType?: KnowledgeAnchor["type"];
-    anchorRef?: string;
-    anchorSpan?: string;
-    createdAt?: number;
-    updatedAt?: number;
-  }): KnowledgeNode;
-  createDerivedKnowledgeLink(input: {
-    id?: string;
-    fromNodeId: string;
-    toNodeId: string;
-    type: string;
-    weight?: number;
-    status?: "active" | "superseded";
-    createdAt?: number;
-    updatedAt?: number;
-  }): KnowledgeLink;
-  removeDerivedKnowledgeLink(input: {
-    linkId: string;
-  }): KnowledgeLink;
-  supersedeDerivedKnowledgeNode(input: {
-    nodeId?: string;
-    nodeRef?: string;
-    id?: string;
-    ref?: string;
-    kind?: string;
-    title?: string;
-    content?: Record<string, unknown>;
-    meta?: Record<string, unknown>;
-    status?: KnowledgeNodeStatus;
-    confidence?: KnowledgeNodeConfidence;
-    anchors?: KnowledgeAnchor[];
-    anchorType?: KnowledgeAnchor["type"];
-    anchorRef?: string;
-    anchorSpan?: string;
-    relationType?: string;
-    createdAt?: number;
-    updatedAt?: number;
-  }): {
-    previousNode: KnowledgeNode;
-    node: KnowledgeNode;
-    link: KnowledgeLink;
-  };
   updateProjectData(updater: (prev: ProjectData) => ProjectData): void;
   addTextNode(input: CreateTextNodeInput): CreateTextNodeResult;
   createNodeFlowNode(input: CreateNodeFlowNodeInput): CreateNodeFlowNodeResult;

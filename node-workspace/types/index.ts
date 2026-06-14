@@ -8,10 +8,8 @@ export type NodeType =
   | "audioInput"
   | "videoInput"
   | "annotation"
-  | "knowledge"
   | "text"
   | "scriptBoard"
-  | "storyboardBoard"
   | "identityCard"
   | "imageGen"
   | "nanoBananaImageGen"
@@ -19,13 +17,9 @@ export type NodeType =
   | "soraVideoGen"
   | "wanReferenceVideoGen"
   | "viduVideoGen"
-  | "seedanceVideoGen"
-  | "shot";
+  | "seedanceVideoGen";
 
 export type NodeStatus = "idle" | "loading" | "complete" | "error";
-export type NodeAssetPlane = "source" | "semantic" | "design";
-export type NodeAssetStatus = "draft" | "working" | "approved" | "superseded" | "archived";
-export type NodeAssetConfidence = "low" | "medium" | "high";
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
@@ -167,35 +161,10 @@ export interface TextNodeData extends BaseNodeData {
   entityBindings?: EntityBinding[];
 }
 
-export interface KnowledgeNodeData extends BaseNodeData {
-  title: string;
-  plane: NodeAssetPlane;
-  assetType: string;
-  content: string;
-  summary?: string;
-  tags?: string[];
-  sourceRefs?: string[];
-  status?: NodeAssetStatus;
-  confidence?: NodeAssetConfidence;
-  locked?: boolean;
-  fields?: Record<string, unknown>;
-  view?: string;
-}
-
 export interface ScriptBoardNodeData extends BaseNodeData {
   title: string;
   episodeId?: number;
   sceneId?: string;
-}
-
-export interface StoryboardBoardNodeData extends BaseNodeData {
-  title: string;
-  episodeId?: number;
-  sceneId?: string;
-  displayMode?: "table" | "workflow";
-  columnWidths?: number[];
-  rowHeights?: Record<string, number>;
-  nodeFlowLoadedAt?: number;
 }
 
 export interface IdentityCardNodeData extends BaseNodeData {
@@ -328,39 +297,18 @@ export interface NoteNodeData extends BaseNodeData {
   color?: string;
 }
 
-export interface ShotNodeData extends BaseNodeData {
-  shotId: string;
-  duration: string;
-  shotType: string;
-  focalLength: string;
-  movement: string;
-  composition: string;
-  blocking: string;
-  dialogue: string;
-  sound: string;
-  lightingVfx: string;
-  editingNotes: string;
-  notes: string;
-  soraPrompt: string;
-  storyboardPrompt: string;
-  viewMode?: "card" | "table";
-}
-
 export type NodeFlowNodeData =
   | ImageInputNodeData
   | AudioInputNodeData
   | VideoInputNodeData
   | AnnotationNodeData
-  | KnowledgeNodeData
   | TextNodeData
   | ScriptBoardNodeData
-  | StoryboardBoardNodeData
   | IdentityCardNodeData
   | ImageGenNodeData
   | VideoGenNodeData
   | ViduVideoGenNodeData
-  | SeedanceVideoGenNodeData
-  | ShotNodeData;
+  | SeedanceVideoGenNodeData;
 
 export type NodeFlowNodeDefaults = Partial<Record<NodeType, Partial<NodeFlowNodeData>>>;
 
@@ -428,9 +376,6 @@ export type NodeFlowContextSnapshot = {
   episodes: Episode[];
   designAssets: DesignAssetItem[];
   globalStyleGuide: string;
-  shotGuide: string;
-  soraGuide: string;
-  storyboardGuide: string;
   dramaGuide: string;
   context: ProjectContext;
 };

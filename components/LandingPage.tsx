@@ -27,28 +27,28 @@ const capabilityBlocks = [
   {
     eyebrow: "Inspect",
     title: "统一读取图世界",
-    description: "通过同一组读接口穿透同一图式世界的两面：底层 Knowledge 长期记忆图，以及表层 NodeFlow 工作流画布。",
+    description: "通过同一组读接口读取剧本档案、资产结构与 NodeFlow 工作流画布。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     Icon: FileMagnifyingGlass,
   },
   {
-    eyebrow: "Remember",
-    title: "读取长期记忆",
-    description: "查阅 Knowledge 长期记忆层，包括 canonical-source 剧本骨架与 agent 沉淀出来的知识节点网络。",
+    eyebrow: "Organize",
+    title: "读取项目档案",
+    description: "查阅 script 空间轴中的剧本骨架、角色场景档案与项目组织结构。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     Icon: Database,
   },
   {
     eyebrow: "Refine",
-    title: "修正长期记忆",
-    description: "通过专用 Knowledge 写口编辑底层长期记忆图，创建派生记忆节点、建立知识关系，或用 supersede 方式修正已有派生记忆。",
-    tools: ["edit_knowledge_resource"],
+    title: "修正剧本档案",
+    description: "通过 script resource 写口更新项目档案，把角色、场景与结构信息留在更直观的空间轴中。",
+    tools: ["edit_script_resource"],
     Icon: Graph,
   },
   {
     eyebrow: "Operate",
     title: "操作工作流画布",
-    description: "把 Knowledge 中的事实与记忆继续落成表层 NodeFlow 节点与连线，形成最小可操作的工作流画布。",
+    description: "把剧本档案与制作意图继续落成 NodeFlow 节点与连线，形成最小可操作的工作流画布。",
     tools: ["operate_project_resource"],
     Icon: TreeStructure,
   },
@@ -81,7 +81,7 @@ const runtimeFacts = [
   },
 ];
 
-const knowledgeRows = [
+const archiveRows = [
   "Project Summary / Episode Summary",
   "Character Profile + Portrait Slots",
   "Scene Profile + Portrait Slots",
@@ -158,10 +158,10 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
             <div className="landing-reveal rounded-[2rem] border border-black/10 bg-white/60 p-5 shadow-[0_28px_70px_-52px_rgba(15,23,42,0.35)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]">
               <div className="text-[10px] uppercase tracking-[0.32em] text-emerald-700 dark:text-emerald-300">Qalam Means Pen</div>
               <h1 className="mt-4 max-w-[11ch] text-4xl font-semibold leading-[0.92] tracking-[-0.07em] md:text-5xl">
-                一支会读项目、会写知识、会搭工作流的 Agent 之笔。
+                一支会读项目、会整理档案、会搭工作流的 Agent 之笔。
               </h1>
               <p className="mt-4 max-w-[58ch] text-[14px] leading-7 text-zinc-700 dark:text-zinc-300">
-                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再沉淀长期事实，最后把理解继续变成可执行的 NodeFlow 图。
+                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再组织成清晰档案，最后把理解继续变成可执行的 NodeFlow 图。
               </p>
             </div>
 
@@ -169,7 +169,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
               {[
                 "Evidence-first",
                 "Tool-mediated state",
-                "Durable knowledge",
+                "Script archive",
                 "Executable graph",
               ].map((item) => (
                 <div
@@ -241,8 +241,8 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                     prompts={[
                       "读取第 3 集，找出人物关系最紧张的场景，并给出证据。",
                       "给主角新增一张“受伤形态”定妆照，并写回角色库。",
-                      "根据当前分镜意图，生成一个 text -> imageGen 的 NodeFlow 工作流。",
-                      "搜索项目知识层，找出最适合做预告片的场景和对应角色定妆照。",
+                      "根据当前画面意图，生成一个 text -> imageGen 的 NodeFlow 工作流。",
+                      "搜索项目档案，找出最适合做预告片的场景和对应角色定妆照。",
                     ]}
                   />
 
@@ -267,7 +267,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
                       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                         {[
                           { value: "04", label: "Inspect" },
-                          { value: "04", label: "Knowledge" },
+                          { value: "04", label: "Archive" },
                           { value: "04", label: "Operate" },
                         ].map((item) => (
                           <div key={item.label}>
@@ -330,10 +330,10 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
               <div className="landing-reveal rounded-[2rem] border border-black/10 bg-zinc-950 p-4 text-white shadow-[0_36px_90px_-54px_rgba(15,23,42,0.55)] dark:border-white/10 dark:bg-[#171918]" style={{ animationDelay: "260ms" }}>
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-white/50">
                   <Brain size={14} weight="duotone" />
-                  Knowledge + Workflow
+                  Archive + Workflow
                 </div>
                 <div className="mt-3 space-y-2">
-                  {knowledgeRows.map((item) => (
+                  {archiveRows.map((item) => (
                     <div key={item} className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/72">
                       {item}
                     </div>

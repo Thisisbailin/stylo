@@ -1,7 +1,6 @@
 
 import {
   Episode,
-  Shot,
   Scene,
   ProjectData,
   ProjectContext,
@@ -14,7 +13,6 @@ import {
   SceneMetadata,
 } from "../types";
 import { ensureStableId } from "./id";
-import { SHOT_CSV_COLUMNS, sanitizeShot } from "./shotSchema";
 import { normalizeProjectData } from "./projectData";
 
 // Helper: Parse scenes from episode content
@@ -238,7 +236,6 @@ export const parseScriptToEpisodes = (rawText: string): Episode[] => {
         content: '',
         scenes: [],
         characters: [],
-        shots: [],
         status: 'pending'
       };
       buffer.push(line); 
@@ -282,263 +279,11 @@ export const parseScriptToEpisodes = (rawText: string): Episode[] => {
       content: fullContent,
       scenes: parseScenes(fullContent),
       characters: fallbackCast,
-      shots: [],
       status: 'pending'
     });
   }
 
   return episodes;
-};
-
-// --- EXPORT FUNCTIONS ---
-
-// 1. CSV EXPORT (Robust, Best Compatibility)
-export const exportToCSV = (episodes: Episode[]) => {
-  const headers = SHOT_CSV_COLUMNS.map((column) => column.header);
-  
-  // Add Byte Order Mark (BOM) so Excel recognizes formatting as UTF-8 automatically
-  let csvContent = '\ufeff' + headers.map(h => `"${h}"`).join(',') + '\n';
-
-  episodes.forEach(ep => {
-    ep.shots.forEach(shot => {
-      const row = [
-        ep.title,
-        shot.id,
-        shot.duration,
-        shot.shotType,
-        shot.focalLength || '',
-        shot.movement,
-        shot.composition || '',
-        shot.blocking || '',
-        shot.dialogue,
-        shot.sound || '',
-        shot.lightingVfx || '',
-        shot.editingNotes || '',
-        shot.notes || '',
-        shot.soraPrompt,
-        shot.storyboardPrompt
-      ];
-      
-      // Escape logic: 
-      // 1. Convert to string
-      // 2. Replace double quotes " with two double quotes ""
-      // 3. Wrap entire field in double quotes
-      const rowStr = row.map(field => {
-        const safeField = (field || '').toString().replace(/"/g, '""');
-        return `"${safeField}"`;
-      }).join(',');
-      
-      csvContent += rowStr + '\n';
-    });
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `qalam_export_${Date.now()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-// 2. XLS EXPORT (HTML Table method, preserves visual layout like text wrapping)
-export const exportToXLS = (episodes: Episode[]) => {
-  // We use an HTML table strategy to fake an Excel file.
-  // This allows us to use CSS for bold headers, column widths, and text wrapping.
-  // Excel opens this natively (though it might warn about extension mismatch, which is safe to ignore).
-  
-  let table = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
-<head>
-<meta charset="utf-8">
-<style>
-  body { font-family: Arial, sans-serif; font-size: 11pt; }
-  table { border-collapse: collapse; width: 100%; }
-  th { 
-      background-color: #4f46e5; 
-      color: white; 
-      font-weight: bold; 
-      padding: 10px; 
-      border: 1px solid #000; 
-      text-align: left;
-  }
-  td { 
-      padding: 8px; 
-      border: 1px solid #ccc; 
-      vertical-align: top; 
-      white-space: pre-wrap; /* Critical for wrapping long text */
-  }
-  /* Column widths */
-  .col-id { width: 80px; }
-  .col-dur { width: 60px; }
-  .col-type { width: 90px; }
-  .col-lens { width: 110px; }
-  .col-move { width: 80px; }
-  .col-comp { width: 260px; }
-  .col-block { width: 260px; }
-  .col-dial { width: 200px; }
-  .col-sound { width: 220px; }
-  .col-light { width: 240px; }
-  .col-edit { width: 180px; }
-  .col-notes { width: 220px; }
-  .col-sora { width: 450px; background-color: #f0fdf4; } /* Slight green tint for prompt */
-  .col-storyboard { width: 450px; background-color: #fef9c3; } /* Light yellow tint for storyboard */
-</style>
-</head>
-<body>
-<table>
-  <tr>
-    <th>剧集</th>
-    <th class="col-id">镜号</th>
-    <th class="col-dur">时长</th>
-    <th class="col-type">景别</th>
-    <th class="col-lens">焦段</th>
-    <th class="col-move">运镜</th>
-    <th class="col-comp">机位/构图</th>
-    <th class="col-block">调度/表演</th>
-    <th class="col-dial">台词/OS</th>
-    <th class="col-sound">声音</th>
-    <th class="col-light">光色/VFX</th>
-    <th class="col-edit">剪辑</th>
-    <th class="col-notes">备注（氛围/情绪）</th>
-    <th class="col-sora">Sora Prompt</th>
-    <th class="col-storyboard">Storyboard Prompt</th>
-  </tr>`;
-
-  episodes.forEach(ep => {
-    ep.shots.forEach(shot => {
-      table += `<tr>
-        <td>${ep.title}</td>
-        <td>${shot.id}</td>
-        <td>${shot.duration}</td>
-        <td>${shot.shotType}</td>
-        <td>${shot.focalLength || ''}</td>
-        <td>${shot.movement}</td>
-        <td>${shot.composition || ''}</td>
-        <td>${shot.blocking || ''}</td>
-        <td>${shot.dialogue}</td>
-        <td>${shot.sound || ''}</td>
-        <td>${shot.lightingVfx || ''}</td>
-        <td>${shot.editingNotes || ''}</td>
-        <td>${shot.notes || ''}</td>
-        <td>${shot.soraPrompt}</td>
-        <td>${shot.storyboardPrompt}</td>
-      </tr>`;
-    });
-  });
-
-  table += `</table></body></html>`;
-
-  const blob = new Blob([table], { type: 'application/vnd.ms-excel' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `shooting_script_formatted_${Date.now()}.xls`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-// Helper to parse CSV line respecting quotes
-const parseCSVLine = (text: string): string[] => {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (char === '"') {
-      if (inQuotes && text[i + 1] === '"') {
-        current += '"';
-        i++; // Skip escaped quote
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  result.push(current);
-  return result;
-};
-
-export const parseCSVToShots = (csvText: string): Map<string, Shot[]> => {
-  const lines = csvText.split(/\r?\n/);
-  const shotMap = new Map<string, Shot[]>();
-  
-  // Remove BOM if present
-  if (lines[0].charCodeAt(0) === 0xFEFF) {
-    lines[0] = lines[0].substring(1);
-  }
-
-  // Identify headers to ensure correct column mapping
-  const headers = parseCSVLine(lines[0]);
-  const normalizeHeader = (value: string) => (value || "").trim().toLowerCase();
-  const findHeaderIndex = (candidates: string[]) => {
-    const normalized = headers.map(normalizeHeader);
-    for (const candidate of candidates) {
-      const idx = normalized.indexOf(normalizeHeader(candidate));
-      if (idx >= 0) return idx;
-    }
-    return -1;
-  };
-
-  const epIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[0].aliases]);
-  const idIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[1].aliases]);
-  const durIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[2].aliases]);
-  const typeIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[3].aliases]);
-  const lensIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[4].aliases]);
-  const moveIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[5].aliases]);
-  const compIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[6].aliases]);
-  const blockIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[7].aliases]);
-  const dialIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[8].aliases]);
-  const soundIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[9].aliases]);
-  const lightIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[10].aliases]);
-  const editIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[11].aliases]);
-  const notesIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[12].aliases]);
-  const soraIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[13].aliases]);
-  const storyboardIdx = findHeaderIndex([...SHOT_CSV_COLUMNS[14].aliases]);
-
-  if (epIdx === -1 || idIdx === -1) {
-    throw new Error("Invalid CSV Format: Missing 'Episode' or 'Shot ID' headers.");
-  }
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    
-    const cols = parseCSVLine(line);
-    while (cols.length < headers.length) cols.push('');
-
-    const episodeTitle = cols[epIdx];
-    const { shot } = sanitizeShot({
-      id: cols[idIdx],
-      duration: cols[durIdx] || '',
-      shotType: cols[typeIdx] || '',
-      focalLength: lensIdx >= 0 ? (cols[lensIdx] || '') : '',
-      movement: cols[moveIdx] || '',
-      composition: compIdx >= 0 ? (cols[compIdx] || '') : '',
-      blocking: blockIdx >= 0 ? (cols[blockIdx] || '') : '',
-      dialogue: cols[dialIdx] || '',
-      sound: soundIdx >= 0 ? (cols[soundIdx] || '') : '',
-      lightingVfx: lightIdx >= 0 ? (cols[lightIdx] || '') : '',
-      editingNotes: editIdx >= 0 ? (cols[editIdx] || '') : '',
-      notes: notesIdx >= 0 ? (cols[notesIdx] || '') : '',
-      soraPrompt: soraIdx >= 0 ? (cols[soraIdx] || '') : '',
-      storyboardPrompt: storyboardIdx >= 0 ? (cols[storyboardIdx] || '') : ''
-    }, { mode: "csv", requireStructuredId: false, allowGeneratedIds: true });
-
-    if (!shotMap.has(episodeTitle)) {
-      shotMap.set(episodeTitle, []);
-    }
-    shotMap.get(episodeTitle)?.push(shot);
-  }
-
-  return shotMap;
 };
 
 type UnderstandingExport = {

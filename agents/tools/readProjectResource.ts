@@ -1,7 +1,12 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { parseKnowledgeAnchorRef } from "../../node-workspace/knowledge/anchors";
-import { readKnowledgeResource } from "../../node-workspace/knowledge/resources";
-import { getKnowledgeNodeById, getKnowledgeNodeByRef } from "../../node-workspace/knowledge/queries";
+import {
+  buildScriptResourceLinks,
+  buildScriptResourceMaps,
+  buildScriptResourceNodes,
+  findScriptResourceLink,
+  findScriptResourceMap,
+  findScriptResourceNode,
+} from "./scriptResources";
 import {
   buildProjectGraphMaps,
   findExecutionLink,
@@ -15,7 +20,7 @@ import {
   getNodeFlowNodeTitle,
 } from "../../node-workspace/nodeflow/model";
 
-export const READ_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
+export const READ_PROJECT_RESOURCE_LAYERS = ["script", "nodeflow"] as const;
 export const READ_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval"] as const;
 export const READ_PROJECT_RESOURCE_VIEWS = [
   "identity",
@@ -28,9 +33,9 @@ export const READ_PROJECT_RESOURCE_VIEWS = [
   "timeline",
 ] as const;
 export const READ_PROJECT_RESOURCE_TARGETS = [
-  "knowledge:node",
-  "knowledge:link",
-  "knowledge:map",
+  "script:node",
+  "script:link",
+  "script:map",
   "nodeflow:node",
   "nodeflow:link",
   "nodeflow:map",
@@ -47,7 +52,7 @@ const readProjectResourceParameters = {
     layer: {
       type: "string",
       enum: [...READ_PROJECT_RESOURCE_LAYERS],
-      description: "Which graph layer to read from: knowledge or nodeflow.",
+      description: "Which project layer to read from: script or nodeflow.",
     },
     entity: {
       type: "string",
@@ -65,15 +70,15 @@ const readProjectResourceParameters = {
     },
     node_id: {
       type: "string",
-      description: "Concrete node id for knowledge or nodeflow node reads.",
+      description: "Concrete node id for script or nodeflow node reads.",
     },
     node_ref: {
       type: "string",
-      description: "Stable node ref for knowledge or nodeflow node reads.",
+      description: "Stable node ref for script or nodeflow node reads.",
     },
     link_id: {
       type: "string",
-      description: "Link id for knowledge or nodeflow link reads.",
+      description: "Link id for script or nodeflow link reads.",
     },
     link_role: {
       type: "string",
@@ -86,15 +91,15 @@ const readProjectResourceParameters = {
     },
     lens_kind: {
       type: "string",
-      description: "Knowledge lens kind such as full, local, anchor, kind, or focus.",
+      description: "Reserved map lens kind.",
     },
     anchor_ref: {
       type: "string",
-      description: "Knowledge anchor ref such as script:raw, episode:1, or scene:1-3.",
+      description: "Reserved anchor ref.",
     },
     node_kind: {
       type: "string",
-      description: "Knowledge node kind filter for knowledge lens map reads.",
+      description: "Optional script or nodeflow node kind filter.",
     },
     max_chars: {
       type: "integer",
@@ -163,8 +168,8 @@ const parseArgs = (input: unknown) => {
     throw new Error(`read_project_resource 不支持 view=${trim(raw.view)}`);
   }
 
-  if (layer === "knowledge" && !["node", "link", "map"].includes(entity)) {
-    throw new Error("knowledge 层仅支持 node、link、map。");
+  if (layer === "script" && !["node", "link", "map"].includes(entity)) {
+    throw new Error("script 层仅支持 node、link、map。");
   }
   if (layer === "nodeflow" && !["node", "link", "map", "approval"].includes(entity)) {
     throw new Error("nodeflow 层仅支持 node、link、map 或 approval。");
@@ -179,13 +184,6 @@ const parseArgs = (input: unknown) => {
   if (layer === "nodeflow" && entity === "map" && !mapId && !name) {
     throw new Error("读取 nodeflow map 需要 map_id 或 name。");
   }
-  if (layer === "knowledge" && entity === "map" && (view === "anchor" || view === "timeline") && !anchorRef) {
-    throw new Error(`knowledge map 的 ${view} 视图需要 anchor_ref。`);
-  }
-  if (layer === "knowledge" && entity === "map" && view === "local" && !nodeId && !nodeRef) {
-    throw new Error("knowledge local map 需要 node_id 或 node_ref。");
-  }
-
   return {
     layer,
     entity,
@@ -206,144 +204,148 @@ const parseArgs = (input: unknown) => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete entity from the shared project graph world. Public reads focus on two main graph layers: Knowledge for long-term memory and NodeFlow for the visible working canvas.",
+    "Read a concrete entity from the shared project world. Public reads focus on Script source/foundation/archive resources and NodeFlow canvas resources.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
-    const knowledge = bridge.getKnowledgeSnapshot();
+    const projectData = bridge.getProjectData();
 
-    if (args.layer === "knowledge") {
+    if (args.layer === "script") {
       if (args.entity === "node") {
-        const resourceType = args.view === "identity" ? "knowledge_node_identity" : "knowledge_node_detail";
+        const item = findScriptResourceNode(projectData, { nodeId: args.nodeId, nodeRef: args.nodeRef });
+        if (!item) {
+          return {
+            layer: "script",
+            entity: "node",
+            target: "script:node",
+            view: args.view || "detail",
+            found: false,
+            node_id: args.nodeId || null,
+            node_ref: args.nodeRef || null,
+          };
+        }
+        const identity = {
+          node_id: item.nodeId,
+          node_ref: item.ref,
+          kind: item.type,
+          title: item.title,
+          resource_type: item.resourceType,
+          locked: item.locked,
+          source_ref: item.sourceRef || null,
+        };
         return {
-          layer: "knowledge",
+          layer: "script",
           entity: "node",
-          target: "knowledge:node",
+          target: "script:node",
           view: args.view,
-          ...(() => {
-            const result = readKnowledgeResource(knowledge, {
-            resourceType,
-            nodeId: args.nodeId,
-            nodeRef: args.nodeRef,
-            });
-            const item = (result as any).item;
-            return {
-              ...result,
-              artifact: item
-                ? {
-                    kind: "node",
-                    target: "knowledge:node",
-                    id: item.id || item.node_id,
-                    ref: item.ref || item.node_ref,
-                    title: item.title,
-                    node_kind: item.kind,
-                  }
-                : undefined,
-            };
-          })(),
+          found: true,
+          artifact: {
+            kind: "node",
+            target: "script:node",
+            id: item.nodeId,
+            ref: item.ref,
+            title: item.title,
+            node_kind: item.type,
+          },
+          item:
+            args.view === "identity"
+              ? identity
+              : {
+                  ...identity,
+                  body: clipStructuredValue(item.body, args.maxChars),
+                  meta: item.meta || {},
+                  x: item.x ?? null,
+                  y: item.y ?? null,
+                },
         };
       }
 
       if (args.entity === "link") {
-        const link = knowledge.links.find((item) => item.id === args.linkId);
-        const fromNode = link ? getKnowledgeNodeById(knowledge, link.fromNodeId) : null;
-        const toNode = link ? getKnowledgeNodeById(knowledge, link.toNodeId) : null;
+        const link = args.linkId ? findScriptResourceLink(projectData, args.linkId) : null;
         return link
           ? {
-              layer: "knowledge",
+              layer: "script",
               entity: "link",
-              target: "knowledge:link",
+              target: "script:link",
               found: true,
               artifact: {
                 kind: "link",
-                target: "knowledge:link",
+                target: "script:link",
                 id: link.id,
                 title: link.type,
                 source: {
-                  node_id: link.fromNodeId,
-                  node_ref: fromNode?.ref || null,
-                  title: fromNode?.package.title || null,
+                  node_ref: link.fromRef,
+                  title: link.fromTitle || null,
                 },
                 destination: {
-                  node_id: link.toNodeId,
-                  node_ref: toNode?.ref || null,
-                  title: toNode?.package.title || null,
+                  node_ref: link.toRef,
+                  title: link.toTitle || null,
                 },
               },
               item: {
                 link_id: link.id,
-                from_node_id: link.fromNodeId,
-                from_node_ref: fromNode?.ref || null,
-                from_title: fromNode?.package.title || null,
-                to_node_id: link.toNodeId,
-                to_node_ref: toNode?.ref || null,
-                to_title: toNode?.package.title || null,
+                from_node_ref: link.fromRef,
+                from_title: link.fromTitle || null,
+                to_node_ref: link.toRef,
+                to_title: link.toTitle || null,
                 link_type: link.type,
-                origin: link.origin,
-                status: link.status || "active",
-                weight: link.weight ?? null,
               },
             }
           : {
-              layer: "knowledge",
+              layer: "script",
               entity: "link",
-              target: "knowledge:link",
+              target: "script:link",
               found: false,
               link_id: args.linkId || null,
             };
       }
 
-      const anchor = args.anchorRef ? parseKnowledgeAnchorRef(args.anchorRef) : undefined;
-      if (args.anchorRef && !anchor) {
-        throw new Error("knowledge anchor_ref 格式无效。请使用 script:raw、episode:1 或 scene:1-3。");
-      }
-      const resourceType =
-        args.view === "local"
-          ? "knowledge_local_map"
-          : args.view === "anchor"
-            ? "knowledge_anchor_map"
-            : args.view === "lens"
-              ? "knowledge_map_lens"
-              : args.view === "lifecycle"
-                ? "knowledge_lifecycle"
-                : args.view === "timeline"
-                  ? "knowledge_anchor_timeline"
-                  : "knowledge_map";
-      const lens =
-        args.view === "lens"
-          ? {
-              id: `lens:${args.lensKind || "full"}:${args.anchorRef || args.nodeRef || args.nodeKind || "default"}`,
-              kind: ((args.lensKind || "full") as "full" | "local" | "anchor" | "kind" | "focus"),
-              focusNodeRefs: args.nodeRef ? [args.nodeRef] : undefined,
-              anchorRefs: args.anchorRef ? [args.anchorRef] : undefined,
-              nodeKinds: args.nodeKind ? [args.nodeKind] : undefined,
-              depth: 1,
-            }
-          : undefined;
+      const map = findScriptResourceMap(projectData, { mapId: args.mapId, name: args.name });
+      const maps = buildScriptResourceMaps(projectData);
+      const nodes = buildScriptResourceNodes(projectData);
+      const links = buildScriptResourceLinks(projectData);
+      const effectiveMap = map || maps[0] || null;
+      const visibleNodes =
+        effectiveMap?.view === "source"
+          ? nodes.filter((node) => node.resourceType === "source_node")
+          : effectiveMap?.view === "archives"
+            ? nodes.filter((node) => node.resourceType === "archive_node")
+            : effectiveMap?.view === "timeline"
+              ? nodes.filter((node) => node.resourceType === "timeline_block" || node.resourceType === "script_index")
+              : nodes.filter((node) => node.resourceType !== "source_node");
       return {
-        layer: "knowledge",
+        layer: "script",
         entity: "map",
-        target: "knowledge:map",
+        target: "script:map",
         view: args.view || "full",
-        ...(() => {
-          const result = readKnowledgeResource(knowledge, {
-          resourceType,
-          nodeId: args.nodeId,
-          nodeRef: args.nodeRef,
-          anchor,
-          lens,
-          depth: 1,
-          });
-          return {
-            ...result,
-            artifact: {
+        found: Boolean(effectiveMap),
+        artifact: effectiveMap
+          ? {
               kind: "map",
-              target: "knowledge:map",
-              title: args.view || "full",
-            },
-          };
-        })(),
+              target: "script:map",
+              id: effectiveMap.mapId,
+              title: effectiveMap.name,
+            }
+          : undefined,
+        item: effectiveMap
+          ? {
+              ...effectiveMap,
+              nodes: visibleNodes.map((node) => ({
+                node_id: node.nodeId,
+                node_ref: node.ref,
+                kind: node.type,
+                title: node.title,
+                resource_type: node.resourceType,
+              })),
+              links: links.map((link) => ({
+                link_id: link.id,
+                from_node_ref: link.fromRef,
+                to_node_ref: link.toRef,
+                link_type: link.type,
+              })),
+            }
+          : null,
       };
     }
 
@@ -606,14 +608,14 @@ export const readProjectResourceToolDef = {
   },
   summarize: (output: any) => {
     if (output?.found === false) return `未找到 ${output?.layer || "graph"} ${output?.entity || "resource"}`;
-    if (output?.layer === "knowledge" && output?.entity === "node") {
-      return `读取 Knowledge 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.ref || ""}`;
+    if (output?.layer === "script" && output?.entity === "node") {
+      return `读取 Script 资源${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || ""}`;
     }
-    if (output?.layer === "knowledge" && output?.entity === "link") {
-      return `读取 Knowledge 关系 ${output.item?.link_id || output.link_id || ""}`.trim();
+    if (output?.layer === "script" && output?.entity === "link") {
+      return `读取 Script 关系 ${output.item?.link_id || output.link_id || ""}`.trim();
     }
-    if (output?.layer === "knowledge" && output?.entity === "map") {
-      return `读取 Knowledge 地图 ${output?.view || "full"}`;
+    if (output?.layer === "script" && output?.entity === "map") {
+      return `读取 Script 地图 ${output.item?.name || output?.view || "foundation"}`;
     }
     if (output?.layer === "nodeflow" && output?.entity === "node") {
       return `读取 NodeFlow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;

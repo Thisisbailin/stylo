@@ -5,11 +5,9 @@ import {
   ProjectData,
   ProjectRoleIdentity,
   ProjectRolePortrait,
-  Shot,
 } from "../types";
 import { ensureStableId, ensureTypedStableId } from "./id";
 import { INITIAL_PROJECT_DATA } from "../constants";
-import { sanitizeShot } from "./shotSchema";
 import {
   applyRolePortraits,
   buildPortraitMention,
@@ -45,42 +43,26 @@ const toSafeString = (value: unknown, fallback = "") => {
   return String(value);
 };
 
-const toOptionalString = (value: unknown) => (typeof value === "string" ? value : undefined);
-
 const buildMention = (name: string) => buildRoleMention(name);
 
-export const normalizeVideoParams = (params?: Shot["videoParams"]) => {
-  if (!params) return undefined;
-  const { inputImage, ...rest } = params;
-  return rest;
-};
-
-const normalizeShot = (shot: any): Shot => {
-  const { shot: normalized } = sanitizeShot(shot, {
-    mode: "project",
-    requireStructuredId: false,
-    allowGeneratedIds: true,
-  });
-  return {
-    ...normalized,
-    finalVideoPrompt: toOptionalString(shot?.finalVideoPrompt),
-    videoStatus: toOptionalString(shot?.videoStatus) as Shot["videoStatus"],
-    videoParams: normalizeVideoParams(shot?.videoParams),
-    videoUrl: toOptionalString(shot?.videoUrl),
-    videoId: toOptionalString(shot?.videoId),
-    videoErrorMsg: toOptionalString(shot?.videoErrorMsg),
-  };
-};
+const toOptionalString = (value: unknown) => (typeof value === "string" ? value : undefined);
 
 const normalizeEpisode = (episode: any): Episode => {
   if (!episode || typeof episode !== "object") return episode as Episode;
-  const shots = Array.isArray(episode.shots) ? episode.shots.map(normalizeShot) : [];
   return {
-    ...episode,
+    id: Number(episode.id),
     title: toSafeString(episode.title),
     content: toSafeString(episode.content),
+    scenes: Array.isArray(episode.scenes) ? episode.scenes : [],
+    characters: Array.isArray(episode.characters) ? episode.characters.map((name: any) => toSafeString(name)).filter(Boolean) : undefined,
     summary: toOptionalString(episode.summary),
-    shots,
+    status:
+      episode.status === "generating" ||
+      episode.status === "completed" ||
+      episode.status === "error"
+        ? episode.status
+        : "pending",
+    errorMsg: toOptionalString(episode.errorMsg),
   };
 };
 
@@ -488,7 +470,6 @@ export const normalizeProjectData = (data: any): ProjectData => {
     context,
     designAssets: Array.isArray(data?.designAssets) ? data.designAssets : [],
     phase1Usage: { ...INITIAL_PROJECT_DATA.phase1Usage, ...(data?.phase1Usage || {}) },
-    phase4Usage: data?.phase4Usage || INITIAL_PROJECT_DATA.phase4Usage,
     phase5Usage: data?.phase5Usage || INITIAL_PROJECT_DATA.phase5Usage,
     stats: { ...INITIAL_PROJECT_DATA.stats, ...(data?.stats || {}) },
   };
@@ -498,9 +479,6 @@ export const normalizeProjectData = (data: any): ProjectData => {
   base.nodeFlow = data?.nodeFlow && typeof data.nodeFlow === "object" ? data.nodeFlow : null;
   base.nodeDefaults = normalizeNodeFlowNodeDefaults(data?.nodeDefaults);
   base.scriptCanvas = normalizeScriptCanvas(data?.scriptCanvas);
-  base.shotGuide = data?.shotGuide || INITIAL_PROJECT_DATA.shotGuide;
-  base.soraGuide = data?.soraGuide || INITIAL_PROJECT_DATA.soraGuide;
-  base.storyboardGuide = data?.storyboardGuide || INITIAL_PROJECT_DATA.storyboardGuide;
   base.dramaGuide = data?.dramaGuide || INITIAL_PROJECT_DATA.dramaGuide;
   base.globalStyleGuide = data?.globalStyleGuide || INITIAL_PROJECT_DATA.globalStyleGuide;
   base.rawScript = typeof data?.rawScript === "string" ? data.rawScript : "";

@@ -73,7 +73,6 @@ export const SyncPanel: React.FC<Props> = ({
     const parts: string[] = [];
     if (typeof detail.updatedAt === "number") parts.push(`v${detail.updatedAt}`);
     if (typeof detail.episodes === "number") parts.push(`eps ${detail.episodes}`);
-    if (typeof detail.shots === "number") parts.push(`shots ${detail.shots}`);
     if (typeof detail.version === "number") parts.push(`snapshot ${detail.version}`);
     if (typeof detail.mode === "string") parts.push(`mode ${detail.mode}`);
     if (typeof detail.reason === "string") parts.push(`reason: ${detail.reason}`);

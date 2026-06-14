@@ -6,12 +6,10 @@ import type {
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
-  KnowledgeNodeData,
   NodeFlowContextSnapshot,
   NodeFlowLink,
   NodeFlowNode,
   ScriptBoardNodeData,
-  StoryboardBoardNodeData,
   TextNodeData,
   VideoInputNodeData,
   VideoGenNodeData,
@@ -57,39 +55,6 @@ const buildScriptBoardText = (data: ScriptBoardNodeData, episodes: Episode[]) =>
     return `${header}\n${scene.content?.trim() || "暂无场景正文"}`;
   });
   return [`剧本面板：第${episode.id}集`, ...blocks].filter(Boolean).join("\n\n");
-};
-
-const buildStoryboardBoardText = (data: StoryboardBoardNodeData, episodes: Episode[]) => {
-  if (!episodes.length) return null;
-  const episode =
-    episodes.find((item) => item.id === data.episodeId) ??
-    findEpisodeBySceneId(episodes, data.sceneId) ??
-    episodes[0];
-  if (!episode) return null;
-  const sceneBlocks = episode.scenes.map((scene, index) => {
-    const sceneShots = episode.shots.filter((shot) => shot.id.startsWith(`${scene.id}-`));
-    const rows = sceneShots.map((shot, shotIndex) => {
-      const parts = [
-        `镜头 ${shotIndex + 1}（${shot.id}）`,
-        shot.shotType ? `景别：${shot.shotType}` : "",
-        shot.focalLength ? `焦段：${shot.focalLength}` : "",
-        shot.movement ? `运镜：${shot.movement}` : "",
-        shot.composition ? `构图：${truncateText(shot.composition, 80)}` : "",
-        shot.blocking ? `调度：${truncateText(shot.blocking, 80)}` : "",
-        shot.dialogue ? `台词：${truncateText(shot.dialogue, 60)}` : "",
-        shot.sound ? `声音：${truncateText(shot.sound, 60)}` : "",
-      ].filter(Boolean);
-      return parts.join("｜");
-    });
-    return [
-      buildSceneLabel(scene, index),
-      scene.content ? `场景正文：${truncateText(scene.content, 220)}` : "",
-      rows.length ? rows.join("\n") : "当前场景暂无分镜表数据。",
-    ]
-      .filter(Boolean)
-      .join("\n");
-  });
-  return [`分镜表面板：第${episode.id}集`, ...sceneBlocks].filter(Boolean).join("\n\n");
 };
 
 const buildIdentityCardText = (data: IdentityCardNodeData, nodeFlowContext: NodeFlowContextSnapshot) => {
@@ -187,10 +152,7 @@ export const buildConnectedInputs = ({
         if (src) videos.push(src);
       }
       if (effectiveHandle === "text") {
-        if (sourceNode.type === "knowledge") {
-          const value = (sourceNode.data as KnowledgeNodeData).content;
-          if (value && value.trim()) texts.push(value.trim());
-        } else if (sourceNode.type === "text") {
+        if (sourceNode.type === "text") {
           const value = (sourceNode.data as TextNodeData).text;
           if (value && value.trim()) texts.push(value.trim());
           const ats = (sourceNode.data as TextNodeData).atMentions;
@@ -207,12 +169,6 @@ export const buildConnectedInputs = ({
           }
         } else if (sourceNode.type === "scriptBoard") {
           const value = buildScriptBoardText(sourceNode.data as ScriptBoardNodeData, nodeFlowContext.episodes || []);
-          if (value) texts.push(value);
-        } else if (sourceNode.type === "storyboardBoard") {
-          const value = buildStoryboardBoardText(
-            sourceNode.data as StoryboardBoardNodeData,
-            nodeFlowContext.episodes || []
-          );
           if (value) texts.push(value);
         } else if (sourceNode.type === "identityCard") {
           const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, nodeFlowContext);

@@ -4,13 +4,10 @@ import type {
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
-  KnowledgeNodeData,
   NodeFlowNodeData,
   NodeType,
   ScriptBoardNodeData,
   SeedanceVideoGenNodeData,
-  ShotNodeData,
-  StoryboardBoardNodeData,
   TextNodeData,
   ViduVideoGenNodeData,
   VideoInputNodeData,
@@ -59,19 +56,6 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         annotations: [],
         outputImage: null,
       } as AnnotationNodeData;
-    case "knowledge":
-      return {
-        title: "Knowledge",
-        plane: "semantic",
-        assetType: "semantic.note",
-        content: "",
-        tags: [],
-        sourceRefs: [],
-        status: "draft",
-        confidence: "medium",
-        locked: false,
-        fields: {},
-      } as KnowledgeNodeData;
     case "text":
       return {
         title: "",
@@ -81,13 +65,6 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       return {
         title: "剧本面板",
       } as ScriptBoardNodeData;
-    case "storyboardBoard":
-      return {
-        title: "分镜表面板",
-        displayMode: "table",
-        columnWidths: [96, 280, 170, 220, 220, 200, 180, 180, 280, 280],
-        rowHeights: {},
-      } as StoryboardBoardNodeData;
     case "identityCard":
       return {
         title: "角色 / 场景身份卡片",
@@ -215,23 +192,5 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         generateAudio: true,
         watermark: false,
       } as SeedanceVideoGenNodeData;
-    case "shot":
-      return {
-        shotId: "S-1",
-        duration: "3s",
-        shotType: "Medium Shot",
-        focalLength: "",
-        movement: "Static",
-        composition: "",
-        blocking: "",
-        dialogue: "",
-        sound: "",
-        lightingVfx: "",
-        editingNotes: "",
-        notes: "",
-        soraPrompt: "",
-        storyboardPrompt: "",
-        viewMode: "card",
-      } as ShotNodeData;
   }
 };

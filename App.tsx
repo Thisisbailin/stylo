@@ -1,13 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser, useClerk, useAuth } from './lib/auth';
-import { ProjectData, AppConfig, WorkflowStep, Episode, Shot, TokenUsage, AnalysisSubStep, VideoParams, ActiveTab, SyncState, SyncStatus, Character } from './types';
+import { ProjectData, AppConfig, WorkflowStep, Episode, AnalysisSubStep, ActiveTab, SyncState, SyncStatus, Character } from './types';
 import { INITIAL_PROJECT_DATA, INITIAL_VIDEO_CONFIG, INITIAL_TEXT_CONFIG, INITIAL_MULTIMODAL_CONFIG } from './constants';
 import {
   parseScriptToEpisodes,
-  exportToCSV,
-  exportToXLS,
-  parseCSVToShots,
   exportUnderstandingToJSON,
   parseUnderstandingJSON
 } from './utils/parser';
@@ -19,37 +16,25 @@ import { buildApiUrl } from './utils/api';
 import { ensureStableId } from './utils/id';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useCloudSync } from './hooks/useCloudSync';
-import { useVideoPolling } from './hooks/useVideoPolling';
 import { useConfig } from './hooks/useConfig';
 import { useTheme } from './hooks/useTheme';
 import { useWorkflowEngine } from './hooks/useWorkflowEngine';
 import { useSecretsSync } from './hooks/useSecretsSync';
-import { useShotGeneration } from './hooks/useShotGeneration';
-import { useSoraGeneration } from './hooks/useSoraGeneration';
-import { useStoryboardGeneration } from './hooks/useStoryboardGeneration';
 import { AppShell } from './components/layout/AppShell';
 import { WorkflowCard } from './components/layout/Header';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
-import { VideoModule } from './modules/video/VideoModule';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
-import type { KnowledgeCanvasSection } from './node-workspace/knowledge/surface/KnowledgeCanvasSurface';
 import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
 import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
-import { WritingPanel } from './node-workspace/components/WritingPanel';
 import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
-import { ProjectorModule } from './components/ProjectorModule';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import { FloatingPanelShell } from './node-workspace/components/FloatingPanelShell';
 import * as ResponsesTextService from './services/responsesTextService';
-import * as SoraService from './services/soraService';
 import { useNodeFlowStore } from './node-workspace/store/nodeFlowStore';
-import defaultShotGuide from './guides/ShotGuide.md?raw';
-import defaultSoraGuide from './guides/PromptGuide.md?raw';
 import defaultDramaGuide from './guides/DramaGuide.md?raw';
-import defaultStoryboardGuide from './guides/Storyboard Guide.md?raw';
 import {
   buildPersonRolesFromAnalysis,
   buildSceneRolesFromAnalysis,
@@ -57,6 +42,8 @@ import {
   projectRolesToLocations,
   replaceRolesByKind,
 } from './utils/projectRoles';
+
+type LabModalKey = ModuleKey | "workspace";
 
 // --- Helpers: Character stats derived from parsed episodes ---
 const buildCharacterStats = (episodes: Episode[]) => {
@@ -606,19 +593,21 @@ const App: React.FC = () => {
     deserialize: (value) => {
       const parsed = JSON.parse(value);
       const parsedActiveTab = parsed.activeTab;
+      const parsedStep =
+        parsed.step === WorkflowStep.SETUP_CONTEXT || parsed.step === WorkflowStep.COMPLETED
+          ? parsed.step
+          : WorkflowStep.IDLE;
       return {
-        step: parsed.step ?? WorkflowStep.IDLE,
+        step: parsedStep,
         analysisStep: parsed.analysisStep ?? AnalysisSubStep.IDLE,
         currentEpIndex: parsed.currentEpIndex ?? 0,
         activeTab:
           parsedActiveTab === 'understanding'
-            ? 'knowledge'
-            : parsedActiveTab === 'knowledge' ||
-          parsedActiveTab === 'visuals' ||
+            ? 'lab'
+            : parsedActiveTab === 'visuals' ||
           parsedActiveTab === 'video' ||
           parsedActiveTab === 'lab' ||
-          parsedActiveTab === 'stats' ||
-          parsedActiveTab === 'projector'
+          parsedActiveTab === 'stats'
             ? parsedActiveTab
             : 'lab'
       };
@@ -677,9 +666,8 @@ const App: React.FC = () => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
-  const [openLabModal, setOpenLabModal] = useState<ModuleKey | null>(null);
+  const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("assets:images");
-  const [knowledgeSurfaceRequest, setKnowledgeSurfaceRequest] = useState<{ section: KnowledgeCanvasSection; nonce: number } | null>(null);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -739,19 +727,15 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      setKnowledgeSurfaceRequest({ section: "nodes", nonce: Date.now() });
+      openWorkspacePanel("assets:images");
       return;
     }
     if (key === 'scenes') {
-      setKnowledgeSurfaceRequest({ section: "nodes", nonce: Date.now() });
-      return;
-    }
-    if (key === 'workspace') {
-      setKnowledgeSurfaceRequest({ section: "overview", nonce: Date.now() });
+      openWorkspacePanel("assets:images");
       return;
     }
     setOpenLabModal(key);
-  }, []);
+  }, [openWorkspacePanel]);
 
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
@@ -880,14 +864,6 @@ const App: React.FC = () => {
     saveDebounceMs: 1200
   });
 
-  useVideoPolling<ProjectData>({
-    episodes: projectData.episodes,
-    videoConfig: config.videoConfig,
-    onUpdate: (updater) => setProjectData(prev => updater(prev)),
-    intervalMs: 5000,
-    onError: (e) => console.warn("Video polling error", e)
-  });
-
   useSecretsSync({
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
@@ -927,100 +903,18 @@ const App: React.FC = () => {
     }
   }, [projectData.episodes.length]);
 
-  // --- GLOBAL VIDEO TASK POLLING LOOP ---
+  // Load the drama guide on mount (only if not already loaded)
   useEffect(() => {
-    const intervalId = setInterval(async () => {
-      // Identify shots that need checking
-      const tasksToCheck: { epId: number, shotId: string, taskId: string }[] = [];
-
-      projectData.episodes.forEach(ep => {
-        ep.shots.forEach(s => {
-          if ((s.videoStatus === 'queued' || s.videoStatus === 'generating') && s.videoId) {
-            tasksToCheck.push({ epId: ep.id, shotId: s.id, taskId: s.videoId });
-          }
-        });
-      });
-
-      if (tasksToCheck.length === 0) return;
-
-      // Check tasks (limit concurrency if needed, but 5-10 concurrent requests usually ok)
-      // We do them sequentially or in small batches to avoid flooding
-      for (const task of tasksToCheck) {
-        if (!config.videoConfig.baseUrl || !config.videoConfig.apiKey) continue;
-
-        try {
-          const result = await SoraService.checkSoraTaskStatus(task.taskId, config.videoConfig);
-
-          // Only update state if status changed or URL became available
-          if (result.status !== 'processing' && result.status !== 'queued') {
-            setProjectData(prev => {
-              const newEpisodes = prev.episodes.map(e => {
-                if (e.id === task.epId) {
-                  return {
-                    ...e,
-                    shots: e.shots.map(s => s.id === task.shotId ? {
-                      ...s,
-                      videoStatus: result.status === 'succeeded' ? 'completed' : 'error',
-                      videoUrl: result.url,
-                      videoErrorMsg: result.errorMsg,
-                      // Keep start time for duration calc if needed
-                    } : s)
-                  } as Episode;
-                }
-                return e;
-              });
-              return { ...prev, episodes: newEpisodes };
-            });
-          }
-          // If status changed from queued to processing, update that
-          else if (result.status === 'processing') {
-            setProjectData(prev => {
-              const currentEp = prev.episodes.find(e => e.id === task.epId);
-              const currentShot = currentEp?.shots.find(s => s.id === task.shotId);
-
-              if (currentShot && currentShot.videoStatus === 'queued') {
-                const newEpisodes = prev.episodes.map(e => {
-                  if (e.id === task.epId) {
-                    return {
-                      ...e,
-                      shots: e.shots.map(s => s.id === task.shotId ? {
-                        ...s,
-                        videoStatus: 'generating'
-                      } : s)
-                    } as Episode;
-                  }
-                  return e;
-                });
-                return { ...prev, episodes: newEpisodes };
-              }
-              return prev;
-            });
-          }
-        } catch (e) {
-          console.warn("Polling error for task " + task.taskId, e);
-        }
-      }
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(intervalId);
-  }, [projectData, config.videoConfig]);
-
-
-  // Load default guides on mount (only if not already loaded)
-  useEffect(() => {
-    if (!projectData.shotGuide || !projectData.soraGuide || !projectData.dramaGuide || !projectData.storyboardGuide) {
+    if (!projectData.dramaGuide) {
       setProjectData(prev => ({
         ...prev,
-        shotGuide: prev.shotGuide || defaultShotGuide,
-        soraGuide: prev.soraGuide || defaultSoraGuide,
-        dramaGuide: prev.dramaGuide || defaultDramaGuide,
-        storyboardGuide: prev.storyboardGuide || defaultStoryboardGuide
+        dramaGuide: prev.dramaGuide || defaultDramaGuide
       }));
     }
   }, []);
 
   // --- Helper: Stats Updater ---
-  const updateStats = (phase: 'context' | 'shotGen' | 'soraGen' | 'storyboardGen', success: boolean) => {
+  const updateStats = (phase: 'context', success: boolean) => {
     setProjectData(prev => {
       const stats = { ...prev.stats };
       const current = stats[phase] || { total: 0, success: 0, error: 0 };
@@ -1127,11 +1021,7 @@ const App: React.FC = () => {
     type:
       | 'script'
       | 'globalStyleGuide'
-      | 'shotGuide'
-      | 'soraGuide'
-      | 'storyboardGuide'
       | 'dramaGuide'
-      | 'csvShots'
       | 'understandingJson',
     content: string,
     fileName?: string
@@ -1192,29 +1082,6 @@ const App: React.FC = () => {
       if (episodes.length > 0) setCurrentEpIndex(0);
       setActiveTab('lab');
 
-    } else if (type === 'csvShots') {
-      try {
-        const shotMap = parseCSVToShots(content);
-        setProjectData(prev => {
-          const updatedEpisodes = prev.episodes.map(ep => {
-            const matchedShots = shotMap.get(ep.title);
-            if (matchedShots && matchedShots.length > 0) {
-              return {
-                ...ep,
-                shots: matchedShots,
-                status: matchedShots[0].soraPrompt ? 'completed' : 'confirmed_shots'
-              } as Episode;
-            }
-            return ep;
-          });
-          return { ...prev, episodes: updatedEpisodes };
-        });
-        alert(`Successfully imported shots for ${shotMap.size} episodes.`);
-        setActiveTab('lab');
-      } catch (e: any) {
-        alert("Error importing CSV: " + e.message);
-      }
-
     } else if (type === 'understandingJson') {
       try {
         const payload = parseUnderstandingJSON(content);
@@ -1234,20 +1101,14 @@ const App: React.FC = () => {
         phase1Usage: payload.phase1Usage ? { ...prev.phase1Usage, ...payload.phase1Usage } : prev.phase1Usage
       };
         });
-        alert('Successfully imported knowledge data.');
-        setActiveTab('knowledge');
+        alert('Successfully imported project archive data.');
+        setActiveTab('lab');
       } catch (e: any) {
-        alert("Error importing knowledge JSON: " + e.message);
+        alert("Error importing project archive JSON: " + e.message);
       }
 
     } else if (type === 'globalStyleGuide') {
       setProjectData(prev => ({ ...prev, globalStyleGuide: content }));
-    } else if (type === 'shotGuide') {
-      setProjectData(prev => ({ ...prev, shotGuide: content }));
-    } else if (type === 'soraGuide') {
-      setProjectData(prev => ({ ...prev, soraGuide: content }));
-    } else if (type === 'storyboardGuide') {
-      setProjectData(prev => ({ ...prev, storyboardGuide: content }));
     } else if (type === 'dramaGuide') {
       setProjectData(prev => ({ ...prev, dramaGuide: content }));
     }
@@ -1309,7 +1170,7 @@ const App: React.FC = () => {
   const processProjectSummary = async () => {
     setAnalysisError(null);
     setProcessing(true, "Step 1/6: Analyzing Global Project Arc...");
-    setActiveTab('knowledge');
+    setActiveTab('lab');
     try {
       const result = await ResponsesTextService.generateProjectSummary(config.textConfig, projectData.rawScript, projectData.globalStyleGuide);
 
@@ -1876,6 +1737,7 @@ const App: React.FC = () => {
   const finishAnalysis = () => {
     setAnalysisError(null);
     setAnalysisStep(AnalysisSubStep.COMPLETE);
+    setStep(WorkflowStep.COMPLETED);
     alert("Phase 1 Complete! Context is fully established.");
   };
 
@@ -1903,271 +1765,6 @@ const App: React.FC = () => {
         break;
       default:
         break;
-    }
-  };
-
-  // === PHASE 2 & 3 Hooks ===
-  const { startPhase2, confirmEpisodeShots, retryCurrentEpisodeShots } = useShotGeneration({
-    projectDataRef,
-    setProjectData,
-    config,
-    setStep,
-    setCurrentEpIndex,
-    setProcessing,
-    setStatus,
-    setActiveTab,
-    updateStats,
-    currentEpIndex
-  });
-
-  const { startPhase3, continueNextEpisodeSora, retryCurrentEpisodeSora } = useSoraGeneration({
-    projectDataRef,
-    setProjectData,
-    config,
-    setStep,
-    setCurrentEpIndex,
-    setProcessing,
-    setStatus,
-    setActiveTab,
-    updateStats,
-    isProcessing,
-    currentEpIndex
-  });
-
-  const { startPhase4, continueNextEpisodeStoryboard, retryCurrentEpisodeStoryboard } = useStoryboardGeneration({
-    projectDataRef,
-    setProjectData,
-    config,
-    setStep,
-    setCurrentEpIndex,
-    setProcessing,
-    setStatus,
-    setActiveTab,
-    updateStats,
-    isProcessing,
-    currentEpIndex
-  });
-
-  // === PHASE 5: VIDEO GENERATION ===
-  const handleGenerateVideo = async (episodeId: number, shotId: string, customPrompt: string, params: VideoParams) => {
-    if (!config.videoConfig.apiKey || !config.videoConfig.baseUrl) {
-      alert("Video API settings missing. Please open Agent Settings -> Video.");
-      return;
-    }
-
-    // Ad-hoc Logic
-    if (episodeId === -1) {
-      const playgroundId = -1;
-      let playgroundEpIndex = projectData.episodes.findIndex(e => e.id === playgroundId);
-
-      if (playgroundEpIndex === -1) {
-        const playgroundEp: Episode = {
-          id: playgroundId,
-          title: "Creative Playground",
-          content: "Ad-hoc generations",
-          scenes: [],
-          shots: [],
-          status: 'completed'
-        };
-        setProjectData(prev => ({
-          ...prev,
-          episodes: [...prev.episodes, playgroundEp]
-        }));
-        playgroundEpIndex = projectData.episodes.length;
-      }
-
-      const newShotId = `gen-${Date.now()}`;
-      const newShot: Shot = {
-        id: newShotId,
-        duration: params.duration || '4s',
-        shotType: 'Custom',
-        focalLength: '',
-        movement: 'Custom',
-        composition: '',
-        blocking: '',
-        description: 'Ad-hoc generation',
-        dialogue: '',
-        sound: '',
-        lightingVfx: '',
-        editingNotes: '',
-        notes: '',
-        soraPrompt: customPrompt,
-        storyboardPrompt: '',
-        finalVideoPrompt: customPrompt,
-        videoStatus: 'queued',
-        videoParams: params,
-        videoStartTime: Date.now()
-      };
-
-      setProjectData(prev => {
-        const episodesCopy = [...prev.episodes];
-        let existingPlayground = episodesCopy.find(e => e.id === playgroundId);
-        if (!existingPlayground) {
-          existingPlayground = {
-            id: playgroundId,
-            title: "Creative Playground",
-            content: "Ad-hoc generations",
-            scenes: [],
-            shots: [],
-            status: 'completed'
-          };
-          episodesCopy.push(existingPlayground);
-        }
-        existingPlayground.shots = [...existingPlayground.shots, newShot];
-        return { ...prev, episodes: episodesCopy };
-      });
-
-      try {
-        const { id } = await SoraService.submitSoraTask(customPrompt, config.videoConfig, params);
-        setProjectData(prev => {
-          const episodesCopy = prev.episodes.map(e => {
-            if (e.id === playgroundId) {
-              return {
-                ...e,
-                shots: e.shots.map(s => s.id === newShotId ? {
-                  ...s,
-                  videoId: id
-                } : s)
-              } as Episode;
-            }
-            return e;
-          });
-          return { ...prev, episodes: episodesCopy };
-        });
-      } catch (e: any) {
-        setProjectData(prev => {
-          const episodesCopy = prev.episodes.map(ep => {
-            if (ep.id === playgroundId) {
-              return {
-                ...ep,
-                shots: ep.shots.map(s => s.id === newShotId ? {
-                  ...s,
-                  videoStatus: 'error',
-                  videoErrorMsg: e.message
-                } : s)
-              } as Episode;
-            }
-            return ep;
-          });
-          return { ...prev, episodes: episodesCopy };
-        });
-      }
-      return;
-    }
-
-    // Standard Logic
-    const episode = projectData.episodes.find(e => e.id === episodeId);
-    if (!episode) return;
-    const shot = episode.shots.find(s => s.id === shotId);
-    if (!shot) return;
-
-    setProjectData(prev => {
-      const newEpisodes = prev.episodes.map(e => {
-        if (e.id === episodeId) {
-          return {
-            ...e,
-            shots: e.shots.map(s => s.id === shotId ? {
-              ...s,
-              videoStatus: 'queued',
-              videoErrorMsg: undefined,
-              finalVideoPrompt: customPrompt,
-              videoParams: params,
-              videoStartTime: Date.now()
-            } : s)
-          } as Episode;
-        }
-        return e;
-      });
-      return { ...prev, episodes: newEpisodes };
-    });
-
-    try {
-      const { id } = await SoraService.submitSoraTask(customPrompt, config.videoConfig, params);
-      setProjectData(prev => {
-        const newEpisodes = prev.episodes.map(e => {
-          if (e.id === episodeId) {
-            return {
-              ...e,
-              shots: e.shots.map(s => s.id === shotId ? {
-                ...s,
-                videoStatus: 'queued',
-                videoId: id,
-              } : s)
-            } as Episode;
-          }
-          return e;
-        });
-        return { ...prev, episodes: newEpisodes };
-      });
-    } catch (e: any) {
-      setProjectData(prev => {
-        const newEpisodes = prev.episodes.map(ep => {
-          if (ep.id === episodeId) {
-            return {
-              ...ep,
-              shots: ep.shots.map(s => s.id === shotId ? { ...s, videoStatus: 'error', videoErrorMsg: e.message } : s)
-            } as Episode;
-          }
-          return ep;
-        });
-        return { ...prev, episodes: newEpisodes };
-      });
-    }
-  };
-
-  const handleRemixVideo = async (episodeId: number, shotId: string, customPrompt: string, originalVideoId: string) => {
-    if (!config.videoConfig.apiKey || !config.videoConfig.baseUrl) return;
-
-    setProjectData(prev => {
-      const newEpisodes = prev.episodes.map(e => {
-        if (e.id === episodeId) {
-          return {
-            ...e,
-            shots: e.shots.map(s => s.id === shotId ? {
-              ...s,
-              videoStatus: 'queued',
-              videoErrorMsg: undefined,
-              finalVideoPrompt: customPrompt,
-              videoStartTime: Date.now()
-            } : s)
-          } as Episode;
-        }
-        return e;
-      });
-      return { ...prev, episodes: newEpisodes };
-    });
-
-    try {
-      const { id } = await SoraService.remixSoraVideo(originalVideoId, customPrompt, config.videoConfig);
-      setProjectData(prev => {
-        const newEpisodes = prev.episodes.map(e => {
-          if (e.id === episodeId) {
-            return {
-              ...e,
-              shots: e.shots.map(s => s.id === shotId ? {
-                ...s,
-                videoStatus: 'queued',
-                videoId: id
-              } : s)
-            } as Episode;
-          }
-          return e;
-        });
-        return { ...prev, episodes: newEpisodes };
-      });
-    } catch (e: any) {
-      setProjectData(prev => {
-        const newEpisodes = prev.episodes.map(ep => {
-          if (ep.id === episodeId) {
-            return {
-              ...ep,
-              shots: ep.shots.map(s => s.id === shotId ? { ...s, videoStatus: 'error', videoErrorMsg: e.message } : s)
-            } as Episode;
-          }
-          return ep;
-        });
-        return { ...prev, episodes: newEpisodes };
-      });
     }
   };
 
@@ -2240,8 +1837,6 @@ const App: React.FC = () => {
     setIsSyncBannerDismissed(false);
   }, [syncBannerSignature]);
 
-  const handleExportCsv = () => exportToCSV(projectData.episodes);
-  const handleExportXls = () => exportToXLS(projectData.episodes);
   const handleExportUnderstandingJson = () => exportUnderstandingToJSON(projectData);
 
   const handleToggleWorkflow = useCallback((anchorRect?: DOMRect) => {
@@ -2336,13 +1931,10 @@ const App: React.FC = () => {
               onAssetLoad={handleAssetLoad}
               onOpenModule={handleOpenLabModule}
               syncIndicator={syncIndicator}
-              onExportCsv={handleExportCsv}
-              onExportXls={handleExportXls}
               onExportUnderstandingJson={handleExportUnderstandingJson}
               onToggleTheme={toggleTheme}
               isDarkMode={isDarkMode}
-              onOpenSyncPanel={() => openWorkspacePanel("sync:status")}
-              onOpenInfoPanel={() => openWorkspacePanel("info:about")}
+              onOpenWorkspacePanel={() => openWorkspacePanel("assets:images")}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
               accountInfo={{
@@ -2357,7 +1949,6 @@ const App: React.FC = () => {
               }}
               onTryMe={handleTryMe}
               onToggleWorkflow={handleToggleWorkflow}
-              knowledgeSurfaceRequest={knowledgeSurfaceRequest}
             />
           </div>
         );
@@ -2386,8 +1977,7 @@ const App: React.FC = () => {
   let labModalTitle: string | null = null;
   let labModalWidth: number | string | undefined = undefined;
   let labModalContent: React.ReactNode = null;
-  if (openLabModal === "writing") {
-  } else if (openLabModal === "workspace") {
+  if (openLabModal === "workspace") {
     labModalTitle = "Workspace";
     labModalWidth = 560;
     labModalContent = (
@@ -2406,10 +1996,6 @@ const App: React.FC = () => {
         initialSection={workspaceSection}
       />
     );
-  } else if (openLabModal === "projector") {
-    labModalTitle = "放映机 (视听实验室)";
-    labModalWidth = 560;
-    labModalContent = <ProjectorModule projectData={projectData} setProjectData={setProjectData} />;
   }
 
   if (appView === "landing") {
@@ -2461,14 +2047,6 @@ const App: React.FC = () => {
         )}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
       </AppShell>
-      {openLabModal === "writing" && (
-        <WritingPanel
-          projectData={projectData}
-          setProjectData={setProjectData}
-          onClose={closeLabModal}
-          getAuthToken={getAuthToken}
-        />
-      )}
       {showWorkflow && (
         <>
           <div className="fixed inset-0 z-[55]" onClick={() => setShowWorkflow(false)} />
@@ -2497,15 +2075,6 @@ const App: React.FC = () => {
                 onConfirmLocListNext: confirmLocListAndNext,
                 onFinishAnalysis: finishAnalysis,
                 onRetryAnalysis: retryAnalysisStep,
-                onStartPhase2: startPhase2,
-                onConfirmEpisodeShots: confirmEpisodeShots,
-                onRetryEpisodeShots: retryCurrentEpisodeShots,
-                onStartPhase3: startPhase3,
-                onRetryEpisodeSora: retryCurrentEpisodeSora,
-                onContinueNextEpisodeSora: continueNextEpisodeSora,
-                onStartPhase4: startPhase4,
-                onRetryEpisodeStoryboard: retryCurrentEpisodeStoryboard,
-                onContinueNextEpisodeStoryboard: continueNextEpisodeStoryboard,
               }}
               onClose={() => setShowWorkflow(false)}
             />

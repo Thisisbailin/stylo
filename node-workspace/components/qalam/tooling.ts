@@ -43,8 +43,8 @@ export const buildToolSummary = (name: string, args: any) => {
     const layerHint = Array.isArray(args?.layers) && args.layers.length ? ` @${args.layers.join("+")}` : "";
     return `资源搜索${layerHint}：${String(args?.query || "").slice(0, 32)}`;
   }
-  if (name === "edit_knowledge_resource") {
-    return `Knowledge 编辑：${args?.entity || "node"} / ${args?.action || "create"}`;
+  if (name === "edit_script_resource") {
+    return `Script 编辑：${args?.entity || "archive"} / ${args?.action || "create"}`;
   }
   if (name === "operate_project_resource") {
     return `NodeFlow 操作：${args?.entity || "node"} / ${args?.action || "create"}`;

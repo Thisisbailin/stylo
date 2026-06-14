@@ -107,9 +107,6 @@ export const buildProjectedSourceNodes = (projectData: ProjectData): ProjectGrap
 
   const guides = [
     ["globalStyleGuide", "全局风格指南", projectData.globalStyleGuide],
-    ["shotGuide", "镜头指南", projectData.shotGuide],
-    ["soraGuide", "Sora 指南", projectData.soraGuide],
-    ["storyboardGuide", "分镜指南", projectData.storyboardGuide],
     ["dramaGuide", "戏剧指南", projectData.dramaGuide],
   ] as const;
 

@@ -1,6 +1,9 @@
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { buildKnowledgeAnchorRegistryProjection } from "../../node-workspace/knowledge/maps";
-import { listKnowledgeNodeIdentities } from "../../node-workspace/knowledge/queries";
+import {
+  buildScriptResourceLinks,
+  buildScriptResourceMaps,
+  buildScriptResourceNodes,
+} from "./scriptResources";
 import {
   buildGraphNodesFromWorkflow,
   buildProjectGraphLinks,
@@ -8,12 +11,12 @@ import {
 } from "../../node-workspace/nodeflow/projectGraph";
 import { getNodeFlowLinkRelationsForNode } from "../../node-workspace/nodeflow/model";
 
-export const LIST_PROJECT_RESOURCE_LAYERS = ["knowledge", "nodeflow"] as const;
+export const LIST_PROJECT_RESOURCE_LAYERS = ["script", "nodeflow"] as const;
 export const LIST_PROJECT_RESOURCE_ENTITIES = ["node", "link", "map", "approval"] as const;
 export const LIST_PROJECT_RESOURCE_TARGETS = [
-  "knowledge:node",
-  "knowledge:link",
-  "knowledge:map",
+  "script:node",
+  "script:link",
+  "script:map",
   "nodeflow:node",
   "nodeflow:link",
   "nodeflow:map",
@@ -29,7 +32,7 @@ const listProjectResourcesParameters = {
     layer: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_LAYERS],
-      description: "Which graph layer to inspect: knowledge for long-term memory or nodeflow for the visible working canvas.",
+      description: "Which project layer to inspect: script for source/foundation/archive resources or nodeflow for the visible working canvas.",
     },
     entity: {
       type: "string",
@@ -77,8 +80,8 @@ const parseArgs = (input: unknown) => {
   if (!(LIST_PROJECT_RESOURCE_ENTITIES as readonly string[]).includes(entity)) {
     throw new Error(`list_project_resources 不支持 entity=${trim(raw.entity)}`);
   }
-  if (layer === "knowledge" && !["node", "link", "map"].includes(entity)) {
-    throw new Error("knowledge 层仅支持 node、link 或 map。");
+  if (layer === "script" && !["node", "link", "map"].includes(entity)) {
+    throw new Error("script 层仅支持 node、link 或 map。");
   }
   if (layer === "nodeflow" && !["node", "link", "map", "approval"].includes(entity)) {
     throw new Error("nodeflow 层仅支持 node、link、map 或 approval。");
@@ -95,99 +98,91 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List graph entities before reading them. The public graph world has two main layers: Knowledge for long-term memory and NodeFlow for the visible working canvas.",
+    "List project entities before reading them. The public project world has two main layers: Script for source/foundation/archive resources and NodeFlow for the visible working canvas.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
-    const knowledge = bridge.getKnowledgeSnapshot();
+    const projectData = bridge.getProjectData();
 
-    if (args.layer === "knowledge") {
+    if (args.layer === "script") {
       if (args.entity === "node") {
-        const items = listKnowledgeNodeIdentities(knowledge).slice(0, args.maxItems).map((item) => ({
-          ...item,
+        const nodes = buildScriptResourceNodes(projectData);
+        const items = nodes.slice(0, args.maxItems).map((item) => ({
+          node_id: item.nodeId,
+          node_ref: item.ref,
+          kind: item.type,
+          title: item.title,
+          resource_type: item.resourceType,
+          locked: item.locked,
+          source_ref: item.sourceRef || null,
           artifact: {
             kind: "node",
-            target: "knowledge:node",
-            id: item.id,
+            target: "script:node",
+            id: item.nodeId,
             ref: item.ref,
             title: item.title,
-            node_kind: item.kind,
+            node_kind: item.type,
           },
         }));
         return {
-          layer: "knowledge",
+          layer: "script",
           entity: "node",
-          target: "knowledge:node",
+          target: "script:node",
           view: "identity",
-          total: knowledge.nodes.length,
+          total: nodes.length,
           items,
         };
       }
 
       if (args.entity === "link") {
-        const items = knowledge.links.slice(0, args.maxItems).map((link) => {
-          const fromNode = knowledge.nodes.find((node) => node.id === link.fromNodeId);
-          const toNode = knowledge.nodes.find((node) => node.id === link.toNodeId);
-          return {
-            link_id: link.id,
-            from_node_id: link.fromNodeId,
-            from_node_ref: fromNode?.ref || null,
-            from_title: fromNode?.package.title || null,
-            to_node_id: link.toNodeId,
-            to_node_ref: toNode?.ref || null,
-            to_title: toNode?.package.title || null,
-            link_type: link.type,
-            origin: link.origin,
-            status: link.status || "active",
-            artifact: {
-              kind: "link",
-              target: "knowledge:link",
-              id: link.id,
-              title: link.type,
-              source: {
-                node_id: link.fromNodeId,
-                node_ref: fromNode?.ref || null,
-                title: fromNode?.package.title || null,
-              },
-              destination: {
-                node_id: link.toNodeId,
-                node_ref: toNode?.ref || null,
-                title: toNode?.package.title || null,
-              },
+        const links = buildScriptResourceLinks(projectData);
+        const items = links.slice(0, args.maxItems).map((link) => ({
+          link_id: link.id,
+          from_node_ref: link.fromRef,
+          from_title: link.fromTitle || null,
+          to_node_ref: link.toRef,
+          to_title: link.toTitle || null,
+          link_type: link.type,
+          artifact: {
+            kind: "link",
+            target: "script:link",
+            id: link.id,
+            title: link.type,
+            source: {
+              node_ref: link.fromRef,
+              title: link.fromTitle || null,
             },
-          };
-        });
+            destination: {
+              node_ref: link.toRef,
+              title: link.toTitle || null,
+            },
+          },
+        }));
         return {
-          layer: "knowledge",
+          layer: "script",
           entity: "link",
-          target: "knowledge:link",
-          total: knowledge.links.length,
+          target: "script:link",
+          total: links.length,
           items,
         };
       }
 
-      const items = [
-        { map_view: "full", title: "Knowledge Map", description: "完整长期记忆地图" },
-        { map_view: "local", title: "Local Map", description: "围绕某个知识节点的局部地图" },
-        { map_view: "anchor", title: "Anchor Map", description: "围绕某个 script / episode / scene anchor 的地图" },
-        { map_view: "lens", title: "Lens Map", description: "按 focus / kind 等镜头投影出的地图" },
-        { map_view: "lifecycle", title: "Lifecycle Map", description: "按生命周期观察知识网" },
-        { map_view: "timeline", title: "Anchor Timeline", description: "按 anchor 查看知识演化时间线" },
-      ].map((item) => ({
+      const maps = buildScriptResourceMaps(projectData);
+      const items = maps.slice(0, args.maxItems).map((item) => ({
         ...item,
         artifact: {
           kind: "map",
-          target: "knowledge:map",
-          id: item.map_view,
-          title: item.title,
+          target: "script:map",
+          id: item.mapId,
+          title: item.name,
         },
       }));
       return {
-        layer: "knowledge",
+        layer: "script",
         entity: "map",
-        target: "knowledge:map",
-        total: items.length,
+        target: "script:map",
+        total: maps.length,
         items,
       };
     }
@@ -337,9 +332,9 @@ export const listProjectResourcesToolDef = {
     const layer = output?.layer || "graph";
     const entity = output?.entity || "resource";
     const count = output?.items?.length || 0;
-    if (layer === "knowledge" && entity === "node") return `列出 ${count} 个 Knowledge 节点`;
-    if (layer === "knowledge" && entity === "link") return `列出 ${count} 条 Knowledge 关系`;
-    if (layer === "knowledge" && entity === "map") return `列出 ${count} 种 Knowledge 地图视图`;
+    if (layer === "script" && entity === "node") return `列出 ${count} 个 Script 资源`;
+    if (layer === "script" && entity === "link") return `列出 ${count} 条 Script 关系`;
+    if (layer === "script" && entity === "map") return `列出 ${count} 种 Script 地图视图`;
     if (layer === "nodeflow" && entity === "node") return `列出 ${count} 个 NodeFlow 节点`;
     if (layer === "nodeflow" && entity === "link") return `列出 ${count} 条 NodeFlow 连线`;
     if (layer === "nodeflow" && entity === "approval") return `列出 ${count} 个 NodeFlow 待审批执行请求`;

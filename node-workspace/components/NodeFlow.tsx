@@ -16,7 +16,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { useKnowledgeStore } from "../store/knowledgeStore";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection, nodeSupportsHandle } from "../utils/handles";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { EditableEdge } from "../edges/EditableEdge";
@@ -24,9 +23,7 @@ import {
   AudioInputNode,
   VideoInputNode,
   ImageInputNode, AnnotationNode, TextNode,
-  KnowledgeNode,
   ScriptBoardNode,
-  StoryboardBoardNode,
   IdentityCardNode,
   ImageGenNode,
   NanoBananaImageGenNode,
@@ -35,7 +32,6 @@ import {
   WanReferenceVideoGenNode,
   ViduVideoGenNode,
   SeedanceVideoGenNode,
-  ShotNode,
 } from "../nodes";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
@@ -53,14 +49,9 @@ import { Toast, useToast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { ProjectData } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
-import { FolderOpen, FileText, List } from "lucide-react";
+import { FileText, List } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
-import { useKnowledgeCanvasSurface, type KnowledgeCanvasSection } from "../knowledge/surface/KnowledgeCanvasSurface";
-import {
-  deriveKnowledgeSurfaceFocusFromFlowNode,
-  type KnowledgeSurfaceFocusRequest,
-} from "../knowledge/surface/focus";
 import {
   alignPositionChangesToNodeEdges,
   getEdgeAlignedPosition,
@@ -73,10 +64,8 @@ const nodeTypes: NodeTypes = {
   audioInput: AudioInputNode,
   videoInput: VideoInputNode,
   annotation: AnnotationNode,
-  knowledge: KnowledgeNode,
   text: TextNode,
   scriptBoard: ScriptBoardNode,
-  storyboardBoard: StoryboardBoardNode,
   identityCard: IdentityCardNode,
   imageGen: ImageGenNode,
   nanoBananaImageGen: NanoBananaImageGenNode,
@@ -85,7 +74,6 @@ const nodeTypes: NodeTypes = {
   wanReferenceVideoGen: WanReferenceVideoGenNode,
   viduVideoGen: ViduVideoGenNode,
   seedanceVideoGen: SeedanceVideoGenNode,
-  shot: ShotNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -163,25 +151,17 @@ interface NodeFlowProps {
     type:
       | "script"
       | "globalStyleGuide"
-      | "shotGuide"
-      | "soraGuide"
-      | "storyboardGuide"
       | "dramaGuide"
-      | "csvShots"
       | "understandingJson",
     content: string,
     fileName?: string
   ) => void;
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
-  onExportCsv?: () => void;
-  onExportXls?: () => void;
   onExportUnderstandingJson?: () => void;
-  onOpenStats?: () => void;
+  onOpenWorkspacePanel?: () => void;
   onToggleTheme?: () => void;
   isDarkMode?: boolean;
-  onOpenSyncPanel?: () => void;
-  onOpenInfoPanel?: () => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: {
@@ -196,10 +176,6 @@ interface NodeFlowProps {
   };
   onToggleWorkflow?: (anchorRect?: DOMRect) => void;
   onTryMe?: () => void;
-  knowledgeSurfaceRequest?: {
-    section: KnowledgeCanvasSection;
-    nonce: number;
-  };
 }
 
 type ConnectionTargetGlow = {
@@ -458,27 +434,20 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   onAssetLoad,
   onOpenModule,
   syncIndicator,
-  onExportCsv,
-  onExportXls,
   onExportUnderstandingJson,
-  onOpenStats,
+  onOpenWorkspacePanel,
   onToggleTheme,
   isDarkMode,
-  onOpenSyncPanel,
-  onOpenInfoPanel,
   onResetProject,
   onSignOut,
   accountInfo,
   onToggleWorkflow,
-  knowledgeSurfaceRequest,
 }) => {
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [surfacePlane, setSurfacePlane] = useState<"flow" | "script" | "knowledge">("flow");
+  const [surfacePlane, setSurfacePlane] = useState<"flow" | "script">("flow");
   const [editingScriptEpisodeId, setEditingScriptEpisodeId] = useState<number | null>(null);
-  const [knowledgeSection, setKnowledgeSection] = useState<KnowledgeCanvasSection>("overview");
-  const [knowledgeFocusRequest, setKnowledgeFocusRequest] = useState<KnowledgeSurfaceFocusRequest | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [isAssetsDockHovered, setIsAssetsDockHovered] = useState(false);
   const [isAssetsPanelCollapsed, setIsAssetsPanelCollapsed] = useState(true);
@@ -532,7 +501,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   } = useNodeFlowStore();
   const { setViewport, screenToFlowPosition, getViewport, fitView } = useReactFlow();
   const { show: showToast } = useToast();
-  const syncKnowledgeCanonicalSource = useKnowledgeStore((state) => state.syncCanonicalSource);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
 
   const minZoom = 0.25;
@@ -554,19 +522,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const viewportCommitTimeoutRef = useRef<number | null>(null);
   const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
   const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
-  const selectedFlowNode = useMemo(
-    () => nodes.find((node) => node.selected) || nodes.find((node) => node.id === currentNodeId) || null,
-    [currentNodeId, nodes]
-  );
-  const selectedKnowledgeFocus = useMemo(
-    () => deriveKnowledgeSurfaceFocusFromFlowNode(selectedFlowNode),
-    [selectedFlowNode]
-  );
-
-  useEffect(() => {
-    syncKnowledgeCanonicalSource(projectData);
-  }, [projectData, syncKnowledgeCanonicalSource]);
-
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
@@ -683,9 +638,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       episodes: projectData.episodes || [],
       designAssets: projectData.designAssets || [],
       globalStyleGuide: projectData.globalStyleGuide || "",
-      shotGuide: projectData.shotGuide || "",
-      soraGuide: projectData.soraGuide || "",
-      storyboardGuide: projectData.storyboardGuide || "",
       dramaGuide: projectData.dramaGuide || "",
       context: projectData.context,
     });
@@ -1091,41 +1043,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     [handleSharedViewportChange, isLocked, liveViewport, maxZoom, minZoom, showMiniMap, snapToGrid]
   );
 
-  const openKnowledgePlane = useCallback(
-    (section: KnowledgeCanvasSection) => {
-      setKnowledgeSection(section);
-      if (selectedKnowledgeFocus) {
-        setKnowledgeFocusRequest({
-          ...selectedKnowledgeFocus,
-          section: selectedKnowledgeFocus.section === "overview" ? section : selectedKnowledgeFocus.section,
-          nonce: Date.now(),
-        });
-      } else {
-        setKnowledgeFocusRequest(null);
-      }
-      setSurfacePlane("knowledge");
-    },
-    [selectedKnowledgeFocus]
-  );
-
-  const handleOpenKnowledgeSurface = useCallback(
-    (
-      section:
-        | "knowledge:overview"
-        | "knowledge:nodes"
-        | "knowledge:links"
-        | "knowledge:maps" = "knowledge:overview"
-    ) => {
-      openKnowledgePlane(section.replace("knowledge:", "") as KnowledgeCanvasSection);
-    },
-    [openKnowledgePlane]
-  );
-
-  useEffect(() => {
-    if (!knowledgeSurfaceRequest) return;
-    openKnowledgePlane(knowledgeSurfaceRequest.section);
-  }, [knowledgeSurfaceRequest, openKnowledgePlane]);
-
   const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
   const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
   const updateSnapGuide = useCallback(
@@ -1205,19 +1122,10 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), text }),
   });
 
-  const knowledgeSurface = useKnowledgeCanvasSurface({
-    section: knowledgeSection,
-    onSectionChange: setKnowledgeSection,
-    focusRequest: knowledgeFocusRequest,
-    canvasControls: sharedCanvasControls,
-  });
-
   const activeSurface =
     surfacePlane === "script"
       ? scriptSurface
-      : surfacePlane === "knowledge"
-        ? knowledgeSurface
-        : flowSurface;
+      : flowSurface;
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const patternDefinitions = useMemo(
@@ -1576,18 +1484,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               <List size={12} strokeWidth={2.2} />
               Flow
             </button>
-            <button
-              type="button"
-              onClick={() => openKnowledgePlane(knowledgeSection)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
-                surfacePlane === "knowledge"
-                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
-                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-              }`}
-            >
-              <FolderOpen size={12} strokeWidth={2.2} />
-              Knowledge
-            </button>
           </div>
         </div>
       </div>
@@ -1602,6 +1498,8 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         projectData={projectData}
         isDarkMode={isDarkMode}
         requestedPanel={agentSettingsPanel}
+        onOpenVisualLab={() => onOpenModule?.("glassLab")}
+        onOpenWorkspace={onOpenWorkspacePanel}
       />
       {editingScriptEpisodeId !== null ? (
         <WritingPanel
@@ -1663,7 +1561,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                 <FloatingActionBar
                   onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
                   onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
-                  onAddStoryboardBoard={() => handleAddNode("storyboardBoard", { x: 180, y: 140 })}
                   onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
                   onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
                   onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
@@ -1679,11 +1576,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                   onExport={() => exportNodeFlow()}
                   onRun={runAll}
                   floating={false}
-                  onOpenModule={onOpenModule}
-                  onExportCsv={onExportCsv}
-                  onExportXls={onExportXls}
                   onExportUnderstandingJson={onExportUnderstandingJson}
-                  onOpenStats={() => openAgentSettingsPanel("provider")}
                   onToggleTheme={onToggleTheme}
                   onOpenTheme={(anchorRect) => {
                     if (anchorRect) {
@@ -1692,10 +1585,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
                     setShowThemeModal(true);
                   }}
                   isDarkMode={isDarkMode}
-                  onOpenSyncPanel={onOpenSyncPanel}
                   syncIndicator={syncIndicator}
-                  onOpenInfoPanel={onOpenInfoPanel}
-                  onOpenKnowledgePanel={handleOpenKnowledgeSurface}
                   onResetProject={onResetProject}
                   onSignOut={onSignOut}
                   onAssetLoad={onAssetLoad}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { AudioLines, BookOpen, LayoutPanelTop, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
+import { AudioLines, BookOpen, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
 import { NodeType } from "../types";
 
 export type ConnectionDropMenuOption<T extends string = NodeType> = {
@@ -19,7 +19,6 @@ type Props<T extends string = NodeType> = {
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
     { label: "Script Panel", hint: "Episode and scene browser", type: "scriptBoard", Icon: BookOpen },
-    { label: "Storyboard Table", hint: "Shot table board", type: "storyboardBoard", Icon: LayoutPanelTop },
     { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers },
     { label: "Text", hint: "Input text", type: "text", Icon: MessageSquare },
     { label: "Image Input", hint: "Upload an image", type: "imageInput", Icon: ImageIcon },

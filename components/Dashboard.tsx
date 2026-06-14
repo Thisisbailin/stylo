@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { ProjectData, RequestStats } from '../types';
 
 interface Props {
@@ -35,49 +35,21 @@ const ProgressBar = ({ stats, color, label }: { stats: RequestStats, color: stri
 export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
   // 1. Calculate general stats
   const totalEpisodes = data.episodes.length;
-  const totalShots = data.episodes.reduce((acc, ep) => acc + ep.shots.length, 0);
+  const totalScenes = data.episodes.reduce((acc, ep) => acc + (ep.scenes?.length || 0), 0);
   const completedEpisodes = data.episodes.filter(e => e.status === 'completed').length;
 
-  // 2. Prepare Shot Count Data (Work Tracking)
-  const shotData = data.episodes.map(ep => ({
+  // 2. Prepare scene count data (work tracking)
+  const sceneData = data.episodes.map(ep => ({
     name: `Ep ${ep.id}`,
-    count: ep.shots.length,
+    count: ep.scenes?.length || 0,
     status: ep.status
   }));
 
-  // 3. Prepare Token Data (Cost Tracking)
   const contextTokens = data.contextUsage?.totalTokens || 0;
-  
-  // Phase 2, 3, and Storyboard prompts
-  const episodeTokenData = data.episodes.map(ep => ({
-    name: `Ep ${ep.id}`,
-    // Shot Generation
-    shotTotal: ep.shotGenUsage?.totalTokens || 0,
-    // Sora Generation
-    soraTotal: ep.soraGenUsage?.totalTokens || 0,
-    // Storyboard Prompt Generation
-    storyboardTotal: ep.storyboardGenUsage?.totalTokens || 0,
-    // Total for this episode (for reference)
-    total:
-      (ep.shotGenUsage?.totalTokens || 0) +
-      (ep.soraGenUsage?.totalTokens || 0) +
-      (ep.storyboardGenUsage?.totalTokens || 0)
-  }));
-
-  const totalShotGenTokens = episodeTokenData.reduce((acc, curr) => acc + curr.shotTotal, 0);
-  const totalSoraGenTokens = episodeTokenData.reduce((acc, curr) => acc + curr.soraTotal, 0);
-  const totalStoryboardGenTokens = episodeTokenData.reduce((acc, curr) => acc + curr.storyboardTotal, 0);
-  
-  // Visual & Video (Accumulated globals)
-  const totalPhase4Tokens = data.phase4Usage?.totalTokens || 0;
   const totalPhase5Tokens = data.phase5Usage?.totalTokens || 0;
 
   const grandTotalTokens =
     contextTokens +
-    totalShotGenTokens +
-    totalSoraGenTokens +
-    totalStoryboardGenTokens +
-    totalPhase4Tokens +
     totalPhase5Tokens;
 
   // Phase 1 Breakdown Data
@@ -94,10 +66,6 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
   // Pie Chart Data
   const distributionData = [
     { name: 'Phase 1 & General', value: contextTokens },
-    { name: 'Phase 2: Shot Gen', value: totalShotGenTokens },
-    { name: 'Phase 3: Sora Gen', value: totalSoraGenTokens },
-    { name: 'Phase 4: Storyboard Prompts', value: totalStoryboardGenTokens },
-    { name: 'Phase 4b: Visuals', value: totalPhase4Tokens },
     { name: 'Phase 5: Video', value: totalPhase5Tokens }
   ].filter(d => d.value > 0);
 
@@ -131,8 +99,8 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
           </div>
         </div>
         <div className="bg-[var(--bg-panel)]/90 p-4 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)]">
-          <h3 className="text-[var(--text-secondary)] text-xs uppercase font-bold tracking-wider">Total Shots</h3>
-          <p className="text-3xl font-bold text-blue-400 mt-2">{totalShots}</p>
+          <h3 className="text-[var(--text-secondary)] text-xs uppercase font-bold tracking-wider">Total Scenes</h3>
+          <p className="text-3xl font-bold text-blue-400 mt-2">{totalScenes}</p>
         </div>
         <div className="bg-[var(--bg-panel)]/90 p-4 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)]">
           <h3 className="text-[var(--text-secondary)] text-xs uppercase font-bold tracking-wider">Total Token Usage</h3>
@@ -151,39 +119,30 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
         <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2 mb-6">
             🛠 System Health & Performance
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
                 <ProgressBar stats={data.stats.context} color="bg-emerald-500" label="Context Analysis" />
-            </div>
-            <div>
-                <ProgressBar stats={data.stats.shotGen} color="bg-blue-500" label="Shot List Generation" />
-            </div>
-            <div>
-                <ProgressBar stats={data.stats.soraGen} color="bg-indigo-500" label="Sora Prompt Writing" />
-            </div>
-            <div>
-                <ProgressBar stats={data.stats.storyboardGen} color="bg-amber-500" label="Storyboard Prompt Writing" />
             </div>
         </div>
       </div>
 
-      {/* SECTION 1: WORK TRACKING (Shot Distribution) */}
+      {/* SECTION 1: WORK TRACKING (Scene Distribution) */}
       <div className="bg-[var(--bg-panel)]/90 p-6 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)]">
         <div className="flex justify-between items-center mb-6">
            <div>
              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                🎬 Work Analysis
              </h3>
-             <p className="text-sm text-[var(--text-secondary)]">Shot count distribution per episode (Pacing Analysis)</p>
+             <p className="text-sm text-[var(--text-secondary)]">Scene count distribution per episode</p>
            </div>
            <div className="text-right">
-              <span className="text-xs font-mono text-blue-400 block">Avg: {totalEpisodes > 0 ? Math.round(totalShots/totalEpisodes) : 0} shots/ep</span>
+              <span className="text-xs font-mono text-blue-400 block">Avg: {totalEpisodes > 0 ? Math.round(totalScenes/totalEpisodes) : 0} scenes/ep</span>
            </div>
         </div>
         
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={shotData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <BarChart data={sceneData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} vertical={false} />
               <XAxis dataKey="name" stroke={chartAxisColor} fontSize={12} tickLine={false} axisLine={false} dy={10} />
               <YAxis stroke={chartAxisColor} fontSize={12} tickLine={false} axisLine={false} />
@@ -194,7 +153,7 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
               />
               <Bar 
                 dataKey="count" 
-                name="Shots" 
+                name="Scenes" 
                 fill="#3b82f6" 
                 radius={[4, 4, 0, 0]} 
                 barSize={40}
@@ -212,12 +171,12 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
          </h3>
 
          {/* Detailed Breakdowns Row */}
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+         <div className="grid grid-cols-1 gap-6">
             
             {/* Phase 1 Detailed Breakdown */}
             <div className="bg-[var(--bg-panel)]/90 p-6 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)] flex flex-col h-[400px]">
-               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Phase 1: Knowledge Extraction Cost</h3>
-               <p className="text-sm text-[var(--text-secondary)] mb-6">Token usage breakdown by script analysis and knowledge-building task</p>
+               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Phase 1: Script Analysis Cost</h3>
+               <p className="text-sm text-[var(--text-secondary)] mb-6">Token usage breakdown by script analysis and archive-structuring tasks</p>
                <div className="flex-1 w-full">
                  <ResponsiveContainer width="100%" height="100%">
                    <BarChart data={phase1BreakdownData} layout="vertical" margin={{ top: 0, right: 30, left: 40, bottom: 0 }}>
@@ -229,29 +188,6 @@ export const Dashboard: React.FC<Props> = ({ data, isDarkMode = true }) => {
                         contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, color: tooltipText, borderRadius: '8px' }}
                      />
                      <Bar dataKey="value" name="Tokens" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
-                   </BarChart>
-                 </ResponsiveContainer>
-               </div>
-            </div>
-
-            {/* Phase 2-4: Cost Per Episode */}
-            <div className="bg-[var(--bg-panel)]/90 p-6 rounded-xl border border-[var(--border-subtle)] shadow-[var(--shadow-soft)] flex flex-col h-[400px]">
-               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Phase 2-4: Generation Cost</h3>
-               <p className="text-sm text-[var(--text-secondary)] mb-6">Token usage per episode for Shot, Sora, and Storyboard generation</p>
-               <div className="flex-1 w-full">
-                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={episodeTokenData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                     <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} vertical={false} />
-                     <XAxis dataKey="name" stroke={chartAxisColor} fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                     <YAxis stroke={chartAxisColor} fontSize={12} tickLine={false} axisLine={false} />
-                     <Tooltip 
-                        cursor={{ fill: chartGridColor, opacity: 0.4 }}
-                        contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, color: tooltipText, borderRadius: '8px' }}
-                     />
-                     <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                     <Bar dataKey="shotTotal" name="Shot Gen" stackId="a" fill="#3b82f6" />
-                     <Bar dataKey="soraTotal" name="Sora Gen" stackId="a" fill="#8b5cf6" />
-                     <Bar dataKey="storyboardTotal" name="Storyboard Gen" stackId="a" fill="#f59e0b" />
                    </BarChart>
                  </ResponsiveContainer>
                </div>

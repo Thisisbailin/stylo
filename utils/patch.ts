@@ -12,11 +12,7 @@ const PROJECT_PATCH_KEYS = [
   "context",
   "contextUsage",
   "phase1Usage",
-  "phase4Usage",
   "phase5Usage",
-  "shotGuide",
-  "soraGuide",
-  "storyboardGuide",
   "dramaGuide",
   "globalStyleGuide",
   "stats"

@@ -124,11 +124,6 @@ Detail Layer 只在需要时才读取。
 - `text`
   - `text`
   - `entityBindings`
-- `knowledge`
-  - `content`
-  - `tags`
-  - `sourceRefs`
-  - `fields`
 - `scriptBoard`
   - `episodeId`
   - `sceneId`
@@ -194,11 +189,6 @@ Detail Layer 只在需要时才读取。
 统一命名为：
 
 - `{角色名}身份卡`
-
-### Knowledge 节点
-
-- 保留作者标题
-- 标题应明确它代表什么知识资产
 
 ### 图片 / 视频生成节点
 

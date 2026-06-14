@@ -4,7 +4,6 @@ import type {
   NodeFlowContextSnapshot,
   NodeFlowNode,
   ScriptBoardNodeData,
-  StoryboardBoardNodeData,
 } from "../types";
 import { buildProjectIdentities } from "../../utils/identityCards";
 
@@ -44,16 +43,6 @@ const resolveScriptBoardTitle = (data: ScriptBoardNodeData, context?: NodeFlowCo
   return "剧本";
 };
 
-const resolveStoryboardBoardTitle = (data: StoryboardBoardNodeData, context?: NodeFlowContextSnapshot) => {
-  const explicit = trimString(data.title);
-  if (explicit && explicit !== "分镜表面板节点") return explicit;
-  const episodeLabel = buildEpisodeLabel(data.episodeId, context);
-  const sceneLabel = buildSceneLabel(data.episodeId, data.sceneId, context);
-  if (episodeLabel && sceneLabel) return `${episodeLabel} ${sceneLabel}分镜表`;
-  if (episodeLabel) return `${episodeLabel}分镜表`;
-  return "分镜表";
-};
-
 const resolveIdentityCardTitle = (data: IdentityCardNodeData, context?: NodeFlowContextSnapshot) => {
   const explicit = trimString(data.title);
   if (explicit && explicit !== "身份卡片节点") return explicit;
@@ -70,7 +59,6 @@ const resolveGenericNodeTitle = (node: NodeFlowNode) => {
   return (
     trimString(data.title) ||
     trimString(data.label) ||
-    trimString(data.shotId) ||
     trimString(data.filename) ||
     node.id
   );
@@ -83,14 +71,8 @@ export const resolveNodeFlowNodeTitle = (
   switch (node.type) {
     case "scriptBoard":
       return resolveScriptBoardTitle(node.data as ScriptBoardNodeData, context);
-    case "storyboardBoard":
-      return resolveStoryboardBoardTitle(node.data as StoryboardBoardNodeData, context);
     case "identityCard":
       return resolveIdentityCardTitle(node.data as IdentityCardNodeData, context);
-    case "knowledge": {
-      const title = trimString((node.data as BaseNodeData).title);
-      return title || "Knowledge";
-    }
     default:
       return resolveGenericNodeTitle(node);
   }
@@ -105,11 +87,6 @@ export const resolveScriptBoardNodeTitle = (
   data: ScriptBoardNodeData,
   context?: NodeFlowContextSnapshot
 ) => resolveScriptBoardTitle(data, context);
-
-export const resolveStoryboardBoardNodeTitle = (
-  data: StoryboardBoardNodeData,
-  context?: NodeFlowContextSnapshot
-) => resolveStoryboardBoardTitle(data, context);
 
 export const resolveIdentityCardNodeTitle = (
   data: IdentityCardNodeData,

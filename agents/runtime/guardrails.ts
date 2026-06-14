@@ -129,51 +129,43 @@ export const createQalamToolInputGuardrails = (
     ];
   }
 
-  if (toolName === "edit_knowledge_resource") {
+  if (toolName === "edit_script_resource") {
     return [
       defineToolInputGuardrail({
-        name: "edit_knowledge_resource_guardrail",
+        name: "edit_script_resource_guardrail",
         run: async ({ toolCall }) => {
           const args = parseToolArguments((toolCall as any).arguments);
           const entity = typeof args.entity === "string" ? args.entity.trim() : "";
           const action = typeof args.action === "string" ? args.action.trim() : "";
           if (!entity || !action) {
-            return ToolGuardrailFunctionOutputFactory.rejectContent("edit_knowledge_resource 需要 entity 和 action。");
+            return ToolGuardrailFunctionOutputFactory.rejectContent("edit_script_resource 需要 entity 和 action。");
           }
-          if (!["node", "link"].includes(entity)) {
+          if (!["archive", "space_block"].includes(entity)) {
             return ToolGuardrailFunctionOutputFactory.rejectContent(
-              "edit_knowledge_resource 仅支持 Knowledge node 和 link。",
+              "edit_script_resource 仅支持 archive 和 space_block。",
               { entity }
             );
           }
-          if (entity === "node" && !["create", "supersede"].includes(action)) {
+          if (!["create", "update"].includes(action)) {
             return ToolGuardrailFunctionOutputFactory.rejectContent(
-              "Knowledge node 当前仅支持 create 或 supersede。",
+              "Script resource 当前仅支持 create 或 update。",
               { entity, action }
             );
           }
-          if (entity === "link" && !["connect", "unlink"].includes(action)) {
+          if (entity === "space_block" && action !== "update") {
             return ToolGuardrailFunctionOutputFactory.rejectContent(
-              "Knowledge link 当前仅支持 connect 或 unlink。",
+              "space_block 当前只支持 update。",
               { entity, action }
             );
           }
-          if (entity === "link" && action === "connect") {
-            const fromNodeId = typeof (args.from_node_id ?? args.fromNodeId) === "string" ? String(args.from_node_id ?? args.fromNodeId).trim() : "";
-            const toNodeId = typeof (args.to_node_id ?? args.toNodeId) === "string" ? String(args.to_node_id ?? args.toNodeId).trim() : "";
-            const linkType = typeof (args.link_type ?? args.linkType) === "string" ? String(args.link_type ?? args.linkType).trim() : "";
-            if (!fromNodeId || !toNodeId || !linkType) {
+          if (action === "update") {
+            const nodeId = typeof (args.node_id ?? args.nodeId) === "string" ? String(args.node_id ?? args.nodeId).trim() : "";
+            const nodeRef = typeof (args.node_ref ?? args.nodeRef) === "string" ? String(args.node_ref ?? args.nodeRef).trim() : "";
+            const documentId = typeof (args.document_id ?? args.documentId) === "string" ? String(args.document_id ?? args.documentId).trim() : "";
+            const blockId = typeof (args.block_id ?? args.blockId) === "string" ? String(args.block_id ?? args.blockId).trim() : "";
+            if (!nodeId && !nodeRef && !documentId && !blockId) {
               return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "connect Knowledge link 需要 from_node_id、to_node_id 和 link_type。",
-                { entity, action }
-              );
-            }
-          }
-          if (entity === "link" && action === "unlink") {
-            const linkId = typeof (args.link_id ?? args.linkId) === "string" ? String(args.link_id ?? args.linkId).trim() : "";
-            if (!linkId) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "unlink Knowledge link 需要 link_id。",
+                "update Script resource 需要 node_id、node_ref、document_id 或 block_id。",
                 { entity, action }
               );
             }
@@ -197,13 +189,13 @@ export const createQalamToolInputGuardrails = (
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
             const episodeId = Number(args.episode_id ?? args.episodeId);
 
-            if (!["text", "script_board", "storyboard_board", "character_card", "script", "storyboard", "character"].includes(nodeKind)) {
+            if (!["text", "script_board", "character_card", "script", "character"].includes(nodeKind)) {
               return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "nodeflow_node 当前只支持 text、script_board、storyboard_board、character_card。",
+                "nodeflow_node 当前只支持 text、script_board、character_card。",
                 { nodeKind }
               );
             }
-            if ((nodeKind === "script_board" || nodeKind === "storyboard_board") && !Number.isInteger(episodeId)) {
+            if (nodeKind === "script_board" && !Number.isInteger(episodeId)) {
               return ToolGuardrailFunctionOutputFactory.rejectContent(`${nodeKind} 需要合法的 episode_id。`, {
                 episodeId,
               });
@@ -304,10 +296,10 @@ export const createQalamToolInputGuardrails = (
 };
 
 export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
-  if (toolName === "edit_knowledge_resource") {
+  if (toolName === "edit_script_resource") {
     return [
       defineToolOutputGuardrail({
-        name: "edit_knowledge_resource_output_guardrail",
+        name: "edit_script_resource_output_guardrail",
         run: async ({ output }) => {
           const result = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
           const target = typeof result?.target === "string" ? result.target : "";
@@ -319,36 +311,24 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
           const item = result?.item && typeof result.item === "object" ? (result.item as Record<string, unknown>) : null;
           if (
             !result ||
-            (result.updated !== true && result.removed !== true) ||
-            (target !== "knowledge:node" && target !== "knowledge:link") ||
-            (artifactKind !== "node" && artifactKind !== "link")
+            result.updated !== true ||
+            (target !== "script:archive" && target !== "script:space_block") ||
+            artifactKind !== "node"
           ) {
             return ToolGuardrailFunctionOutputFactory.throwException({
               toolName,
               reason: "invalid_output_shape",
             });
           }
-          if (target === "knowledge:node") {
-            const nodeId = typeof item?.node_id === "string" ? item.node_id : "";
-            const nodeRef = typeof item?.node_ref === "string" ? item.node_ref : "";
-            const artifactId = typeof artifact?.id === "string" ? artifact.id : "";
-            const artifactRef = typeof artifact?.ref === "string" ? artifact.ref : "";
-            if (!nodeId || !nodeRef || !artifactId || !artifactRef) {
-              return ToolGuardrailFunctionOutputFactory.throwException({
-                toolName,
-                reason: "missing_knowledge_node_identity",
-              });
-            }
-          }
-          if (target === "knowledge:link") {
-            const linkId = typeof item?.link_id === "string" ? item.link_id : "";
-            const artifactId = typeof artifact?.id === "string" ? artifact.id : "";
-            if (!linkId || !artifactId) {
-              return ToolGuardrailFunctionOutputFactory.throwException({
-                toolName,
-                reason: "missing_knowledge_link_identity",
-              });
-            }
+          const nodeId = typeof item?.node_id === "string" ? item.node_id : "";
+          const nodeRef = typeof item?.node_ref === "string" ? item.node_ref : "";
+          const artifactId = typeof artifact?.id === "string" ? artifact.id : "";
+          const artifactRef = typeof artifact?.ref === "string" ? artifact.ref : "";
+          if (!nodeId || !nodeRef || !artifactId || !artifactRef) {
+            return ToolGuardrailFunctionOutputFactory.throwException({
+              toolName,
+              reason: "missing_script_resource_identity",
+            });
           }
           return ToolGuardrailFunctionOutputFactory.allow({ target, artifactKind });
         },

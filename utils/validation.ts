@@ -1,5 +1,3 @@
-import { SHOT_REQUIRED_STRING_KEYS } from "./shotSchema";
-
 type ValidationResult = { ok: true } | { ok: false; error: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -45,23 +43,8 @@ export const validateProjectData = (data: unknown): ValidationResult => {
     if (!isNumber(ep.id)) return { ok: false, error: `episodes[${i}].id is not a number` };
     if (!isString(ep.title)) return { ok: false, error: `episodes[${i}].title is not a string` };
     if (!isString(ep.content)) return { ok: false, error: `episodes[${i}].content is not a string` };
-    if (!Array.isArray(ep.shots)) return { ok: false, error: `episodes[${i}].shots is not an array` };
     if (ep.scenes !== undefined && !Array.isArray(ep.scenes)) {
       return { ok: false, error: `episodes[${i}].scenes is not an array` };
-    }
-
-    for (let j = 0; j < ep.shots.length; j += 1) {
-      const shot = ep.shots[j];
-      if (!isRecord(shot)) return { ok: false, error: `episodes[${i}].shots[${j}] is not an object` };
-      const required = SHOT_REQUIRED_STRING_KEYS;
-      for (const key of required) {
-        if (!isString(shot[key])) {
-          return { ok: false, error: `episodes[${i}].shots[${j}].${key} is not a string` };
-        }
-      }
-      if (shot.videoStatus !== undefined && !isString(shot.videoStatus)) {
-        return { ok: false, error: `episodes[${i}].shots[${j}].videoStatus is not a string` };
-      }
     }
   }
 

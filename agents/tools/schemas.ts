@@ -44,7 +44,7 @@ export const readProjectDataSchema = z.object({
   locationId: z.string().optional(),
   locationName: z.string().optional(),
   query: z.string().optional(),
-  queryScopes: z.array(z.enum(["script", "knowledge", "characters", "locations"])).optional(),
+  queryScopes: z.array(z.enum(["script", "archives", "characters", "locations"])).optional(),
   include: z.array(
     z.enum([
       "episodeContent",
@@ -219,7 +219,6 @@ export const createNodeWorkflowSchema = z.object({
         key: z.string(),
         type: z.enum([
           "text",
-          "shot",
           "annotation",
           "imageGen",
           "wanImageGen",

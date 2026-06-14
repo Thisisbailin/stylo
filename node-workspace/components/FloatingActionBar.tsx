@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   Plus,
   User,
-  Projector,
   MessageSquare,
   Image as ImageIcon,
   Sparkles,
@@ -14,8 +13,6 @@ import {
   ChevronsRight,
   Layers,
   FileText,
-  List,
-  BarChart2,
   BookOpen,
   Palette,
   FileCode,
@@ -25,10 +22,7 @@ import {
   LogOut,
   Upload,
   Share,
-  ScanSearch,
-  Network,
 } from "lucide-react";
-import type { ModuleKey } from "./ModuleBar";
 
 type AccountInfo = {
   isLoaded: boolean;
@@ -44,7 +38,6 @@ type AccountInfo = {
 type Props = {
   onAddText: () => void;
   onAddScriptBoard: () => void;
-  onAddStoryboardBoard: () => void;
   onAddIdentityCard: () => void;
   onAddImage: () => void;
   onAddAudio: () => void;
@@ -58,26 +51,13 @@ type Props = {
   onAddSeedanceVideoGen: () => void;
   onImport: () => void;
   onExport: () => void;
-  onExportCsv?: () => void;
-  onExportXls?: () => void;
   onExportUnderstandingJson?: () => void;
   onRun: () => void;
   floating?: boolean;
-  onOpenModule?: (key: ModuleKey) => void;
-  onOpenStats?: () => void;
   onToggleTheme?: () => void;
   onOpenTheme?: (anchorRect?: DOMRect) => void;
   isDarkMode?: boolean;
-  onOpenSyncPanel?: () => void;
   syncIndicator?: { label: string; color: string } | null;
-  onOpenInfoPanel?: () => void;
-  onOpenKnowledgePanel?: (
-    section?:
-      | "knowledge:overview"
-      | "knowledge:nodes"
-      | "knowledge:links"
-      | "knowledge:maps"
-  ) => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
@@ -89,11 +69,7 @@ type Props = {
     type:
       | "script"
       | "globalStyleGuide"
-      | "shotGuide"
-      | "soraGuide"
-      | "storyboardGuide"
       | "dramaGuide"
-      | "csvShots"
       | "understandingJson",
     content: string,
     fileName?: string
@@ -103,7 +79,6 @@ type Props = {
 export const FloatingActionBar: React.FC<Props> = ({
   onAddText,
   onAddScriptBoard,
-  onAddStoryboardBoard,
   onAddIdentityCard,
   onAddImage,
   onAddAudio,
@@ -117,18 +92,13 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddSeedanceVideoGen,
   onImport,
   onExport,
-  onExportCsv,
-  onExportXls,
   onExportUnderstandingJson,
   onRun,
   floating = true,
-  onOpenModule,
-  onOpenStats,
   onToggleTheme,
   onOpenTheme,
   isDarkMode,
   syncIndicator,
-  onOpenKnowledgePanel,
   onResetProject,
   onSignOut,
   accountInfo,
@@ -142,16 +112,11 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [showPalette, setShowPalette] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
-  const [showWip, setShowWip] = useState(false);
   const [ioPane, setIoPane] = useState<"project" | "guides" | "export">("project");
-  const [nodePaletteMode, setNodePaletteMode] = useState<"knowledge" | "workflow">("workflow");
+  const [nodePaletteMode, setNodePaletteMode] = useState<"panels" | "workflow">("workflow");
   const scriptInputRef = useRef<HTMLInputElement>(null);
-  const csvInputRef = useRef<HTMLInputElement>(null);
   const understandingInputRef = useRef<HTMLInputElement>(null);
   const globalStyleInputRef = useRef<HTMLInputElement>(null);
-  const shotGuideInputRef = useRef<HTMLInputElement>(null);
-  const soraGuideInputRef = useRef<HTMLInputElement>(null);
-  const storyboardGuideInputRef = useRef<HTMLInputElement>(null);
   const dramaGuideInputRef = useRef<HTMLInputElement>(null);
   const workflowButtonRef = useRef<HTMLButtonElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
@@ -275,46 +240,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
   const panelActions = [
     { label: "剧本面板", hint: "按集与场景浏览剧本", meta: "Panel", onClick: onAddScriptBoard, Icon: BookOpen, tone: "text-sky-300", surface: "bg-sky-500/12" },
-    { label: "分镜表面板", hint: "可调列宽和行高的表格", meta: "Table", onClick: onAddStoryboardBoard, Icon: List, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "Library", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
-  ];
-  const knowledgeDebugActions = [
-    {
-      label: "Knowledge Backbone",
-      hint: "从剧本主链出发查看 Agent 当前长期记忆的整体骨架与规模。",
-      meta: "Backbone",
-      onClick: () => onOpenKnowledgePanel?.("knowledge:overview"),
-      Icon: SquareStack,
-      tone: "text-violet-300",
-      surface: "bg-violet-500/12",
-    },
-    {
-      label: "Knowledge Focus",
-      hint: "围绕当前焦点节点查看一阶局部记忆结构，观察 Agent 在背面关注什么。",
-      meta: "Focus",
-      onClick: () => onOpenKnowledgePanel?.("knowledge:nodes"),
-      Icon: Layers,
-      tone: "text-emerald-300",
-      surface: "bg-emerald-500/12",
-    },
-    {
-      label: "Knowledge Revisions",
-      hint: "查看长期记忆中的修正链，观察知识如何被替代、演化与沉淀。",
-      meta: "Revisions",
-      onClick: () => onOpenKnowledgePanel?.("knowledge:links"),
-      Icon: Share,
-      tone: "text-sky-300",
-      surface: "bg-sky-500/12",
-    },
-    {
-      label: "Knowledge Anchor",
-      hint: "围绕 script / episode / scene anchor 观察长期记忆在某个源事实附近是如何生长的。",
-      meta: "Anchor",
-      onClick: () => onOpenKnowledgePanel?.("knowledge:maps"),
-      Icon: Network,
-      tone: "text-amber-300",
-      surface: "bg-amber-500/12",
-    },
   ];
   const nodeActions = [
     { label: "Text", hint: "Draft prompts, notes, and structure", meta: "Writing", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
@@ -327,16 +253,6 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
     { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
-  const agentSettingTopModules = [
-    { key: "writing" as ModuleKey, label: "Writing", desc: "结构化写作", Icon: FileCode, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/10" },
-    { key: "workspace" as ModuleKey, label: "Workspace", desc: "理解 / 素材 / Sync / Info", Icon: SquareStack, tone: "text-blue-200", surface: "bg-blue-500/10" },
-    { key: "provider", label: "Agent Setting", desc: "模型 / tools / dashboard", Icon: BarChart2, tone: "text-sky-300", surface: "bg-sky-500/10" },
-  ];
-  const agentSettingBottomModules = [
-    { key: "projector" as ModuleKey, label: "Voice Lab", desc: "声音实验室", Icon: Projector, tone: "text-rose-300", surface: "bg-rose-500/10" },
-    { key: "glassLab" as ModuleKey, label: "Visual Lab", desc: "视觉语言实验", Icon: ScanSearch, tone: "text-zinc-200", surface: "bg-white/5" },
-  ];
-
   const accountLoaded = accountInfo?.isLoaded ?? true;
   const accountSignedIn = accountLoaded && !!accountInfo?.isSignedIn;
   const accountName = accountInfo?.name || accountInfo?.email || "Qalam User";
@@ -348,7 +264,6 @@ export const FloatingActionBar: React.FC<Props> = ({
     setShowPalette(false);
     setShowFileMenu(false);
     setShowTemplate(false);
-    setShowWip(false);
   };
 
   const handleAssetFileChange = (
@@ -356,11 +271,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     type:
       | "script"
       | "globalStyleGuide"
-      | "shotGuide"
-      | "soraGuide"
-      | "storyboardGuide"
       | "dramaGuide"
-      | "csvShots"
       | "understandingJson"
   ) => {
     const file = event.target.files?.[0];
@@ -375,63 +286,6 @@ export const FloatingActionBar: React.FC<Props> = ({
   };
 
   const ioActions: { label: string; desc: string; Icon: any; onClick?: () => void; color: string }[] = [];
-
-  const renderAgentSettingModules = () => (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between px-1">
-        <div className={sectionEyebrowClass}>Agent Setting</div>
-        <div className="text-[10px] text-[var(--app-text-muted)]">{agentSettingTopModules.length + agentSettingBottomModules.length} modules</div>
-      </div>
-      <div className="space-y-2">
-        <div className="grid grid-cols-3 gap-2">
-          {agentSettingTopModules.map(({ key, label, desc, Icon, tone, surface }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                if (key === "provider") {
-                  onOpenStats?.();
-                } else {
-                  onOpenModule?.(key);
-                }
-                closeMenus();
-              }}
-              className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
-            >
-              <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                <Icon size={16} />
-              </span>
-              <span className="block min-w-0">
-                <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {agentSettingBottomModules.map(({ key, label, desc, Icon, tone, surface }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                onOpenModule?.(key);
-                closeMenus();
-              }}
-              className="group flex min-h-[88px] flex-col items-start justify-between rounded-[20px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
-            >
-              <span className={`flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                <Icon size={16} />
-              </span>
-              <span className="block min-w-0">
-                <span className="block truncate text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
-                <span className="mt-0.5 block truncate text-[10px] text-[var(--app-text-secondary)]">{desc}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 
   const renderIoPanel = () => (
     <div className="space-y-3">
@@ -533,24 +387,6 @@ export const FloatingActionBar: React.FC<Props> = ({
             </div>
           </button>
           <input
-            ref={csvInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "csvShots")}
-          />
-          <button type="button" onClick={() => csvInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-emerald-500/10 text-emerald-300">
-                <List size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots CSV</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
-              </span>
-            </div>
-          </button>
-          <input
             ref={understandingInputRef}
             type="file"
             accept=".json"
@@ -563,8 +399,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <BookOpen size={16} />
               </span>
               <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Knowledge</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">知识快照</span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Archive</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目档案</span>
               </span>
             </div>
           </button>
@@ -588,60 +424,6 @@ export const FloatingActionBar: React.FC<Props> = ({
               <span>
                 <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Style</span>
                 <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">风格说明</span>
-              </span>
-            </div>
-          </button>
-          <input
-            ref={shotGuideInputRef}
-            type="file"
-            accept=".md,.txt"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "shotGuide")}
-          />
-          <button type="button" onClick={() => shotGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-yellow-500/10 text-yellow-300">
-                <FileCode size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shot</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头提示词</span>
-              </span>
-            </div>
-          </button>
-          <input
-            ref={soraGuideInputRef}
-            type="file"
-            accept=".md,.txt"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "soraGuide")}
-          />
-          <button type="button" onClick={() => soraGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-rose-500/10 text-rose-300">
-                <Sparkles size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sora</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">视频说明</span>
-              </span>
-            </div>
-          </button>
-          <input
-            ref={storyboardGuideInputRef}
-            type="file"
-            accept=".md,.txt"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "storyboardGuide")}
-          />
-          <button type="button" onClick={() => storyboardGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-orange-500/10 text-orange-300">
-                <ImageIcon size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Storyboard</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">分镜提示词</span>
               </span>
             </div>
           </button>
@@ -685,25 +467,6 @@ export const FloatingActionBar: React.FC<Props> = ({
               </span>
             </div>
           </button>
-          {onExportCsv && (
-            <button
-              onClick={() => {
-                onExportCsv();
-                closeMenus();
-              }}
-              className={docButtonClass}
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
-                  <List size={16} />
-                </span>
-                <span>
-                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Shots</span>
-                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">镜头表</span>
-                </span>
-              </div>
-            </button>
-          )}
           {onExportUnderstandingJson && (
             <button
               onClick={() => {
@@ -717,8 +480,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                   <FileText size={16} />
                 </span>
                 <span>
-                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Knowledge</span>
-                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">知识快照</span>
+                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Archive</span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目档案</span>
                 </span>
               </div>
             </button>
@@ -765,22 +528,22 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
                   <div className="mt-1 max-w-[34ch] text-[11px] leading-5 text-[var(--app-text-secondary)]">
-                    {nodePaletteMode === "knowledge"
-                      ? "浏览项目面板类节点，并进入 Knowledge 长期记忆层调试入口。"
+                    {nodePaletteMode === "panels"
+                      ? "浏览项目面板类节点，组织剧本和身份档案。"
                       : "浏览 flow 节点，搭建输入、生成和引用链路。"}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
                   <button
                     type="button"
-                    onClick={() => setNodePaletteMode("knowledge")}
+                    onClick={() => setNodePaletteMode("panels")}
                     className={`${compactTabClass} ${
-                      nodePaletteMode === "knowledge"
+                      nodePaletteMode === "panels"
                         ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
                         : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
                     }`}
                   >
-                    Knowledge
+                    Panels
                   </button>
                   <button
                     type="button"
@@ -797,12 +560,12 @@ export const FloatingActionBar: React.FC<Props> = ({
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>{nodePaletteMode === "knowledge" ? "Knowledge" : "Flow Nodes"}</div>
+                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panels" ? "Panel Nodes" : "Flow Nodes"}</div>
                   <div className="text-[10px] text-[var(--app-text-muted)]">
-                    {nodePaletteMode === "knowledge" ? `${panelActions.length + knowledgeDebugActions.length} entries` : `${nodeActions.length} actions`}
+                    {nodePaletteMode === "panels" ? `${panelActions.length} entries` : `${nodeActions.length} actions`}
                   </div>
                 </div>
-                {nodePaletteMode === "knowledge" ? (
+                {nodePaletteMode === "panels" ? (
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between px-1">
@@ -825,43 +588,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                             <div className="mt-2.5">
                               <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
                               <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
-                            </div>
-                            <div className="mt-2.5">
-                              <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                                {meta}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between px-1">
-                        <div className={sectionEyebrowClass}>Knowledge Debug</div>
-                        <div className="text-[10px] text-[var(--app-text-muted)]">{knowledgeDebugActions.length} entry</div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2">
-                        {knowledgeDebugActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
-                          <button
-                            key={label}
-                            type="button"
-                            onClick={() => {
-                              onClick?.();
-                              closeMenus();
-                            }}
-                            className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="min-w-0">
-                                <div className={`flex h-9 w-9 items-center justify-center rounded-[13px] border border-[var(--app-border)] ${surface} ${tone}`}>
-                                  <Icon size={16} />
-                                </div>
-                                <div className="mt-2.5">
-                                  <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                                  <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
-                                </div>
-                              </div>
-                              <ChevronRight size={14} className="mt-1 shrink-0 text-[var(--app-text-muted)] transition-transform group-hover/node:translate-x-0.5" />
                             </div>
                             <div className="mt-2.5">
                               <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
@@ -983,9 +709,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                         Sign Out
                       </button>
                     </div>
-                    <div className="border-t border-[var(--app-border)] pt-3">
-                      {renderAgentSettingModules()}
-                    </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -998,7 +721,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                         <div className="text-[12px] leading-6 text-[var(--app-text-secondary)]">登录后可启用 workspace 同步能力、主题偏好与项目管理。</div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       <button
                         type="button"
                         className={`${utilityButtonClass} border-transparent bg-[linear-gradient(180deg,rgba(122,183,160,0.18),rgba(122,183,160,0.08))] hover:border-[var(--app-border-strong)]`}
@@ -1015,29 +738,10 @@ export const FloatingActionBar: React.FC<Props> = ({
                           <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">登录并启用同步</span>
                         </span>
                       </button>
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          onOpenStats?.();
-                          closeMenus();
-                        }}
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-sky-500/10 text-sky-300">
-                          <BarChart2 size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Agent Setting</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">查看 agent 设置与 dashboard</span>
-                        </span>
-                      </button>
                       <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">
                         <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
-                        Account / Theme / Agent Setting
+                        Account / Theme
                       </div>
-                    </div>
-                    <div className="border-t border-[var(--app-border)] pt-3">
-                      {renderAgentSettingModules()}
                     </div>
                   </div>
                 )}
@@ -1060,7 +764,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowFileMenu((v) => !v);
                   setShowPalette(false);
                   setShowTemplate(false);
-                  setShowWip(false);
                 }}
                 className={`${toolbarChipClass} ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Account"
@@ -1077,7 +780,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowTemplate((v) => !v);
                   setShowPalette(false);
                   setShowFileMenu(false);
-                  setShowWip(false);
                 }}
                 className={`${toolbarChipClass} ${showTemplate ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Project"
@@ -1111,7 +813,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowPalette((v) => !v);
                   setShowFileMenu(false);
                   setShowTemplate(false);
-                  setShowWip(false);
                 }}
                 className={`${toolbarChipClass} ${showPalette ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Nodes"
@@ -1124,7 +825,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowPalette(false);
                   setShowTemplate(false);
                   setShowFileMenu(false);
-                  setShowWip(false);
                   onOpenTheme?.(event.currentTarget.getBoundingClientRect());
                   onToggleTheme?.();
                 }}
@@ -1158,7 +858,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowFileMenu((v) => !v);
                   setShowPalette(false);
                   setShowTemplate(false);
-                  setShowWip(false);
                 }}
                 className={`${embeddedLabelClass} ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Account"
@@ -1175,7 +874,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowTemplate((v) => !v);
                   setShowPalette(false);
                   setShowFileMenu(false);
-                  setShowWip(false);
                 }}
                 className={`${embeddedLabelClass} ${showTemplate ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Project"
@@ -1208,7 +906,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowPalette((v) => !v);
                   setShowFileMenu(false);
                   setShowTemplate(false);
-                  setShowWip(false);
                 }}
                 className={`${embeddedLabelClass} ${showPalette ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Nodes"
@@ -1221,7 +918,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setShowPalette(false);
                   setShowTemplate(false);
                   setShowFileMenu(false);
-                  setShowWip(false);
                   onOpenTheme?.(event.currentTarget.getBoundingClientRect());
                   onToggleTheme?.();
                 }}
@@ -1270,66 +966,6 @@ export const FloatingActionBar: React.FC<Props> = ({
           </div>
         )}
 
-        {/* WIP popover */}
-        {showWip && (
-          <div
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 md:px-8"
-            onClick={() => setShowWip(false)}
-          >
-            <div
-              className={`w-[92vw] max-w-5xl min-h-[70vh] ${panelClass}`}
-              style={panelStyle}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--app-border)] bg-[var(--app-panel-muted)]">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/12 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
-                    <Projector size={22} />
-                  </div>
-                  <div>
-                    <div className="text-lg font-semibold text-[var(--app-text-primary)]">放映机 · 施工中</div>
-                    <div className="text-[12px] text-[var(--app-text-secondary)]">高级视图 / 回放 / 管理模块将很快上线。</div>
-                  </div>
-                </div>
-                <button
-                  className="h-9 px-3 rounded-full border border-[var(--app-border)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-muted)] text-[12px]"
-                  onClick={() => setShowWip(false)}
-                >
-                  关闭
-                </button>
-              </div>
-
-              <div className="px-6 py-6 space-y-4 text-[13px] text-[var(--app-text-secondary)] leading-relaxed">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    { title: "时间线 / 回放", desc: "查看生成历史、关键帧、回放并做版本对比。" },
-                    { title: "资产管理", desc: "集中管理视频、图像与提示词，支持收藏与分发。" },
-                    { title: "协同与审核", desc: "共享到团队、批注审阅、版本冻结与解冻。" },
-                    { title: "发布与导出", desc: "支持多规格导出、CDN 发布与外链访问。" },
-                  ].map((item) => (
-                    <div
-                      key={item.title}
-                      className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 py-3 hover:border-[var(--app-border-strong)] transition-all"
-                    >
-                      <div className="text-sm font-semibold text-[var(--app-text-primary)]">{item.title}</div>
-                      <div className="text-[12px] text-[var(--app-text-secondary)] mt-1">{item.desc}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-                  <div className="flex items-center gap-2 text-[var(--app-text-primary)] font-semibold mb-2">
-                    <Sparkles size={16} className="text-emerald-300" />
-                    体验即将解锁
-                  </div>
-                  <div className="text-[12px] text-[var(--app-text-secondary)]">
-                    放映机将整合节点生成的全链路资产，支持分镜回放、剪辑草稿、版本分支与一键发布。
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

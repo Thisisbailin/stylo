@@ -15,9 +15,9 @@ type Props = {
 
 const summarize = (data: ProjectData) => {
   const episodes = data.episodes.length;
-  const shots = data.episodes.reduce((acc, ep) => acc + ep.shots.length, 0);
+  const scenes = data.episodes.reduce((acc, ep) => acc + (ep.scenes?.length || 0), 0);
   const scriptChars = data.rawScript?.length || 0;
-  return { episodes, shots, scriptChars };
+  return { episodes, scenes, scriptChars };
 };
 
 const buildDiffs = (remoteData: ProjectData, localData: ProjectData) => {
@@ -28,8 +28,8 @@ const buildDiffs = (remoteData: ProjectData, localData: ProjectData) => {
   if (remoteSummary.episodes !== localSummary.episodes) {
     diffs.push(`集数：云端 ${remoteSummary.episodes} / 本地 ${localSummary.episodes}`);
   }
-  if (remoteSummary.shots !== localSummary.shots) {
-    diffs.push(`镜头数：云端 ${remoteSummary.shots} / 本地 ${localSummary.shots}`);
+  if (remoteSummary.scenes !== localSummary.scenes) {
+    diffs.push(`场景数：云端 ${remoteSummary.scenes} / 本地 ${localSummary.scenes}`);
   }
   if (remoteSummary.scriptChars !== localSummary.scriptChars) {
     diffs.push(`脚本文本：云端 ${remoteSummary.scriptChars} / 本地 ${localSummary.scriptChars} 字符`);
@@ -54,7 +54,7 @@ const buildDiffs = (remoteData: ProjectData, localData: ProjectData) => {
 
 const statRows = (data: ReturnType<typeof summarize>) => [
   { label: "集数", value: data.episodes },
-  { label: "镜头", value: data.shots },
+  { label: "场景", value: data.scenes },
   { label: "文本", value: `${data.scriptChars} 字符` },
 ];
 

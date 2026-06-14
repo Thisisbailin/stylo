@@ -9,7 +9,9 @@ import {
   Globe,
   Layers,
   Loader2,
+  ScanSearch,
   Sparkles,
+  SquareStack,
   Video,
   X,
 } from "lucide-react";
@@ -61,6 +63,8 @@ type Props = {
   projectData: ProjectData;
   isDarkMode?: boolean;
   requestedPanel?: "provider" | "tools" | "skills" | "dashboard" | "history";
+  onOpenVisualLab?: () => void;
+  onOpenWorkspace?: () => void;
 };
 
 type ConversationRecord = {
@@ -138,7 +142,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "knowledge-memory" | "workflow-builder";
+type ToolKey = "project-data" | "script-archive" | "workflow-builder";
 
 type ToolItem = {
   key: ToolKey;
@@ -160,24 +164,24 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的读接口查阅同一图式世界中的两面：底层 Knowledge 长期记忆图，以及表层 NodeFlow 工作流画布图。",
+    description: "Agent 通过统一的读接口查阅项目的两面：Script 剧本 / 空间轴 / 档案资源，以及表层 NodeFlow 工作流画布图。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    surfaces: ["knowledge node", "knowledge link", "knowledge map", "nodeflow node", "nodeflow link", "nodeflow map"],
+    surfaces: ["script source", "script archive", "script map", "nodeflow node", "nodeflow link", "nodeflow map"],
     boundary: "只读，不允许直接修改项目状态。",
-    artifact: "返回 node / link / map 事实、长期记忆结构、锚点演化与当前画布结构，作为理解、编辑和操作的前置输入。",
-    note: "负责统一读取同一图式世界在底层记忆与表层画布中的 node / link / map 事实。",
+    artifact: "返回 Script source / archive / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
+    note: "负责统一读取 Script 与 NodeFlow 两个能力平面的项目事实。",
     Icon: Eye,
   },
   {
-    key: "knowledge-memory",
+    key: "script-archive",
     capability: "edit",
     title: "edit",
-    description: "Agent 通过命令式写入口编辑底层 Knowledge 图：节点采用 create / supersede，关系采用 connect / unlink。",
-    tools: ["edit_knowledge_resource"],
-    surfaces: ["knowledge node", "knowledge link"],
-    boundary: "只允许写入 agent-derived Knowledge；不允许直接覆写 canonical-source。",
-    artifact: "输出新的 Knowledge 节点、Knowledge 关系、断开的关系或 supersede 生命周期链，作为长期记忆层的正式写入结果。",
-    note: "负责底层长期记忆的沉淀与修正，不回写表层 NodeFlow。",
+    description: "Agent 通过命令式写入口编辑 Script 档案层：创建 / 更新档案文档，并更新已有空间轴区块。",
+    tools: ["edit_script_resource"],
+    surfaces: ["script archive", "script space block"],
+    boundary: "只写入 Script foundation 的档案文档和既有空间轴区块；不直接覆写锁定的剧本源文本。",
+    artifact: "输出新的 Script 档案或更新后的空间轴区块，作为项目长期档案的正式写入结果。",
+    note: "负责项目档案的沉淀与修正，不回写表层 NodeFlow。",
     Icon: Sparkles,
   },
   {
@@ -189,7 +193,7 @@ const TOOL_ITEMS: ToolItem[] = [
     surfaces: ["text node", "script board", "storyboard board", "character card", "workflow connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
     artifact: "输出可继续编辑和执行的 workflow scaffold，承接“查阅”和“编辑”的结果。",
-    note: "负责操作表层工作流图，把 Knowledge 中的事实与记忆继续落成可执行画布结构。",
+    note: "负责操作表层工作流图，把 Script 中的事实与档案继续落成可执行画布结构。",
     Icon: Code2,
   },
 ];
@@ -382,6 +386,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   projectData,
   isDarkMode = true,
   requestedPanel = "provider",
+  onOpenVisualLab,
+  onOpenWorkspace,
 }) => {
   const { config, setConfig } = useConfig("qalam_config_v1");
   const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
@@ -1041,7 +1047,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-                    Agent Settings
+                    Setting
                   </div>
                 </div>
                 <button
@@ -1170,7 +1176,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               </div>
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Dashboard</div>
+                <div className="text-[11px] uppercase tracking-widest app-text-muted">Project</div>
                 <button
                   type="button"
                   onClick={() => setSelectedPanel("dashboard")}
@@ -1188,6 +1194,46 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                   </span>
                   <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
                     metrics
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenVisualLab}
+                  disabled={!onOpenVisualLab}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                    onOpenVisualLab
+                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <span className="flex items-center gap-3 text-left">
+                    <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
+                      <ScanSearch size={14} className="text-[var(--app-text-secondary)]" />
+                    </span>
+                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">visual lab</span>
+                  </span>
+                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                    glass
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenWorkspace}
+                  disabled={!onOpenWorkspace}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                    onOpenWorkspace
+                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <span className="flex items-center gap-3 text-left">
+                    <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
+                      <SquareStack size={14} className="text-[var(--app-text-secondary)]" />
+                    </span>
+                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">workspace</span>
+                  </span>
+                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                    assets
                   </span>
                 </button>
               </div>

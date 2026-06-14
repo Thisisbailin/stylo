@@ -114,7 +114,7 @@ export const sendMessage = async (
         stream: false // Explicitly disable streaming
     };
 
-    console.log("--- [Phase 4] Multimodal Request ---");
+    console.log("--- [Multimodal] Request ---");
     console.log("URL:", apiBase);
     console.log("Model:", model);
     // console.log("Payload:", JSON.stringify(payload, null, 2)); // Too large to log with base64
@@ -133,13 +133,13 @@ export const sendMessage = async (
 
         if (!response.ok) {
             const errText = await response.text();
-            console.error("--- [Phase 4] API Error ---", response.status, errText);
+            console.error("--- [Multimodal] API Error ---", response.status, errText);
             throw new Error(`API Error ${response.status}: ${errText}`);
         }
 
         const data = await response.json();
 
-        console.log("--- [Phase 4] Multimodal Response (Raw) ---");
+        console.log("--- [Multimodal] Response (Raw) ---");
         // console.log(data); 
         console.log("Usage:", data.usage);
 

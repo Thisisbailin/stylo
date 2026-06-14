@@ -66,11 +66,20 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
   const output = call.output as any;
   if (!output || typeof output !== "object") return undefined;
   const artifact = output.artifact && typeof output.artifact === "object" ? output.artifact : null;
-  if (artifact?.target === "knowledge:node" && typeof artifact.title === "string") {
-    return `Knowledge node · ${artifact.title}`;
+  if (artifact?.target === "script:archive" && typeof artifact.title === "string") {
+    return `Script archive · ${artifact.title}`;
   }
-  if (artifact?.target === "knowledge:link") {
-    return `Knowledge link · ${artifact.title || "link"}`;
+  if (artifact?.target === "script:space_block" && typeof artifact.title === "string") {
+    return `Script space · ${artifact.title}`;
+  }
+  if (artifact?.target === "script:node" && typeof artifact.title === "string") {
+    return `Script node · ${artifact.title}`;
+  }
+  if (artifact?.target === "script:link") {
+    return `Script link · ${artifact.title || "link"}`;
+  }
+  if (artifact?.target === "script:map" && typeof artifact.title === "string") {
+    return `Script map · ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:node" && typeof artifact.title === "string") {
     return `NodeFlow node · ${artifact.title}`;
@@ -95,11 +104,11 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
   if (output.target === "nodeflow:link" && output.role === "reference") {
     return `NodeFlow reference · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
   }
-  if (output.target === "knowledge:node" && typeof output.item?.title === "string") {
-    return `Knowledge node · ${output.item.title}`;
+  if (output.target === "script:archive" && typeof output.item?.title === "string") {
+    return `Script archive · ${output.item.title}`;
   }
-  if (output.target === "knowledge:link") {
-    return `Knowledge link · ${output.item?.link_type || "link"}`;
+  if (output.target === "script:space_block" && typeof output.item?.title === "string") {
+    return `Script space · ${output.item.title}`;
   }
   return undefined;
 };
