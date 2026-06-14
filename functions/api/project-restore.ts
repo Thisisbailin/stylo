@@ -58,8 +58,8 @@ type ProjectMeta = {
   rawScript: string;
   roles: Array<Record<string, unknown>>;
   designAssets: Array<Record<string, unknown>>;
-  nodeFlow: Record<string, unknown> | null;
   nodeDefaults: Record<string, unknown> | null;
+  scriptCanvas: Record<string, unknown> | null;
   phase5Usage: Record<string, unknown>;
   stats: Record<string, unknown>;
 };
@@ -73,8 +73,8 @@ const DEFAULT_META: ProjectMeta = {
   rawScript: "",
   roles: [],
   designAssets: [],
-  nodeFlow: null,
   nodeDefaults: null,
+  scriptCanvas: null,
   phase5Usage: emptyTokenUsage,
   stats: emptyStats
 };
@@ -93,8 +93,8 @@ const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   rawScript: typeof projectData?.rawScript === "string" ? projectData.rawScript : "",
   roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
-  nodeFlow: projectData?.nodeFlow && typeof projectData.nodeFlow === "object" ? projectData.nodeFlow : null,
   nodeDefaults: projectData?.nodeDefaults && typeof projectData.nodeDefaults === "object" ? projectData.nodeDefaults : null,
+  scriptCanvas: projectData?.scriptCanvas && typeof projectData.scriptCanvas === "object" ? projectData.scriptCanvas : null,
   phase5Usage: projectData?.phase5Usage || emptyTokenUsage,
   stats: { ...emptyStats, ...(projectData?.stats || {}) }
 });
@@ -263,8 +263,8 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     episodes: Array.from(episodesMap.values()),
     roles: metaRoles,
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
-    nodeFlow: meta.nodeFlow && typeof meta.nodeFlow === "object" ? meta.nodeFlow : null,
     nodeDefaults: meta.nodeDefaults && typeof meta.nodeDefaults === "object" ? meta.nodeDefaults : null,
+    scriptCanvas: meta.scriptCanvas && typeof meta.scriptCanvas === "object" ? meta.scriptCanvas : undefined,
     phase5Usage: meta.phase5Usage || emptyTokenUsage,
     stats: { ...emptyStats, ...(meta.stats || {}) }
   };

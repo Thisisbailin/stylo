@@ -234,7 +234,6 @@ export const mergeProjectData = (remote: ProjectData, local: ProjectData): Merge
     episodes: episodeResult.merged,
     roles: rolesResult.merged,
     designAssets: remote.designAssets || local.designAssets || [],
-    nodeFlow: remote.nodeFlow ?? local.nodeFlow,
     nodeDefaults: remote.nodeDefaults || local.nodeDefaults,
     scriptCanvas: remote.scriptCanvas || local.scriptCanvas,
     phase5Usage: mergeTokenUsage(remote.phase5Usage, local.phase5Usage),

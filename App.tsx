@@ -21,13 +21,11 @@ import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
-import type { NodeFlowFile, NodeFlowNodeDefaults } from './node-workspace/types';
-import { buildNodeFlowFile } from './node-workspace/nodeflow/serialization';
-import { WorkspacePanel, type WorkspaceSection } from './node-workspace/components/WorkspacePanel';
+import type { NodeFlowNodeDefaults } from './node-workspace/types';
+import type { AgentSettingsPanelKey } from './node-workspace/components/AgentSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
-import { FloatingPanelShell } from './node-workspace/components/FloatingPanelShell';
 import * as ResponsesTextService from './services/responsesTextService';
 import { useNodeFlowStore } from './node-workspace/store/nodeFlowStore';
 import {
@@ -38,7 +36,7 @@ import {
   replaceRolesByKind,
 } from './utils/projectRoles';
 
-type LabModalKey = ModuleKey | "workspace";
+type LabModalKey = ModuleKey;
 
 // --- Helpers: Character stats derived from parsed episodes ---
 const buildCharacterStats = (episodes: Episode[]) => {
@@ -410,19 +408,10 @@ const App: React.FC = () => {
   const setAppConfigStore = useNodeFlowStore(state => state.setAppConfig);
   const addWorkflowNode = useNodeFlowStore(state => state.addNode);
   const workflowNodes = useNodeFlowStore(state => state.nodes);
-  const workflowLinks = useNodeFlowStore(state => state.links);
-  const workflowGraphLinks = useNodeFlowStore(state => state.graphLinks);
-  const workflowLinkStyle = useNodeFlowStore(state => state.linkStyle);
-  const workflowGlobalAssetHistory = useNodeFlowStore(state => state.globalAssetHistory);
-  const workflowActiveView = useNodeFlowStore(state => state.activeView);
   const workflowViewport = useNodeFlowStore(state => state.viewport);
   const workflowNodeDefaults = useNodeFlowStore(state => state.nodeDefaults);
-  const importNodeFlow = useNodeFlowStore(state => state.importNodeFlow);
   const clearNodeFlow = useNodeFlowStore(state => state.clearNodeFlow);
   const setWorkflowNodeDefaults = useNodeFlowStore(state => state.setNodeDefaults);
-  const hasHydratedNodeFlowRef = useRef(false);
-  const isApplyingProjectNodeFlowRef = useRef(false);
-  const lastNodeFlowSerializedRef = useRef<string | null>(null);
   const hasHydratedNodeDefaultsRef = useRef(false);
   const lastNodeDefaultsSerializedRef = useRef<string | null>(null);
 
@@ -445,91 +434,6 @@ const App: React.FC = () => {
       console.warn("Failed to restore node defaults from project data", e);
     }
   }, [projectData.nodeDefaults, setWorkflowNodeDefaults]);
-
-  useEffect(() => {
-    const remoteNodeFlow = projectData.nodeFlow;
-    if (remoteNodeFlow && Array.isArray(remoteNodeFlow.nodes) && Array.isArray(remoteNodeFlow.links)) {
-      try {
-        const serialized = JSON.stringify(remoteNodeFlow);
-        if (serialized === lastNodeFlowSerializedRef.current) {
-          hasHydratedNodeFlowRef.current = true;
-          return;
-        }
-        isApplyingProjectNodeFlowRef.current = true;
-        hasHydratedNodeFlowRef.current = true;
-        lastNodeFlowSerializedRef.current = serialized;
-        importNodeFlow(remoteNodeFlow as NodeFlowFile);
-        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, serialized);
-        window.setTimeout(() => {
-          isApplyingProjectNodeFlowRef.current = false;
-        }, 0);
-        return;
-      } catch (e) {
-        console.warn("Failed to restore NodeFlow from project data", e);
-      }
-    }
-
-    if (hasHydratedNodeFlowRef.current) return;
-    hasHydratedNodeFlowRef.current = true;
-    try {
-      const raw = window.localStorage.getItem(NODEFLOW_STORAGE_KEY);
-      if (!raw) return;
-      lastNodeFlowSerializedRef.current = raw;
-      const parsed = JSON.parse(raw) as NodeFlowFile;
-      if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.links)) {
-        importNodeFlow(parsed);
-      }
-    } catch (e) {
-      console.warn("Failed to restore NodeFlow from local storage", e);
-    }
-  }, [importNodeFlow, projectData.nodeFlow]);
-
-  useEffect(() => {
-    if (!hasHydratedNodeFlowRef.current) return;
-    const timeout = window.setTimeout(() => {
-      try {
-        const snapshot = buildNodeFlowFile({
-          revision: useNodeFlowStore.getState().revision,
-          nodes: workflowNodes,
-          links: workflowLinks,
-          graphLinks: workflowGraphLinks,
-          linkStyle: workflowLinkStyle,
-          globalAssetHistory: workflowGlobalAssetHistory,
-          viewport: workflowViewport,
-          activeView: workflowActiveView,
-        });
-        const serialized = JSON.stringify(snapshot);
-        lastNodeFlowSerializedRef.current = serialized;
-        window.localStorage.setItem(NODEFLOW_STORAGE_KEY, serialized);
-        if (isApplyingProjectNodeFlowRef.current) return;
-        setProjectData((prev) => {
-          try {
-            const prevSerialized = prev.nodeFlow ? JSON.stringify(prev.nodeFlow) : null;
-            if (prevSerialized === serialized) return prev;
-          } catch {
-            // Fall through and overwrite with the latest snapshot.
-          }
-          return {
-            ...prev,
-            nodeFlow: snapshot,
-          };
-        });
-      } catch (e) {
-        console.warn("Failed to persist NodeFlow locally", e);
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    workflowNodes,
-    workflowLinks,
-    workflowGraphLinks,
-    workflowLinkStyle,
-    workflowGlobalAssetHistory,
-    workflowViewport,
-    workflowActiveView,
-    setProjectData,
-  ]);
 
   useEffect(() => {
     if (!hasHydratedNodeDefaultsRef.current) return;
@@ -642,7 +546,7 @@ const App: React.FC = () => {
   const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
   const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
-  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSection>("assets:images");
+  const [agentSettingsRequest, setAgentSettingsRequest] = useState<{ panel: AgentSettingsPanelKey; nonce: number } | null>(null);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -668,9 +572,8 @@ const App: React.FC = () => {
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
 
-  const openWorkspacePanel = useCallback((section: WorkspaceSection = "assets:images") => {
-    setWorkspaceSection(section);
-    setOpenLabModal("workspace");
+  const openAgentSettings = useCallback((panel: AgentSettingsPanelKey = "provider") => {
+    setAgentSettingsRequest({ panel, nonce: Date.now() });
   }, []);
   useEffect(() => {
     const syncAppView = () => setAppView(readAppViewFromLocation());
@@ -701,15 +604,15 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      openWorkspacePanel("assets:images");
+      openAgentSettings("assets");
       return;
     }
     if (key === 'scenes') {
-      openWorkspacePanel("assets:images");
+      openAgentSettings("assets");
       return;
     }
     setOpenLabModal(key);
-  }, [openWorkspacePanel]);
+  }, [openAgentSettings]);
 
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
@@ -1150,11 +1053,18 @@ const App: React.FC = () => {
             <NodeFlow
               projectData={projectData}
               setProjectData={setProjectData}
+              config={config}
+              setConfig={setConfig}
+              isSignedIn={!!authSignedIn}
               getAuthToken={getAuthToken}
+              syncState={syncState}
+              syncRollout={syncRollout}
+              onForceSync={forceCloudPull}
+              onOpenLanding={openLandingPage}
+              externalAgentSettingsRequest={agentSettingsRequest}
               onAssetLoad={handleAssetLoad}
               onOpenModule={handleOpenLabModule}
               syncIndicator={syncIndicator}
-              onOpenWorkspacePanel={() => openWorkspacePanel("assets:images")}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
               accountInfo={{
@@ -1192,30 +1102,6 @@ const App: React.FC = () => {
     return renderTabContent(activeTab);
   };
 
-  let labModalTitle: string | null = null;
-  let labModalWidth: number | string | undefined = undefined;
-  let labModalContent: React.ReactNode = null;
-  if (openLabModal === "workspace") {
-    labModalTitle = "Workspace";
-    labModalWidth = 560;
-    labModalContent = (
-      <WorkspacePanel
-        projectData={projectData}
-        setProjectData={setProjectData}
-        config={config}
-        onConfigChange={setConfig}
-        isSignedIn={!!authSignedIn}
-        getAuthToken={getAuthToken}
-        onForceSync={forceCloudPull}
-        syncState={syncState}
-        syncRollout={syncRollout}
-        onResetProject={handleResetProject}
-        onOpenLanding={openLandingPage}
-        initialSection={workspaceSection}
-      />
-    );
-  }
-
   if (appView === "landing") {
     return <LandingPage isDarkMode={isDarkMode} onEnterApp={closeLandingPage} />;
   }
@@ -1232,7 +1118,7 @@ const App: React.FC = () => {
               isOnline={isOnline}
               isSignedIn={!!authSignedIn}
               syncRollout={syncRollout}
-              onOpenDetails={() => openWorkspacePanel("sync:status")}
+              onOpenDetails={() => openAgentSettings("sync")}
               onForceSync={forceCloudPull}
               onClose={() => setIsSyncBannerDismissed(true)}
             />
@@ -1258,11 +1144,6 @@ const App: React.FC = () => {
           onChange={handleAvatarFileChange}
         />
         {renderMainContent()}
-        {labModalTitle && labModalContent && (
-          <FloatingPanelShell title={labModalTitle} isOpen onClose={closeLabModal} width={labModalWidth} position="right">
-            {labModalContent}
-          </FloatingPanelShell>
-        )}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
       </AppShell>
     </>

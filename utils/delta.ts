@@ -8,8 +8,8 @@ export type ProjectMetaDelta = {
   rawScript: string;
   roles: ProjectRoleIdentity[];
   designAssets: ProjectData["designAssets"];
-  nodeFlow: ProjectData["nodeFlow"];
   nodeDefaults: ProjectData["nodeDefaults"];
+  scriptCanvas: ProjectData["scriptCanvas"];
   phase5Usage: ProjectData["phase5Usage"];
   stats: ProjectData["stats"];
 };
@@ -39,8 +39,8 @@ const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   rawScript: data.rawScript,
   roles: data.roles,
   designAssets: data.designAssets,
-  nodeFlow: data.nodeFlow,
   nodeDefaults: data.nodeDefaults,
+  scriptCanvas: data.scriptCanvas,
   phase5Usage: data.phase5Usage,
   stats: data.stats,
 });

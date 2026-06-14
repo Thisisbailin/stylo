@@ -11,7 +11,6 @@ const PROJECT_PATCH_KEYS = [
   "episodes",
   "roles",
   "designAssets",
-  "nodeFlow",
   "nodeDefaults",
   "scriptCanvas",
   "phase5Usage",

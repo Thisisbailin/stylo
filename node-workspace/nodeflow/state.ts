@@ -11,12 +11,6 @@ import { buildNodeFlowLinkId } from "./links";
 import { normalizeNodeFlowGraphLinks } from "./graphLinks";
 import { dedupeNodeFlowRefs } from "./refs";
 
-const LEGACY_AUTO_HEIGHTS: Partial<Record<NodeType, number>> = {
-  audioInput: 280,
-  videoInput: 420,
-  seedanceVideoGen: 640,
-};
-
 const NODE_TYPES = new Set<NodeType>([
   "imageInput",
   "audioInput",
@@ -61,18 +55,9 @@ export const getNodeFlowAbsolutePosition = (node: NodeFlowNode, nodeMap: Map<str
   return { x, y };
 };
 
-export const sanitizeNodeFlowNodeStyle = (type: NodeType, style?: NodeFlowNodeStyle) => {
+export const sanitizeNodeFlowNodeStyle = (_type: NodeType, style?: NodeFlowNodeStyle) => {
   if (!style) return style;
   const nextStyle = { ...style };
-  const legacyHeight = LEGACY_AUTO_HEIGHTS[type];
-  if (
-    legacyHeight !== undefined &&
-    (nextStyle.height === legacyHeight ||
-      nextStyle.height === `${legacyHeight}` ||
-      nextStyle.height === `${legacyHeight}px`)
-  ) {
-    delete nextStyle.height;
-  }
   return Object.keys(nextStyle).length > 0 ? nextStyle : undefined;
 };
 

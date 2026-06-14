@@ -2,23 +2,23 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AudioLines,
   AlertCircle,
+  Boxes,
   CheckCircle,
   ChevronDown,
+  Cloud,
   Code2,
   Eye,
+  FileText,
   Globe,
   Layers,
   Loader2,
   ScanSearch,
   Sparkles,
-  SquareStack,
   Video,
   X,
 } from "lucide-react";
-import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
-import { useAuth } from "../../lib/auth";
-import { AgentTextProvider, type SeedanceKeyProbeResult } from "../../types";
+import { AgentTextProvider, AppConfig, ProjectData, SyncState, type SeedanceKeyProbeResult } from "../../types";
 import {
   ARK_DEFAULT_MODEL,
   ARK_RESPONSES_BASE_URL,
@@ -54,15 +54,39 @@ import { fetchTextModels } from "../../services/responsesTextService";
 import { fetchQwenModels, type QwenModel } from "../../services/qwenResponsesService";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import { createStableId } from "../../utils/id";
+import { CharacterSceneLibraryPanel } from "./CharacterSceneLibraryPanel";
+import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
+import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
+import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   leftOffset?: number;
-  requestedPanel?: "provider" | "tools" | "skills" | "history";
+  projectData: ProjectData;
+  setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
+  config: AppConfig;
+  setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
+  isSignedIn?: boolean;
+  getAuthToken?: () => Promise<string | null>;
+  syncState?: SyncState;
+  syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
+  onForceSync?: () => void;
+  onResetProject?: () => void;
+  onOpenLanding?: () => void;
+  requestedPanel?: AgentSettingsPanelKey;
   onOpenVisualLab?: () => void;
-  onOpenWorkspace?: () => void;
 };
+
+export type AgentSettingsPanelKey =
+  | "provider"
+  | "tools"
+  | "skills"
+  | "identity"
+  | "history"
+  | "assets"
+  | "sync"
+  | "info";
 
 type ConversationRecord = {
   id: string;
@@ -380,18 +404,29 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   isOpen,
   onClose,
   leftOffset = 0,
+  config,
+  setConfig,
+  isSignedIn = false,
+  getAuthToken,
+  syncState,
+  syncRollout,
+  onForceSync,
+  onResetProject,
+  onOpenLanding,
+  projectData,
+  setProjectData,
   requestedPanel = "provider",
   onOpenVisualLab,
-  onOpenWorkspace,
 }) => {
-  const { config, setConfig } = useConfig("qalam_config_v1");
-  const { getToken, isSignedIn: isAuthSignedIn } = useAuth();
-  const { applyViduReferenceDemo, revision } = useNodeFlowStore();
+  const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
-  const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "skills" | "history">("provider");
-  const [activeTool, setActiveTool] = useState<ToolKey>("asset-library");
+  const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPanelKey>("provider");
+  const [activeTool, setActiveTool] = useState<ToolKey>("project-data");
+  const [assetsSection, setAssetsSection] = useState<MaterialsSectionKey>("images");
+  const [syncSection, setSyncSection] = useState<SyncSectionKey>("status");
+  const [infoSection, setInfoSection] = useState<InfoSectionKey>("about");
   const [activeSkillId, setActiveSkillId] = useState("");
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
   const [isLoadingTextModels, setIsLoadingTextModels] = useState(false);
@@ -531,6 +566,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       lastArtifact,
     };
   }, [activeToolItem.tools, toolActivityMap]);
+  const imageAssetCount = useMemo(
+    () => globalAssetHistory.filter((item) => item.type === "image").length,
+    [globalAssetHistory]
+  );
+  const videoAssetCount = useMemo(
+    () => globalAssetHistory.filter((item) => item.type === "video").length,
+    [globalAssetHistory]
+  );
+  const promptAssetCount = useMemo(
+    () => globalAssetHistory.filter((item) => item.prompt.trim().length > 0).length,
+    [globalAssetHistory]
+  );
   const filteredConversationMessages = useMemo(() => {
     const messages = activeConversation?.messages || [];
     if (historyFilter === "all") return messages;
@@ -551,16 +598,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     };
   }, []);
 
-  const getAuthToken = useCallback(async () => {
-    try {
-      return await getToken({ template: "default" });
-    } catch {
-      return null;
-    }
-  }, [getToken]);
-
   const loadObservability = useCallback(async (traceIdOverride?: string) => {
-    if (!isAuthSignedIn || !activeConversation?.id) {
+    if (!isSignedIn || !activeConversation?.id || !getAuthToken) {
       setObservabilityData(null);
       setObservabilityError(null);
       return;
@@ -589,7 +628,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     } finally {
       setObservabilityLoading(false);
     }
-  }, [activeConversation?.id, getAuthToken, isAuthSignedIn, selectedTraceId]);
+  }, [activeConversation?.id, getAuthToken, isSignedIn, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;
@@ -1015,11 +1054,35 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               title: activeSkill?.title || "Skills",
               description: "",
             }
-        : {
-            label: "History",
-            title: "Conversation & Trace",
-            description: "",
-          };
+          : selectedPanel === "identity"
+            ? {
+                label: "Project",
+                title: "Identity System",
+                description: "临时承载角色 / 场景身份库，用于检查旧身份系统面板的当前状态。",
+              }
+            : selectedPanel === "assets"
+              ? {
+                  label: "Assets",
+                  title: assetsSection === "images" ? "Images" : assetsSection === "videos" ? "Videos" : "Prompts",
+                  description: "素材资产已经并入总设置面板，不再保留独立 workspace 模块。",
+                }
+              : selectedPanel === "sync"
+                ? {
+                    label: "Sync",
+                    title: syncSection === "status" ? "Status & Keys" : "Cloud History",
+                    description: "同步诊断与云端快照直接并入设置侧栏。",
+                  }
+                : selectedPanel === "info"
+                  ? {
+                      label: "Info",
+                      title: infoSection === "about" ? "About" : "Roadmap",
+                      description: "产品信息入口并入总设置面板。",
+                    }
+                  : {
+                      label: "History",
+                      title: "Conversation & Trace",
+                      description: "",
+                    };
 
   return (
     <div
@@ -1168,6 +1231,25 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 <div className="text-[11px] uppercase tracking-widest app-text-muted">Project</div>
                 <button
                   type="button"
+                  onClick={() => setSelectedPanel("identity")}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                    selectedPanel === "identity"
+                      ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                      : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                >
+                  <span className="flex items-center gap-3 text-left">
+                    <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${selectedPanel === "identity" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                      <Layers size={14} className={selectedPanel === "identity" ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
+                    </span>
+                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">identity system</span>
+                  </span>
+                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                    roles
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={onOpenVisualLab}
                   disabled={!onOpenVisualLab}
                   className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
@@ -1184,26 +1266,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                   </span>
                   <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
                     glass
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenWorkspace}
-                  disabled={!onOpenWorkspace}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                    onOpenWorkspace
-                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50 cursor-not-allowed"
-                  }`}
-                >
-                  <span className="flex items-center gap-3 text-left">
-                    <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
-                      <SquareStack size={14} className="text-[var(--app-text-secondary)]" />
-                    </span>
-                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">workspace</span>
-                  </span>
-                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    assets
                   </span>
                 </button>
               </div>
@@ -1275,6 +1337,106 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 )}
                 <div className="text-[11px] app-text-muted">仅对 Qalam 对话生效。</div>
               </div>
+
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="text-[11px] uppercase tracking-widest app-text-muted">Assets</div>
+                {[
+                  { key: "images" as const, label: "images", count: `${imageAssetCount}` },
+                  { key: "videos" as const, label: "videos", count: `${videoAssetCount}` },
+                  { key: "prompts" as const, label: "prompts", count: `${promptAssetCount}` },
+                ].map((item) => {
+                  const active = selectedPanel === "assets" && assetsSection === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setAssetsSection(item.key);
+                        setSelectedPanel("assets");
+                      }}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                        active
+                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3 text-left">
+                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                          <Boxes size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
+                        </span>
+                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{item.label}</span>
+                      </span>
+                      <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
+                        {item.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="text-[11px] uppercase tracking-widest app-text-muted">Sync</div>
+                {[
+                  { key: "status" as const, label: "status & keys", Icon: Cloud },
+                  { key: "history" as const, label: "cloud history", Icon: Cloud },
+                ].map(({ key, label, Icon }) => {
+                  const active = selectedPanel === "sync" && syncSection === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        setSyncSection(key);
+                        setSelectedPanel("sync");
+                      }}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                        active
+                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3 text-left">
+                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                          <Icon size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
+                        </span>
+                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="text-[11px] uppercase tracking-widest app-text-muted">Info</div>
+                {[
+                  { key: "about" as const, label: "about" },
+                  { key: "roadmap" as const, label: "roadmap" },
+                ].map((item) => {
+                  const active = selectedPanel === "info" && infoSection === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setInfoSection(item.key);
+                        setSelectedPanel("info");
+                      }}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                        active
+                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
+                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                      }`}
+                    >
+                      <span className="flex items-center gap-3 text-left">
+                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
+                          <FileText size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
+                        </span>
+                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{item.label}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </aside>
@@ -1288,6 +1450,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               <div className="mt-2 flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
                 {panelMeta.title}
               </div>
+              {panelMeta.description ? (
+                <div className="mt-2 max-w-2xl text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                  {panelMeta.description}
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-4">
@@ -2299,6 +2466,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
+              {selectedPanel === "identity" && (
+                <CharacterSceneLibraryPanel
+                  projectData={projectData}
+                  setProjectData={setProjectData}
+                  initialSelectionType="character"
+                />
+              )}
+
               {selectedPanel === "history" && (
                 <div className="space-y-4">
                   <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
@@ -2316,14 +2491,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => void loadObservability()}
-                          disabled={observabilityLoading || !activeConversation?.id || !isAuthSignedIn}
+                          disabled={observabilityLoading || !activeConversation?.id || !isSignedIn}
                           className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-muted)] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {observabilityLoading ? "刷新中" : "刷新"}
                         </button>
                       </div>
                     </div>
-                    {!isAuthSignedIn ? (
+                    {!isSignedIn ? (
                       <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-3 py-3 text-[11px] text-amber-200">
                         登录后可读取 Cloudflare D1 中的 edge session 与 SDK traces。
                       </div>
@@ -2779,6 +2954,118 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                   <div className="text-[11px] text-[var(--app-text-muted)]">
                     仅对 Qalam 对话生效。当前主链以 Cloudflare edge session 与 SDK trace 为准。
                   </div>
+                </div>
+              )}
+
+              {selectedPanel === "assets" && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "images" as const, label: "Images", count: `${imageAssetCount}` },
+                        { key: "videos" as const, label: "Videos", count: `${videoAssetCount}` },
+                        { key: "prompts" as const, label: "Prompts", count: `${promptAssetCount}` },
+                      ].map((item) => {
+                        const active = assetsSection === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setAssetsSection(item.key)}
+                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                              active
+                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
+                            }`}
+                          >
+                            {item.label} · {item.count}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <MaterialsPanel
+                    activeSection={assetsSection}
+                    onActiveSectionChange={setAssetsSection}
+                    showSidebar={false}
+                  />
+                </div>
+              )}
+
+              {selectedPanel === "sync" && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "status" as const, label: "Status & Keys" },
+                        { key: "history" as const, label: "Cloud History" },
+                      ].map((item) => {
+                        const active = syncSection === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setSyncSection(item.key)}
+                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                              active
+                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <SyncPanel
+                    config={config}
+                    onConfigChange={setConfig}
+                    isSignedIn={isSignedIn}
+                    getAuthToken={getAuthToken}
+                    onForceSync={onForceSync}
+                    syncState={syncState}
+                    syncRollout={syncRollout}
+                    onResetProject={onResetProject}
+                    activeSection={syncSection}
+                    onActiveSectionChange={setSyncSection}
+                    showSidebar={false}
+                  />
+                </div>
+              )}
+
+              {selectedPanel === "info" && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "about" as const, label: "About" },
+                        { key: "roadmap" as const, label: "Roadmap" },
+                      ].map((item) => {
+                        const active = infoSection === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setInfoSection(item.key)}
+                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
+                              active
+                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <InfoPanel
+                    onOpenLanding={onOpenLanding}
+                    activeSection={infoSection}
+                    onActiveSectionChange={setInfoSection}
+                    showSidebar={false}
+                  />
                 </div>
               )}
             </div>

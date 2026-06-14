@@ -2,7 +2,6 @@
 import type {
   GlobalAssetHistoryItem,
   HandleType,
-  NodeFlowFile,
   NodeFlowGraphLink,
   NodeFlowNode,
   NodeFlowNodeDefaults,
@@ -253,7 +252,6 @@ export interface ProjectData {
   episodes: Episode[];
   roles: ProjectRoleIdentity[];
   designAssets: DesignAssetItem[];
-  nodeFlow?: NodeFlowFile | null;
   nodeDefaults?: NodeFlowNodeDefaults;
   scriptCanvas?: ScriptCanvasState;
 

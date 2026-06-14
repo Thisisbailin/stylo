@@ -577,7 +577,7 @@ const toRuntimeMarkdownTextNode = (
   },
 });
 
-const toRuntimeLegacyImageNode = (
+const toRuntimeImageNode = (
   image: ScriptCanvasState["images"][number],
   index: number
 ): NodeFlowNode => ({
@@ -625,17 +625,6 @@ const getScriptNodeHandlesForType = (type?: ScriptCanvasNode["type"] | null) => 
     inputs: handles.inputs as ScriptHandleType[],
     outputs: handles.outputs as ScriptHandleType[],
   };
-};
-
-const getLegacyScriptPosition = (index: number) => ({
-  x: (index % 4) * 240,
-  y: Math.floor(index / 4) * 170,
-});
-
-const isLegacyScriptPosition = (position: { x: number; y: number } | undefined, index: number) => {
-  if (!position) return false;
-  const legacy = getLegacyScriptPosition(index);
-  return Math.abs(position.x - legacy.x) < 2 && Math.abs(position.y - legacy.y) < 2;
 };
 
 const createEmptyEpisode = (id: number): Episode => ({
@@ -1213,73 +1202,82 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           {!isAgentTailOpen ? (
             <div ref={trackRef} className="script-foundation-track">
               {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex, axisBlocks) => {
-            const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
-            const width =
-              activeAxis === "time"
-                ? Math.max(6, ((block as ScriptTimelineBlock).durationMin / timeline.durationMin) * 100)
-                : Math.max(8, ((block as ScriptSpatialBlock).width / spaceWidthTotal) * 100);
-            const timeBlock = block as ScriptTimelineBlock;
-            const isActive = activeAxis === "time" && block.id === activeBlock?.id;
-            const linkedCount = block.linkedNodeIds.length;
-            return (
-              <div
-                key={block.id}
-                data-axis-target-type={activeAxis}
-                data-axis-target-id={block.id}
-                draggable
-                onDragStart={(event) => {
-                  setDraggingBlockId(block.id);
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", block.id);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const sourceId = event.dataTransfer.getData("text/plain") || draggingBlockId;
-                  if (sourceId && sourceId !== block.id) {
-                    if (activeAxis === "time") onReorderBlock(sourceId, block.id);
-                    else onReorderSpaceBlock(sourceId, block.id);
-                  }
-                  setDraggingBlockId(null);
-                }}
-                onDragEnd={() => setDraggingBlockId(null)}
-                onClick={(event) => handleBlockClick(event, block.id)}
-                onDoubleClick={() => handleBlockDoubleClick(block.id)}
-                className={`script-foundation-block is-${block.color} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
-                style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
-              >
-                <div className="script-foundation-block__inner">
-                  <div className="script-foundation-block__meta">
-                    <GripVertical size={13} strokeWidth={1.8} />
-                    <span>
-                      {activeAxis === "time"
-                        ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
-                        : "全局视角"}
-                    </span>
-                  </div>
-                  <strong>{block.title}</strong>
-                  <div className="script-foundation-block__foot">
-                    <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
-                    <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
-                  </div>
-                </div>
-                {axisIndex < axisBlocks.length - 1 ? (
-                  <button
-                    type="button"
-                    className="script-foundation-resize script-foundation-resize--right"
-                    aria-label={activeAxis === "time" ? "调整相邻区间边界" : "调整相邻空间块边界"}
-                    onPointerDown={(event) =>
-                      activeAxis === "time"
-                        ? handleResizePointerDown(event, block.id, "right")
-                        : handleSpaceResizePointerDown(event, block.id, "right")
-                    }
-                  />
-                ) : null}
-              </div>
-            );
+                const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
+                const width =
+                  activeAxis === "time"
+                    ? Math.max(6, ((block as ScriptTimelineBlock).durationMin / timeline.durationMin) * 100)
+                    : Math.max(8, ((block as ScriptSpatialBlock).width / spaceWidthTotal) * 100);
+                const timeBlock = block as ScriptTimelineBlock;
+                const previousBlock = axisBlocks[axisIndex - 1];
+                const nextBlock = axisBlocks[axisIndex + 1];
+                const joinsPrev = previousBlock?.color === block.color;
+                const joinsNext = nextBlock?.color === block.color;
+                const isActive = activeAxis === "time" && block.id === activeBlock?.id;
+                const linkedCount = block.linkedNodeIds.length;
+                return (
+                  <React.Fragment key={block.id}>
+                    <div
+                      data-axis-target-type={activeAxis}
+                      data-axis-target-id={block.id}
+                      draggable
+                      onDragStart={(event) => {
+                        setDraggingBlockId(block.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", block.id);
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const sourceId = event.dataTransfer.getData("text/plain") || draggingBlockId;
+                        if (sourceId && sourceId !== block.id) {
+                          if (activeAxis === "time") onReorderBlock(sourceId, block.id);
+                          else onReorderSpaceBlock(sourceId, block.id);
+                        }
+                        setDraggingBlockId(null);
+                      }}
+                      onDragEnd={() => setDraggingBlockId(null)}
+                      onClick={(event) => handleBlockClick(event, block.id)}
+                      onDoubleClick={() => handleBlockDoubleClick(block.id)}
+                      className={`script-foundation-block is-${block.color} ${joinsPrev || joinsNext ? "is-segment" : "is-block"} ${joinsPrev ? "joins-prev" : ""} ${joinsNext ? "joins-next" : ""} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
+                      style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
+                    >
+                      <div className="script-foundation-block__inner">
+                        <div className="script-foundation-block__meta">
+                          <GripVertical size={13} strokeWidth={1.8} />
+                          <span>
+                            {activeAxis === "time"
+                              ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
+                              : "全局视角"}
+                          </span>
+                        </div>
+                        <strong>{block.title}</strong>
+                        <div className="script-foundation-block__foot">
+                          <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
+                          <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {axisIndex < axisBlocks.length - 1 ? (
+                      <span
+                        className={`script-foundation-boundary is-${block.color} ${nextBlock?.color === block.color ? "is-segment-boundary" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="script-foundation-resize"
+                          aria-label={activeAxis === "time" ? "调整相邻区间边界" : "调整相邻空间块边界"}
+                          onPointerDown={(event) =>
+                            activeAxis === "time"
+                              ? handleResizePointerDown(event, block.id, "right")
+                              : handleSpaceResizePointerDown(event, block.id, "right")
+                          }
+                        />
+                      </span>
+                    ) : null}
+                  </React.Fragment>
+                );
               })}
             </div>
           ) : null}
@@ -1526,6 +1524,7 @@ export const useScriptCanvasSurface = ({
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
   const [axisRevealRequest, setAxisRevealRequest] = useState(0);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
   const axisRevealTriggeredRef = useRef(false);
   const applyingScriptRuntimeRef = useRef(false);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
@@ -1575,11 +1574,9 @@ export const useScriptCanvasSurface = ({
     const pageNodes: ScriptCanvasNode[] = (projectData.episodes || []).map((episode, index) => ({
       id: scriptNodeId(episode.id),
       type: "scriptPage",
-      position:
-        !pagePositionById.get(episode.id) || isLegacyScriptPosition(pagePositionById.get(episode.id), index)
-          ? getDefaultScriptPosition(index)
-          : pagePositionById.get(episode.id)!,
+      position: pagePositionById.get(episode.id) || getDefaultScriptPosition(index),
       measured: pageNodeById.get(episode.id)?.measured,
+      selected: selectedNodeIds.has(scriptNodeId(episode.id)),
       data: {
         episodeId: episode.id,
         title: episode.title || `第${episode.id}集`,
@@ -1592,6 +1589,7 @@ export const useScriptCanvasSurface = ({
       type: "imageInput",
       position: image.position || getDefaultImagePosition(index),
       measured: image.measured,
+      selected: selectedNodeIds.has(imageNodeId(image.id)),
       data: {
         ...createDefaultNodeFlowNodeData("imageInput"),
         image: image.imageUrl,
@@ -1607,6 +1605,7 @@ export const useScriptCanvasSurface = ({
       type: "mdText",
       position: textNode.position || getDefaultMarkdownPosition(index),
       measured: textNode.measured,
+      selected: selectedNodeIds.has(markdownNodeId(textNode.id)),
       data: {
         documentId: textNode.id,
         title: textNode.title || "档案文档",
@@ -1620,6 +1619,7 @@ export const useScriptCanvasSurface = ({
     const flowNodes: ScriptCanvasNode[] = (canvas.flowNodes || []).map((node, index) => ({
       ...node,
       position: node.position || getDefaultFlowNodePosition(index),
+      selected: selectedNodeIds.has(node.id),
       data: {
         ...createDefaultNodeFlowNodeData(node.type),
         ...(node.data || {}),
@@ -1635,6 +1635,7 @@ export const useScriptCanvasSurface = ({
     handleMarkdownContentChange,
     handleMarkdownTitleChange,
     projectData.episodes,
+    selectedNodeIds,
   ]);
 
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
@@ -1644,7 +1645,7 @@ export const useScriptCanvasSurface = ({
     const runtimeScriptNodes = (projectData.episodes || []).map((episode, index) =>
       toRuntimeScriptTextNode(episode, index, pageById.get(episode.id))
     );
-    const runtimeImageNodes = canvas.images.map((image, index) => toRuntimeLegacyImageNode(image, index));
+    const runtimeImageNodes = canvas.images.map((image, index) => toRuntimeImageNode(image, index));
     const runtimeMarkdownNodes = (canvas.textNodes || []).map((textNode, index) =>
       toRuntimeMarkdownTextNode(textNode, index, textNode.position)
     );
@@ -1757,10 +1758,6 @@ export const useScriptCanvasSurface = ({
         const imageNodeIds = new Set(currentCanvas.images.map((image) => imageNodeId(image.id)));
         const markdownNodeIds = new Set((currentCanvas.textNodes || []).map((node) => markdownNodeId(node.id)));
         const flowNodeIds = new Set((currentCanvas.flowNodes || []).map((node) => node.id));
-        const persistedNodeCount = episodeNodeIds.size + imageNodeIds.size + markdownNodeIds.size + flowNodeIds.size;
-        if (persistedNodeCount > 0 && state.nodes.length === 0 && previousState.nodes.length > 0) {
-          return currentCanvas;
-        }
         const currentFlowNodes = (currentCanvas.flowNodes || [])
           .map((node, index) => {
             const storeNode = storeNodeById.get(node.id);
@@ -2316,8 +2313,19 @@ export const useScriptCanvasSurface = ({
     (type: NodeType, position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
       const requestedPosition = position || getDefaultFlowNodePosition(canvas.flowNodes?.length || 0);
       const storeState = useNodeFlowStore.getState();
+      const commandState = {
+        ...storeState,
+        revision: canvas.revision || 0,
+        nodes: scriptRuntimeFlowNodes,
+        links: scriptRuntimeLinks,
+        graphLinks: canvas.graphLinks || [],
+        globalAssetHistory: canvas.globalAssetHistory || [],
+        linkStyle: canvas.linkStyle || "curved",
+        activeView: canvas.activeView ?? null,
+        nodeFlowContext: scriptNodeFlowContext,
+      };
       const createResult = createNodeFlowNodeCommand({
-        state: storeState,
+        state: commandState,
         type,
         position: requestedPosition,
         extraData: {
@@ -2325,20 +2333,8 @@ export const useScriptCanvasSurface = ({
         },
         allocateNodeId: createScriptFlowNodeId,
       });
-      const createdNode = createResult.state.nodes.find((node) => !storeState.nodes.some((existing) => existing.id === node.id));
+      const createdNode = createResult.state.nodes.find((node) => !commandState.nodes.some((existing) => existing.id === node.id));
       const createdNodeId = createdNode?.id || createScriptFlowNodeId(type);
-      const nextScriptLinks = buildLinkForCreatedNode(canvas.links, createdNodeId, type, dropState);
-      const nextStoreNodeIds = new Set(createResult.state.nodes.map((node) => node.id));
-      const nextStoreLinks = nextScriptLinks
-        .filter((link) => nextStoreNodeIds.has(link.source) && nextStoreNodeIds.has(link.target))
-        .map(toRuntimeScriptLink);
-      const nextStoreState = {
-        ...createResult.state,
-        revision: Math.max(createResult.state.revision, (canvas.revision || 0) + 1),
-        links: nextStoreLinks,
-      };
-      useNodeFlowStore.setState(nextStoreState);
-
       const nodeToPersist: NodeFlowNode =
         createdNode || {
           id: createdNodeId,
@@ -2349,11 +2345,12 @@ export const useScriptCanvasSurface = ({
       setProjectData((previous) => {
         const nextCanvas = ensureCanvas(previous.scriptCanvas);
         const hasExistingNode = (nextCanvas.flowNodes || []).some((node) => node.id === createdNodeId);
+        const revision = Math.max((nextCanvas.revision || 0) + 1, createResult.state.revision);
         return {
           ...previous,
           scriptCanvas: {
             ...nextCanvas,
-            revision: Math.max(nextCanvas.revision || 0, nextStoreState.revision),
+            revision,
             flowNodes: hasExistingNode
               ? (nextCanvas.flowNodes || []).map((node) => (node.id === createdNodeId ? { ...node, ...nodeToPersist, selected: false } : node))
               : [...(nextCanvas.flowNodes || []), { ...nodeToPersist, selected: false }],
@@ -2361,9 +2358,22 @@ export const useScriptCanvasSurface = ({
           },
         };
       });
+      setSelectedNodeIds(new Set([createdNodeId]));
       return createdNodeId;
     },
-    [buildLinkForCreatedNode, canvas.flowNodes?.length, canvas.links, canvas.revision, setProjectData]
+    [
+      buildLinkForCreatedNode,
+      canvas.activeView,
+      canvas.flowNodes?.length,
+      canvas.globalAssetHistory,
+      canvas.graphLinks,
+      canvas.linkStyle,
+      canvas.revision,
+      scriptNodeFlowContext,
+      scriptRuntimeFlowNodes,
+      scriptRuntimeLinks,
+      setProjectData,
+    ]
   );
 
   const handleAddMarkdownNodeFromTail = useCallback(() => {
@@ -2515,6 +2525,19 @@ export const useScriptCanvasSurface = ({
       const effectiveChanges = aligned.changes;
       const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
       const hasDimensionChange = effectiveChanges.some((change) => change.type === "dimensions");
+      const selectionChanges = effectiveChanges.filter(
+        (change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "select" }> => change.type === "select"
+      );
+      if (selectionChanges.length) {
+        setSelectedNodeIds((current) => {
+          const next = new Set(current);
+          selectionChanges.forEach((change) => {
+            if (change.selected) next.add(change.id);
+            else next.delete(change.id);
+          });
+          return next;
+        });
+      }
       const removedEpisodeIds = changes
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("script-"))
@@ -2532,6 +2555,19 @@ export const useScriptCanvasSurface = ({
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .map((change) => change.id)
         .filter((id) => !isImageNodeId(id) && !isScriptPageNodeId(id) && !isMarkdownNodeId(id));
+      const removedNodeIds = new Set([
+        ...removedImageIds.map((id) => imageNodeId(id)),
+        ...removedEpisodeIds.map((id) => scriptNodeId(id)),
+        ...removedMarkdownIds.map((id) => markdownNodeId(id)),
+        ...removedFlowNodeIds,
+      ]);
+      if (removedNodeIds.size) {
+        setSelectedNodeIds((current) => {
+          const next = new Set(current);
+          removedNodeIds.forEach((nodeId) => next.delete(nodeId));
+          return next;
+        });
+      }
 
       if (
         !hasPositionChange &&
@@ -2566,12 +2602,6 @@ export const useScriptCanvasSurface = ({
             position: positionById.get(markdownNodeId(node.id)) || node.position || getDefaultMarkdownPosition(index),
             measured: nextNodeById.get(markdownNodeId(node.id))?.measured || node.measured,
           }));
-        const removedNodeIds = new Set([
-          ...removedImageIds.map((id) => imageNodeId(id)),
-          ...removedEpisodeIds.map((id) => scriptNodeId(id)),
-          ...removedMarkdownIds.map((id) => markdownNodeId(id)),
-          ...removedFlowNodeIds,
-        ]);
 
         return {
           ...currentCanvas,

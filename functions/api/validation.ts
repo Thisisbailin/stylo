@@ -13,8 +13,8 @@ const PROJECT_PATCH_KEYS = new Set([
   "roles",
   "phase5Usage",
   "designAssets",
-  "nodeFlow",
   "nodeDefaults",
+  "scriptCanvas",
   "stats"
 ]);
 
@@ -69,11 +69,11 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
     if (meta.designAssets !== undefined && !Array.isArray(meta.designAssets)) {
       return { ok: false, error: "delta.meta.designAssets is not an array" };
     }
-    if (meta.nodeFlow !== undefined && !isRecord(meta.nodeFlow)) {
-      return { ok: false, error: "delta.meta.nodeFlow is not an object" };
-    }
     if (meta.nodeDefaults !== undefined && !isRecord(meta.nodeDefaults)) {
       return { ok: false, error: "delta.meta.nodeDefaults is not an object" };
+    }
+    if (meta.scriptCanvas !== undefined && !isRecord(meta.scriptCanvas)) {
+      return { ok: false, error: "delta.meta.scriptCanvas is not an object" };
     }
     if (meta.roles !== undefined) {
       if (!Array.isArray(meta.roles)) return { ok: false, error: "delta.meta.roles is not an array" };

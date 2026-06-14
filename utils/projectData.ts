@@ -17,6 +17,12 @@ import {
   slugifyIdentityKey,
 } from "./projectRoles";
 import { normalizeNodeFlowNodeDefaults } from "../node-workspace/nodeflow/nodeDefaults";
+import { normalizeNodeFlowNode } from "../node-workspace/nodeflow/state";
+
+const HANDLE_TYPES = new Set(["image", "text", "audio", "video", "multi"]);
+
+const normalizeHandleType = (value: unknown) =>
+  typeof value === "string" && HANDLE_TYPES.has(value) ? value as any : undefined;
 
 const stripConflictMarkers = (value: string) => {
   const cleaned = value
@@ -156,6 +162,8 @@ const normalizeScriptTimeline = (value: any, nodeIds: Set<string>): ProjectData[
 };
 
 const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
+  const revision = typeof value?.revision === "number" && Number.isFinite(value.revision) ? value.revision : 0;
+
   const pages = Array.isArray(value?.pages)
     ? value.pages
         .map((page: any) => ({
@@ -191,10 +199,15 @@ const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
         }))
     : [];
 
+  const flowNodes = Array.isArray(value?.flowNodes)
+    ? value.flowNodes.map(normalizeNodeFlowNode).filter(Boolean)
+    : [];
+
   const nodeIds = new Set<string>([
     ...pages.map((page: any) => `script-${page.episodeId}`),
     ...images.map((image: any) => `image-${image.id}`),
     ...textNodes.map((node: any) => `md-${node.id}`),
+    ...flowNodes.map((node: any) => node.id),
   ]);
   const links = Array.isArray(value?.links)
     ? value.links
@@ -202,15 +215,31 @@ const normalizeScriptCanvas = (value: any): ProjectData["scriptCanvas"] => {
           id: ensureStableId(link?.id, "script-link"),
           source: toSafeString(link?.source),
           target: toSafeString(link?.target),
-          sourceHandle: link?.sourceHandle === "text" ? "text" : link?.sourceHandle === "image" ? "image" : undefined,
-          targetHandle: link?.targetHandle === "text" ? "text" : link?.targetHandle === "image" ? "image" : undefined,
+          sourceHandle: normalizeHandleType(link?.sourceHandle),
+          targetHandle: normalizeHandleType(link?.targetHandle),
         }))
         .filter((link: any) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
 
   const timeline = normalizeScriptTimeline(value?.timeline, nodeIds);
+  const graphLinks = Array.isArray(value?.graphLinks) ? value.graphLinks : [];
+  const globalAssetHistory = Array.isArray(value?.globalAssetHistory) ? value.globalAssetHistory : [];
+  const linkStyle = value?.linkStyle === "angular" ? "angular" : "curved";
+  const activeView = typeof value?.activeView === "string" ? value.activeView : null;
 
-  return timeline ? { pages, images, textNodes, links, timeline } : { pages, images, textNodes, links };
+  return {
+    revision,
+    pages,
+    images,
+    textNodes,
+    flowNodes: flowNodes as any,
+    graphLinks,
+    globalAssetHistory,
+    linkStyle,
+    activeView,
+    links,
+    ...(timeline ? { timeline } : {}),
+  };
 };
 
 const normalizeAliases = (values: unknown[], seed: string[]) => {
@@ -469,7 +498,6 @@ export const normalizeProjectData = (data: any): ProjectData => {
 
   base.episodes = Array.isArray(data?.episodes) ? data.episodes.map(normalizeEpisode) : [];
   base.designAssets = remapDesignAssets(base.designAssets as DesignAssetItem[], roles);
-  base.nodeFlow = data?.nodeFlow && typeof data.nodeFlow === "object" ? data.nodeFlow : null;
   base.nodeDefaults = normalizeNodeFlowNodeDefaults(data?.nodeDefaults);
   base.scriptCanvas = normalizeScriptCanvas(data?.scriptCanvas);
   base.rawScript = typeof data?.rawScript === "string" ? data.rawScript : "";

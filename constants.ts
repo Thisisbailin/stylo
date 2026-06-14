@@ -7,7 +7,6 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
   episodes: [],
   roles: [],
   designAssets: [],
-  nodeFlow: null,
   nodeDefaults: {},
   scriptCanvas: {
     pages: [],

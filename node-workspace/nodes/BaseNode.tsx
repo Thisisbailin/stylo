@@ -159,7 +159,7 @@ export const BaseNode: React.FC<Props> = ({
     >
       <NodeResizer
         color="var(--node-accent)"
-        isVisible
+        isVisible={!isIdentityMode}
         minWidth={320}
         minHeight={minHeight}
         keepAspectRatio={keepAspectRatio}
@@ -192,7 +192,7 @@ export const BaseNode: React.FC<Props> = ({
             <div className="node-card-title">{title}</div>
           )}
         </div>
-        {headerActions ? <div className="flex items-center gap-1">{headerActions}</div> : null}
+        {!isIdentityMode && headerActions ? <div className="flex items-center gap-1">{headerActions}</div> : null}
       </div>
 
       <div className="node-card-shell">

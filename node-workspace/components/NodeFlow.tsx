@@ -37,7 +37,7 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { ConnectionDropMenu } from "./ConnectionDropMenu";
-import { AgentSettingsPanel } from "./AgentSettingsPanel";
+import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useScriptCanvasSurface } from "./ScriptCanvas";
 import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./CanvasBackgroundField";
@@ -46,7 +46,7 @@ import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
 import { Toast, useToast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
-import { ProjectData } from "../../types";
+import { AppConfig, ProjectData, SyncState } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FileText, List } from "lucide-react";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
@@ -144,11 +144,18 @@ const getNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: st
 interface NodeFlowProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
+  config: AppConfig;
+  setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
+  isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
+  syncState?: SyncState;
+  syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
+  onForceSync?: () => void;
+  onOpenLanding?: () => void;
+  externalAgentSettingsRequest?: { panel: AgentSettingsPanelKey; nonce: number } | null;
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
-  onOpenWorkspacePanel?: () => void;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: {
@@ -415,11 +422,18 @@ const getPatternDefinitions = (
 const NodeFlowInner: React.FC<NodeFlowProps> = ({
   projectData,
   setProjectData,
+  config,
+  setConfig,
+  isSignedIn,
   getAuthToken,
+  syncState,
+  syncRollout,
+  onForceSync,
+  onOpenLanding,
+  externalAgentSettingsRequest,
   onAssetLoad,
   onOpenModule,
   syncIndicator,
-  onOpenWorkspacePanel,
   onResetProject,
   onSignOut,
   accountInfo,
@@ -430,7 +444,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [editingScriptEpisodeId, setEditingScriptEpisodeId] = useState<number | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
-  const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "history">("provider");
+  const [agentSettingsPanel, setAgentSettingsPanel] = useState<AgentSettingsPanelKey>("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [isQalamSending, setIsQalamSending] = useState(false);
@@ -446,12 +460,16 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const isAutoQalamFirst = windowWidth <= qalamFirstBreakpoint;
   const isQalamFirstMode = isAutoQalamFirst ? !dismissedAutoQalamFirst : isQalamFirstManual;
   const openAgentSettingsPanel = useCallback(
-    (panel: "provider" | "tools" | "skills" | "history" = "provider") => {
+    (panel: AgentSettingsPanelKey = "provider") => {
       setAgentSettingsPanel(panel);
       setShowAgentSettings(true);
     },
     []
   );
+  useEffect(() => {
+    if (!externalAgentSettingsRequest) return;
+    openAgentSettingsPanel(externalAgentSettingsRequest.panel);
+  }, [externalAgentSettingsRequest, openAgentSettingsPanel]);
   const {
     nodes,
     links,
@@ -1484,9 +1502,19 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
         leftOffset={agentDockWidth}
+        projectData={projectData}
+        setProjectData={setProjectData}
+        config={config}
+        setConfig={setConfig}
+        isSignedIn={isSignedIn}
+        getAuthToken={getAuthToken ? async () => getAuthToken() : undefined}
+        syncState={syncState}
+        syncRollout={syncRollout}
+        onForceSync={onForceSync}
+        onOpenLanding={onOpenLanding}
+        onResetProject={onResetProject}
         requestedPanel={agentSettingsPanel}
         onOpenVisualLab={() => onOpenModule?.("glassLab")}
-        onOpenWorkspace={onOpenWorkspacePanel}
       />
       {editingScriptEpisodeId !== null ? (
         <WritingPanel
