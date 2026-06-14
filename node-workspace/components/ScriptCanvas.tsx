@@ -1760,6 +1760,7 @@ export const useScriptCanvasSurface = ({
       ) return;
 
       const storeNodeById = new Map(state.nodes.map((node) => [node.id, node]));
+      const storeNodeIds = new Set(storeNodeById.keys());
       const storeLinks = state.links;
 
       persistCanvas((currentCanvas, previousProject) => {
@@ -1767,6 +1768,15 @@ export const useScriptCanvasSurface = ({
         const imageNodeIds = new Set(currentCanvas.images.map((image) => imageNodeId(image.id)));
         const markdownNodeIds = new Set((currentCanvas.textNodes || []).map((node) => markdownNodeId(node.id)));
         const flowNodeIds = new Set((currentCanvas.flowNodes || []).map((node) => node.id));
+        const protectedNodeIds = [
+          ...episodeNodeIds,
+          ...imageNodeIds,
+          ...markdownNodeIds,
+          ...flowNodeIds,
+        ];
+        const missingProtectedNodeIds = protectedNodeIds.filter((id) => !storeNodeIds.has(id));
+        if (missingProtectedNodeIds.length > 0) return currentCanvas;
+
         const currentFlowNodes = (currentCanvas.flowNodes || [])
           .map((node, index) => {
             const storeNode = storeNodeById.get(node.id);

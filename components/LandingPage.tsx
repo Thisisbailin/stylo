@@ -26,7 +26,7 @@ const capabilityBlocks = [
   {
     eyebrow: "Inspect",
     title: "统一读取图世界",
-    description: "通过同一组读接口读取剧本档案、资产结构与 NodeFlow 工作流画布。",
+    description: "通过同一组读接口读取剧本档案、资产结构与统一节点画布。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
     Icon: FileMagnifyingGlass,
   },
@@ -47,7 +47,7 @@ const capabilityBlocks = [
   {
     eyebrow: "Operate",
     title: "操作工作流画布",
-    description: "把剧本档案与制作意图继续落成 NodeFlow 节点与连线，形成最小可操作的工作流画布。",
+    description: "把剧本档案与制作意图继续落成画布节点与连线，形成最小可操作的创作结构。",
     tools: ["operate_project_resource"],
     Icon: TreeStructure,
   },
@@ -142,7 +142,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp }) 
                 一支会读项目、会整理档案、会搭工作流的 Agent 之笔。
               </h1>
               <p className="mt-4 max-w-[58ch] text-[14px] leading-7 text-zinc-700 dark:text-zinc-300">
-                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再组织成清晰档案，最后把理解继续变成可执行的 NodeFlow 图。
+                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再组织成清晰档案，最后把理解继续变成可执行的节点图。
               </p>
             </div>
 
@@ -222,7 +222,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp }) 
                     prompts={[
                       "读取第 3 集，找出人物关系最紧张的场景，并给出证据。",
                       "给主角新增一张“受伤形态”定妆照，并写回角色库。",
-                      "根据当前画面意图，生成一个 text -> imageGen 的 NodeFlow 工作流。",
+                      "根据当前画面意图，生成一个 text -> imageGen 的节点结构。",
                       "搜索项目档案，找出最适合做预告片的场景和对应角色定妆照。",
                     ]}
                   />
@@ -275,7 +275,7 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp }) 
                 <div className="landing-reveal rounded-[1.75rem] border border-black/10 bg-white/58 p-4 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "220ms" }}>
                   <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Flow</div>
                   <div className="mt-3 space-y-2">
-                    {["Info 进入", "Landing 浏览", "立即体验", "NodeFlow 继续工作"].map((item, index) => (
+                    {["Info 进入", "Landing 浏览", "立即体验", "Script Workspace 继续工作"].map((item, index) => (
                       <div key={item} className="flex items-center gap-3 text-[12px] text-zinc-700 dark:text-zinc-300">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 bg-black/[0.03] text-[10px] dark:border-white/10 dark:bg-white/[0.04]">
                           0{index + 1}

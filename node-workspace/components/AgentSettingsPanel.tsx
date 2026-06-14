@@ -185,12 +185,12 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的读接口查阅项目的两面：Script 剧本 / 空间轴 / 档案资源，以及表层 NodeFlow 工作流画布图。",
+    description: "Agent 通过统一的读接口查阅项目结构：Script 剧本、空间轴、档案资源，以及同一画布上的节点关系。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    surfaces: ["script source", "script archive", "script map", "nodeflow node", "nodeflow link", "nodeflow map"],
+    surfaces: ["script source", "script archive", "script map", "canvas node", "canvas link", "canvas map"],
     boundary: "只读，不允许直接修改项目状态。",
     artifact: "返回 Script source / archive / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
-    note: "负责统一读取 Script 与 NodeFlow 两个能力平面的项目事实。",
+    note: "负责统一读取 Script Workspace 内的项目事实。",
     Icon: Eye,
   },
   {
@@ -202,18 +202,18 @@ const TOOL_ITEMS: ToolItem[] = [
     surfaces: ["script archive", "script space block"],
     boundary: "只写入 Script foundation 的档案文档和既有空间轴区块；不直接覆写锁定的剧本源文本。",
     artifact: "输出新的 Script 档案或更新后的空间轴区块，作为项目长期档案的正式写入结果。",
-    note: "负责项目档案的沉淀与修正，不回写表层 NodeFlow。",
+    note: "负责项目档案的沉淀与修正，不越过 Script Workspace 的写入边界。",
     Icon: Sparkles,
   },
   {
     key: "workflow-builder",
     capability: "operate",
     title: "operate",
-    description: "Agent 通过统一操作接口在表层 NodeFlow 画布上创建节点、连接连线，并组织可执行的节点结构。",
+    description: "Agent 通过统一操作接口在 Script Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
     tools: ["operate_project_resource"],
     surfaces: ["text node", "script board", "character card", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
-    artifact: "输出可继续编辑和执行的 NodeFlow scaffold，承接“查阅”和“编辑”的结果。",
+    artifact: "输出可继续编辑和执行的节点 scaffold，承接“查阅”和“编辑”的结果。",
     note: "负责操作表层节点图，把 Script 中的事实与档案继续落成可执行画布结构。",
     Icon: Code2,
   },
@@ -2217,7 +2217,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div>
                             <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">操作开关</div>
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以把理解转成 NodeFlow 中的真实节点与连线。
+                              控制 Agent 是否可以把理解转成 Script Workspace 中的真实节点与连线。
                             </div>
                           </div>
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
@@ -2234,13 +2234,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              `operate_project_resource` 负责创建 NodeFlow 的 text、script board、character card。
+                              `operate_project_resource` 负责创建统一画布中的 text、script board、character card。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Connection</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              同一个 `operate_project_resource` 也负责连接已存在的 NodeFlow 节点，形成最小工作流骨架。
+                              同一个 `operate_project_resource` 也负责连接已存在的画布节点，形成最小工作流骨架。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">

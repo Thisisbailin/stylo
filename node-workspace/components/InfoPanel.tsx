@@ -78,9 +78,9 @@ export const InfoPanel: React.FC<Props> = ({
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">About</div>
                     <div className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">Qalam</div>
-                    <div className="text-[12px] text-[var(--app-text-secondary)]">v0.3 · NodeFlow</div>
+                    <div className="text-[12px] text-[var(--app-text-secondary)]">v0.3 · Script Workspace</div>
                     <div className="mt-3 max-w-xl text-[13px] leading-7 text-[var(--app-text-secondary)]">
-                      Node-first AIGC workflow for script-grounded archive structuring, asset planning, and production flow design.
+                      Script-grounded infinite canvas for archive structuring, asset planning, and creative node composition.
                     </div>
                   </div>
                 </div>
@@ -89,8 +89,8 @@ export const InfoPanel: React.FC<Props> = ({
                   <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">Surface</div>
                   <div className="mt-3 space-y-3">
                     {[
-                      { label: "Workspace", value: "NodeFlow" },
-                      { label: "Pipeline", value: "Script → Assets → Flow" },
+                      { label: "Workspace", value: "Script Workspace" },
+                      { label: "Pipeline", value: "Script → Archives → Nodes" },
                       { label: "Access", value: "Open without sign-in" },
                     ].map((item) => (
                       <div key={item.label} className="border-b border-[var(--app-border)] pb-3 last:border-b-0 last:pb-0">

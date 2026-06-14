@@ -126,7 +126,7 @@ const humanizeToolName = (name: string) => {
     case "edit_script_resource":
       return "编辑 Script";
     case "operate_project_resource":
-      return "操作 NodeFlow";
+      return "操作 Script Workspace";
     default:
       return name;
   }

@@ -2,11 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from "react"
 import {
   ReactFlow,
   MiniMap,
-  Connection,
-  NodeTypes,
-  EdgeTypes,
   useReactFlow,
-  OnConnectEnd,
   PanOnScrollMode,
   ReactFlowProvider,
   ConnectionMode,
@@ -16,27 +12,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection, nodeSupportsHandle } from "../utils/handles";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
-import { EditableEdge } from "../edges/EditableEdge";
-import {
-  AudioInputNode,
-  VideoInputNode,
-  ImageInputNode, AnnotationNode, TextNode,
-  ScriptBoardNode,
-  IdentityCardNode,
-  ImageGenNode,
-  NanoBananaImageGenNode,
-  WanImageGenNode,
-  SoraVideoGenNode,
-  WanReferenceVideoGenNode,
-  ViduVideoGenNode,
-  SeedanceVideoGenNode,
-} from "../nodes";
-import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import { MultiSelectToolbar } from "./MultiSelectToolbar";
 import { FloatingActionBar } from "./FloatingActionBar";
-import { ConnectionDropMenu } from "./ConnectionDropMenu";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useScriptCanvasSurface } from "./ScriptCanvas";
@@ -44,104 +21,15 @@ import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./Canva
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
-import { Toast, useToast } from "./Toast";
+import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FileText, List } from "lucide-react";
-import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
-import {
-  alignPositionChangesToNodeEdges,
-  getEdgeAlignedPosition,
-  type EdgeAlignmentGuide,
-} from "../utils/edgeAlignment";
-import type { CanvasSurfaceConfig, SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
+import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
+import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
 
-const nodeTypes: NodeTypes = {
-  imageInput: ImageInputNode,
-  audioInput: AudioInputNode,
-  videoInput: VideoInputNode,
-  annotation: AnnotationNode,
-  text: TextNode,
-  scriptBoard: ScriptBoardNode,
-  identityCard: IdentityCardNode,
-  imageGen: ImageGenNode,
-  nanoBananaImageGen: NanoBananaImageGenNode,
-  wanImageGen: WanImageGenNode,
-  soraVideoGen: SoraVideoGenNode,
-  wanReferenceVideoGen: WanReferenceVideoGenNode,
-  viduVideoGen: ViduVideoGenNode,
-  seedanceVideoGen: SeedanceVideoGenNode,
-};
-
-const edgeTypes: EdgeTypes = {
-  editable: EditableEdge,
-};
-
-interface ConnectionDropState {
-  position: { x: number; y: number };
-  flowPosition: { x: number; y: number };
-  handleType: "image" | "text" | "audio" | "video" | null;
-  connectionType: "source" | "target";
-  sourceNodeId: string | null;
-  sourceHandleId: string | null;
-}
-
-const pickOutputHandle = (handles: string[], preferred?: "image" | "text" | "audio" | "video" | null) => {
-  if (preferred && handles.includes(preferred)) return preferred;
-  if (preferred && handles.includes("multi")) return "multi";
-  return handles.find((handle) => handle !== "multi") || handles[0] || null;
-};
-
-const pickInputHandle = (
-  handles: string[],
-  preferred?: "image" | "text" | "audio" | "video" | null,
-  existingHandleId?: string | null
-) => {
-  if (existingHandleId && handles.includes(existingHandleId)) {
-    if (existingHandleId === "multi") return "multi";
-    if (!preferred || existingHandleId === preferred) return existingHandleId;
-  }
-  if (preferred && handles.includes(preferred)) return preferred;
-  if (preferred && handles.includes("multi")) return "multi";
-  return handles[0] || null;
-};
-
-const getNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
-  if (typeof document === "undefined") return null;
-  const magneticPadding = 46;
-  let closest: { nodeId: string; side: "left" | "right"; distance: number } | null = null;
-
-  document.querySelectorAll<HTMLElement>(".react-flow__node").forEach((nodeElement) => {
-    const nodeId = nodeElement.getAttribute("data-id");
-    if (!nodeId || nodeId === excludedNodeId) return;
-    const rect = nodeElement.getBoundingClientRect();
-
-    const insideMagneticBounds =
-      clientX >= rect.left - magneticPadding &&
-      clientX <= rect.right + magneticPadding &&
-      clientY >= rect.top - magneticPadding &&
-      clientY <= rect.bottom + magneticPadding;
-
-    if (!insideMagneticBounds) return;
-
-    const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
-    const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
-    const distance = Math.hypot(dx, dy);
-
-    if (!closest || distance < closest.distance) {
-      closest = {
-      nodeId,
-      side: clientX < rect.left + rect.width / 2 ? "left" : "right",
-        distance,
-      };
-    }
-  });
-
-  return closest ? { nodeId: closest.nodeId, side: closest.side } : null;
-};
-
-interface NodeFlowProps {
+interface ScriptWorkspaceProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   config: AppConfig;
@@ -169,11 +57,6 @@ interface NodeFlowProps {
     onUploadAvatar?: () => void;
   };
 }
-
-type ConnectionTargetGlow = {
-  nodeId: string;
-  side: "left" | "right";
-};
 
 type ThemeKey = "dark" | "light" | "sand" | "creative" | "calm" | "lively";
 type PatternKey = "dots" | "grid" | "cross" | "lines" | "diagonal" | "none";
@@ -419,7 +302,7 @@ const getPatternDefinitions = (
   });
 };
 
-const NodeFlowInner: React.FC<NodeFlowProps> = ({
+const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
   projectData,
   setProjectData,
   config,
@@ -472,16 +355,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   }, [externalAgentSettingsRequest, openAgentSettingsPanel]);
   const {
     nodes,
-    links,
-    revision,
-    addNode,
-    addNodesAndLinks,
-    updateNodeData,
-    onNodesChange,
-    onLinksChange,
-    connectNodes,
-    exportNodeFlow,
-    importNodeFlow,
     setNodeFlowContext,
     setProjectRoleUpdater,
     setViewportState,
@@ -494,82 +367,20 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     globalAssetHistory,
   } = useNodeFlowStore();
   const { setViewport, screenToFlowPosition, getViewport, fitView } = useReactFlow();
-  const { show: showToast } = useToast();
-  const { runImageGen, runVideoGen } = useNodeFlowExecutor();
 
   const minZoom = 0.25;
   const maxZoom = 4;
-  const [connectionDrop, setConnectionDrop] = useState<ConnectionDropState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const keepPeripheralWidgetsOpen = showMiniMap;
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionTargetGlow, setConnectionTargetGlow] = useState<ConnectionTargetGlow | null>(null);
-  const connectionSourceNodeIdRef = useRef<string | null>(null);
-  const previousConnectionTargetGlowRef = useRef<ConnectionTargetGlow | null>(null);
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => getViewport());
   const liveViewportRef = useRef(liveViewport);
   const viewportCommitTimeoutRef = useRef<number | null>(null);
   const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      if (!isValidConnection(connection)) return;
-      connectNodes(connection, { expectedRevision: revision });
-      setIsConnecting(false);
-    },
-    [connectNodes, revision]
-  );
-
-  const handleConnectStart = useCallback((_: unknown, params?: { nodeId?: string | null }) => {
-    connectionSourceNodeIdRef.current = params?.nodeId || null;
-    setIsConnecting(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isConnecting) {
-      setConnectionTargetGlow(null);
-      return;
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const hitNode = getNodeHitAtPoint(event.clientX, event.clientY, connectionSourceNodeIdRef.current);
-      setConnectionTargetGlow((current) => {
-        if (!hitNode) return current ? null : current;
-        if (current?.nodeId === hitNode.nodeId && current.side === hitNode.side) return current;
-        return hitNode;
-      });
-    };
-
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    return () => window.removeEventListener("pointermove", handlePointerMove);
-  }, [isConnecting]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    const previous = previousConnectionTargetGlowRef.current;
-    if (previous && previous.nodeId !== connectionTargetGlow?.nodeId) {
-      const previousNode = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(previous.nodeId)}"]`);
-      previousNode?.removeAttribute("data-connection-target-side");
-    }
-
-    if (connectionTargetGlow) {
-      const nextNode = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(connectionTargetGlow.nodeId)}"]`);
-      nextNode?.setAttribute("data-connection-target-side", connectionTargetGlow.side);
-    }
-
-    previousConnectionTargetGlowRef.current = connectionTargetGlow;
-
-    return () => {
-      if (!connectionTargetGlow) return;
-      const node = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(connectionTargetGlow.nodeId)}"]`);
-      node?.removeAttribute("data-connection-target-side");
-    };
-  }, [connectionTargetGlow]);
 
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
@@ -722,193 +533,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     }
   }, [currentNodeId, nodes, setCurrentNode]);
 
-  const handleConnectEnd: OnConnectEnd = useCallback(
-    (event, connectionState) => {
-      setIsConnecting(false);
-      connectionSourceNodeIdRef.current = null;
-      setConnectionTargetGlow(null);
-      if (connectionState.isValid || !connectionState.fromNode) return;
-      // Extract clientX/clientY from the event correctly (it can be MouseEvent or TouchEvent)
-      const e = event as any;
-      const clientX = e.clientX || e.touches?.[0]?.clientX;
-      const clientY = e.clientY || e.touches?.[0]?.clientY;
-      if (typeof clientX !== "number" || typeof clientY !== "number") return;
-
-      const fromHandleId = connectionState.fromHandle?.id || null;
-      const fromHandleType =
-        fromHandleId === "image" || fromHandleId === "text" || fromHandleId === "audio" || fromHandleId === "video"
-          ? fromHandleId
-          : null;
-      const isFromSource = connectionState.fromHandle?.type === "source";
-      const hitNode = getNodeHitAtPoint(clientX, clientY, connectionState.fromNode.id);
-      if (hitNode) {
-        const fromNode = nodes.find((node) => node.id === connectionState.fromNode?.id);
-        const hitFlowNode = nodes.find((node) => node.id === hitNode.nodeId);
-        if (fromNode && hitFlowNode) {
-          const preferredHandleType = fromHandleType || inferHandleTypeFromNodeType(fromNode.type) || inferHandleTypeFromNodeType(hitFlowNode.type);
-
-          const buildConnection = (
-            sourceNode: typeof fromNode,
-            targetNode: typeof hitFlowNode
-          ): Connection | null => {
-            if (sourceNode.id === targetNode.id) return null;
-
-            const sourceHandles = getNodeHandles(sourceNode.type);
-            const targetHandles = getNodeHandles(targetNode.type);
-            const sourceHandle =
-              sourceNode.id === fromNode.id && isFromSource && isTypedHandle(fromHandleId)
-                ? fromHandleId
-                : pickOutputHandle(sourceHandles.outputs, preferredHandleType);
-            const targetHandle =
-              targetNode.id === fromNode.id && !isFromSource && isTypedHandle(fromHandleId)
-                ? fromHandleId
-                : pickInputHandle(targetHandles.inputs, preferredHandleType);
-
-            if (!sourceHandle || !targetHandle) return null;
-            return {
-              source: sourceNode.id,
-              sourceHandle,
-              target: targetNode.id,
-              targetHandle,
-            };
-          };
-
-          const sidePreferredConnections =
-            hitNode.side === "right"
-              ? [buildConnection(hitFlowNode, fromNode), buildConnection(fromNode, hitFlowNode)]
-              : [buildConnection(fromNode, hitFlowNode), buildConnection(hitFlowNode, fromNode)];
-
-          for (const connection of sidePreferredConnections) {
-            if (connection && isValidConnection(connection)) {
-              connectNodes(connection, { expectedRevision: useNodeFlowStore.getState().revision });
-              return;
-            }
-          }
-        }
-        return;
-      }
-      const flowPos = screenToFlowPosition({ x: clientX, y: clientY });
-      setConnectionDrop({
-        position: { x: clientX, y: clientY },
-        flowPosition: flowPos,
-        handleType: fromHandleType,
-        connectionType: isFromSource ? "source" : "target",
-        sourceNodeId: connectionState.fromNode.id,
-        sourceHandleId: connectionState.fromHandle?.id || null,
-      });
-    },
-    [connectNodes, nodes, screenToFlowPosition]
-  );
-
-  const handleAddNode = useCallback((type: NodeType, position: XYPosition) => {
-    return addNode(type, position, undefined, undefined, { expectedRevision: revision });
-  }, [addNode, revision]);
-
-  const handleDropCreate = (type: NodeType) => {
-    if (!connectionDrop) return;
-
-    const position = connectionDrop.flowPosition;
-    const existingNode = connectionDrop.sourceNodeId
-      ? useNodeFlowStore.getState().nodes.find((node) => node.id === connectionDrop.sourceNodeId)
-      : null;
-    const existingNodeHandles = existingNode ? getNodeHandles(existingNode.type) : { inputs: [], outputs: [] };
-    const newNodeHandles = getNodeHandles(type);
-    const existingTypedHandle =
-      isTypedHandle(connectionDrop.sourceHandleId) ? connectionDrop.sourceHandleId : null;
-    const inferredExistingType = existingNode ? inferHandleTypeFromNodeType(existingNode.type) : null;
-    const preferredHandleType = connectionDrop.handleType || existingTypedHandle || inferredExistingType;
-
-    const canAttach =
-      connectionDrop.connectionType === "source"
-        ? Boolean(pickInputHandle(newNodeHandles.inputs, preferredHandleType))
-        : Boolean(pickOutputHandle(newNodeHandles.outputs, preferredHandleType));
-
-    if (!canAttach) {
-      showToast(
-        preferredHandleType
-          ? `该节点不支持 ${preferredHandleType} 类型素材连接`
-          : "该节点没有可用于自动连接的端口",
-        "warning"
-      );
-      setConnectionDrop(null);
-      return;
-    }
-
-    const newId = handleAddNode(type, position);
-    const latestRevision = useNodeFlowStore.getState().revision;
-
-    if (connectionDrop.connectionType === "source") {
-      const resolvedSourceHandle =
-        (isTypedHandle(connectionDrop.sourceHandleId) ? connectionDrop.sourceHandleId : null) ||
-        pickOutputHandle(existingNodeHandles.outputs, preferredHandleType);
-      const resolvedTargetHandle = pickInputHandle(newNodeHandles.inputs, preferredHandleType);
-
-      if (!resolvedSourceHandle || !resolvedTargetHandle || !connectionDrop.sourceNodeId) {
-        showToast("新节点已创建，但未能推断出有效连接端口", "warning");
-        setConnectionDrop(null);
-        return;
-      }
-
-      connectNodes(
-        {
-          source: connectionDrop.sourceNodeId,
-          sourceHandle: resolvedSourceHandle,
-          target: newId,
-          targetHandle: resolvedTargetHandle,
-        },
-        { expectedRevision: latestRevision }
-      );
-    } else {
-      const resolvedSourceHandle = pickOutputHandle(
-        newNodeHandles.outputs,
-        preferredHandleType || inferHandleTypeFromNodeType(type)
-      );
-      const resolvedTargetHandle = pickInputHandle(
-        existingNodeHandles.inputs,
-        preferredHandleType || (isTypedHandle(resolvedSourceHandle) ? resolvedSourceHandle : inferHandleTypeFromNodeType(type)),
-        connectionDrop.sourceHandleId
-      );
-
-      if (!resolvedSourceHandle || !resolvedTargetHandle || !connectionDrop.sourceNodeId) {
-        showToast("新节点已创建，但未能推断出有效连接端口", "warning");
-        setConnectionDrop(null);
-        return;
-      }
-
-      connectNodes(
-        {
-          source: newId,
-          sourceHandle: resolvedSourceHandle,
-          target: connectionDrop.sourceNodeId,
-          targetHandle: resolvedTargetHandle,
-        },
-        { expectedRevision: latestRevision }
-      );
-    }
-
-    setConnectionDrop(null);
-  };
-
-  const runAll = async () => {
-    let started = 0;
-    for (const n of nodes) {
-      if (n.type === "imageGen" || n.type === "nanoBananaImageGen" || n.type === "wanImageGen") {
-        started += 1;
-        await runImageGen(n.id);
-      }
-      if (
-        n.type === "soraVideoGen" ||
-        n.type === "wanReferenceVideoGen" ||
-        n.type === "viduVideoGen" ||
-        n.type === "seedanceVideoGen"
-      ) {
-        started += 1;
-        await runVideoGen(n.id);
-      }
-    }
-    alert(started > 0 ? `已启动 ${started} 个生成节点。` : "当前没有可执行的生成节点。");
-  };
-
   const handleZoomChange = useCallback(
     (value: number) => {
       const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
@@ -1010,82 +634,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     [handleSharedViewportChange, isLocked, liveViewport, maxZoom, minZoom, showMiniMap, snapToGrid]
   );
 
-  const displayNodes = useMemo(() => nodes.map(toNodeFlowCanvasNode), [nodes]);
-  const displayEdges = useMemo(() => links.map(toNodeFlowCanvasLink), [links]);
-  const updateSnapGuide = useCallback(
-    (nodeId: string, position: XYPosition) => {
-      if (!snapToGrid || isLocked) {
-        setSnapGuide(null);
-        return;
-      }
-      const node = displayNodes.find((item) => item.id === nodeId);
-      if (!node) {
-        setSnapGuide(null);
-        return;
-      }
-      const result = getEdgeAlignedPosition(node, displayNodes, position);
-      setSnapGuide(result.guide);
-    },
-    [displayNodes, isLocked, snapToGrid]
-  );
-  const handleFlowNodesChange = useCallback(
-    (changes: Parameters<typeof onNodesChange>[0]) => {
-      const aligned = alignPositionChangesToNodeEdges(changes, displayNodes, snapToGrid && !isLocked);
-      setSnapGuide(aligned.guide);
-      onNodesChange(aligned.changes);
-    },
-    [displayNodes, isLocked, onNodesChange, snapToGrid]
-  );
-
-  const flowSurface = useMemo<CanvasSurfaceConfig>(
-    () => ({
-      key: "flow",
-      nodes: displayNodes,
-      edges: displayEdges,
-      nodeTypes,
-      edgeTypes,
-      onNodesChange: handleFlowNodesChange as CanvasSurfaceConfig["onNodesChange"],
-      onEdgesChange: onLinksChange as CanvasSurfaceConfig["onEdgesChange"],
-      onConnect: handleConnect,
-      onConnectStart: handleConnectStart,
-      onConnectEnd: handleConnectEnd,
-      onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
-      onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
-      onNodeDragStop: () => setSnapGuide(null),
-      nodesDraggable: !isLocked,
-      nodesConnectable: !isLocked,
-      elementsSelectable: !isLocked,
-      connectionLineType: ConnectionLineType.Bezier,
-      connectionLineStyle: {
-        stroke: "rgba(74, 222, 128, 0.88)",
-        strokeWidth: 2.6,
-        strokeLinecap: "round",
-        strokeLinejoin: "round",
-      },
-      actions: {
-        addNode: (type, position = { x: 100, y: 100 }) => handleAddNode(type, position),
-        importNodeFlow,
-        exportNodeFlow,
-        runAll,
-      },
-    }),
-    [
-      displayEdges,
-      displayNodes,
-      handleConnect,
-      handleConnectEnd,
-      handleConnectStart,
-      handleFlowNodesChange,
-      handleAddNode,
-      isLocked,
-      exportNodeFlow,
-      onLinksChange,
-      importNodeFlow,
-      runAll,
-      updateSnapGuide,
-    ]
-  );
-
   const scriptSurface = useScriptCanvasSurface({
     projectData,
     setProjectData,
@@ -1105,8 +653,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     isAgentFirstMode: isQalamFirstMode,
   });
 
-  const activeSurface = scriptSurface;
-
   const getToolbarNodePosition = useCallback(
     (fallback: XYPosition): XYPosition => {
       if (typeof window === "undefined") return fallback;
@@ -1118,21 +664,21 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     [screenToFlowPosition]
   );
 
-  const handleActiveAddNode = useCallback(
+  const handleScriptAddNode = useCallback(
     (type: NodeType, fallback: XYPosition) => {
       const position = getToolbarNodePosition(fallback);
-      return activeSurface.actions?.addNode?.(type, position) ?? handleAddNode(type, position);
+      return scriptSurface.actions?.addNode?.(type, position) ?? null;
     },
-    [activeSurface.actions, getToolbarNodePosition, handleAddNode]
+    [getToolbarNodePosition, scriptSurface.actions]
   );
 
-  const handleActiveExportNodeFlow = useCallback(() => {
-    activeSurface.actions?.exportNodeFlow?.() ?? exportNodeFlow();
-  }, [activeSurface.actions, exportNodeFlow]);
+  const handleScriptExportNodeFlow = useCallback(() => {
+    scriptSurface.actions?.exportNodeFlow?.();
+  }, [scriptSurface.actions]);
 
-  const handleActiveRunAll = useCallback(() => {
-    void (activeSurface.actions?.runAll?.() ?? runAll());
-  }, [activeSurface.actions, runAll]);
+  const handleScriptRunAll = useCallback(() => {
+    void scriptSurface.actions?.runAll?.();
+  }, [scriptSurface.actions]);
 
   const handleFileImport = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1142,7 +688,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       reader.onload = (evt) => {
         try {
           const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
-          activeSurface.actions?.importNodeFlow?.(data) ?? importNodeFlow(data);
+          scriptSurface.actions?.importNodeFlow?.(data);
         } catch (err) {
           alert("Failed to import NodeFlow JSON");
         }
@@ -1150,7 +696,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       reader.readAsText(file);
       event.target.value = "";
     },
-    [activeSurface.actions, importNodeFlow]
+    [scriptSurface.actions]
   );
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
@@ -1389,7 +935,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       <div
         className="flex-1 relative node-flow-canvas"
         data-zoomed={zoomValue > 1}
-        data-connecting={isConnecting}
+        data-connecting={false}
         style={backgroundStyle}
         onWheelCapture={handleCanvasWheelCapture}
       >
@@ -1406,41 +952,41 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           active={!showThemeModal}
         />
         <ReactFlow
-          nodes={activeSurface.nodes}
-          edges={activeSurface.edges}
-          onNodesChange={activeSurface.onNodesChange}
-          onEdgesChange={activeSurface.onEdgesChange}
-          onConnect={activeSurface.onConnect}
-          onConnectStart={activeSurface.onConnectStart}
-          onConnectEnd={activeSurface.onConnectEnd}
-          onNodeClick={activeSurface.onNodeClick}
-          onNodeDragStart={activeSurface.onNodeDragStart}
-          onNodeDrag={activeSurface.onNodeDrag}
-          onNodeDragStop={activeSurface.onNodeDragStop}
+          nodes={scriptSurface.nodes}
+          edges={scriptSurface.edges}
+          onNodesChange={scriptSurface.onNodesChange}
+          onEdgesChange={scriptSurface.onEdgesChange}
+          onConnect={scriptSurface.onConnect}
+          onConnectStart={scriptSurface.onConnectStart}
+          onConnectEnd={scriptSurface.onConnectEnd}
+          onNodeClick={scriptSurface.onNodeClick}
+          onNodeDragStart={scriptSurface.onNodeDragStart}
+          onNodeDrag={scriptSurface.onNodeDrag}
+          onNodeDragStop={scriptSurface.onNodeDragStop}
           onMove={(_, vp) => handleSharedViewportChange(vp)}
           onMoveEnd={(_, vp) => {
             handleSharedViewportChange(vp, { commit: true });
           }}
           minZoom={minZoom}
           maxZoom={maxZoom}
-          nodesDraggable={activeSurface.nodesDraggable ?? !isLocked}
-          nodesConnectable={activeSurface.nodesConnectable ?? !isLocked}
-          elementsSelectable={activeSurface.elementsSelectable ?? !isLocked}
+          nodesDraggable={scriptSurface.nodesDraggable ?? !isLocked}
+          nodesConnectable={scriptSurface.nodesConnectable ?? !isLocked}
+          elementsSelectable={scriptSurface.elementsSelectable ?? !isLocked}
           panOnDrag={!isLocked}
           panOnScroll={!isLocked}
-          panOnScrollMode={activeSurface.panOnScrollMode ?? PanOnScrollMode.Free}
+          panOnScrollMode={scriptSurface.panOnScrollMode ?? PanOnScrollMode.Free}
           zoomOnScroll={false}
           zoomOnPinch={!isLocked}
           zoomOnDoubleClick={!isLocked}
-          nodeTypes={activeSurface.nodeTypes}
-          edgeTypes={activeSurface.edgeTypes}
+          nodeTypes={scriptSurface.nodeTypes}
+          edgeTypes={scriptSurface.edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          connectionLineType={activeSurface.connectionLineType ?? ConnectionLineType.Bezier}
+          connectionLineType={scriptSurface.connectionLineType ?? ConnectionLineType.Bezier}
           defaultViewport={liveViewport}
-          connectionLineStyle={activeSurface.connectionLineStyle}
-          onlyRenderVisibleElements={activeSurface.onlyRenderVisibleElements}
+          connectionLineStyle={scriptSurface.connectionLineStyle}
+          onlyRenderVisibleElements={scriptSurface.onlyRenderVisibleElements}
           proOptions={{ hideAttribution: true }}
-          data-active-mode={activeSurface.key}
+          data-canvas-surface="script"
         >
           {showMiniMap && (
             <div
@@ -1457,9 +1003,9 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
               />
             </div>
           )}
-          {activeSurface.miniMap}
+          {scriptSurface.miniMap}
         </ReactFlow>
-        {activeSurface.overlays}
+        {scriptSurface.overlays}
 
         {snapToGrid ? (
           <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
@@ -1470,21 +1016,21 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       {qalamGlobalHeader}
 
       <FloatingActionBar
-        onAddText={() => handleActiveAddNode("text", { x: 100, y: 100 })}
-        onAddIdentityCard={() => handleActiveAddNode("identityCard", { x: 220, y: 160 })}
-        onAddImage={() => handleActiveAddNode("imageInput", { x: 200, y: 100 })}
-        onAddAudio={() => handleActiveAddNode("audioInput", { x: 220, y: 120 })}
-        onAddVideo={() => handleActiveAddNode("videoInput", { x: 240, y: 140 })}
-        onAddImageGen={() => handleActiveAddNode("imageGen", { x: 400, y: 100 })}
-        onAddNanoBananaImageGen={() => handleActiveAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
-        onAddWanImageGen={() => handleActiveAddNode("wanImageGen", { x: 420, y: 120 })}
-        onAddVideoGen={() => handleActiveAddNode("soraVideoGen", { x: 500, y: 100 })}
-        onAddViduVideoGen={() => handleActiveAddNode("viduVideoGen", { x: 510, y: 110 })}
-        onAddWanReferenceVideoGen={() => handleActiveAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
-        onAddSeedanceVideoGen={() => handleActiveAddNode("seedanceVideoGen", { x: 560, y: 160 })}
+        onAddText={() => handleScriptAddNode("text", { x: 100, y: 100 })}
+        onAddIdentityCard={() => handleScriptAddNode("identityCard", { x: 220, y: 160 })}
+        onAddImage={() => handleScriptAddNode("imageInput", { x: 200, y: 100 })}
+        onAddAudio={() => handleScriptAddNode("audioInput", { x: 220, y: 120 })}
+        onAddVideo={() => handleScriptAddNode("videoInput", { x: 240, y: 140 })}
+        onAddImageGen={() => handleScriptAddNode("imageGen", { x: 400, y: 100 })}
+        onAddNanoBananaImageGen={() => handleScriptAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
+        onAddWanImageGen={() => handleScriptAddNode("wanImageGen", { x: 420, y: 120 })}
+        onAddVideoGen={() => handleScriptAddNode("soraVideoGen", { x: 500, y: 100 })}
+        onAddViduVideoGen={() => handleScriptAddNode("viduVideoGen", { x: 510, y: 110 })}
+        onAddWanReferenceVideoGen={() => handleScriptAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+        onAddSeedanceVideoGen={() => handleScriptAddNode("seedanceVideoGen", { x: 560, y: 160 })}
         onImport={() => fileInputRef.current?.click()}
-        onExport={handleActiveExportNodeFlow}
-        onRun={handleActiveRunAll}
+        onExport={handleScriptExportNodeFlow}
+        onRun={handleScriptRunAll}
         floating={false}
         syncIndicator={syncIndicator}
         onResetProject={onResetProject}
@@ -1497,7 +1043,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         variant="embedded"
       />
 
-      <MultiSelectToolbar />
       <AgentSettingsPanel
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
@@ -1665,10 +1210,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   );
 };
 
-export const NodeFlow: React.FC<NodeFlowProps> = (props) => {
+export const ScriptWorkspace: React.FC<ScriptWorkspaceProps> = (props) => {
   return (
     <ReactFlowProvider>
-      <NodeFlowInner {...props} />
+      <ScriptWorkspaceInner {...props} />
     </ReactFlowProvider>
   );
 };
+
+export const NodeFlow = ScriptWorkspace;

@@ -20,7 +20,7 @@ import { useSecretsSync } from './hooks/useSecretsSync';
 import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
-import { NodeFlow } from './node-workspace/components/NodeFlow';
+import { ScriptWorkspace } from './node-workspace/components/NodeFlow';
 import type { NodeFlowNodeDefaults } from './node-workspace/types';
 import type { AgentSettingsPanelKey } from './node-workspace/components/AgentSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
@@ -1050,7 +1050,7 @@ const App: React.FC = () => {
       case 'lab':
         return (
           <div className="h-full">
-            <NodeFlow
+            <ScriptWorkspace
               projectData={projectData}
               setProjectData={setProjectData}
               config={config}

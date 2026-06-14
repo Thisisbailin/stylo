@@ -248,7 +248,7 @@ const summarizeApprovedExecutionResult = (
   if (!node) {
     return {
       status: "failed",
-      summary: `已批准执行 ${fallbackTitle}，但节点已不存在。请在 NodeFlow 中检查该任务是否被删除。`,
+      summary: `已批准执行 ${fallbackTitle}，但节点已不存在。请在 Script Workspace 中检查该任务是否被删除。`,
     };
   }
   const title = String((node.data as Record<string, unknown>)?.title || fallbackTitle || node.type);
@@ -463,7 +463,7 @@ export const QalamAgent: React.FC<Props> = ({
       getNodeFlowSnapshot: () => ({
         version: 2,
         revision,
-        name: projectData.fileName || "Qalam NodeFlow",
+        name: projectData.fileName || "Qalam Script Workspace",
         nodes,
         links,
         graphLinks,
@@ -506,7 +506,7 @@ export const QalamAgent: React.FC<Props> = ({
           ({
             version: 2,
             revision,
-            name: projectData.fileName || "Qalam NodeFlow",
+            name: projectData.fileName || "Qalam Script Workspace",
             nodes,
             links,
             graphLinks,
