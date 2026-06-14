@@ -20,12 +20,6 @@ export type AgentEnvironmentProjectDigest = {
   fileName?: string;
   episodeCount: number;
   sceneCount: number;
-  projectSummary?: string;
-  episodeSummaries: Array<{
-    episodeId: number;
-    label: string;
-    summary: string;
-  }>;
   primaryRoles: Array<{
     id: string;
     mention: string;
@@ -41,8 +35,6 @@ export type AgentEnvironmentProjectDigest = {
     episodeUsage?: string;
   }>;
   scriptCoverage: {
-    hasProjectSummary: boolean;
-    episodeSummaryCount: number;
     primaryRoleCount: number;
     sceneRoleCount: number;
     archiveCount: number;

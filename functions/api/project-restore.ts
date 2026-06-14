@@ -56,18 +56,10 @@ const getDeviceId = (request: Request, body?: any) => {
 type ProjectMeta = {
   fileName: string;
   rawScript: string;
-  dramaGuide: string;
-  globalStyleGuide: string;
+  roles: Array<Record<string, unknown>>;
   designAssets: Array<Record<string, unknown>>;
   nodeFlow: Record<string, unknown> | null;
   nodeDefaults: Record<string, unknown> | null;
-  context: {
-    projectSummary: string;
-    episodeSummaries: { episodeId: number; summary: string }[];
-    roles: Array<Record<string, unknown>>;
-  };
-  contextUsage: Record<string, unknown>;
-  phase1Usage: Record<string, unknown>;
   phase5Usage: Record<string, unknown>;
   stats: Record<string, unknown>;
 };
@@ -79,18 +71,10 @@ const emptyStats = {
 const DEFAULT_META: ProjectMeta = {
   fileName: "",
   rawScript: "",
-  dramaGuide: "",
-  globalStyleGuide: "",
+  roles: [],
   designAssets: [],
   nodeFlow: null,
   nodeDefaults: null,
-  context: {
-    projectSummary: "",
-    episodeSummaries: [],
-    roles: [],
-  },
-  contextUsage: emptyTokenUsage,
-  phase1Usage: {},
   phase5Usage: emptyTokenUsage,
   stats: emptyStats
 };
@@ -107,18 +91,10 @@ const safeJsonParse = <T>(value: unknown, fallback: T): T => {
 const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   fileName: typeof projectData?.fileName === "string" ? projectData.fileName : "",
   rawScript: typeof projectData?.rawScript === "string" ? projectData.rawScript : "",
-  dramaGuide: typeof projectData?.dramaGuide === "string" ? projectData.dramaGuide : "",
-  globalStyleGuide: typeof projectData?.globalStyleGuide === "string" ? projectData.globalStyleGuide : "",
+  roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
   nodeFlow: projectData?.nodeFlow && typeof projectData.nodeFlow === "object" ? projectData.nodeFlow : null,
   nodeDefaults: projectData?.nodeDefaults && typeof projectData.nodeDefaults === "object" ? projectData.nodeDefaults : null,
-  context: {
-    projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
-    episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
-    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
-  },
-  contextUsage: projectData?.contextUsage || emptyTokenUsage,
-  phase1Usage: projectData?.phase1Usage || {},
   phase5Usage: projectData?.phase5Usage || emptyTokenUsage,
   stats: { ...emptyStats, ...(projectData?.stats || {}) }
 });
@@ -139,7 +115,6 @@ const collectProjectParts = (projectData: any) => {
     id: episode.id,
     title: episode.title,
     content: episode.content,
-    summary: episode.summary,
     status: episode.status,
     errorMsg: episode.errorMsg
   }));
@@ -147,7 +122,7 @@ const collectProjectParts = (projectData: any) => {
   return {
     episodes: episodeRows,
     scenes,
-    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
+    roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
   };
 };
 
@@ -251,7 +226,6 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
       id: row.episode_id,
       title: epData.title || "",
       content: epData.content || "",
-      summary: epData.summary,
       status: epData.status || "pending",
       errorMsg: epData.errorMsg,
       scenes: []
@@ -281,24 +255,16 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
     });
   });
 
-  const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
+  const metaRoles = Array.isArray(meta.roles) ? meta.roles : [];
 
   const projectData = {
     fileName: meta.fileName || "",
     rawScript: meta.rawScript || "",
     episodes: Array.from(episodesMap.values()),
-    context: {
-      projectSummary: meta.context?.projectSummary || "",
-      episodeSummaries: meta.context?.episodeSummaries || [],
-      roles: metaRoles,
-    },
-    dramaGuide: meta.dramaGuide || "",
-    globalStyleGuide: meta.globalStyleGuide || "",
+    roles: metaRoles,
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
     nodeFlow: meta.nodeFlow && typeof meta.nodeFlow === "object" ? meta.nodeFlow : null,
     nodeDefaults: meta.nodeDefaults && typeof meta.nodeDefaults === "object" ? meta.nodeDefaults : null,
-    contextUsage: meta.contextUsage || emptyTokenUsage,
-    phase1Usage: meta.phase1Usage || {},
     phase5Usage: meta.phase5Usage || emptyTokenUsage,
     stats: { ...emptyStats, ...(meta.stats || {}) }
   };
@@ -363,8 +329,6 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
 
     await context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId).run();
     await context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1").bind(userId).run();
 
     for (const episode of parts.episodes) {
       await context.env.DB.prepare(

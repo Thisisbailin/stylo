@@ -10,14 +10,8 @@ import {
   SquareStack,
   Library,
   ChevronRight,
-  ChevronsRight,
   Layers,
   FileText,
-  BookOpen,
-  Palette,
-  FileCode,
-  Sun,
-  Moon,
   Trash2,
   LogOut,
   Upload,
@@ -37,7 +31,6 @@ type AccountInfo = {
 
 type Props = {
   onAddText: () => void;
-  onAddScriptBoard: () => void;
   onAddIdentityCard: () => void;
   onAddImage: () => void;
   onAddAudio: () => void;
@@ -51,34 +44,22 @@ type Props = {
   onAddSeedanceVideoGen: () => void;
   onImport: () => void;
   onExport: () => void;
-  onExportUnderstandingJson?: () => void;
   onRun: () => void;
   floating?: boolean;
-  onToggleTheme?: () => void;
-  onOpenTheme?: (anchorRect?: DOMRect) => void;
-  isDarkMode?: boolean;
   syncIndicator?: { label: string; color: string } | null;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
-  onTryMe?: () => void;
-  onToggleWorkflow?: (anchorRect?: DOMRect) => void;
   onOpenQalam?: () => void;
   variant?: "dock" | "embedded";
-  onAssetLoad?: (
-    type:
-      | "script"
-      | "globalStyleGuide"
-      | "dramaGuide"
-      | "understandingJson",
-    content: string,
-    fileName?: string
-  ) => void;
+  onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
+  showGlobalAccountTrigger?: boolean;
+  showToolbar?: boolean;
+  accountThemeControls?: React.ReactNode;
 };
 
 export const FloatingActionBar: React.FC<Props> = ({
   onAddText,
-  onAddScriptBoard,
   onAddIdentityCard,
   onAddImage,
   onAddAudio,
@@ -92,43 +73,34 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddSeedanceVideoGen,
   onImport,
   onExport,
-  onExportUnderstandingJson,
   onRun,
   floating = true,
-  onToggleTheme,
-  onOpenTheme,
-  isDarkMode,
   syncIndicator,
   onResetProject,
   onSignOut,
   accountInfo,
-  onTryMe,
-  onToggleWorkflow,
   onOpenQalam,
   variant = "dock",
   onAssetLoad,
+  showGlobalAccountTrigger = false,
+  showToolbar = true,
+  accountThemeControls,
 }) => {
   const isEmbedded = variant === "embedded";
   const [showPalette, setShowPalette] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
-  const [showTemplate, setShowTemplate] = useState(false);
-  const [ioPane, setIoPane] = useState<"project" | "guides" | "export">("project");
+  const [ioPane, setIoPane] = useState<"project" | "export">("project");
   const [nodePaletteMode, setNodePaletteMode] = useState<"panels" | "workflow">("workflow");
   const scriptInputRef = useRef<HTMLInputElement>(null);
-  const understandingInputRef = useRef<HTMLInputElement>(null);
-  const globalStyleInputRef = useRef<HTMLInputElement>(null);
-  const dramaGuideInputRef = useRef<HTMLInputElement>(null);
-  const workflowButtonRef = useRef<HTMLButtonElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
-  const projectButtonRef = useRef<HTMLButtonElement>(null);
   const nodesButtonRef = useRef<HTMLButtonElement>(null);
   const fileMenuPanelRef = useRef<HTMLDivElement>(null);
-  const templatePanelRef = useRef<HTMLDivElement>(null);
   const palettePanelRef = useRef<HTMLDivElement>(null);
   const [accountAnchorRect, setAccountAnchorRect] = useState<DOMRect | null>(null);
-  const [projectAnchorRect, setProjectAnchorRect] = useState<DOMRect | null>(null);
   const [nodesAnchorRect, setNodesAnchorRect] = useState<DOMRect | null>(null);
-  const rootClass = isEmbedded
+  const rootClass = !showToolbar
+    ? "contents"
+    : isEmbedded
     ? "relative z-30 w-full"
     : floating
       ? "fixed bottom-4 right-4 z-30"
@@ -153,6 +125,8 @@ export const FloatingActionBar: React.FC<Props> = ({
     "group inline-flex h-8 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-3 text-[11px] font-medium tracking-[-0.01em] text-[var(--app-text-secondary)] shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const toolbarChipClass =
     "group inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[var(--app-text-secondary)] shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
+  const globalAccountButtonClass =
+    "group inline-flex h-11 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-2.5 pr-3 text-[11px] font-semibold text-[var(--app-text-secondary)] shadow-[0_14px_34px_-20px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const getPopoverStyle = (anchorRect: DOMRect | null, desiredWidth: number): React.CSSProperties | undefined => {
     if (typeof window === "undefined") return undefined;
     if (!anchorRect) {
@@ -169,6 +143,15 @@ export const FloatingActionBar: React.FC<Props> = ({
       Math.min(anchorRect.left + anchorRect.width / 2 - width / 2, window.innerWidth - viewportPadding - width)
     );
     const gap = 12;
+    if (anchorRect.top < window.innerHeight / 2) {
+      return {
+        position: "fixed",
+        left,
+        top: Math.min(anchorRect.bottom + gap, window.innerHeight - viewportPadding),
+        width,
+        maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
+      };
+    }
     const bottom = Math.max(16, window.innerHeight - anchorRect.top + gap);
     return {
       position: "fixed",
@@ -178,20 +161,16 @@ export const FloatingActionBar: React.FC<Props> = ({
       maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
     };
   };
-  const templatePopoverStyle = useMemo(() => getPopoverStyle(projectAnchorRect, 420), [projectAnchorRect]);
   const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 580), [nodesAnchorRect]);
   const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, 420), [accountAnchorRect]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    if (!showFileMenu && !showTemplate && !showPalette) return undefined;
+    if (!showFileMenu && !showPalette) return undefined;
 
     const updateAnchors = () => {
       if (showFileMenu && accountButtonRef.current) {
         setAccountAnchorRect(accountButtonRef.current.getBoundingClientRect());
-      }
-      if (showTemplate && projectButtonRef.current) {
-        setProjectAnchorRect(projectButtonRef.current.getBoundingClientRect());
       }
       if (showPalette && nodesButtonRef.current) {
         setNodesAnchorRect(nodesButtonRef.current.getBoundingClientRect());
@@ -206,11 +185,11 @@ export const FloatingActionBar: React.FC<Props> = ({
       window.removeEventListener("resize", updateAnchors);
       window.removeEventListener("scroll", updateAnchors, true);
     };
-  }, [showFileMenu, showPalette, showTemplate]);
+  }, [showFileMenu, showPalette]);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
-    if (!showFileMenu && !showTemplate && !showPalette) return undefined;
+    if (!showFileMenu && !showPalette) return undefined;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -218,14 +197,12 @@ export const FloatingActionBar: React.FC<Props> = ({
 
       const insideOpenPanel =
         (showFileMenu && fileMenuPanelRef.current?.contains(target)) ||
-        (showTemplate && templatePanelRef.current?.contains(target)) ||
         (showPalette && palettePanelRef.current?.contains(target));
 
       if (insideOpenPanel) return;
 
       const insideTrigger =
         accountButtonRef.current?.contains(target) ||
-        projectButtonRef.current?.contains(target) ||
         nodesButtonRef.current?.contains(target);
 
       if (insideTrigger) return;
@@ -236,10 +213,9 @@ export const FloatingActionBar: React.FC<Props> = ({
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [showFileMenu, showPalette, showTemplate]);
+  }, [showFileMenu, showPalette]);
 
   const panelActions = [
-    { label: "剧本面板", hint: "按集与场景浏览剧本", meta: "Panel", onClick: onAddScriptBoard, Icon: BookOpen, tone: "text-sky-300", surface: "bg-sky-500/12" },
     { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "Library", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
   ];
   const nodeActions = [
@@ -259,20 +235,14 @@ export const FloatingActionBar: React.FC<Props> = ({
   const accountEmail = accountInfo?.email || accountInfo?.name || "登录以启用同步和项目管理";
   const handleSignOut = accountInfo?.onSignOut || onSignOut;
   const handleUploadAvatar = accountInfo?.onUploadAvatar;
-
   const closeMenus = () => {
     setShowPalette(false);
     setShowFileMenu(false);
-    setShowTemplate(false);
   };
 
   const handleAssetFileChange = (
     event: React.ChangeEvent<HTMLInputElement>,
-    type:
-      | "script"
-      | "globalStyleGuide"
-      | "dramaGuide"
-      | "understandingJson"
+    type: "script"
   ) => {
     const file = event.target.files?.[0];
     if (!file || !onAssetLoad) return;
@@ -297,13 +267,6 @@ export const FloatingActionBar: React.FC<Props> = ({
             className={`${compactTabClass} ${ioPane === "project" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
           >
             Files
-          </button>
-          <button
-            type="button"
-            onClick={() => setIoPane("guides")}
-            className={`${compactTabClass} ${ioPane === "guides" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}
-          >
-            Guides
           </button>
           <button
             type="button"
@@ -386,65 +349,6 @@ export const FloatingActionBar: React.FC<Props> = ({
               </span>
             </div>
           </button>
-          <input
-            ref={understandingInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "understandingJson")}
-          />
-          <button type="button" onClick={() => understandingInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                <BookOpen size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Archive</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目档案</span>
-              </span>
-            </div>
-          </button>
-        </div>
-      )}
-
-      {ioPane === "guides" && (
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            ref={globalStyleInputRef}
-            type="file"
-            accept=".md,.txt"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "globalStyleGuide")}
-          />
-          <button type="button" onClick={() => globalStyleInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-stone-500/10 text-stone-300">
-                <Palette size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Style</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">风格说明</span>
-              </span>
-            </div>
-          </button>
-          <input
-            ref={dramaGuideInputRef}
-            type="file"
-            accept=".md,.txt"
-            className="hidden"
-            onChange={(e) => handleAssetFileChange(e, "dramaGuide")}
-          />
-          <button type="button" onClick={() => dramaGuideInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-indigo-500/10 text-indigo-300">
-                <FileCode size={16} />
-              </span>
-              <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Drama</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">剧情说明</span>
-              </span>
-            </div>
-          </button>
         </div>
       )}
 
@@ -467,25 +371,6 @@ export const FloatingActionBar: React.FC<Props> = ({
               </span>
             </div>
           </button>
-          {onExportUnderstandingJson && (
-            <button
-              onClick={() => {
-                onExportUnderstandingJson();
-                closeMenus();
-              }}
-              className={docButtonClass}
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-amber-500/10 text-amber-300">
-                  <FileText size={16} />
-                </span>
-                <span>
-                  <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Archive</span>
-                  <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目档案</span>
-                </span>
-              </div>
-            </button>
-          )}
         </div>
       )}
     </div>
@@ -494,25 +379,42 @@ export const FloatingActionBar: React.FC<Props> = ({
 
   return (
     <div className={rootClass}>
-      {typeof document !== "undefined" && (showPalette || showFileMenu || showTemplate)
+      {typeof document !== "undefined" && (showPalette || showFileMenu)
         ? createPortal(<div className="fixed inset-0 z-[58]" onClick={closeMenus} />, document.body)
         : null}
 
       <div className="relative z-20 flex justify-center">
-        {/* Template Menu */}
-        {typeof document !== "undefined" && showTemplate ? (
-          createPortal(
-            <div
-              ref={templatePanelRef}
-              className={`fixed z-[59] animate-in fade-in duration-200 ${panelClass}`}
-              style={{ ...panelStyle, ...templatePopoverStyle }}
+        {showGlobalAccountTrigger ? (
+          <div className="pointer-events-none fixed right-4 top-4 z-[60]">
+            <button
+              ref={accountButtonRef}
+              data-account-trigger
+              type="button"
+              onClick={(event) => {
+                setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
+                setShowFileMenu((v) => !v);
+                setShowPalette(false);
+              }}
+              className={`${globalAccountButtonClass} pointer-events-auto ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
+              title="Account"
             >
-              <div className="max-h-[min(72vh,620px)] space-y-4 overflow-y-auto p-4">
-                {renderIoPanel()}
-              </div>
-            </div>,
-            document.body
-          )
+              {accountInfo?.avatarUrl ? (
+                <img
+                  src={accountInfo.avatarUrl}
+                  alt={accountName}
+                  className="h-7 w-7 rounded-full border border-[var(--app-border)] object-cover"
+                />
+              ) : (
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)]">
+                  <User size={14} />
+                </span>
+              )}
+              <span className="max-w-[10rem] truncate">{accountSignedIn ? accountName : "Account"}</span>
+              {syncIndicator ? (
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: syncIndicator.color }} />
+              ) : null}
+            </button>
+          </div>
         ) : null}
 
         {/* Plus Palette */}
@@ -529,7 +431,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                   <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
                   <div className="mt-1 max-w-[34ch] text-[11px] leading-5 text-[var(--app-text-secondary)]">
                     {nodePaletteMode === "panels"
-                      ? "浏览项目面板类节点，组织剧本和身份档案。"
+                      ? "浏览项目面板类节点，组织角色与档案资产。"
                       : "浏览 flow 节点，搭建输入、生成和引用链路。"}
                   </div>
                 </div>
@@ -674,7 +576,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                             <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
                             {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
                             <div className="flex flex-wrap gap-2 pt-1">
-                          {["Agent setting", "Account state", "Theme settings"].map((chip) => (
+                          {["Global account", "Workspace"].map((chip) => (
                                 <span
                                   key={chip}
                                   className="rounded-full border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)]"
@@ -685,28 +587,45 @@ export const FloatingActionBar: React.FC<Props> = ({
                         </div>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    {accountThemeControls ? (
+                      <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-2">
+                        {accountThemeControls}
+                      </div>
+                    ) : null}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {handleUploadAvatar ? (
                         <button
                           type="button"
-                          className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+                          className={utilityButtonClass}
                           onClick={() => {
                             handleUploadAvatar();
                             closeMenus();
                           }}
                         >
-                          Avatar
+                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]">
+                            <Upload size={16} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Avatar</span>
+                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">上传账户头像</span>
+                          </span>
                         </button>
                       ) : null}
                       <button
                         type="button"
-                        className="inline-flex h-10 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 text-[12px] font-semibold text-[var(--app-text-primary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-px"
+                        className={utilityButtonClass}
                         onClick={() => {
                           handleSignOut?.();
                           closeMenus();
                         }}
                       >
-                        Sign Out
+                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]">
+                          <LogOut size={16} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sign Out</span>
+                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">退出当前账户</span>
+                        </span>
                       </button>
                     </div>
                     </div>
@@ -738,13 +657,25 @@ export const FloatingActionBar: React.FC<Props> = ({
                           <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">登录并启用同步</span>
                         </span>
                       </button>
-                      <div className="flex items-center gap-2 rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-[10px] text-[var(--app-text-secondary)]">
-                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
-                        Account / Theme
-                      </div>
+                      {accountThemeControls ? (
+                        <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-2">
+                          {accountThemeControls}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 )}
+              </div>
+              <div className="space-y-3 border-t border-[var(--app-border)] pt-4">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[var(--app-text-secondary)]">
+                    Project Files
+                  </div>
+                  <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
+                    导入或导出 Flow 项目快照与剧本文本。
+                  </div>
+                </div>
+                {renderIoPanel()}
               </div>
               </div>
             </div>,
@@ -753,58 +684,9 @@ export const FloatingActionBar: React.FC<Props> = ({
         ) : null}
 
         {/* Main Bar */}
-        {isEmbedded ? (
+        {showToolbar ? (isEmbedded ? (
           <div className="w-full">
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                ref={accountButtonRef}
-                data-account-trigger
-                onClick={(event) => {
-                  setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
-                  setShowFileMenu((v) => !v);
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                }}
-                className={`${toolbarChipClass} ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
-                title="Account"
-              >
-                <User size={13} />
-                <span>Account</span>
-              </button>
-
-              <button
-                ref={projectButtonRef}
-                data-project-trigger
-                onClick={(event) => {
-                  setProjectAnchorRect(event.currentTarget.getBoundingClientRect());
-                  setShowTemplate((v) => !v);
-                  setShowPalette(false);
-                  setShowFileMenu(false);
-                }}
-                className={`${toolbarChipClass} ${showTemplate ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
-                title="Project"
-              >
-                <SquareStack size={13} />
-                <span>Project</span>
-              </button>
-
-              <button
-                ref={workflowButtonRef}
-                onClick={() => {
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                  setShowFileMenu(false);
-                  const rect = workflowButtonRef.current?.getBoundingClientRect();
-                  onToggleWorkflow?.(rect);
-                }}
-                data-workflow-trigger
-                className={toolbarChipClass}
-                title="Workflow Actions"
-              >
-                <Layers size={13} />
-                <span>Workflow</span>
-              </button>
-
               <button
                 ref={nodesButtonRef}
                 data-nodes-trigger
@@ -812,34 +694,12 @@ export const FloatingActionBar: React.FC<Props> = ({
                   setNodesAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowPalette((v) => !v);
                   setShowFileMenu(false);
-                  setShowTemplate(false);
                 }}
                 className={`${toolbarChipClass} ${showPalette ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Nodes"
               >
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
-              </button>
-              <button
-                onClick={(event) => {
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                  setShowFileMenu(false);
-                  onOpenTheme?.(event.currentTarget.getBoundingClientRect());
-                  onToggleTheme?.();
-                }}
-                data-theme-trigger
-                className={toolbarChipClass}
-                title={syncIndicator?.label || "Theme"}
-              >
-                <Palette size={13} />
-                <span>Theme</span>
-                {syncIndicator ? (
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: syncIndicator.color }}
-                  />
-                ) : null}
               </button>
 
             </div>
@@ -851,88 +711,18 @@ export const FloatingActionBar: React.FC<Props> = ({
           >
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
               <button
-                ref={accountButtonRef}
-                data-account-trigger
-                onClick={(event) => {
-                  setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
-                  setShowFileMenu((v) => !v);
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                }}
-                className={`${embeddedLabelClass} ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
-                title="Account"
-              >
-                <User size={13} />
-                <span>Account</span>
-              </button>
-
-              <button
-                ref={projectButtonRef}
-                data-project-trigger
-                onClick={(event) => {
-                  setProjectAnchorRect(event.currentTarget.getBoundingClientRect());
-                  setShowTemplate((v) => !v);
-                  setShowPalette(false);
-                  setShowFileMenu(false);
-                }}
-                className={`${embeddedLabelClass} ${showTemplate ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
-                title="Project"
-              >
-                <SquareStack size={13} />
-                <span>Project</span>
-              </button>
-              <button
-                onClick={() => {
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                  setShowFileMenu(false);
-                  const rect = workflowButtonRef.current?.getBoundingClientRect();
-                  onToggleWorkflow?.(rect);
-                }}
-                ref={workflowButtonRef}
-                data-workflow-trigger
-                className={embeddedLabelClass}
-                title="Workflow Actions"
-              >
-                <Layers size={13} />
-                <span>Workflow</span>
-              </button>
-
-              <button
                 ref={nodesButtonRef}
                 data-nodes-trigger
                 onClick={(event) => {
                   setNodesAnchorRect(event.currentTarget.getBoundingClientRect());
                   setShowPalette((v) => !v);
                   setShowFileMenu(false);
-                  setShowTemplate(false);
                 }}
                 className={`${embeddedLabelClass} ${showPalette ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
                 title="Nodes"
               >
                 <Plus size={13} className={`transition-transform ${showPalette ? "rotate-45" : ""}`} />
                 <span>Nodes</span>
-              </button>
-              <button
-                onClick={(event) => {
-                  setShowPalette(false);
-                  setShowTemplate(false);
-                  setShowFileMenu(false);
-                  onOpenTheme?.(event.currentTarget.getBoundingClientRect());
-                  onToggleTheme?.();
-                }}
-                data-theme-trigger
-                className={embeddedLabelClass}
-                title={syncIndicator?.label || "Theme"}
-              >
-                <Palette size={13} />
-                <span>Theme</span>
-                {syncIndicator ? (
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ backgroundColor: syncIndicator.color }}
-                  />
-                ) : null}
               </button>
 
             </div>
@@ -964,7 +754,7 @@ export const FloatingActionBar: React.FC<Props> = ({
               </div>
             </button>
           </div>
-        )}
+        )) : null}
 
       </div>
     </div>

@@ -1,7 +1,6 @@
 import {
   DesignAssetItem,
   Episode,
-  ProjectContext,
   ProjectData,
   ProjectRoleIdentity,
   ProjectRolePortrait,
@@ -55,7 +54,6 @@ const normalizeEpisode = (episode: any): Episode => {
     content: toSafeString(episode.content),
     scenes: Array.isArray(episode.scenes) ? episode.scenes : [],
     characters: Array.isArray(episode.characters) ? episode.characters.map((name: any) => toSafeString(name)).filter(Boolean) : undefined,
-    summary: toOptionalString(episode.summary),
     status:
       episode.status === "generating" ||
       episode.status === "completed" ||
@@ -420,20 +418,16 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
   });
 };
 
-const normalizeContext = (context: any): ProjectContext => {
-  const explicitRoles = Array.isArray(context?.roles) ? collapseExplicitRoles(context.roles.map(normalizeRoleIdentity)) : [];
-  return {
-    projectSummary: toSafeString(context?.projectSummary),
-    episodeSummaries: Array.isArray(context?.episodeSummaries) ? context.episodeSummaries : [],
-    roles: explicitRoles,
-  };
+const normalizeRoles = (data: any): ProjectRoleIdentity[] => {
+  const rawRoles = Array.isArray(data?.roles) ? data.roles : [];
+  return collapseExplicitRoles(rawRoles.map(normalizeRoleIdentity));
 };
 
-const remapDesignAssets = (assets: DesignAssetItem[], context: ProjectContext): DesignAssetItem[] => {
+const remapDesignAssets = (assets: DesignAssetItem[], roles: ProjectRoleIdentity[]): DesignAssetItem[] => {
   if (!Array.isArray(assets) || assets.length === 0) return [];
 
   const mentionMap = new Map<string, { refId: string; label: string }>();
-  context.roles.forEach((role) => {
+  roles.forEach((role) => {
     const label = role.displayName || `@${role.mention}`;
     mentionMap.set(role.id, { refId: role.id, label });
     mentionMap.set(role.mention, { refId: role.id, label });
@@ -463,24 +457,21 @@ const remapDesignAssets = (assets: DesignAssetItem[], context: ProjectContext): 
 };
 
 export const normalizeProjectData = (data: any): ProjectData => {
-  const context = normalizeContext(data?.context || {});
+  const roles = normalizeRoles(data);
   const base: ProjectData = {
     ...INITIAL_PROJECT_DATA,
     ...data,
-    context,
+    roles,
     designAssets: Array.isArray(data?.designAssets) ? data.designAssets : [],
-    phase1Usage: { ...INITIAL_PROJECT_DATA.phase1Usage, ...(data?.phase1Usage || {}) },
     phase5Usage: data?.phase5Usage || INITIAL_PROJECT_DATA.phase5Usage,
     stats: { ...INITIAL_PROJECT_DATA.stats, ...(data?.stats || {}) },
   };
 
   base.episodes = Array.isArray(data?.episodes) ? data.episodes.map(normalizeEpisode) : [];
-  base.designAssets = remapDesignAssets(base.designAssets as DesignAssetItem[], context);
+  base.designAssets = remapDesignAssets(base.designAssets as DesignAssetItem[], roles);
   base.nodeFlow = data?.nodeFlow && typeof data.nodeFlow === "object" ? data.nodeFlow : null;
   base.nodeDefaults = normalizeNodeFlowNodeDefaults(data?.nodeDefaults);
   base.scriptCanvas = normalizeScriptCanvas(data?.scriptCanvas);
-  base.dramaGuide = data?.dramaGuide || INITIAL_PROJECT_DATA.dramaGuide;
-  base.globalStyleGuide = data?.globalStyleGuide || INITIAL_PROJECT_DATA.globalStyleGuide;
   base.rawScript = typeof data?.rawScript === "string" ? data.rawScript : "";
   base.fileName = typeof data?.fileName === "string" ? data.fileName : "";
   return sanitizeValue(base) as ProjectData;

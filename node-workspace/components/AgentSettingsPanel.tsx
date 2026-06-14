@@ -18,8 +18,7 @@ import {
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { useAuth } from "../../lib/auth";
-import { AgentTextProvider, ProjectData, type SeedanceKeyProbeResult } from "../../types";
-import { Dashboard } from "../../components/Dashboard";
+import { AgentTextProvider, type SeedanceKeyProbeResult } from "../../types";
 import {
   ARK_DEFAULT_MODEL,
   ARK_RESPONSES_BASE_URL,
@@ -60,9 +59,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   leftOffset?: number;
-  projectData: ProjectData;
-  isDarkMode?: boolean;
-  requestedPanel?: "provider" | "tools" | "skills" | "dashboard" | "history";
+  requestedPanel?: "provider" | "tools" | "skills" | "history";
   onOpenVisualLab?: () => void;
   onOpenWorkspace?: () => void;
 };
@@ -188,12 +185,12 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "workflow-builder",
     capability: "operate",
     title: "operate",
-    description: "Agent 通过统一操作接口在表层 NodeFlow 画布上创建节点、连接连线，并把理解继续落成可执行的工作流骨架。",
+    description: "Agent 通过统一操作接口在表层 NodeFlow 画布上创建节点、连接连线，并组织可执行的节点结构。",
     tools: ["operate_project_resource"],
-    surfaces: ["text node", "script board", "storyboard board", "character card", "workflow connection"],
+    surfaces: ["text node", "script board", "character card", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
-    artifact: "输出可继续编辑和执行的 workflow scaffold，承接“查阅”和“编辑”的结果。",
-    note: "负责操作表层工作流图，把 Script 中的事实与档案继续落成可执行画布结构。",
+    artifact: "输出可继续编辑和执行的 NodeFlow scaffold，承接“查阅”和“编辑”的结果。",
+    note: "负责操作表层节点图，把 Script 中的事实与档案继续落成可执行画布结构。",
     Icon: Code2,
   },
 ];
@@ -383,8 +380,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   isOpen,
   onClose,
   leftOffset = 0,
-  projectData,
-  isDarkMode = true,
   requestedPanel = "provider",
   onOpenVisualLab,
   onOpenWorkspace,
@@ -395,7 +390,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
-  const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
+  const [selectedPanel, setSelectedPanel] = useState<"provider" | "tools" | "skills" | "history">("provider");
   const [activeTool, setActiveTool] = useState<ToolKey>("asset-library");
   const [activeSkillId, setActiveSkillId] = useState("");
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
@@ -1020,12 +1015,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               title: activeSkill?.title || "Skills",
               description: "",
             }
-          : selectedPanel === "dashboard"
-            ? {
-                label: "Dashboard",
-                title: "Project Metrics",
-                description: "",
-              }
         : {
             label: "History",
             title: "Conversation & Trace",
@@ -1177,25 +1166,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                 <div className="text-[11px] uppercase tracking-widest app-text-muted">Project</div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPanel("dashboard")}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                    selectedPanel === "dashboard"
-                      ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                >
-                  <span className="flex items-center gap-3 text-left">
-                    <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${selectedPanel === "dashboard" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                      <Layers size={14} className={selectedPanel === "dashboard" ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                    </span>
-                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">dashboard</span>
-                  </span>
-                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    metrics
-                  </span>
-                </button>
                 <button
                   type="button"
                   onClick={onOpenVisualLab}
@@ -2097,7 +2067,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              `operate_project_resource` 负责创建 NodeFlow 的 text、script board、storyboard board、character card。
+                              `operate_project_resource` 负责创建 NodeFlow 的 text、script board、character card。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
@@ -2326,12 +2296,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       当前没有可启用的内建 skill。
                     </div>
                   )}
-                </div>
-              )}
-
-              {selectedPanel === "dashboard" && (
-                <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-                  <Dashboard data={projectData} isDarkMode={isDarkMode} embedded />
                 </div>
               )}
 

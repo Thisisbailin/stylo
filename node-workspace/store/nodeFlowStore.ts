@@ -104,7 +104,6 @@ interface NodeFlowStore {
   globalAssetHistory: GlobalAssetHistoryItem[];
   viewport: NodeFlowViewport | null;
   nodeDefaults: NodeFlowNodeDefaults;
-  globalStyleGuide?: string;
   availableImageModels: string[];
   availableVideoModels: string[];
   setAvailableImageModels: (models: string[]) => void;
@@ -116,8 +115,6 @@ interface NodeFlowStore {
 
   // Settings
   setLinkStyle: (style: LinkStyle) => void;
-  setGlobalStyleGuide: (guide: string) => void;
-
   // Node operations
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => string;
   updateNodeData: (nodeId: string, data: Partial<NodeFlowNodeData>) => void;
@@ -208,7 +205,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   ...createEmptyNodeFlowCanvasState(),
   ...createEmptyNodeFlowCollaborationState(),
   ...createEmptyNodeFlowApprovalState(),
-  globalStyleGuide: undefined,
   availableImageModels: [],
   availableVideoModels: [],
   nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
@@ -235,8 +231,6 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     set((state) => setNodeFlowExecutionApprovals(state, proposals)),
 
   setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
-  setGlobalStyleGuide: (guide: string) => set({ globalStyleGuide: guide }),
-
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => {
     const { revision, nodeDefaults } = get();
     assertExpectedRevision(revision, options?.expectedRevision);

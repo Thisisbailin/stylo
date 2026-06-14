@@ -1,6 +1,6 @@
 # Qalam
 
-Qalam is a node-first creative workspace for script understanding, asset structuring, shot planning, and AI-assisted production flow design.
+Qalam is a node-first creative workspace for script organization, identity assets, and AI-assisted production flow design.
 
 The current product is no longer related to Google AI Studio. This repository now centers on one primary canvas system plus two supporting runtime surfaces:
 

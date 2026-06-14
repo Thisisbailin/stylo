@@ -46,7 +46,7 @@ const resolveScriptBoardTitle = (data: ScriptBoardNodeData, context?: NodeFlowCo
 const resolveIdentityCardTitle = (data: IdentityCardNodeData, context?: NodeFlowContextSnapshot) => {
   const explicit = trimString(data.title);
   if (explicit && explicit !== "身份卡片节点") return explicit;
-  const identities = buildProjectIdentities(context?.context || { projectSummary: "", episodeSummaries: [], roles: [] }, context?.designAssets || []);
+  const identities = buildProjectIdentities(context?.roles || [], context?.designAssets || []);
   const activeIdentity = data.identityId ? identities.find((item) => item.id === data.identityId) : identities[0];
   const identityName = trimString(activeIdentity?.name || activeIdentity?.displayName);
   if (identityName) return `${identityName}身份卡`;

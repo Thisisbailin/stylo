@@ -71,12 +71,12 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
   const roleListRef = useRef<HTMLDivElement>(null);
 
   const characters = useMemo(
-    () => sortRoles((projectData.context.roles || []).filter((role) => role.kind === "person")),
-    [projectData.context.roles]
+    () => sortRoles((projectData.roles || []).filter((role) => role.kind === "person")),
+    [projectData.roles]
   );
   const scenes = useMemo(
-    () => sortRoles((projectData.context.roles || []).filter((role) => role.kind === "scene")),
-    [projectData.context.roles]
+    () => sortRoles((projectData.roles || []).filter((role) => role.kind === "scene")),
+    [projectData.roles]
   );
 
   useEffect(() => {
@@ -120,10 +120,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
   const mutateRole = (roleId: string, updater: (role: ProjectRoleIdentity) => ProjectRoleIdentity) => {
     setProjectData((prev) => ({
       ...prev,
-      context: {
-        ...prev.context,
-        roles: (prev.context.roles || []).map((role) => (role.id === roleId ? updater(role) : role)),
-      },
+      roles: (prev.roles || []).map((role) => (role.id === roleId ? updater(role) : role)),
     }));
   };
 

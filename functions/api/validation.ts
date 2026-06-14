@@ -10,12 +10,8 @@ const PROJECT_PATCH_KEYS = new Set([
   "fileName",
   "rawScript",
   "episodes",
-  "context",
-  "contextUsage",
-  "phase1Usage",
+  "roles",
   "phase5Usage",
-  "dramaGuide",
-  "globalStyleGuide",
   "designAssets",
   "nodeFlow",
   "nodeDefaults",
@@ -64,7 +60,7 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
   if (delta.meta !== undefined) {
     if (!isRecord(delta.meta)) return { ok: false, error: "delta.meta is not an object" };
     const meta = delta.meta as Record<string, unknown>;
-    const stringKeys = ["fileName", "rawScript", "dramaGuide", "globalStyleGuide"];
+    const stringKeys = ["fileName", "rawScript"];
     for (const key of stringKeys) {
       if (meta[key] !== undefined && !isString(meta[key])) {
         return { ok: false, error: `delta.meta.${key} is not a string` };
@@ -79,18 +75,8 @@ export const validateProjectDelta = (delta: unknown): ValidationResult => {
     if (meta.nodeDefaults !== undefined && !isRecord(meta.nodeDefaults)) {
       return { ok: false, error: "delta.meta.nodeDefaults is not an object" };
     }
-    if (meta.context !== undefined) {
-      if (!isRecord(meta.context)) return { ok: false, error: "delta.meta.context is not an object" };
-      const context = meta.context as Record<string, unknown>;
-      if (context.projectSummary !== undefined && !isString(context.projectSummary)) {
-        return { ok: false, error: "delta.meta.context.projectSummary is not a string" };
-      }
-      if (context.episodeSummaries !== undefined) {
-        if (!Array.isArray(context.episodeSummaries)) return { ok: false, error: "delta.meta.context.episodeSummaries is not an array" };
-      }
-      if (context.roles !== undefined) {
-        if (!Array.isArray(context.roles)) return { ok: false, error: "delta.meta.context.roles is not an array" };
-      }
+    if (meta.roles !== undefined) {
+      if (!Array.isArray(meta.roles)) return { ok: false, error: "delta.meta.roles is not an array" };
     }
   }
 

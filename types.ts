@@ -1,5 +1,12 @@
 
-import type { NodeFlowFile, NodeFlowNodeDefaults } from "./node-workspace/types";
+import type {
+  GlobalAssetHistoryItem,
+  HandleType,
+  NodeFlowFile,
+  NodeFlowGraphLink,
+  NodeFlowNode,
+  NodeFlowNodeDefaults,
+} from "./node-workspace/types";
 
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
@@ -58,7 +65,6 @@ export interface Episode {
   content: string; // Original text
   scenes: Scene[]; // Parsed scenes
   characters?: string[]; // Parsed character list for this episode (optional)
-  summary?: string; // Generated summary
   status:
     | 'pending'
     | 'generating'
@@ -74,9 +80,15 @@ export interface ScriptCanvasPosition {
   y: number;
 }
 
+export interface ScriptCanvasMeasuredSize {
+  width?: number;
+  height?: number;
+}
+
 export interface ScriptCanvasPageNode {
   episodeId: number;
   position: ScriptCanvasPosition;
+  measured?: ScriptCanvasMeasuredSize;
 }
 
 export interface ScriptCanvasImageNode {
@@ -84,6 +96,7 @@ export interface ScriptCanvasImageNode {
   imageUrl: string;
   filename?: string;
   position: ScriptCanvasPosition;
+  measured?: ScriptCanvasMeasuredSize;
   createdAt: number;
 }
 
@@ -92,6 +105,7 @@ export interface ScriptCanvasTextNode {
   title: string;
   content: string;
   position: ScriptCanvasPosition;
+  measured?: ScriptCanvasMeasuredSize;
   createdAt: number;
 }
 
@@ -99,8 +113,8 @@ export interface ScriptCanvasLink {
   id: string;
   source: string;
   target: string;
-  sourceHandle?: "image" | "text";
-  targetHandle?: "image" | "text";
+  sourceHandle?: HandleType;
+  targetHandle?: HandleType;
 }
 
 export interface ScriptTimelineBlock {
@@ -140,9 +154,15 @@ export interface ScriptTimelineState {
 }
 
 export interface ScriptCanvasState {
+  revision?: number;
   pages: ScriptCanvasPageNode[];
   images: ScriptCanvasImageNode[];
   textNodes?: ScriptCanvasTextNode[];
+  flowNodes?: NodeFlowNode[];
+  graphLinks?: NodeFlowGraphLink[];
+  globalAssetHistory?: GlobalAssetHistoryItem[];
+  linkStyle?: "angular" | "curved";
+  activeView?: string | null;
   links: ScriptCanvasLink[];
   timeline?: ScriptTimelineState;
 }
@@ -206,12 +226,6 @@ export interface ProjectRoleIdentity {
   portraits: ProjectRolePortrait[];
 }
 
-export interface ProjectContext {
-  projectSummary: string;
-  episodeSummaries: { episodeId: number; summary: string }[];
-  roles: ProjectRoleIdentity[];
-}
-
 export type DesignAssetCategory = "identity";
 
 export interface DesignAssetItem {
@@ -229,15 +243,6 @@ export interface RequestStats {
   error: number;
 }
 
-export interface Phase1Usage {
-  projectSummary: TokenUsage;
-  episodeSummaries: TokenUsage;
-  charList: TokenUsage;
-  charDeepDive: TokenUsage;
-  locList: TokenUsage;
-  locDeepDive: TokenUsage;
-}
-
 export interface PerformanceMetrics {
   context: RequestStats;
 }
@@ -246,20 +251,13 @@ export interface ProjectData {
   fileName: string;
   rawScript: string;
   episodes: Episode[];
-  context: ProjectContext;
+  roles: ProjectRoleIdentity[];
   designAssets: DesignAssetItem[];
   nodeFlow?: NodeFlowFile | null;
   nodeDefaults?: NodeFlowNodeDefaults;
   scriptCanvas?: ScriptCanvasState;
-  contextUsage?: TokenUsage; // Total usage (Phase 1 + Easter Eggs)
-  phase1Usage: Phase1Usage; // Detailed breakdown of Phase 1
 
   phase5Usage?: TokenUsage; // Video Studio (Reserved for Prompt Refinement or API cost mapping)
-
-  dramaGuide?: string;
-
-  // Project-Specific Assets (User Uploaded)
-  globalStyleGuide?: string; // Unified Style Bible for the project
 
   stats: PerformanceMetrics;
 }
@@ -505,21 +503,4 @@ export interface AppConfig {
   videoProvider?: 'default' | 'vidu' | 'seedance';
   rememberApiKeys?: boolean;
   syncApiKeys?: boolean;
-}
-
-export enum WorkflowStep {
-  IDLE,
-  SETUP_CONTEXT,
-  COMPLETED
-}
-
-export enum AnalysisSubStep {
-  IDLE,
-  PROJECT_SUMMARY,    // Step 1: Global Arc
-  EPISODE_SUMMARIES,  // Step 2: Batch Episodes
-  CHAR_IDENTIFICATION,// Step 3: List
-  CHAR_DEEP_DIVE,     // Step 4: Batch Main Characters
-  LOC_IDENTIFICATION, // Step 5: List
-  LOC_DEEP_DIVE,      // Step 6: Batch Core Locations
-  COMPLETE
 }

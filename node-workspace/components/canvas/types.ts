@@ -11,8 +11,10 @@ import type {
   OnConnectEnd,
   OnConnectStart,
   PanOnScrollMode,
+  XYPosition,
 } from "@xyflow/react";
 import type { EdgeAlignmentGuide } from "../../utils/edgeAlignment";
+import type { NodeFlowFile, NodeType } from "../../types";
 
 export type SharedCanvasViewport = {
   x: number;
@@ -63,4 +65,10 @@ export type CanvasSurfaceConfig = {
   panOnScrollMode?: PanOnScrollMode;
   overlays?: React.ReactNode;
   miniMap?: React.ReactNode;
+  actions?: {
+    addNode?: (type: NodeType, position?: XYPosition) => string | null | undefined;
+    importNodeFlow?: (nodeFlow: NodeFlowFile) => void;
+    exportNodeFlow?: () => void;
+    runAll?: () => void | Promise<void>;
+  };
 };

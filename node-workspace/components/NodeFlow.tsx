@@ -37,7 +37,6 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { MultiSelectToolbar } from "./MultiSelectToolbar";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { ConnectionDropMenu } from "./ConnectionDropMenu";
-import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useScriptCanvasSurface } from "./ScriptCanvas";
@@ -50,7 +49,6 @@ import { AnnotationModal } from "./AnnotationModal";
 import { ProjectData } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
 import { FileText, List } from "lucide-react";
-import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { toNodeFlowCanvasLink, toNodeFlowCanvasNode } from "../nodeflow/reactflow";
 import {
   alignPositionChangesToNodeEdges,
@@ -147,21 +145,10 @@ interface NodeFlowProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
-  onAssetLoad?: (
-    type:
-      | "script"
-      | "globalStyleGuide"
-      | "dramaGuide"
-      | "understandingJson",
-    content: string,
-    fileName?: string
-  ) => void;
+  onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
-  onExportUnderstandingJson?: () => void;
   onOpenWorkspacePanel?: () => void;
-  onToggleTheme?: () => void;
-  isDarkMode?: boolean;
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: {
@@ -174,8 +161,6 @@ interface NodeFlowProps {
     onSignOut?: () => void;
     onUploadAvatar?: () => void;
   };
-  onToggleWorkflow?: (anchorRect?: DOMRect) => void;
-  onTryMe?: () => void;
 }
 
 type ConnectionTargetGlow = {
@@ -434,25 +419,18 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   onAssetLoad,
   onOpenModule,
   syncIndicator,
-  onExportUnderstandingJson,
   onOpenWorkspacePanel,
-  onToggleTheme,
-  isDarkMode,
   onResetProject,
   onSignOut,
   accountInfo,
-  onToggleWorkflow,
 }) => {
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [surfacePlane, setSurfacePlane] = useState<"flow" | "script">("flow");
   const [editingScriptEpisodeId, setEditingScriptEpisodeId] = useState<number | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
-  const [isAssetsDockHovered, setIsAssetsDockHovered] = useState(false);
-  const [isAssetsPanelCollapsed, setIsAssetsPanelCollapsed] = useState(true);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
-  const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "dashboard" | "history">("provider");
+  const [agentSettingsPanel, setAgentSettingsPanel] = useState<"provider" | "tools" | "skills" | "history">("provider");
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [isQalamSending, setIsQalamSending] = useState(false);
@@ -464,12 +442,11 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
   const [dismissedAutoQalamFirst, setDismissedAutoQalamFirst] = useState(false);
   const [composerInput, setComposerInput] = useState("");
-  const composerRef = useRef<HTMLTextAreaElement>(null);
   const qalamFirstBreakpoint = 920;
   const isAutoQalamFirst = windowWidth <= qalamFirstBreakpoint;
   const isQalamFirstMode = isAutoQalamFirst ? !dismissedAutoQalamFirst : isQalamFirstManual;
   const openAgentSettingsPanel = useCallback(
-    (panel: "provider" | "tools" | "skills" | "dashboard" | "history" = "provider") => {
+    (panel: "provider" | "tools" | "skills" | "history" = "provider") => {
       setAgentSettingsPanel(panel);
       setShowAgentSettings(true);
     },
@@ -487,7 +464,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     connectNodes,
     exportNodeFlow,
     importNodeFlow,
-    setGlobalStyleGuide,
     setNodeFlowContext,
     setProjectRoleUpdater,
     setViewportState,
@@ -521,7 +497,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const liveViewportRef = useRef(liveViewport);
   const viewportCommitTimeoutRef = useRef<number | null>(null);
   const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
-  const showAssetsDock = isAssetsDockHovered || !isAssetsPanelCollapsed;
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (!isValidConnection(connection)) return;
@@ -583,10 +558,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   }, [snapToGrid]);
 
   useEffect(() => {
-    setSnapGuide(null);
-  }, [surfacePlane]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener("resize", handleResize);
@@ -625,21 +596,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     });
   }, [isAutoQalamFirst]);
 
-  /* New: Sync global style guide to store so executors can use it */
-  useEffect(() => {
-    if (projectData.globalStyleGuide) {
-      setGlobalStyleGuide(projectData.globalStyleGuide);
-    }
-  }, [projectData.globalStyleGuide, setGlobalStyleGuide]);
-
   useEffect(() => {
   setNodeFlowContext({
       rawScript: projectData.rawScript || "",
       episodes: projectData.episodes || [],
       designAssets: projectData.designAssets || [],
-      globalStyleGuide: projectData.globalStyleGuide || "",
-      dramaGuide: projectData.dramaGuide || "",
-      context: projectData.context,
+      roles: projectData.roles || [],
     });
   }, [projectData, setNodeFlowContext]);
 
@@ -647,10 +609,7 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     setProjectRoleUpdater((roleId, updater) => {
       setProjectData((prev) => ({
         ...prev,
-        context: {
-          ...prev.context,
-          roles: (prev.context.roles || []).map((role) => (role.id === roleId ? updater(role) : role)),
-        },
+        roles: (prev.roles || []).map((role) => (role.id === roleId ? updater(role) : role)),
       }));
     });
     return () => setProjectRoleUpdater(null);
@@ -690,16 +649,19 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     };
   }, []);
 
-  const resizeComposer = useCallback((el?: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 46), 132)}px`;
-    el.style.overflowY = el.scrollHeight > 132 ? "auto" : "hidden";
-  }, []);
-
-  useEffect(() => {
-    resizeComposer(composerRef.current);
-  }, [composerInput, resizeComposer]);
+  const handleQalamComposerAction = useCallback(() => {
+    const text = composerInput.trim();
+    if (isQalamSending && !text) {
+      setQalamCancelRequest((prev) => prev + 1);
+      return;
+    }
+    if (!text) {
+      toggleQalamFirstMode();
+      return;
+    }
+    setComposerInput("");
+    setQalamSubmitRequest({ id: Date.now(), text });
+  }, [composerInput, isQalamSending, toggleQalamFirstMode]);
 
   useEffect(() => {
     if (didInitFitRef.current) return;
@@ -909,22 +871,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     setConnectionDrop(null);
   };
 
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
-        importNodeFlow(data);
-      } catch (err) {
-        alert("Failed to import NodeFlow JSON");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = "";
-  };
-
   const runAll = async () => {
     let started = 0;
     for (const n of nodes) {
@@ -962,6 +908,9 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
   const handleSharedViewportChange = useCallback(
     (nextViewport: SharedCanvasViewport, options?: { commit?: boolean }) => {
       liveViewportRef.current = nextViewport;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("qalam:viewport-frame", { detail: nextViewport }));
+      }
       backgroundFieldRef.current?.requestDraw();
       if (options?.commit) {
         setLiveViewport(nextViewport);
@@ -1095,6 +1044,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
         strokeLinecap: "round",
         strokeLinejoin: "round",
       },
+      actions: {
+        addNode: (type, position = { x: 100, y: 100 }) => handleAddNode(type, position),
+        importNodeFlow,
+        exportNodeFlow,
+        runAll,
+      },
     }),
     [
       displayEdges,
@@ -1103,8 +1058,12 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
       handleConnectEnd,
       handleConnectStart,
       handleFlowNodesChange,
+      handleAddNode,
       isLocked,
+      exportNodeFlow,
       onLinksChange,
+      importNodeFlow,
+      runAll,
       updateSnapGuide,
     ]
   );
@@ -1115,17 +1074,66 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     onOpenEpisode: (episodeId) => setEditingScriptEpisodeId(episodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
+    isActive: true,
     isWritingEditorOpen: editingScriptEpisodeId !== null,
     onCollapseCanvasCards: handleCollapseCanvasCards,
     onRestoreCanvasCards: handleRestoreCanvasCards,
     onOpenAgent: () => setQalamOpenRequest((count) => count + 1),
     onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), text }),
+    agentComposerValue: composerInput,
+    onAgentComposerChange: setComposerInput,
+    onAgentComposerAction: handleQalamComposerAction,
+    isAgentSending: isQalamSending,
+    isAgentFirstMode: isQalamFirstMode,
   });
 
-  const activeSurface =
-    surfacePlane === "script"
-      ? scriptSurface
-      : flowSurface;
+  const activeSurface = scriptSurface;
+
+  const getToolbarNodePosition = useCallback(
+    (fallback: XYPosition): XYPosition => {
+      if (typeof window === "undefined") return fallback;
+      return screenToFlowPosition({
+        x: window.innerWidth / 2,
+        y: Math.max(120, window.innerHeight / 2 - 160),
+      });
+    },
+    [screenToFlowPosition]
+  );
+
+  const handleActiveAddNode = useCallback(
+    (type: NodeType, fallback: XYPosition) => {
+      const position = getToolbarNodePosition(fallback);
+      return activeSurface.actions?.addNode?.(type, position) ?? handleAddNode(type, position);
+    },
+    [activeSurface.actions, getToolbarNodePosition, handleAddNode]
+  );
+
+  const handleActiveExportNodeFlow = useCallback(() => {
+    activeSurface.actions?.exportNodeFlow?.() ?? exportNodeFlow();
+  }, [activeSurface.actions, exportNodeFlow]);
+
+  const handleActiveRunAll = useCallback(() => {
+    void (activeSurface.actions?.runAll?.() ?? runAll());
+  }, [activeSurface.actions, runAll]);
+
+  const handleFileImport = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
+          activeSurface.actions?.importNodeFlow?.(data) ?? importNodeFlow(data);
+        } catch (err) {
+          alert("Failed to import NodeFlow JSON");
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = "";
+    },
+    [activeSurface.actions, importNodeFlow]
+  );
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const patternDefinitions = useMemo(
@@ -1267,72 +1275,63 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
     };
   }, [themeAnchor]);
 
-  const qalamComposer = (
-    <div
-      className="qalam-surface pointer-events-auto w-full rounded-[40px] px-6 py-4"
-      style={{ fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif' }}
-    >
-      <div className="flex items-end gap-3">
-        <textarea
-          ref={composerRef}
-          value={composerInput}
-          onChange={(e) => {
-            setComposerInput(e.target.value);
-            resizeComposer(e.currentTarget);
-          }}
-          rows={1}
-          className="min-h-[48px] flex-1 resize-none bg-transparent py-2 text-[13px] leading-6 text-[var(--app-text-primary)] placeholder:text-[var(--app-text-secondary)] focus:outline-none"
-          placeholder="Ask Qalam about scenes, roles, nodes, assets, or NodeFlow changes."
-        />
-        <button
-          type="button"
-          onClick={() => {
-            const text = composerInput.trim();
-            if (isQalamSending && !text) {
-              setQalamCancelRequest((prev) => prev + 1);
-              return;
-            }
-            if (!text) {
-              toggleQalamFirstMode();
-              return;
-            }
-            setComposerInput("");
-            setQalamSubmitRequest({ id: Date.now(), text });
-          }}
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:translate-y-px ${
-            isQalamSending
-              ? "bg-[var(--app-accent)]/78 hover:bg-[var(--app-accent)]"
-              : composerInput.trim()
-              ? "bg-[var(--app-accent-strong)] hover:brightness-105"
-              : "bg-[var(--app-accent)]/55 hover:bg-[var(--app-accent)]/72"
-          }`}
-          title={
-            isQalamSending
-              ? "Stop Qalam"
-              : composerInput.trim()
-              ? "Send to Qalam"
-              : isQalamFirstMode
-              ? "Close Qalam First"
-              : "Open Qalam First"
-          }
-          aria-label={
-            isQalamSending
-              ? "Stop Qalam"
-              : composerInput.trim()
-              ? "Send to Qalam"
-              : isQalamFirstMode
-              ? "Close Qalam First"
-              : "Open Qalam First"
-          }
-        >
-          {isQalamSending ? (
-            <CircleNotch size={16} weight="bold" className="animate-spin" />
-          ) : (
-            <ArrowUp size={16} weight="bold" />
-          )}
-        </button>
+  const accountThemeControls = useMemo(
+    () => (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Theme</span>
+          <span className="truncate text-[10px] font-semibold text-[var(--app-text-secondary)]">{activeTheme.label}</span>
+        </div>
+        <div className="grid grid-cols-6 gap-1.5">
+          {(Object.keys(THEME_PRESETS) as ThemeKey[]).map((key) => {
+            const theme = THEME_PRESETS[key];
+            const isActive = bgTheme === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                title={theme.label}
+                aria-label={theme.label}
+                data-active={isActive}
+                onClick={() => setBgTheme(key)}
+                className="theme-account-swatch"
+                style={{
+                  borderColor: isActive ? theme.accentStrong : undefined,
+                  background: `linear-gradient(135deg, ${theme.bg} 0 34%, ${theme.panel} 34% 67%, ${theme.accent} 67%)`,
+                }}
+              />
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {patternOptions.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              title={item.label}
+              data-active={bgPattern === item.key}
+              onClick={() => setBgPattern(item.key)}
+              className="theme-account-pattern"
+              style={
+                item.key === "none"
+                  ? {
+                      background: `linear-gradient(180deg, ${activeTheme.panelStrong}, ${activeTheme.panelMuted})`,
+                    }
+                  : {
+                      backgroundColor: activeTheme.panelStrong,
+                      backgroundImage: `linear-gradient(180deg, ${activeTheme.accentSoft}, transparent 70%), ${patternPreviewDefinitions[item.key as Exclude<PatternKey, "none">].image}`,
+                      backgroundSize: `100% 100%, ${patternPreviewDefinitions[item.key as Exclude<PatternKey, "none">].size(0.58)}`,
+                      backgroundPosition: `0 0, ${patternPreviewDefinitions[item.key as Exclude<PatternKey, "none">].position ?? "0 0"}`,
+                    }
+              }
+            >
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    ),
+    [activeTheme, bgPattern, bgTheme, patternOptions, patternPreviewDefinitions]
   );
 
   const qalamGlobalHeader = (
@@ -1448,55 +1447,43 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
         ) : null}
 
-        {surfacePlane === "flow" && connectionDrop && (
-          <ConnectionDropMenu
-            position={connectionDrop.position}
-            onCreate={(t) => handleDropCreate(t)}
-            onClose={() => setConnectionDrop(null)}
-          />
-        )}
-
-        <div className="pointer-events-none absolute left-1/2 top-4 z-[12] -translate-x-1/2">
-          <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)]/92 p-1 shadow-[var(--app-shadow)] backdrop-blur-xl">
-            <button
-              type="button"
-              onClick={() => setSurfacePlane("script")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
-                surfacePlane === "script"
-                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
-                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-              }`}
-              title="Script"
-              aria-label="Script"
-            >
-              <FileText size={12} strokeWidth={2.2} />
-              Script
-            </button>
-            <button
-              type="button"
-              onClick={() => setSurfacePlane("flow")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${
-                surfacePlane === "flow"
-                  ? "bg-[var(--app-panel-strong)] text-[var(--app-text-primary)]"
-                  : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-              }`}
-            >
-              <List size={12} strokeWidth={2.2} />
-              Flow
-            </button>
-          </div>
-        </div>
       </div>
 
       {qalamGlobalHeader}
 
-      {surfacePlane === "flow" ? <MultiSelectToolbar /> : null}
+      <FloatingActionBar
+        onAddText={() => handleActiveAddNode("text", { x: 100, y: 100 })}
+        onAddIdentityCard={() => handleActiveAddNode("identityCard", { x: 220, y: 160 })}
+        onAddImage={() => handleActiveAddNode("imageInput", { x: 200, y: 100 })}
+        onAddAudio={() => handleActiveAddNode("audioInput", { x: 220, y: 120 })}
+        onAddVideo={() => handleActiveAddNode("videoInput", { x: 240, y: 140 })}
+        onAddImageGen={() => handleActiveAddNode("imageGen", { x: 400, y: 100 })}
+        onAddNanoBananaImageGen={() => handleActiveAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
+        onAddWanImageGen={() => handleActiveAddNode("wanImageGen", { x: 420, y: 120 })}
+        onAddVideoGen={() => handleActiveAddNode("soraVideoGen", { x: 500, y: 100 })}
+        onAddViduVideoGen={() => handleActiveAddNode("viduVideoGen", { x: 510, y: 110 })}
+        onAddWanReferenceVideoGen={() => handleActiveAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+        onAddSeedanceVideoGen={() => handleActiveAddNode("seedanceVideoGen", { x: 560, y: 160 })}
+        onImport={() => fileInputRef.current?.click()}
+        onExport={handleActiveExportNodeFlow}
+        onRun={handleActiveRunAll}
+        floating={false}
+        syncIndicator={syncIndicator}
+        onResetProject={onResetProject}
+        onSignOut={onSignOut}
+        onAssetLoad={onAssetLoad}
+        accountInfo={accountInfo}
+        accountThemeControls={accountThemeControls}
+        showGlobalAccountTrigger
+        showToolbar={false}
+        variant="embedded"
+      />
+
+      <MultiSelectToolbar />
       <AgentSettingsPanel
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
         leftOffset={agentDockWidth}
-        projectData={projectData}
-        isDarkMode={isDarkMode}
         requestedPanel={agentSettingsPanel}
         onOpenVisualLab={() => onOpenModule?.("glassLab")}
         onOpenWorkspace={onOpenWorkspacePanel}
@@ -1545,98 +1532,6 @@ const NodeFlowInner: React.FC<NodeFlowProps> = ({
           </div>
         </div>
       </div>
-      {surfacePlane === "flow" ? (
-        <>
-          <div
-            className={`fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] qalam-bottom-toolbar ${
-              isQalamFirstMode ? "px-4" : ""
-            }`}
-          >
-            <div className={`flex flex-col items-center gap-2 ${isQalamFirstMode ? "w-[min(1120px,calc(100vw-32px))]" : "w-[min(560px,calc(100vw-48px))]"}`}>
-              <div
-                className={`pointer-events-auto w-full transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                  isQalamFirstMode ? "pointer-events-none hidden opacity-0" : "opacity-100 translate-y-0"
-                }`}
-              >
-                <FloatingActionBar
-                  onAddText={() => handleAddNode("text", { x: 100, y: 100 })}
-                  onAddScriptBoard={() => handleAddNode("scriptBoard", { x: 140, y: 120 })}
-                  onAddIdentityCard={() => handleAddNode("identityCard", { x: 220, y: 160 })}
-                  onAddImage={() => handleAddNode("imageInput", { x: 200, y: 100 })}
-                  onAddAudio={() => handleAddNode("audioInput", { x: 220, y: 120 })}
-                  onAddVideo={() => handleAddNode("videoInput", { x: 240, y: 140 })}
-                  onAddImageGen={() => handleAddNode("imageGen", { x: 400, y: 100 })}
-                  onAddNanoBananaImageGen={() => handleAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
-                  onAddWanImageGen={() => handleAddNode("wanImageGen", { x: 420, y: 120 })}
-                  onAddVideoGen={() => handleAddNode("soraVideoGen", { x: 500, y: 100 })}
-                  onAddViduVideoGen={() => handleAddNode("viduVideoGen", { x: 510, y: 110 })}
-                  onAddWanReferenceVideoGen={() => handleAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
-                  onAddSeedanceVideoGen={() => handleAddNode("seedanceVideoGen", { x: 560, y: 160 })}
-                  onImport={() => fileInputRef.current?.click()}
-                  onExport={() => exportNodeFlow()}
-                  onRun={runAll}
-                  floating={false}
-                  onExportUnderstandingJson={onExportUnderstandingJson}
-                  onToggleTheme={onToggleTheme}
-                  onOpenTheme={(anchorRect) => {
-                    if (anchorRect) {
-                      setThemeAnchor(anchorRect);
-                    }
-                    setShowThemeModal(true);
-                  }}
-                  isDarkMode={isDarkMode}
-                  syncIndicator={syncIndicator}
-                  onResetProject={onResetProject}
-                  onSignOut={onSignOut}
-                  onAssetLoad={onAssetLoad}
-                  accountInfo={accountInfo}
-                  onToggleWorkflow={onToggleWorkflow}
-                  onOpenQalam={() => {
-                    if (isAutoQalamFirst) {
-                      setDismissedAutoQalamFirst(false);
-                      setQalamOpenRequest((prev) => prev + 1);
-                      return;
-                    }
-                    setIsQalamFirstManual(true);
-                    setQalamOpenRequest((prev) => prev + 1);
-                  }}
-                  variant="embedded"
-                />
-              </div>
-              {qalamComposer}
-            </div>
-          </div>
-          <div
-            className="fixed bottom-0 right-0 z-[29] h-44 w-44 pointer-events-auto"
-            onMouseEnter={() => setIsAssetsDockHovered(true)}
-            onMouseLeave={() => {
-              if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
-            }}
-          />
-          <div
-            className={`fixed bottom-4 right-4 z-30 pointer-events-none transition duration-200 ${
-              showAssetsDock ? "opacity-100" : "opacity-0"
-            }`}
-            onMouseEnter={() => setIsAssetsDockHovered(true)}
-            onMouseLeave={() => {
-              if (isAssetsPanelCollapsed) setIsAssetsDockHovered(false);
-            }}
-          >
-            <div className={`pointer-events-auto qalam-bottom-assets ${showAssetsDock ? "" : "pointer-events-none"}`}>
-              <div className="relative flex h-12 items-center">
-                <AssetsPanel
-                  floating={false}
-                  inlineAnchor
-                  onCollapsedChange={(collapsed) => {
-                    setIsAssetsPanelCollapsed(collapsed);
-                    setIsAssetsDockHovered(!collapsed);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </>
-      ) : null}
       <Toast />
       <AnnotationModal />
       {showThemeModal && (

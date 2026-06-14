@@ -18,15 +18,6 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) => {
   return new Response(JSON.stringify(body), { ...init, headers });
 };
 
-const emptyTokenUsage = { promptTokens: 0, responseTokens: 0, totalTokens: 0 };
-const emptyPhase1Usage = {
-  projectSummary: emptyTokenUsage,
-  episodeSummaries: emptyTokenUsage,
-  charList: emptyTokenUsage,
-  charDeepDive: emptyTokenUsage,
-  locList: emptyTokenUsage,
-  locDeepDive: emptyTokenUsage
-};
 const emptyStats = {
   context: { total: 0, success: 0, error: 0 }
 };
@@ -34,38 +25,22 @@ const emptyStats = {
 type ProjectMeta = {
   fileName: string;
   rawScript: string;
-  dramaGuide: string;
-  globalStyleGuide: string;
+  roles: Array<Record<string, unknown>>;
   designAssets: Array<Record<string, unknown>>;
   nodeFlow: Record<string, unknown> | null;
   nodeDefaults: Record<string, unknown> | null;
-  context: {
-    projectSummary: string;
-    episodeSummaries: { episodeId: number; summary: string }[];
-    roles: Array<Record<string, unknown>>;
-  };
-  contextUsage: typeof emptyTokenUsage;
-  phase1Usage: typeof emptyPhase1Usage;
-  phase5Usage: typeof emptyTokenUsage;
+  phase5Usage?: Record<string, unknown>;
   stats: typeof emptyStats;
 };
 
 const DEFAULT_META: ProjectMeta = {
   fileName: "",
   rawScript: "",
-  dramaGuide: "",
-  globalStyleGuide: "",
+  roles: [],
   designAssets: [],
   nodeFlow: null,
   nodeDefaults: null,
-  context: {
-    projectSummary: "",
-    episodeSummaries: [],
-    roles: [],
-  },
-  contextUsage: emptyTokenUsage,
-  phase1Usage: emptyPhase1Usage,
-  phase5Usage: emptyTokenUsage,
+  phase5Usage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
   stats: emptyStats
 };
 
@@ -114,18 +89,6 @@ async function ensureScenesTable(env: Env) {
   ).run();
 }
 
-async function ensureCharactersTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_characters (user_id TEXT NOT NULL, char_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, char_id))"
-  ).run();
-}
-
-async function ensureLocationsTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_locations (user_id TEXT NOT NULL, loc_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, loc_id))"
-  ).run();
-}
-
 async function ensureSnapshotsTable(env: Env) {
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS user_project_snapshots (user_id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, version))"
@@ -136,8 +99,6 @@ async function ensureTables(env: Env) {
   await ensureMetaTable(env);
   await ensureEpisodesTable(env);
   await ensureScenesTable(env);
-  await ensureCharactersTable(env);
-  await ensureLocationsTable(env);
   await ensureSnapshotsTable(env);
 }
 
@@ -156,8 +117,6 @@ const ensureSchema = async (env: Env) => {
   await ensureColumn(env, "user_project_meta", "last_op_id", "TEXT");
   await ensureColumn(env, "user_project_episodes", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_scenes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_characters", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_locations", "updated_at", "INTEGER");
   await ensureColumn(env, "user_project_snapshots", "data", "TEXT");
   await ensureColumn(env, "user_project_snapshots", "version", "INTEGER");
   await ensureColumn(env, "user_project_snapshots", "created_at", "INTEGER");
@@ -166,19 +125,11 @@ const ensureSchema = async (env: Env) => {
 const buildMetaFromProject = (projectData: any): ProjectMeta => ({
   fileName: typeof projectData?.fileName === "string" ? projectData.fileName : "",
   rawScript: typeof projectData?.rawScript === "string" ? projectData.rawScript : "",
-  dramaGuide: typeof projectData?.dramaGuide === "string" ? projectData.dramaGuide : "",
-  globalStyleGuide: typeof projectData?.globalStyleGuide === "string" ? projectData.globalStyleGuide : "",
+  roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
   nodeFlow: projectData?.nodeFlow && typeof projectData.nodeFlow === "object" ? projectData.nodeFlow : null,
   nodeDefaults: projectData?.nodeDefaults && typeof projectData.nodeDefaults === "object" ? projectData.nodeDefaults : null,
-  context: {
-    projectSummary: typeof projectData?.context?.projectSummary === "string" ? projectData.context.projectSummary : "",
-    episodeSummaries: Array.isArray(projectData?.context?.episodeSummaries) ? projectData.context.episodeSummaries : [],
-    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
-  },
-  contextUsage: projectData?.contextUsage || emptyTokenUsage,
-  phase1Usage: projectData?.phase1Usage || emptyPhase1Usage,
-  phase5Usage: projectData?.phase5Usage || emptyTokenUsage,
+  phase5Usage: projectData?.phase5Usage || DEFAULT_META.phase5Usage,
   stats: { ...emptyStats, ...(projectData?.stats || {}) }
 });
 
@@ -198,7 +149,6 @@ const collectProjectParts = (projectData: any) => {
     id: episode.id,
     title: episode.title,
     content: episode.content,
-    summary: episode.summary,
     status: episode.status,
     errorMsg: episode.errorMsg
   }));
@@ -206,7 +156,7 @@ const collectProjectParts = (projectData: any) => {
   return {
     episodes: episodeRows,
     scenes,
-    roles: Array.isArray(projectData?.context?.roles) ? projectData.context.roles : [],
+    roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
   };
 };
 
@@ -254,7 +204,6 @@ const loadProjectData = async (env: Env, userId: string) => {
       id: episodeId,
       title: epData.title || "",
       content: epData.content || "",
-      summary: epData.summary,
       status: epData.status || "pending",
       errorMsg: epData.errorMsg,
       scenes: [],
@@ -272,7 +221,7 @@ const loadProjectData = async (env: Env, userId: string) => {
     });
   });
 
-  const metaRoles = Array.isArray(meta.context?.roles) ? meta.context.roles : [];
+  const metaRoles = Array.isArray(meta.roles) ? meta.roles : [];
 
   const episodes = Array.from(episodesMap.values()).sort((a, b) => a.id - b.id);
 
@@ -280,19 +229,11 @@ const loadProjectData = async (env: Env, userId: string) => {
     fileName: meta.fileName || "",
     rawScript: meta.rawScript || "",
     episodes,
-    context: {
-      projectSummary: meta.context?.projectSummary || "",
-      episodeSummaries: meta.context?.episodeSummaries || [],
-      roles: metaRoles,
-    },
-    dramaGuide: meta.dramaGuide || "",
-    globalStyleGuide: meta.globalStyleGuide || "",
+    roles: metaRoles,
     designAssets: Array.isArray(meta.designAssets) ? meta.designAssets : [],
     nodeFlow: meta.nodeFlow && typeof meta.nodeFlow === "object" ? meta.nodeFlow : null,
     nodeDefaults: meta.nodeDefaults && typeof meta.nodeDefaults === "object" ? meta.nodeDefaults : null,
-    contextUsage: meta.contextUsage || emptyTokenUsage,
-    phase1Usage: meta.phase1Usage || emptyPhase1Usage,
-    phase5Usage: meta.phase5Usage || emptyTokenUsage,
+    phase5Usage: meta.phase5Usage || DEFAULT_META.phase5Usage,
     stats: { ...emptyStats, ...(meta.stats || {}) }
   };
 
@@ -593,10 +534,6 @@ export const onRequestPut = async (context: {
       meta = {
         ...meta,
         ...delta.meta,
-        context: {
-          ...meta.context,
-          ...(delta.meta.context || {})
-        }
       };
       hasChanges = true;
     }
@@ -630,7 +567,6 @@ export const onRequestPut = async (context: {
           id: episode.id,
           title: episode.title,
           content: episode.content,
-          summary: episode.summary,
           status: episode.status,
           errorMsg: episode.errorMsg,
         };
@@ -690,8 +626,6 @@ export const onRequestPut = async (context: {
 
       await context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId).run();
       await context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId).run();
-      await context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1").bind(userId).run();
-      await context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1").bind(userId).run();
 
       for (const episode of parts.episodes) {
         await context.env.DB.prepare(

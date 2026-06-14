@@ -127,10 +127,6 @@ Detail Layer 只在需要时才读取。
 - `scriptBoard`
   - `episodeId`
   - `sceneId`
-- `storyboardBoard`
-  - `episodeId`
-  - `sceneId`
-  - `displayMode`
 - `identityCard`
   - `identityId`
   - `avatarOverrides`
@@ -176,13 +172,6 @@ Detail Layer 只在需要时才读取。
 
 - `第{episode}集剧本`
 - 如有场次：`第{episode}集 {scene} 剧本`
-
-### 分镜表节点
-
-统一命名为：
-
-- `第{episode}集分镜表`
-- 如有场次：`第{episode}集 {scene} 分镜表`
 
 ### 身份卡节点
 

@@ -14,10 +14,7 @@ import { EDIT_SCRIPT_TARGETS } from "../tools/editScriptResource";
 import { OPERATE_NODEFLOW_TARGETS, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
 import { buildScriptResourceLinks, buildScriptResourceNodes } from "../tools/scriptResources";
 
-const PROJECT_SUMMARY_LIMIT = 480;
-const EPISODE_SUMMARY_LIMIT = 200;
 const ROLE_SUMMARY_LIMIT = 120;
-const MAX_EPISODE_SUMMARIES = 6;
 const MAX_PRIMARY_ROLES = 8;
 const MAX_SCENE_ROLES = 8;
 const MAX_RECENT_ACTIONS = 6;
@@ -90,7 +87,7 @@ export const buildAgentEnvironment = ({
   enabledTools: string[];
   sessionMessages?: AgentSessionMessage[];
 }): QalamAgentEnvironment => {
-  const roles = Array.isArray(projectData.context?.roles) ? projectData.context.roles : [];
+  const roles = Array.isArray(projectData.roles) ? projectData.roles : [];
   const primaryRoles = sortRoles(roles.filter((role) => role.kind === "person"))
     .slice(0, MAX_PRIMARY_ROLES)
     .map(summarizeRole);
@@ -98,18 +95,6 @@ export const buildAgentEnvironment = ({
     .slice(0, MAX_SCENE_ROLES)
     .map(summarizeRole);
 
-  const episodeSummaries = (projectData.context?.episodeSummaries || [])
-    .filter((entry) => typeof entry?.episodeId === "number" && (entry.summary || "").trim())
-    .sort((a, b) => a.episodeId - b.episodeId)
-    .slice(0, MAX_EPISODE_SUMMARIES)
-    .map((entry) => {
-      const episode = (projectData.episodes || []).find((item) => item.id === entry.episodeId);
-      return {
-        episodeId: entry.episodeId,
-        label: episode?.title?.trim() || `第${entry.episodeId}集`,
-        summary: clipText(entry.summary, EPISODE_SUMMARY_LIMIT),
-      };
-    });
   const sceneCount = (projectData.episodes || []).reduce(
     (count, episode) => count + (episode.scenes || []).length,
     0
@@ -128,13 +113,9 @@ export const buildAgentEnvironment = ({
       fileName: projectData.fileName?.trim() || undefined,
       episodeCount: (projectData.episodes || []).length,
       sceneCount,
-      projectSummary: clipText(projectData.context?.projectSummary, PROJECT_SUMMARY_LIMIT) || undefined,
-      episodeSummaries,
       primaryRoles,
       sceneRoles,
       scriptCoverage: {
-        hasProjectSummary: Boolean(projectData.context?.projectSummary?.trim()),
-        episodeSummaryCount: (projectData.context?.episodeSummaries || []).filter((item) => item.summary?.trim()).length,
         primaryRoleCount: roles.filter((role) => role.kind === "person").length,
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
         archiveCount: archiveNodeCount,

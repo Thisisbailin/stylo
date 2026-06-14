@@ -1,14 +1,14 @@
-# Qalam 文学地图式 Agent 理解资产架构设计
+# Qalam 文学地图式 Agent 资产架构设计
 
 ## 1. 目标
 
-为 Qalam 设计一套新的 Agent 理解资产底层架构。
+为 Qalam 设计一套新的 Agent 项目资产底层架构。
 
-这套架构不是为某个具体 skill 服务，也不是旧 `phase1-4` 的改名版本。
+这套架构不是为某个具体 skill 服务。
 它面向的是更底层的问题：
 
-- 如何让 Agent 围绕剧本建立可持续演化的外部化理解
-- 如何让这种理解不是线性文档，而是天然关系化的“文学地图”
+- 如何让 Agent 围绕剧本建立可持续演化的外部化项目资产
+- 如何让这些资产不是线性文档，而是天然关系化的“文学地图”
 - 如何在保证极简、原子化、性能可控的前提下，给 Agent 足够大的认知自由度
 - 如何保证剧本作为项目确定起点的只读边界不被破坏
 
@@ -211,7 +211,7 @@ type AssetNodeRecord = {
 - 一个主题判断 node
 - 一个导演节奏判断 node
 
-长期看，角色档案、导演板、分镜表都应该是 view，而不是单个 node。
+长期看，角色档案、导演板都应该是 view，而不是单个 node。
 
 ## 5. 原子关系：Link
 
@@ -487,7 +487,6 @@ map 用来承载：
 - `design.episode_vision`
 - `design.sequence_plan`
 - `design.directing_beat`
-- `design.shot_intent`
 - `design.visual_rule`
 - `design.character_look`
 - `design.prompt_brief`
@@ -502,7 +501,6 @@ map 用来承载：
 
 - `execution.text`
 - `execution.script_board`
-- `execution.storyboard_board`
 - `execution.image_gen`
 - `execution.video_gen`
 
@@ -642,12 +640,10 @@ Agent 默认不应该读取整图。
 - 保留 `ProjectData` 作为剧本 canonical source
 - 保留 `NodeFlow` 的 `node / link / map` 基本哲学
 - 保留原子 command / mutation / revision 机制
-- 将固定 understanding 模块逐步迁移为 semantic plane
 - 将当前工作流节点视为 execution plane
 
 这意味着：
 
-- 不是把所有东西都塞进旧 understanding 文档
 - 也不是让所有节点都直接变成现有执行节点
 - 而是在 NodeFlow 底层之上补出 Agent 认知资产层
 

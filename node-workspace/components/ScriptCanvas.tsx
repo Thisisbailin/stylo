@@ -13,7 +13,23 @@ import {
   OnConnectStart,
   XYPosition,
 } from "@xyflow/react";
-import { Bot, FileText, Film, GripVertical, Image as ImageIcon, Network, Plus, Scissors, SendHorizontal, Trash2, Upload } from "lucide-react";
+import {
+  AudioLines,
+  Bot,
+  BookOpen,
+  GripVertical,
+  Image as ImageIcon,
+  Layers,
+  MessageSquare,
+  Network,
+  PenTool,
+  Plus,
+  Scissors,
+  Sparkles,
+  Trash2,
+  Video,
+} from "lucide-react";
+import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import type {
   Episode,
   ProjectData,
@@ -24,11 +40,34 @@ import type {
   ScriptTimelineHead,
   ScriptTimelineState,
 } from "../../types";
+import type { NodeFlowContextSnapshot, NodeFlowFile, NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
 import { BaseNode } from "../nodes/BaseNode";
+import {
+  AudioInputNode,
+  VideoInputNode,
+  ImageInputNode,
+  AnnotationNode,
+  TextNode,
+  ScriptBoardNode,
+  IdentityCardNode,
+  ImageGenNode,
+  NanoBananaImageGenNode,
+  WanImageGenNode,
+  SoraVideoGenNode,
+  WanReferenceVideoGenNode,
+  ViduVideoGenNode,
+  SeedanceVideoGenNode,
+} from "../nodes";
+import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+import { buildNodeFlowFile, downloadNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
+import { useNodeFlowStore } from "../store/nodeFlowStore";
+import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import {
   alignPositionChangesToNodeEdges,
   getEdgeAlignedPosition,
 } from "../utils/edgeAlignment";
+import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection } from "../utils/handles";
+import { createNodeFlowNodeCommand } from "../nodeflow/commands";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
 
@@ -36,12 +75,6 @@ type ScriptPageData = {
   title: string;
   episodeId: number;
   preview: string;
-};
-
-type InspirationImageData = {
-  title: string;
-  imageUrl: string;
-  filename?: string;
 };
 
 type MarkdownTextData = {
@@ -54,13 +87,13 @@ type MarkdownTextData = {
 };
 
 type ScriptCanvasNode =
-  | Node<ScriptPageData, "text">
-  | Node<InspirationImageData, "imageInput">
-  | Node<MarkdownTextData, "mdText">;
+  | Node<ScriptPageData, "scriptPage">
+  | Node<MarkdownTextData, "mdText">
+  | Node<NodeFlowNodeData, NodeType>;
 
 type ScriptCanvasEdge = Edge<Record<string, never>>;
-type ScriptCanvasCreateType = "scriptPage" | "scriptImage" | "mdText";
-type ScriptHandleType = "image" | "text";
+type ScriptCanvasCreateType = "scriptPage" | "mdText" | NodeType;
+type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
 
 type ScriptConnectionDropState = {
   position: { x: number; y: number };
@@ -83,7 +116,12 @@ type ScriptFoundationGuideLine = {
 type ScriptFoundationNodeSummary = {
   id: string;
   title: string;
-  kind: "剧本" | "图片" | "档案";
+  kind: "剧本" | "图片" | "档案" | "节点";
+};
+
+type ScriptFoundationTargetPosition = {
+  x: number;
+  y: number;
 };
 
 type Props = {
@@ -92,17 +130,29 @@ type Props = {
   onOpenEpisode: (episodeId: number) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
+  isActive?: boolean;
   isWritingEditorOpen?: boolean;
   onCollapseCanvasCards?: () => void;
   onRestoreCanvasCards?: () => void;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
+  agentComposerValue?: string;
+  onAgentComposerChange?: (value: string) => void;
+  onAgentComposerAction?: () => void;
+  isAgentSending?: boolean;
+  isAgentFirstMode?: boolean;
 };
 
 const ensureCanvas = (canvas?: ScriptCanvasState): ScriptCanvasState => ({
+  revision: typeof canvas?.revision === "number" ? canvas.revision : 0,
   pages: Array.isArray(canvas?.pages) ? canvas.pages : [],
   images: Array.isArray(canvas?.images) ? canvas.images : [],
   textNodes: Array.isArray(canvas?.textNodes) ? canvas.textNodes : [],
+  flowNodes: Array.isArray(canvas?.flowNodes) ? canvas.flowNodes : [],
+  graphLinks: Array.isArray(canvas?.graphLinks) ? canvas.graphLinks : [],
+  globalAssetHistory: Array.isArray(canvas?.globalAssetHistory) ? canvas.globalAssetHistory : [],
+  linkStyle: canvas?.linkStyle || "curved",
+  activeView: canvas?.activeView ?? null,
   links: Array.isArray(canvas?.links) ? canvas.links : [],
   timeline: canvas?.timeline,
 });
@@ -115,10 +165,40 @@ const isImageNodeId = (id?: string | null) => !!id && id.startsWith("image-");
 const isScriptPageNodeId = (id?: string | null) => !!id && id.startsWith("script-");
 const isMarkdownNodeId = (id?: string | null) => !!id && id.startsWith("md-");
 const isTextNodeId = (id?: string | null) => isScriptPageNodeId(id) || isMarkdownNodeId(id);
-const scriptCreateOptions: ConnectionDropMenuOption<ScriptCanvasCreateType>[] = [
-  { label: "剧本文档", hint: "创建一个新的分集稿纸", type: "scriptPage", Icon: Plus },
-  { label: "档案文档", hint: "连接空间轴的全局 Markdown 档案", type: "mdText", Icon: Plus },
-  { label: "灵感图片", hint: "上传写作参考图", type: "scriptImage", Icon: Upload },
+type ScriptCreateGroup = "script" | "library" | "input" | "generation" | "motion" | "edit";
+type ScriptCreateOption = ConnectionDropMenuOption<ScriptCanvasCreateType> & {
+  group: ScriptCreateGroup;
+  meta: string;
+  tone: string;
+  surface: string;
+};
+
+const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
+  { key: "script", label: "Script" },
+  { key: "library", label: "Library" },
+  { key: "input", label: "Input" },
+  { key: "generation", label: "Generate" },
+  { key: "motion", label: "Motion" },
+  { key: "edit", label: "Edit" },
+];
+
+const scriptCreateOptions: ScriptCreateOption[] = [
+  { label: "剧本文档", hint: "创建一个新的分集稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
+  { label: "档案文档", hint: "连接空间轴的全局 Markdown 档案", type: "mdText", Icon: Plus, group: "script", meta: "Markdown", tone: "is-slate", surface: "paper" },
+  { label: "Script Panel", hint: "Episode and scene browser", type: "scriptBoard", Icon: BookOpen, group: "script", meta: "Panel", tone: "is-blue", surface: "glass" },
+  { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers, group: "library", meta: "Library", tone: "is-moss", surface: "card" },
+  { label: "Text", hint: "Draft prompts, notes, and structure", type: "text", Icon: MessageSquare, group: "library", meta: "Writing", tone: "is-slate", surface: "card" },
+  { label: "Image", hint: "Upload a reference image or still", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
+  { label: "Audio", hint: "Upload a reference audio clip", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
+  { label: "Video", hint: "Upload a reference video clip", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
+  { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
+  { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
+  { label: "WAN Img", hint: "Wan 2.6 image workflow", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-moss", surface: "gen" },
+  { label: "Sora Video", hint: "Generate Sora clips", type: "soraVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
+  { label: "Vidu", hint: "Vidu reference-to-video", type: "viduVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
+  { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", type: "wanReferenceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-rose", surface: "motion" },
+  { label: "Seedance", hint: "Multimodal reference-to-video", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
+  { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool, group: "edit", meta: "Edit", tone: "is-amber", surface: "edit" },
 ];
 
 const TIMELINE_COLORS = [
@@ -369,11 +449,6 @@ const pickInputHandle = (
   return handles[0] || null;
 };
 
-const getScriptNodeHandles = (nodeId: string) => {
-  if (isImageNodeId(nodeId)) return { inputs: [] as ScriptHandleType[], outputs: ["image"] as ScriptHandleType[] };
-  return { inputs: ["image", "text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
-};
-
 const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeId?: string | null) => {
   if (typeof document === "undefined") return null;
   const magneticPadding = 46;
@@ -455,6 +530,102 @@ const getDefaultMarkdownPosition = (index: number) => ({
   x: 420 + (index % 2) * 360,
   y: 120 + Math.floor(index / 2) * 300,
 });
+
+const getDefaultFlowNodePosition = (index: number) => ({
+  x: (index % 3) * 340 - 340,
+  y: 420 + Math.floor(index / 3) * 280,
+});
+
+const createScriptFlowNodeId = (type: NodeType) => `script-flow-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextSnapshot => ({
+  rawScript: projectData.rawScript || "",
+  episodes: projectData.episodes || [],
+  designAssets: projectData.designAssets || [],
+  roles: projectData.roles || [],
+});
+
+const toRuntimeScriptTextNode = (
+  episode: Episode,
+  index: number,
+  page?: ScriptCanvasState["pages"][number]
+): NodeFlowNode => ({
+  id: scriptNodeId(episode.id),
+  type: "text",
+  position: page?.position || getDefaultScriptPosition(index),
+  measured: page?.measured,
+  data: {
+    ...createDefaultNodeFlowNodeData("text"),
+    title: episode.title || `第${episode.id}集`,
+    text: episode.content || compactScriptPreview(episode),
+  },
+});
+
+const toRuntimeMarkdownTextNode = (
+  textNode: ScriptCanvasTextNode,
+  index: number,
+  position?: { x: number; y: number }
+): NodeFlowNode => ({
+  id: markdownNodeId(textNode.id),
+  type: "text",
+  position: position || getDefaultMarkdownPosition(index),
+  measured: textNode.measured,
+  data: {
+    ...createDefaultNodeFlowNodeData("text"),
+    title: textNode.title || "档案文档",
+    text: textNode.content || "",
+  },
+});
+
+const toRuntimeLegacyImageNode = (
+  image: ScriptCanvasState["images"][number],
+  index: number
+): NodeFlowNode => ({
+  id: imageNodeId(image.id),
+  type: "imageInput",
+  position: image.position || getDefaultImagePosition(index),
+  measured: image.measured,
+  data: {
+    ...createDefaultNodeFlowNodeData("imageInput"),
+    image: image.imageUrl,
+    dimensions: null,
+    title: image.filename || "Image",
+    label: image.filename || "",
+    filename: image.filename,
+  },
+});
+
+const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => ({
+  ...node,
+  position: node.position || getDefaultFlowNodePosition(index),
+  selected: false,
+  data: {
+    ...createDefaultNodeFlowNodeData(node.type),
+    ...(node.data || {}),
+  },
+});
+
+const isScriptRuntimeHandle = (handle?: string | null): handle is ScriptHandleType =>
+  isTypedHandle(handle) || handle === "multi";
+
+const toRuntimeScriptLink = (link: ScriptCanvasState["links"][number]): NodeFlowLink => ({
+  id: link.id,
+  source: link.source,
+  target: link.target,
+  sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : null,
+  targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : null,
+});
+
+const getScriptNodeHandlesForType = (type?: ScriptCanvasNode["type"] | null) => {
+  if (!type || type === "scriptPage" || type === "mdText") {
+    return { inputs: ["image", "text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
+  }
+  const handles = getNodeHandles(type as NodeType);
+  return {
+    inputs: handles.inputs as ScriptHandleType[],
+    outputs: handles.outputs as ScriptHandleType[],
+  };
+};
 
 const getLegacyScriptPosition = (index: number) => ({
   x: (index % 4) * 240,
@@ -544,29 +715,23 @@ const MarkdownTextNode: React.FC<any> = ({ data, selected }) => (
   </BaseNode>
 );
 
-const InspirationImageNode: React.FC<any> = ({ data, selected }) => (
-  <BaseNode title={data.title || "image"} outputs={["image"]} selected={selected} variant="media" nodeType="imageInput">
-    <div className="image-input-shell relative h-full w-full">
-      <div className="image-input-frame">
-        <div className="image-input-media">
-          <img src={data.imageUrl} alt={data.filename || "preview"} className="image-input-img" />
-        </div>
-        <div className="image-input-caption">
-          <div className="image-input-label">
-            <div className="image-input-editor pointer-events-none">
-              {data.filename || "Inspiration image"}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </BaseNode>
-);
-
 const nodeTypes: NodeTypes = {
-  text: ScriptPageNode,
+  scriptPage: ScriptPageNode,
+  text: TextNode,
   mdText: MarkdownTextNode,
-  imageInput: InspirationImageNode,
+  imageInput: ImageInputNode,
+  audioInput: AudioInputNode,
+  videoInput: VideoInputNode,
+  annotation: AnnotationNode,
+  scriptBoard: ScriptBoardNode,
+  identityCard: IdentityCardNode,
+  imageGen: ImageGenNode,
+  nanoBananaImageGen: NanoBananaImageGenNode,
+  wanImageGen: WanImageGenNode,
+  soraVideoGen: SoraVideoGenNode,
+  wanReferenceVideoGen: WanReferenceVideoGenNode,
+  viduVideoGen: ViduVideoGenNode,
+  seedanceVideoGen: SeedanceVideoGenNode,
 };
 
 type ScriptFoundationProps = {
@@ -589,11 +754,18 @@ type ScriptFoundationProps = {
   axisRevealRequest: number;
   onCreateArchiveNode: () => void;
   onCreateScriptNode: () => void;
-  onCreateImageNode: () => void;
+  onCreateFlowNode: (type: NodeType) => void;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
+  agentComposerValue?: string;
+  onAgentComposerChange?: (value: string) => void;
+  onAgentComposerAction?: () => void;
+  isAgentSending?: boolean;
+  isAgentFirstMode?: boolean;
   onOpenMarkdownCard?: () => void;
   onCloseMarkdownCard?: () => void;
+  nodes: ScriptCanvasNode[];
+  viewport: SharedCanvasControls["viewport"];
 };
 
 type ScriptAxisMode = "time" | "space";
@@ -618,6 +790,28 @@ const getFoundationMenuStyle = (x: number, y: number, menuWidth = 390): CSSPrope
   } as CSSProperties;
 };
 
+const getScriptCanvasNodeSize = (node: ScriptCanvasNode) => {
+  const measured = node.measured;
+  const style = node.style || {};
+  const styleWidth = typeof style.width === "number" ? style.width : undefined;
+  const styleHeight = typeof style.height === "number" ? style.height : undefined;
+  const width = measured?.width || styleWidth || 320;
+  const fallbackHeight =
+    node.type === "scriptPage"
+      ? 249
+      : node.type === "mdText"
+        ? 252
+        : node.type === "imageInput"
+          ? 440
+          : node.type === "text"
+            ? 256
+            : 180;
+  return {
+    width,
+    height: measured?.height || styleHeight || fallbackHeight,
+  };
+};
+
 const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   timeline,
   nodeSummaries,
@@ -638,23 +832,30 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   axisRevealRequest,
   onCreateArchiveNode,
   onCreateScriptNode,
-  onCreateImageNode,
+  onCreateFlowNode,
   onOpenAgent,
   onSubmitAgentMessage,
+  agentComposerValue = "",
+  onAgentComposerChange,
+  onAgentComposerAction,
+  isAgentSending = false,
+  isAgentFirstMode = false,
   onOpenMarkdownCard,
   onCloseMarkdownCard,
+  nodes,
+  viewport,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
+  const agentComposerRef = useRef<HTMLTextAreaElement>(null);
   const clickTimerRef = useRef<number | null>(null);
-  const foundationLineSignatureRef = useRef("");
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [activeAxis, setActiveAxis] = useState<ScriptAxisMode>("time");
   const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
   const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
   const [isTimelineDocumentOpen, setIsTimelineDocumentOpen] = useState(false);
-  const [foundationGuideLines, setFoundationGuideLines] = useState<ScriptFoundationGuideLine[]>([]);
+  const [liveViewport, setLiveViewport] = useState(viewport);
+  const [targetPositions, setTargetPositions] = useState<Record<string, ScriptFoundationTargetPosition>>({});
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
-  const [agentTailInput, setAgentTailInput] = useState("");
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const spaceBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceBlocks), [timeline.spaceBlocks]);
@@ -685,6 +886,14 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     },
     []
   );
+
+  useEffect(() => {
+    const textarea = agentComposerRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 118)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > 118 ? "auto" : "hidden";
+  }, [agentComposerValue, isAgentTailOpen]);
 
   useEffect(() => {
     if (!axisRevealRequest) return;
@@ -735,89 +944,131 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     };
   }, [closeMarkdownCard, editingBlock, isTimelineDocumentOpen]);
 
+  useEffect(() => setLiveViewport(viewport), [viewport]);
+
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    let animationFrame = 0;
+    let nextViewport = viewport;
+    const handleViewportFrame = (event: Event) => {
+      const detail = (event as CustomEvent<SharedCanvasControls["viewport"]>).detail;
+      if (!detail) return;
+      nextViewport = detail;
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        setLiveViewport(nextViewport);
+      });
+    };
+    window.addEventListener("qalam:viewport-frame", handleViewportFrame);
+    return () => {
+      window.removeEventListener("qalam:viewport-frame", handleViewportFrame);
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+    };
+  }, [viewport]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let animationFrame = 0;
+    let isMounted = true;
+    const measureTargets = () => {
+      if (!isMounted) return;
+      const next: Record<string, ScriptFoundationTargetPosition> = {};
+      document.querySelectorAll<HTMLElement>("[data-axis-target-type][data-axis-target-id]").forEach((element) => {
+        const type = element.dataset.axisTargetType;
+        const id = element.dataset.axisTargetId;
+        if (!type || !id) return;
+        const rect = element.getBoundingClientRect();
+        next[`${type}:${id}`] = {
+          x: Math.round((rect.left + rect.width / 2) * 2) / 2,
+          y: Math.round((rect.top + 5) * 2) / 2,
+        };
+      });
+      setTargetPositions((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    };
+    const scheduleMeasure = () => {
+      if (!isMounted) return;
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(measureTargets);
+    };
+    scheduleMeasure();
+    const timeouts = [window.setTimeout(scheduleMeasure, 140), window.setTimeout(scheduleMeasure, 320)];
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, true);
+    document.addEventListener("transitionend", scheduleMeasure, true);
+    return () => {
+      isMounted = false;
+      window.cancelAnimationFrame(animationFrame);
+      timeouts.forEach((timeout) => window.clearTimeout(timeout));
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure, true);
+      document.removeEventListener("transitionend", scheduleMeasure, true);
+    };
+  }, [activeAxis, isAgentTailOpen, spaceBlocks, timeline.blocks]);
+
+  const foundationGuideLines = useMemo<ScriptFoundationGuideLine[]>(() => {
+    if (typeof window === "undefined") return [];
     const targets = [
       ...timeline.blocks.map((block) => ({ type: "time" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
       ...spaceBlocks.map((block) => ({ type: "space" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
     ].filter((target) => target.linkedNodeIds.length);
+    if (!targets.length) return [];
 
-    if (!targets.length) {
-      foundationLineSignatureRef.current = "";
-      setFoundationGuideLines([]);
-      return;
-    }
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const headTarget = targetPositions["head:head"];
+    const stableCoord = (value: number) => Math.round(value * 2) / 2;
+    const nextLines: ScriptFoundationGuideLine[] = [];
 
-    let animationFrame = 0;
-    let isMounted = true;
+    targets.forEach((target) => {
+      const targetPosition =
+        (target.type === activeAxis ? targetPositions[`${target.type}:${target.id}`] : undefined) || headTarget;
+      if (!targetPosition) return;
+      target.linkedNodeIds.forEach((nodeId) => {
+        const node = nodeById.get(nodeId);
+        if (!node) return;
+        const size = getScriptCanvasNodeSize(node);
+        const zoom = liveViewport.zoom || 1;
+        const nodeLeft = node.position.x * zoom + liveViewport.x;
+        const nodeTop = node.position.y * zoom + liveViewport.y;
+        const nodeWidth = size.width * zoom;
+        const nodeHeight = size.height * zoom;
+        const nodeCenterX = nodeLeft + nodeWidth / 2;
+        const nodeCenterY = nodeTop + nodeHeight / 2;
+        const nodeBottom = nodeTop + nodeHeight;
 
-    const measureLines = () => {
-      if (!isMounted) return;
-      const nextLines: ScriptFoundationGuideLine[] = [];
-      targets.forEach((target) => {
-        const targetElement =
-          (target.type === activeAxis
-            ? document.querySelector<HTMLElement>(`[data-axis-target-type="${target.type}"][data-axis-target-id="${target.id}"]`)
-            : null) ||
-          document.querySelector<HTMLElement>('[data-axis-target-type="head"][data-axis-target-id="head"]');
-        if (!targetElement) return;
-        const targetRect = targetElement.getBoundingClientRect();
-        const targetX = targetRect.left + targetRect.width / 2;
-        const targetY = targetRect.top + 5;
+        if (
+          nodeWidth < 24 ||
+          nodeHeight < 24 ||
+          nodeLeft + nodeWidth <= 0 ||
+          nodeLeft >= window.innerWidth ||
+          nodeBottom <= 0 ||
+          nodeTop >= targetPosition.y - 18 ||
+          nodeCenterX <= 0 ||
+          nodeCenterX >= window.innerWidth ||
+          nodeCenterY <= 0 ||
+          nodeCenterY >= window.innerHeight
+        ) {
+          return;
+        }
 
-        target.linkedNodeIds.forEach((nodeId) => {
-          const nodeElement = Array.from(document.querySelectorAll<HTMLElement>(".react-flow__node")).find(
-            (element) => element.getAttribute("data-id") === nodeId
-          );
-          if (!nodeElement) return;
-          const nodeRect = nodeElement.getBoundingClientRect();
-          const nodeCenterX = nodeRect.left + nodeRect.width / 2;
-          const nodeCenterY = nodeRect.top + nodeRect.height / 2;
-          if (
-            nodeRect.width < 48 ||
-            nodeRect.height < 40 ||
-            nodeRect.right <= 0 ||
-            nodeRect.left >= window.innerWidth ||
-            nodeRect.bottom <= 0 ||
-            nodeRect.top >= targetY - 18 ||
-            nodeCenterX <= 0 ||
-            nodeCenterX >= window.innerWidth ||
-            nodeCenterY <= 0 ||
-            nodeCenterY >= window.innerHeight
-          ) {
-            return;
-          }
-          const topElement = document.elementFromPoint(nodeCenterX, nodeCenterY);
-          const visibleNodeElement = topElement?.closest(".react-flow__node");
-          if (visibleNodeElement && visibleNodeElement.getAttribute("data-id") !== nodeId) return;
-          if (!visibleNodeElement && topElement && !nodeElement.contains(topElement)) return;
-          const nodeX = nodeCenterX;
-          const nodeY = Math.min(nodeRect.bottom, targetY - 24);
-          const midY = nodeY + (targetY - nodeY) * 0.56;
-          nextLines.push({
-            id: `${target.type}-${target.id}-${nodeId}`,
-            targetId: `${target.type}:${target.id}`,
-            nodeId,
-            color: target.color,
-            isActive: target.type === "time" && target.id === activeBlockId,
-            path: `M ${nodeX.toFixed(1)} ${nodeY.toFixed(1)} C ${nodeX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${targetY.toFixed(1)}`,
-          });
+        const nodeX = stableCoord(nodeCenterX);
+        const nodeY = stableCoord(Math.min(nodeBottom, targetPosition.y - 24));
+        const targetX = stableCoord(targetPosition.x);
+        const targetY = stableCoord(targetPosition.y);
+        const midY = stableCoord(nodeY + (targetY - nodeY) * 0.56);
+        nextLines.push({
+          id: `${target.type}-${target.id}-${nodeId}`,
+          targetId: `${target.type}:${target.id}`,
+          nodeId,
+          color: target.color,
+          isActive: target.type === "time" && target.id === activeBlockId,
+          path: `M ${nodeX.toFixed(1)} ${nodeY.toFixed(1)} C ${nodeX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${targetY.toFixed(1)}`,
         });
       });
+    });
 
-      const signature = JSON.stringify(nextLines);
-      if (signature !== foundationLineSignatureRef.current) {
-        foundationLineSignatureRef.current = signature;
-        setFoundationGuideLines(nextLines);
-      }
-      animationFrame = window.requestAnimationFrame(measureLines);
-    };
-
-    animationFrame = window.requestAnimationFrame(measureLines);
-    return () => {
-      isMounted = false;
-      window.cancelAnimationFrame(animationFrame);
-    };
-  }, [activeAxis, activeBlockId, head.linkedNodeIds, spaceBlocks, timeline.blocks]);
+    return nextLines;
+  }, [activeAxis, activeBlockId, liveViewport, nodes, spaceBlocks, targetPositions, timeline.blocks]);
 
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
@@ -897,10 +1148,18 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   };
 
   const handleAgentTailSend = () => {
-    const text = agentTailInput.trim();
+    const text = agentComposerValue.trim();
     if (text) {
+      if (onAgentComposerAction) {
+        onAgentComposerAction();
+        return;
+      }
       onSubmitAgentMessage?.(text);
-      setAgentTailInput("");
+      onAgentComposerChange?.("");
+      return;
+    }
+    if (onAgentComposerAction) {
+      onAgentComposerAction();
       return;
     }
     onOpenAgent?.();
@@ -953,7 +1212,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
           {!isAgentTailOpen ? (
             <div ref={trackRef} className="script-foundation-track">
-              {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex) => {
+              {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex, axisBlocks) => {
             const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
             const width =
               activeAxis === "time"
@@ -992,16 +1251,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 className={`script-foundation-block is-${block.color} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
                 style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
               >
-                <button
-                  type="button"
-                  className="script-foundation-resize script-foundation-resize--left"
-                  aria-label={activeAxis === "time" ? "调整区间起点" : "调整空间块宽度"}
-                  onPointerDown={(event) =>
-                    activeAxis === "time"
-                      ? handleResizePointerDown(event, block.id, "left")
-                      : handleSpaceResizePointerDown(event, block.id, "left")
-                  }
-                />
                 <div className="script-foundation-block__inner">
                   <div className="script-foundation-block__meta">
                     <GripVertical size={13} strokeWidth={1.8} />
@@ -1017,16 +1266,18 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                     <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="script-foundation-resize script-foundation-resize--right"
-                  aria-label={activeAxis === "time" ? "调整区间终点" : "调整空间块宽度"}
-                  onPointerDown={(event) =>
-                    activeAxis === "time"
-                      ? handleResizePointerDown(event, block.id, "right")
-                      : handleSpaceResizePointerDown(event, block.id, "right")
-                  }
-                />
+                {axisIndex < axisBlocks.length - 1 ? (
+                  <button
+                    type="button"
+                    className="script-foundation-resize script-foundation-resize--right"
+                    aria-label={activeAxis === "time" ? "调整相邻区间边界" : "调整相邻空间块边界"}
+                    onPointerDown={(event) =>
+                      activeAxis === "time"
+                        ? handleResizePointerDown(event, block.id, "right")
+                        : handleSpaceResizePointerDown(event, block.id, "right")
+                    }
+                  />
+                ) : null}
               </div>
             );
               })}
@@ -1036,12 +1287,13 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
         <div className={`script-foundation-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
           {isAgentTailOpen ? (
-            <div className="script-foundation-tail-composer">
+            <div className="script-foundation-tail-composer qalam-surface">
               <textarea
-                value={agentTailInput}
+                ref={agentComposerRef}
+                value={agentComposerValue}
                 rows={1}
-                placeholder="询问 Qalam"
-                onChange={(event) => setAgentTailInput(event.target.value)}
+                placeholder="Ask Qalam about this script axis..."
+                onChange={(event) => onAgentComposerChange?.(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -1049,18 +1301,37 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                   }
                   if (event.key === "Escape") {
                     setIsAgentTailOpen(false);
-                    setAgentTailInput("");
                   }
                 }}
               />
               <button
                 type="button"
-                className="script-foundation-tail-send"
+                className={`script-foundation-tail-send ${agentComposerValue.trim() ? "has-input" : ""} ${isAgentSending ? "is-sending" : ""}`}
                 onClick={handleAgentTailSend}
-                title={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
-                aria-label={agentTailInput.trim() ? "发送给 Qalam" : "打开 Qalam"}
+                title={
+                  isAgentSending
+                    ? "Stop Qalam"
+                    : agentComposerValue.trim()
+                      ? "Send to Qalam"
+                      : isAgentFirstMode
+                        ? "Close Qalam First"
+                        : "Open Qalam First"
+                }
+                aria-label={
+                  isAgentSending
+                    ? "Stop Qalam"
+                    : agentComposerValue.trim()
+                      ? "Send to Qalam"
+                      : isAgentFirstMode
+                        ? "Close Qalam First"
+                        : "Open Qalam First"
+                }
               >
-                <SendHorizontal size={15} strokeWidth={1.9} />
+                {isAgentSending ? (
+                  <CircleNotch size={16} weight="bold" className="animate-spin" />
+                ) : (
+                  <ArrowUp size={16} weight="bold" />
+                )}
               </button>
             </div>
           ) : (
@@ -1089,29 +1360,55 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       </div>
 
       {nodeCreateMenu ? (
-        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 250)}>
-          <section className="script-foundation-floating-menu script-foundation-node-popover">
-            <button type="button" onClick={() => runNodeCreateAction(onCreateArchiveNode)}>
-              <FileText size={15} strokeWidth={1.85} />
-              <span>
-                <strong>档案文档</strong>
-                <small>空间轴全局 Markdown</small>
-              </span>
-            </button>
-            <button type="button" onClick={() => runNodeCreateAction(onCreateScriptNode)}>
-              <Film size={15} strokeWidth={1.85} />
-              <span>
-                <strong>剧本文档</strong>
-                <small>进入剧本写作节点</small>
-              </span>
-            </button>
-            <button type="button" onClick={() => runNodeCreateAction(onCreateImageNode)}>
-              <ImageIcon size={15} strokeWidth={1.85} />
-              <span>
-                <strong>灵感图片</strong>
-                <small>上传画布参考图</small>
-              </span>
-            </button>
+        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 620)}>
+          <section className="script-foundation-floating-menu script-foundation-node-popover script-foundation-node-palette">
+            <header className="script-foundation-node-palette__head">
+              <span>Add Nodes</span>
+              <strong>Script canvas now uses the Flow node system.</strong>
+            </header>
+            <div className="script-foundation-node-palette__groups">
+              {scriptCreateGroups.map((group) => {
+                const options = scriptCreateOptions.filter((option) => option.group === group.key);
+                if (!options.length) return null;
+                return (
+                  <div key={group.key} className="script-foundation-node-group">
+                    <p>{group.label}</p>
+                    <div className="script-foundation-node-grid">
+                      {options.map(({ label, hint, type, Icon, meta, tone, surface }) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className={`script-foundation-node-card ${tone}`}
+                          data-surface={surface}
+                          onClick={() =>
+                            runNodeCreateAction(() => {
+                              if (type === "scriptPage") {
+                                onCreateScriptNode();
+                                return;
+                              }
+                              if (type === "mdText") {
+                                onCreateArchiveNode();
+                                return;
+                              }
+                              onCreateFlowNode(type);
+                            })
+                          }
+                        >
+                          <span className="script-foundation-node-card__icon">
+                            <Icon size={16} strokeWidth={1.85} />
+                          </span>
+                          <span className="script-foundation-node-card__body">
+                            <span className="script-foundation-node-card__meta">{meta}</span>
+                            <strong>{label}</strong>
+                            <small>{hint}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         </div>
       ) : null}
@@ -1209,15 +1506,18 @@ export const useScriptCanvasSurface = ({
   onOpenEpisode,
   canvasControls,
   screenToFlowPosition,
+  isActive = false,
   isWritingEditorOpen,
   onCollapseCanvasCards,
   onRestoreCanvasCards,
   onOpenAgent,
   onSubmitAgentMessage,
+  agentComposerValue,
+  onAgentComposerChange,
+  onAgentComposerAction,
+  isAgentSending,
+  isAgentFirstMode,
 }: Props): CanvasSurfaceConfig => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingImagePositionRef = useRef<{ x: number; y: number } | null>(null);
-  const pendingImageConnectionRef = useRef<ScriptConnectionDropState | null>(null);
   const {
     isLocked,
     snapToGrid,
@@ -1227,8 +1527,11 @@ export const useScriptCanvasSurface = ({
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
   const [axisRevealRequest, setAxisRevealRequest] = useState(0);
   const axisRevealTriggeredRef = useRef(false);
+  const applyingScriptRuntimeRef = useRef(false);
+  const { runImageGen, runVideoGen } = useNodeFlowExecutor();
   const canvas = useMemo(() => ensureCanvas(projectData.scriptCanvas), [projectData.scriptCanvas]);
   const timeline = useMemo(() => ensureTimeline(canvas.timeline), [canvas.timeline]);
+  const scriptNodeFlowContext = useMemo(() => createScriptNodeFlowContext(projectData), [projectData]);
 
   const handleMarkdownTitleChange = useCallback(
     (documentId: string, title: string) => {
@@ -1268,13 +1571,15 @@ export const useScriptCanvasSurface = ({
 
   const nodes = useMemo<ScriptCanvasNode[]>(() => {
     const pagePositionById = new Map(canvas.pages.map((page) => [page.episodeId, page.position]));
+    const pageNodeById = new Map(canvas.pages.map((page) => [page.episodeId, page]));
     const pageNodes: ScriptCanvasNode[] = (projectData.episodes || []).map((episode, index) => ({
       id: scriptNodeId(episode.id),
-      type: "text",
+      type: "scriptPage",
       position:
         !pagePositionById.get(episode.id) || isLegacyScriptPosition(pagePositionById.get(episode.id), index)
           ? getDefaultScriptPosition(index)
           : pagePositionById.get(episode.id)!,
+      measured: pageNodeById.get(episode.id)?.measured,
       data: {
         episodeId: episode.id,
         title: episode.title || `第${episode.id}集`,
@@ -1286,9 +1591,13 @@ export const useScriptCanvasSurface = ({
       id: imageNodeId(image.id),
       type: "imageInput",
       position: image.position || getDefaultImagePosition(index),
+      measured: image.measured,
       data: {
-        title: "image",
-        imageUrl: image.imageUrl,
+        ...createDefaultNodeFlowNodeData("imageInput"),
+        image: image.imageUrl,
+        dimensions: null,
+        title: image.filename || "Image",
+        label: image.filename || "",
         filename: image.filename,
       },
     }));
@@ -1297,6 +1606,7 @@ export const useScriptCanvasSurface = ({
       id: markdownNodeId(textNode.id),
       type: "mdText",
       position: textNode.position || getDefaultMarkdownPosition(index),
+      measured: textNode.measured,
       data: {
         documentId: textNode.id,
         title: textNode.title || "档案文档",
@@ -1307,8 +1617,18 @@ export const useScriptCanvasSurface = ({
       },
     }));
 
-    return [...pageNodes, ...imageNodes, ...markdownNodes];
+    const flowNodes: ScriptCanvasNode[] = (canvas.flowNodes || []).map((node, index) => ({
+      ...node,
+      position: node.position || getDefaultFlowNodePosition(index),
+      data: {
+        ...createDefaultNodeFlowNodeData(node.type),
+        ...(node.data || {}),
+      },
+    }));
+
+    return [...pageNodes, ...imageNodes, ...markdownNodes, ...flowNodes];
   }, [
+    canvas.flowNodes,
     canvas.images,
     canvas.pages,
     canvas.textNodes,
@@ -1318,17 +1638,53 @@ export const useScriptCanvasSurface = ({
   ]);
 
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
+  const nodeTypeById = useMemo(() => new Map(nodes.map((node) => [node.id, node.type])), [nodes]);
+  const scriptRuntimeFlowNodes = useMemo<NodeFlowNode[]>(() => {
+    const pageById = new Map(canvas.pages.map((page) => [page.episodeId, page]));
+    const runtimeScriptNodes = (projectData.episodes || []).map((episode, index) =>
+      toRuntimeScriptTextNode(episode, index, pageById.get(episode.id))
+    );
+    const runtimeImageNodes = canvas.images.map((image, index) => toRuntimeLegacyImageNode(image, index));
+    const runtimeMarkdownNodes = (canvas.textNodes || []).map((textNode, index) =>
+      toRuntimeMarkdownTextNode(textNode, index, textNode.position)
+    );
+    const runtimeFlowNodes = (canvas.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index));
+    return [...runtimeScriptNodes, ...runtimeImageNodes, ...runtimeMarkdownNodes, ...runtimeFlowNodes];
+  }, [canvas.flowNodes, canvas.images, canvas.pages, canvas.textNodes, projectData.episodes]);
+  const scriptRuntimeNodeIdSet = useMemo(
+    () => new Set(scriptRuntimeFlowNodes.map((node) => node.id)),
+    [scriptRuntimeFlowNodes]
+  );
+  const scriptRuntimeLinks = useMemo<NodeFlowLink[]>(
+    () =>
+      canvas.links
+        .filter((link) => scriptRuntimeNodeIdSet.has(link.source) && scriptRuntimeNodeIdSet.has(link.target))
+        .map(toRuntimeScriptLink),
+    [canvas.links, scriptRuntimeNodeIdSet]
+  );
   const nodeSummaries = useMemo<ScriptFoundationNodeSummary[]>(
     () =>
       nodes.map((node) => ({
         id: node.id,
         title:
           node.type === "imageInput"
-            ? ((node.data as InspirationImageData).filename || (node.data as InspirationImageData).title || "灵感图片")
+            ? ((node.data as { filename?: string | null; title?: string; label?: string }).filename ||
+              (node.data as { title?: string; label?: string }).title ||
+              (node.data as { label?: string }).label ||
+              "Image")
             : node.type === "mdText"
               ? ((node.data as MarkdownTextData).title || "档案文档")
-            : ((node.data as ScriptPageData).title || `第${(node.data as ScriptPageData).episodeId}集`),
-        kind: node.type === "imageInput" ? "图片" : node.type === "mdText" ? "档案" : "剧本",
+            : node.type === "scriptPage"
+              ? ((node.data as ScriptPageData).title || `第${(node.data as ScriptPageData).episodeId}集`)
+              : ((node.data as { title?: string; label?: string }).title || (node.data as { label?: string }).label || node.type),
+        kind:
+          node.type === "imageInput"
+            ? "图片"
+            : node.type === "mdText"
+              ? "档案"
+              : node.type === "scriptPage"
+                ? "剧本"
+                : "节点",
       })),
     [nodes]
   );
@@ -1343,7 +1699,7 @@ export const useScriptCanvasSurface = ({
           sourceHandle: link.sourceHandle || (isImageNodeId(link.source) ? "image" : "text"),
           targetHandle: link.targetHandle || (isImageNodeId(link.source) ? "image" : "text"),
           type: "default",
-          animated: true,
+          animated: false,
           style: { stroke: "var(--app-accent-strong)", strokeWidth: 1.8 },
         })),
     [canvas.links, nodeIdSet]
@@ -1358,6 +1714,134 @@ export const useScriptCanvasSurface = ({
     },
     [setProjectData]
   );
+
+  useEffect(() => {
+    if (!isActive) return;
+    applyingScriptRuntimeRef.current = true;
+    try {
+      useNodeFlowStore.setState((state) => ({
+        ...state,
+        revision: canvas.revision || 0,
+        nodes: scriptRuntimeFlowNodes,
+        links: scriptRuntimeLinks,
+        graphLinks: canvas.graphLinks || [],
+        globalAssetHistory: canvas.globalAssetHistory || [],
+        linkStyle: canvas.linkStyle || "curved",
+        activeView: canvas.activeView ?? null,
+        nodeFlowContext: scriptNodeFlowContext,
+      }));
+    } finally {
+      applyingScriptRuntimeRef.current = false;
+    }
+  }, [canvas.activeView, canvas.globalAssetHistory, canvas.graphLinks, canvas.linkStyle, canvas.revision, isActive, scriptNodeFlowContext, scriptRuntimeFlowNodes, scriptRuntimeLinks]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    return useNodeFlowStore.subscribe((state, previousState) => {
+      if (applyingScriptRuntimeRef.current) return;
+      if (
+        state.nodes === previousState.nodes &&
+        state.links === previousState.links &&
+        state.graphLinks === previousState.graphLinks &&
+        state.globalAssetHistory === previousState.globalAssetHistory &&
+        state.revision === previousState.revision &&
+        state.linkStyle === previousState.linkStyle &&
+        state.activeView === previousState.activeView
+      ) return;
+
+      const storeNodeById = new Map(state.nodes.map((node) => [node.id, node]));
+      const storeLinks = state.links;
+
+      persistCanvas((currentCanvas, previousProject) => {
+        const episodeNodeIds = new Set((previousProject.episodes || []).map((episode) => scriptNodeId(episode.id)));
+        const imageNodeIds = new Set(currentCanvas.images.map((image) => imageNodeId(image.id)));
+        const markdownNodeIds = new Set((currentCanvas.textNodes || []).map((node) => markdownNodeId(node.id)));
+        const flowNodeIds = new Set((currentCanvas.flowNodes || []).map((node) => node.id));
+        const persistedNodeCount = episodeNodeIds.size + imageNodeIds.size + markdownNodeIds.size + flowNodeIds.size;
+        if (persistedNodeCount > 0 && state.nodes.length === 0 && previousState.nodes.length > 0) {
+          return currentCanvas;
+        }
+        const currentFlowNodes = (currentCanvas.flowNodes || [])
+          .map((node, index) => {
+            const storeNode = storeNodeById.get(node.id);
+            if (!storeNode) {
+              return {
+                ...node,
+                position: node.position || getDefaultFlowNodePosition(index),
+                data: {
+                  ...createDefaultNodeFlowNodeData(node.type),
+                  ...(node.data || {}),
+                },
+              };
+            }
+            return {
+              ...node,
+              type: storeNode.type,
+              position: storeNode.position || node.position || getDefaultFlowNodePosition(index),
+              data: {
+                ...createDefaultNodeFlowNodeData(storeNode.type),
+                ...(storeNode.data || {}),
+              },
+              parentId: storeNode.parentId,
+              extent: storeNode.extent,
+              style: storeNode.style,
+              measured: storeNode.measured,
+            };
+          });
+        const newStoreFlowNodes = state.nodes
+          .filter((node) => !episodeNodeIds.has(node.id))
+          .filter((node) => !imageNodeIds.has(node.id))
+          .filter((node) => !markdownNodeIds.has(node.id))
+          .filter((node) => !flowNodeIds.has(node.id))
+          .map((node) => ({
+            ...node,
+            selected: false,
+            data: {
+              ...createDefaultNodeFlowNodeData(node.type),
+              ...(node.data || {}),
+            },
+          }));
+        const nextFlowNodes = [...currentFlowNodes, ...newStoreFlowNodes];
+        const allowedNodeIds = new Set([
+          ...episodeNodeIds,
+          ...imageNodeIds,
+          ...markdownNodeIds,
+          ...nextFlowNodes.map((node) => node.id),
+        ]);
+
+        return {
+          ...currentCanvas,
+          revision: state.revision,
+          graphLinks: state.graphLinks,
+          globalAssetHistory: state.globalAssetHistory,
+          linkStyle: state.linkStyle,
+          activeView: state.activeView,
+          images: currentCanvas.images.map((image, index) => {
+            const storeNode = storeNodeById.get(imageNodeId(image.id));
+            if (!storeNode || storeNode.type !== "imageInput") return image;
+            const data = storeNode.data as { image?: string | null; filename?: string | null };
+            return {
+              ...image,
+              imageUrl: typeof data.image === "string" ? data.image : image.imageUrl,
+              filename: typeof data.filename === "string" ? data.filename : image.filename,
+              position: storeNode.position || image.position || getDefaultImagePosition(index),
+            };
+          }),
+          textNodes: currentCanvas.textNodes || [],
+          flowNodes: nextFlowNodes,
+          links: storeLinks
+            .filter((link) => allowedNodeIds.has(link.source) && allowedNodeIds.has(link.target))
+            .map((link) => ({
+              id: link.id,
+              source: link.source,
+              target: link.target,
+              sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : undefined,
+              targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : undefined,
+            })),
+        };
+      });
+    });
+  }, [isActive, persistCanvas]);
 
   useEffect(() => {
     if (!timeline.blocks.length) return;
@@ -1718,14 +2202,15 @@ export const useScriptCanvasSurface = ({
     (
       currentLinks: ScriptCanvasState["links"],
       createdNodeId: string,
+      createdNodeType: ScriptCanvasNode["type"],
       dropState: ScriptConnectionDropState | null
     ) => {
       if (!dropState?.sourceNodeId) return currentLinks;
 
-      const existingNodeHandles = getScriptNodeHandles(dropState.sourceNodeId);
-      const createdNodeHandles = getScriptNodeHandles(createdNodeId);
-      const existingTypedHandle =
-        dropState.sourceHandleId === "image" || dropState.sourceHandleId === "text" ? dropState.sourceHandleId : null;
+      const existingNodeType = nodeTypeById.get(dropState.sourceNodeId);
+      const existingNodeHandles = getScriptNodeHandlesForType(existingNodeType);
+      const createdNodeHandles = getScriptNodeHandlesForType(createdNodeType);
+      const existingTypedHandle = isTypedHandle(dropState.sourceHandleId) ? dropState.sourceHandleId : null;
       const preferredHandleType = dropState.handleType || existingTypedHandle;
       let source: string | null = null;
       let target: string | null = null;
@@ -1748,7 +2233,15 @@ export const useScriptCanvasSurface = ({
 
       if (!source || !target || !sourceHandle || !targetHandle) return currentLinks;
 
-      const id = `link-${source}-${target}`;
+      const sourceNodeType = source === createdNodeId ? createdNodeType : existingNodeType;
+      const targetNodeType = target === createdNodeId ? createdNodeType : existingNodeType;
+      const sourceIsScriptNode = sourceNodeType === "scriptPage" || sourceNodeType === "mdText";
+      const targetIsScriptNode = targetNodeType === "scriptPage" || targetNodeType === "mdText";
+      if (!sourceIsScriptNode && !targetIsScriptNode && !isValidConnection({ sourceHandle, targetHandle })) {
+        return currentLinks;
+      }
+
+      const id = `link-${source}-${target}-${sourceHandle}-${targetHandle}`;
       return [
         ...currentLinks.filter((link) => link.id !== id),
         {
@@ -1760,7 +2253,7 @@ export const useScriptCanvasSurface = ({
         },
       ];
     },
-    []
+    [nodeTypeById]
   );
 
   const handleAddScriptPage = useCallback((position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
@@ -1784,7 +2277,7 @@ export const useScriptCanvasSurface = ({
               position: position || getDefaultScriptPosition(previous.episodes.length),
             },
           ],
-          links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
+          links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, "scriptPage", dropState),
         },
       };
     });
@@ -1810,13 +2303,67 @@ export const useScriptCanvasSurface = ({
           scriptCanvas: {
             ...nextCanvas,
             textNodes: [...(nextCanvas.textNodes || []), nextNode],
-            links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
+            links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, "mdText", dropState),
           },
         };
       });
       return createdNodeId;
     },
     [buildLinkForCreatedNode, setProjectData]
+  );
+
+  const handleAddFlowNode = useCallback(
+    (type: NodeType, position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
+      const requestedPosition = position || getDefaultFlowNodePosition(canvas.flowNodes?.length || 0);
+      const storeState = useNodeFlowStore.getState();
+      const createResult = createNodeFlowNodeCommand({
+        state: storeState,
+        type,
+        position: requestedPosition,
+        extraData: {
+          ...(storeState.nodeDefaults[type] || {}),
+        },
+        allocateNodeId: createScriptFlowNodeId,
+      });
+      const createdNode = createResult.state.nodes.find((node) => !storeState.nodes.some((existing) => existing.id === node.id));
+      const createdNodeId = createdNode?.id || createScriptFlowNodeId(type);
+      const nextScriptLinks = buildLinkForCreatedNode(canvas.links, createdNodeId, type, dropState);
+      const nextStoreNodeIds = new Set(createResult.state.nodes.map((node) => node.id));
+      const nextStoreLinks = nextScriptLinks
+        .filter((link) => nextStoreNodeIds.has(link.source) && nextStoreNodeIds.has(link.target))
+        .map(toRuntimeScriptLink);
+      const nextStoreState = {
+        ...createResult.state,
+        revision: Math.max(createResult.state.revision, (canvas.revision || 0) + 1),
+        links: nextStoreLinks,
+      };
+      useNodeFlowStore.setState(nextStoreState);
+
+      const nodeToPersist: NodeFlowNode =
+        createdNode || {
+          id: createdNodeId,
+          type,
+          position: requestedPosition,
+          data: createDefaultNodeFlowNodeData(type),
+        };
+      setProjectData((previous) => {
+        const nextCanvas = ensureCanvas(previous.scriptCanvas);
+        const hasExistingNode = (nextCanvas.flowNodes || []).some((node) => node.id === createdNodeId);
+        return {
+          ...previous,
+          scriptCanvas: {
+            ...nextCanvas,
+            revision: Math.max(nextCanvas.revision || 0, nextStoreState.revision),
+            flowNodes: hasExistingNode
+              ? (nextCanvas.flowNodes || []).map((node) => (node.id === createdNodeId ? { ...node, ...nodeToPersist, selected: false } : node))
+              : [...(nextCanvas.flowNodes || []), { ...nodeToPersist, selected: false }],
+            links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, type, dropState),
+          },
+        };
+      });
+      return createdNodeId;
+    },
+    [buildLinkForCreatedNode, canvas.flowNodes?.length, canvas.links, canvas.revision, setProjectData]
   );
 
   const handleAddMarkdownNodeFromTail = useCallback(() => {
@@ -1841,60 +2388,125 @@ export const useScriptCanvasSurface = ({
     handleAddScriptPage(position);
   }, [handleAddScriptPage, screenToFlowPosition]);
 
-  const handleAddImageFromTail = useCallback(() => {
-    pendingImagePositionRef.current =
-      typeof window === "undefined"
-        ? null
-        : screenToFlowPosition({
-            x: window.innerWidth / 2,
-            y: Math.max(120, window.innerHeight / 2 - 120),
-          });
-    pendingImageConnectionRef.current = null;
-    fileInputRef.current?.click();
-  }, [screenToFlowPosition]);
-
-  const handleImageInput = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const imageUrl = typeof reader.result === "string" ? reader.result : "";
-        if (!imageUrl) return;
-
-        setProjectData((previous) => {
-          const nextCanvas = ensureCanvas(previous.scriptCanvas);
-          const id = `inspiration-${Date.now()}`;
-          const createdNodeId = imageNodeId(id);
-          const position = pendingImagePositionRef.current || getDefaultImagePosition(nextCanvas.images.length);
-          const dropState = pendingImageConnectionRef.current;
-          pendingImagePositionRef.current = null;
-          pendingImageConnectionRef.current = null;
+  const handleImportScriptNodeFlow = useCallback(
+    (nodeFlow: NodeFlowFile) => {
+      const hydrated = hydrateImportedNodeFlow(nodeFlow, scriptNodeFlowContext);
+      setProjectData((previous) => {
+        const currentCanvas = ensureCanvas(previous.scriptCanvas);
+        const existingIds = new Set<string>([
+          ...(previous.episodes || []).map((episode) => scriptNodeId(episode.id)),
+          ...currentCanvas.images.map((image) => imageNodeId(image.id)),
+          ...(currentCanvas.textNodes || []).map((node) => markdownNodeId(node.id)),
+          ...(currentCanvas.flowNodes || []).map((node) => node.id),
+        ]);
+        const idMap = new Map<string, string>();
+        const now = Date.now();
+        const importedNodes = hydrated.nodes.map((node, index) => {
+          let nextId = node.id;
+          if (existingIds.has(nextId) || isScriptPageNodeId(nextId) || isMarkdownNodeId(nextId)) {
+            nextId = `script-flow-${node.type}-${now}-${index}`;
+          }
+          existingIds.add(nextId);
+          idMap.set(node.id, nextId);
           return {
-            ...previous,
-            scriptCanvas: {
-              ...nextCanvas,
-              images: [
-                ...nextCanvas.images,
-                {
-                  id,
-                  imageUrl,
-                  filename: file.name,
-                  position,
-                  createdAt: Date.now(),
-                },
-              ],
-              links: buildLinkForCreatedNode(nextCanvas.links, createdNodeId, dropState),
+            ...node,
+            id: nextId,
+            position: {
+              x: (node.position?.x || 0) + 80,
+              y: (node.position?.y || 0) + 80,
+            },
+            selected: false,
+            data: {
+              ...createDefaultNodeFlowNodeData(node.type),
+              ...(node.data || {}),
             },
           };
         });
-      };
-      reader.readAsDataURL(file);
-      event.target.value = "";
+        const importedNodeIds = new Set(importedNodes.map((node) => node.id));
+        const importedLinks = hydrated.links
+          .map((link, index) => {
+            const source = idMap.get(link.source);
+            const target = idMap.get(link.target);
+            if (!source || !target) return null;
+            return {
+              id: `link-${source}-${target}-${link.sourceHandle || "out"}-${link.targetHandle || "in"}-${index}`,
+              source,
+              target,
+              sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : undefined,
+              targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : undefined,
+            };
+          })
+          .filter((link): link is ScriptCanvasState["links"][number] => {
+            if (!link) return false;
+            return importedNodeIds.has(link.source) && importedNodeIds.has(link.target);
+          });
+
+        return {
+          ...previous,
+          scriptCanvas: {
+            ...currentCanvas,
+            revision: Math.max((currentCanvas.revision || 0) + 1, hydrated.revision || 1),
+            flowNodes: [...(currentCanvas.flowNodes || []), ...importedNodes],
+            links: [...currentCanvas.links, ...importedLinks],
+            graphLinks: [...(currentCanvas.graphLinks || []), ...(hydrated.graphLinks || [])],
+            globalAssetHistory: [
+              ...(currentCanvas.globalAssetHistory || []),
+              ...(hydrated.globalAssetHistory || []),
+            ],
+            linkStyle: hydrated.linkStyle || currentCanvas.linkStyle || "curved",
+            activeView: hydrated.activeView ?? currentCanvas.activeView ?? null,
+          },
+        };
+      });
     },
-    [buildLinkForCreatedNode, setProjectData]
+    [scriptNodeFlowContext, setProjectData]
   );
+
+  const handleExportScriptNodeFlow = useCallback(() => {
+    downloadNodeFlowFile(
+      buildNodeFlowFile({
+        revision: canvas.revision || 0,
+        nodes: scriptRuntimeFlowNodes,
+        links: scriptRuntimeLinks,
+        graphLinks: canvas.graphLinks || [],
+        linkStyle: canvas.linkStyle || "curved",
+        globalAssetHistory: canvas.globalAssetHistory || [],
+        nodeFlowContext: scriptNodeFlowContext,
+        activeView: canvas.activeView ?? null,
+        name: `${projectData.fileName || "qalam-script"}-script`,
+      })
+    );
+  }, [
+    canvas.activeView,
+    canvas.globalAssetHistory,
+    canvas.graphLinks,
+    canvas.linkStyle,
+    canvas.revision,
+    projectData.fileName,
+    scriptNodeFlowContext,
+    scriptRuntimeFlowNodes,
+    scriptRuntimeLinks,
+  ]);
+
+  const handleRunScriptAll = useCallback(async () => {
+    let started = 0;
+    for (const node of scriptRuntimeFlowNodes) {
+      if (node.type === "imageGen" || node.type === "nanoBananaImageGen" || node.type === "wanImageGen") {
+        started += 1;
+        await runImageGen(node.id);
+      }
+      if (
+        node.type === "soraVideoGen" ||
+        node.type === "wanReferenceVideoGen" ||
+        node.type === "viduVideoGen" ||
+        node.type === "seedanceVideoGen"
+      ) {
+        started += 1;
+        await runVideoGen(node.id);
+      }
+    }
+    alert(started > 0 ? `已启动 ${started} 个生成节点。` : "当前没有可执行的生成节点。");
+  }, [runImageGen, runVideoGen, scriptRuntimeFlowNodes]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<ScriptCanvasNode>[]) => {
@@ -1902,6 +2514,7 @@ export const useScriptCanvasSurface = ({
       onAlignmentGuideChange(aligned.guide);
       const effectiveChanges = aligned.changes;
       const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
+      const hasDimensionChange = effectiveChanges.some((change) => change.type === "dimensions");
       const removedEpisodeIds = changes
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("script-"))
@@ -1915,33 +2528,49 @@ export const useScriptCanvasSurface = ({
         .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("md-"))
         .map((change) => change.id.replace(/^md-/, ""));
+      const removedFlowNodeIds = changes
+        .filter((change): change is Extract<NodeChange<ScriptCanvasNode>, { type: "remove" }> => change.type === "remove")
+        .map((change) => change.id)
+        .filter((id) => !isImageNodeId(id) && !isScriptPageNodeId(id) && !isMarkdownNodeId(id));
 
-      if (!hasPositionChange && removedImageIds.length === 0 && removedEpisodeIds.length === 0 && removedMarkdownIds.length === 0) return;
+      if (
+        !hasPositionChange &&
+        !hasDimensionChange &&
+        removedImageIds.length === 0 &&
+        removedEpisodeIds.length === 0 &&
+        removedMarkdownIds.length === 0 &&
+        removedFlowNodeIds.length === 0
+      ) return;
 
       const nextNodes = applyNodeChanges(effectiveChanges, nodes);
       const positionById = new Map(nextNodes.map((node) => [node.id, node.position]));
+      const nextNodeById = new Map(nextNodes.map((node) => [node.id, node]));
 
       persistCanvas((currentCanvas, previous) => {
         const removedImageSet = new Set(removedImageIds);
         const removedEpisodeSet = new Set(removedEpisodeIds);
         const removedMarkdownSet = new Set(removedMarkdownIds);
+        const removedFlowNodeSet = new Set(removedFlowNodeIds);
         const nextEpisodes = previous.episodes.filter((episode) => !removedEpisodeSet.has(episode.id));
         const images = currentCanvas.images
           .filter((image) => !removedImageSet.has(image.id))
           .map((image) => ({
             ...image,
             position: positionById.get(imageNodeId(image.id)) || image.position,
+            measured: nextNodeById.get(imageNodeId(image.id))?.measured || image.measured,
           }));
         const textNodes = (currentCanvas.textNodes || [])
           .filter((node) => !removedMarkdownSet.has(node.id))
           .map((node, index) => ({
             ...node,
             position: positionById.get(markdownNodeId(node.id)) || node.position || getDefaultMarkdownPosition(index),
+            measured: nextNodeById.get(markdownNodeId(node.id))?.measured || node.measured,
           }));
         const removedNodeIds = new Set([
           ...removedImageIds.map((id) => imageNodeId(id)),
           ...removedEpisodeIds.map((id) => scriptNodeId(id)),
           ...removedMarkdownIds.map((id) => markdownNodeId(id)),
+          ...removedFlowNodeIds,
         ]);
 
         return {
@@ -1952,13 +2581,24 @@ export const useScriptCanvasSurface = ({
               positionById.get(scriptNodeId(episode.id)) ||
               currentCanvas.pages.find((page) => page.episodeId === episode.id)?.position ||
               getDefaultScriptPosition(index),
+            measured:
+              nextNodeById.get(scriptNodeId(episode.id))?.measured ||
+              currentCanvas.pages.find((page) => page.episodeId === episode.id)?.measured,
           })),
+          flowNodes: (currentCanvas.flowNodes || [])
+            .filter((node) => !removedFlowNodeSet.has(node.id))
+            .map((node, index) => ({
+              ...node,
+              position: positionById.get(node.id) || node.position || getDefaultFlowNodePosition(index),
+              measured: nextNodeById.get(node.id)?.measured || node.measured,
+            })),
           images,
           textNodes,
           links: currentCanvas.links.filter((link) => {
             if (removedImageIds.some((id) => link.source === imageNodeId(id) || link.target === imageNodeId(id))) return false;
             if (removedEpisodeIds.some((id) => link.source === scriptNodeId(id) || link.target === scriptNodeId(id))) return false;
-            return !removedMarkdownIds.some((id) => link.source === markdownNodeId(id) || link.target === markdownNodeId(id));
+            if (removedMarkdownIds.some((id) => link.source === markdownNodeId(id) || link.target === markdownNodeId(id))) return false;
+            return !removedFlowNodeSet.has(link.source) && !removedFlowNodeSet.has(link.target);
           }),
           timeline: currentCanvas.timeline
             ? {
@@ -2004,8 +2644,8 @@ export const useScriptCanvasSurface = ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          sourceHandle: edge.sourceHandle === "image" || edge.sourceHandle === "text" ? edge.sourceHandle : undefined,
-          targetHandle: edge.targetHandle === "image" || edge.targetHandle === "text" ? edge.targetHandle : undefined,
+          sourceHandle: isTypedHandle(edge.sourceHandle) || edge.sourceHandle === "multi" ? edge.sourceHandle : undefined,
+          targetHandle: isTypedHandle(edge.targetHandle) || edge.targetHandle === "multi" ? edge.targetHandle : undefined,
         })),
       }));
     },
@@ -2015,21 +2655,32 @@ export const useScriptCanvasSurface = ({
   const commitScriptConnection = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return false;
-      if (!isTextNodeId(connection.target)) return false;
-      if (!isImageNodeId(connection.source) && !isTextNodeId(connection.source)) return false;
+      const sourceType = nodeTypeById.get(connection.source);
+      const targetType = nodeTypeById.get(connection.target);
+      if (!sourceType || !targetType) return false;
 
+      const sourceHandles = getScriptNodeHandlesForType(sourceType);
+      const targetHandles = getScriptNodeHandlesForType(targetType);
+      const inferredSourceHandle =
+        sourceType === "scriptPage" || sourceType === "mdText" ? "text" : inferHandleTypeFromNodeType(sourceType as NodeType);
       const sourceHandle =
-        connection.sourceHandle === "image" || connection.sourceHandle === "text"
+        isTypedHandle(connection.sourceHandle) || connection.sourceHandle === "multi"
           ? connection.sourceHandle
-          : isImageNodeId(connection.source)
-            ? "image"
-            : "text";
+          : pickOutputHandle(sourceHandles.outputs, inferredSourceHandle as ScriptHandleType);
       const targetHandle =
-        connection.targetHandle === "image" || connection.targetHandle === "text"
+        isTypedHandle(connection.targetHandle) || connection.targetHandle === "multi"
           ? connection.targetHandle
-          : isImageNodeId(connection.source)
-            ? "image"
-            : "text";
+          : pickInputHandle(targetHandles.inputs, sourceHandle as ScriptHandleType);
+      if (!sourceHandle || !targetHandle) return false;
+      const sourceIsScriptNode = sourceType === "scriptPage" || sourceType === "mdText";
+      const targetIsScriptNode = targetType === "scriptPage" || targetType === "mdText";
+      if (
+        !sourceIsScriptNode &&
+        !targetIsScriptNode &&
+        !isValidConnection({ sourceHandle, targetHandle })
+      ) {
+        return false;
+      }
       const id = `link-${connection.source}-${connection.target}-${sourceHandle}-${targetHandle}`;
       const nextEdges = addEdge(
         {
@@ -2047,13 +2698,13 @@ export const useScriptCanvasSurface = ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          sourceHandle: (edge.sourceHandle === "image" || edge.sourceHandle === "text" ? edge.sourceHandle : undefined),
-          targetHandle: (edge.targetHandle === "image" || edge.targetHandle === "text" ? edge.targetHandle : undefined),
+          sourceHandle: isTypedHandle(edge.sourceHandle) || edge.sourceHandle === "multi" ? edge.sourceHandle : undefined,
+          targetHandle: isTypedHandle(edge.targetHandle) || edge.targetHandle === "multi" ? edge.targetHandle : undefined,
         })),
       }));
       return true;
     },
-    [edges, persistCanvas]
+    [edges, nodeTypeById, persistCanvas]
   );
 
   const handleConnect = useCallback(
@@ -2131,7 +2782,8 @@ export const useScriptCanvasSurface = ({
       if (typeof clientX !== "number" || typeof clientY !== "number") return;
 
       const fromHandleId = connectionState.fromHandle?.id || null;
-      const fromHandleType = fromHandleId === "image" || fromHandleId === "text" ? fromHandleId : null;
+      const fromHandleType =
+        isTypedHandle(fromHandleId) || fromHandleId === "multi" ? (fromHandleId as ScriptHandleType) : null;
       const isFromSource = connectionState.fromHandle?.type === "source";
       const hitAxisTarget = getScriptAxisTargetHitAtPoint(clientX, clientY);
       if (hitAxisTarget?.type === "head") {
@@ -2145,19 +2797,25 @@ export const useScriptCanvasSurface = ({
       const hitNode = getScriptNodeHitAtPoint(clientX, clientY, connectionState.fromNode.id);
       if (hitNode) {
         const fromNodeId = connectionState.fromNode.id;
-        const preferred = fromHandleType || (isImageNodeId(fromNodeId) ? "image" : "text");
+        const fromNodeType = nodeTypeById.get(fromNodeId);
+        const preferred =
+          fromHandleType ||
+          (fromNodeType === "scriptPage" || fromNodeType === "mdText"
+            ? "text"
+            : (inferHandleTypeFromNodeType(fromNodeType as NodeType) as ScriptHandleType | null)) ||
+          "text";
 
         const buildConnection = (sourceNodeId: string, targetNodeId: string): Connection | null => {
           if (sourceNodeId === targetNodeId) return null;
-          const sourceHandles = getScriptNodeHandles(sourceNodeId);
-          const targetHandles = getScriptNodeHandles(targetNodeId);
+          const sourceHandles = getScriptNodeHandlesForType(nodeTypeById.get(sourceNodeId));
+          const targetHandles = getScriptNodeHandlesForType(nodeTypeById.get(targetNodeId));
           const sourceHandle =
-            sourceNodeId === fromNodeId && isFromSource && (fromHandleId === "image" || fromHandleId === "text")
-              ? fromHandleId
+            sourceNodeId === fromNodeId && isFromSource && (isTypedHandle(fromHandleId) || fromHandleId === "multi")
+              ? (fromHandleId as ScriptHandleType)
               : pickOutputHandle(sourceHandles.outputs, preferred);
           const targetHandle =
             targetNodeId === fromNodeId && !isFromSource
-              ? pickInputHandle(targetHandles.inputs, preferred, fromHandleId)
+              ? pickInputHandle(targetHandles.inputs, preferred, fromHandleType)
               : pickInputHandle(targetHandles.inputs, preferred);
 
           if (!sourceHandle || !targetHandle) return null;
@@ -2188,7 +2846,7 @@ export const useScriptCanvasSurface = ({
         sourceHandleId: fromHandleId,
       });
     },
-    [commitAxisTargetConnection, commitScriptConnection, revealAxisFromHead, screenToFlowPosition]
+    [commitAxisTargetConnection, commitScriptConnection, nodeTypeById, revealAxisFromHead, screenToFlowPosition]
   );
 
   const handleDropCreate = useCallback(
@@ -2205,27 +2863,23 @@ export const useScriptCanvasSurface = ({
         return;
       }
 
-      pendingImagePositionRef.current = connectionDrop.flowPosition;
-      pendingImageConnectionRef.current = connectionDrop;
+      handleAddFlowNode(type, connectionDrop.flowPosition, connectionDrop);
       setConnectionDrop(null);
-      fileInputRef.current?.click();
     },
-    [connectionDrop, handleAddMarkdownNode, handleAddScriptPage]
+    [connectionDrop, handleAddFlowNode, handleAddMarkdownNode, handleAddScriptPage]
   );
 
   const handleScriptNodeClick = useCallback(
     (node: ScriptCanvasNode) => {
       const linkedBlock = timeline.blocks.find((block) => block.linkedNodeIds.includes(node.id));
       if (linkedBlock) setActiveTimelineBlockId(linkedBlock.id);
-      if (node.type === "text") onOpenEpisode((node.data as ScriptPageData).episodeId);
+      if (node.type === "scriptPage") onOpenEpisode((node.data as ScriptPageData).episodeId);
     },
     [onOpenEpisode, timeline.blocks]
   );
 
   const overlays = (
     <>
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageInput} />
-
       {connectionDrop ? (
         <ConnectionDropMenu
           position={connectionDrop.position}
@@ -2270,11 +2924,27 @@ export const useScriptCanvasSurface = ({
           axisRevealRequest={axisRevealRequest}
           onCreateArchiveNode={handleAddMarkdownNodeFromTail}
           onCreateScriptNode={handleAddScriptPageFromTail}
-          onCreateImageNode={handleAddImageFromTail}
+          onCreateFlowNode={(type) => {
+            const position =
+              typeof window === "undefined"
+                ? undefined
+                : screenToFlowPosition({
+                    x: window.innerWidth / 2,
+                    y: Math.max(120, window.innerHeight / 2 - 120),
+                  });
+            handleAddFlowNode(type, position);
+          }}
           onOpenAgent={onOpenAgent}
           onSubmitAgentMessage={onSubmitAgentMessage}
+          agentComposerValue={agentComposerValue}
+          onAgentComposerChange={onAgentComposerChange}
+          onAgentComposerAction={onAgentComposerAction}
+          isAgentSending={isAgentSending}
+          isAgentFirstMode={isAgentFirstMode}
           onOpenMarkdownCard={onCollapseCanvasCards}
           onCloseMarkdownCard={onRestoreCanvasCards}
+          nodes={nodes}
+          viewport={canvasControls.viewport}
         />
       ) : null}
     </>
@@ -2298,5 +2968,11 @@ export const useScriptCanvasSurface = ({
     nodesConnectable: !isLocked,
     elementsSelectable: !isLocked,
     overlays,
+    actions: {
+      addNode: handleAddFlowNode,
+      importNodeFlow: handleImportScriptNodeFlow,
+      exportNodeFlow: handleExportScriptNodeFlow,
+      runAll: handleRunScriptAll,
+    },
   };
 };

@@ -685,8 +685,8 @@ export const WritingPanel: React.FC<Props> = ({
   const agentLineTimerRef = useRef<number | null>(null);
 
   const knownCharacters = useMemo(
-    () => projectRolesToCharacters(projectData.context.roles || []).filter((character) => !!character?.name?.trim()) as Character[],
-    [projectData.context.roles]
+    () => projectRolesToCharacters(projectData.roles || []).filter((character) => !!character?.name?.trim()) as Character[],
+    [projectData.roles]
   );
   const characterMap = useMemo(() => {
     const map = new Map<string, Character>();
@@ -1348,12 +1348,6 @@ export const WritingPanel: React.FC<Props> = ({
       ...prev,
       rawScript: fountainScript,
       episodes: mergeEpisodes(prev.episodes, parsedEpisodes),
-      context: {
-        ...prev.context,
-        episodeSummaries: (prev.context.episodeSummaries || []).filter((item) =>
-          parsedEpisodes.some((episode) => episode.id === item.episodeId)
-        ),
-      },
     }));
   }, [draft, fountainScript, setProjectData]);
 

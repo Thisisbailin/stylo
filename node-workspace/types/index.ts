@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { DesignAssetItem, Episode, ProjectContext, SeedanceModel, ViduReferenceMode } from "../../types";
+import { DesignAssetItem, Episode, ProjectRoleIdentity, SeedanceModel, ViduReferenceMode } from "../../types";
 
 export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 
@@ -230,7 +230,6 @@ export interface VideoGenNodeData extends BaseNodeData {
   size?: string;
   seed?: number;
   watermark?: boolean;
-  shotType?: "single" | "multi";
   audioEnabled?: boolean;
   audioUrl?: string;
 }
@@ -375,9 +374,7 @@ export type NodeFlowContextSnapshot = {
   rawScript: string;
   episodes: Episode[];
   designAssets: DesignAssetItem[];
-  globalStyleGuide: string;
-  dramaGuide: string;
-  context: ProjectContext;
+  roles: ProjectRoleIdentity[];
 };
 
 export type NodeFlowViewport = {

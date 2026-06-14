@@ -22,13 +22,7 @@ export const createEmptyNodeFlowContextSnapshot = (): NodeFlowContextSnapshot =>
   rawScript: "",
   episodes: [],
   designAssets: [],
-  globalStyleGuide: "",
-  dramaGuide: "",
-  context: {
-    projectSummary: "",
-    episodeSummaries: [],
-    roles: [],
-  },
+  roles: [],
 });
 
 export const createIdleNodeFlowExecutionState = (): NodeFlowExecutionState => ({

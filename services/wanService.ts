@@ -271,7 +271,6 @@ export const submitWanVideoTask = async (
     seed?: number;
     watermark?: boolean;
     promptExtend?: boolean;
-    shotType?: "single" | "multi";
     audioUrl?: string;
   }
 ): Promise<WanTaskSubmissionResult> => {
@@ -287,7 +286,7 @@ export const submitWanVideoTask = async (
   const duration = options?.duration ? Number.parseInt(options.duration.replace("s", ""), 10) : undefined;
   const parameters: Record<string, any> = {
     prompt_extend: options?.promptExtend ?? true,
-    shot_type: options?.shotType || "multi",
+    shot_type: "multi",
     watermark: options?.watermark ?? false,
     ...(options?.negativePrompt ? { negative_prompt: options.negativePrompt } : {}),
     ...(Number.isFinite(options?.seed) ? { seed: options?.seed } : {}),

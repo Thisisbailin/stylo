@@ -1,12 +1,10 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser, useClerk, useAuth } from './lib/auth';
-import { ProjectData, AppConfig, WorkflowStep, Episode, AnalysisSubStep, ActiveTab, SyncState, SyncStatus, Character } from './types';
+import { ProjectData, AppConfig, Episode, ActiveTab, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA, INITIAL_VIDEO_CONFIG, INITIAL_TEXT_CONFIG, INITIAL_MULTIMODAL_CONFIG } from './constants';
 import {
   parseScriptToEpisodes,
-  exportUnderstandingToJSON,
-  parseUnderstandingJSON
 } from './utils/parser';
 import { normalizeProjectData } from './utils/projectData';
 import { dropFileReplacer, isProjectEmpty, backupData, FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
@@ -18,10 +16,8 @@ import { usePersistedState } from './hooks/usePersistedState';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useConfig } from './hooks/useConfig';
 import { useTheme } from './hooks/useTheme';
-import { useWorkflowEngine } from './hooks/useWorkflowEngine';
 import { useSecretsSync } from './hooks/useSecretsSync';
 import { AppShell } from './components/layout/AppShell';
-import { WorkflowCard } from './components/layout/Header';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { NodeFlow } from './node-workspace/components/NodeFlow';
@@ -34,7 +30,6 @@ import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import { FloatingPanelShell } from './node-workspace/components/FloatingPanelShell';
 import * as ResponsesTextService from './services/responsesTextService';
 import { useNodeFlowStore } from './node-workspace/store/nodeFlowStore';
-import defaultDramaGuide from './guides/DramaGuide.md?raw';
 import {
   buildPersonRolesFromAnalysis,
   buildSceneRolesFromAnalysis,
@@ -403,12 +398,12 @@ const App: React.FC = () => {
 
   const { config, setConfig } = useConfig(CONFIG_STORAGE_KEY);
   const projectCharacters = useMemo(
-    () => projectRolesToCharacters(projectData.context.roles || []) as Character[],
-    [projectData.context.roles]
+    () => projectRolesToCharacters(projectData.roles || []),
+    [projectData.roles]
   );
   const projectLocations = useMemo(
-    () => projectRolesToLocations(projectData.context.roles || []),
-    [projectData.context.roles]
+    () => projectRolesToLocations(projectData.roles || []),
+    [projectData.roles]
   );
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
@@ -583,28 +578,18 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   const [uiState, setUiState] = usePersistedState<{
-    step: WorkflowStep;
-    analysisStep: AnalysisSubStep;
     currentEpIndex: number;
     activeTab: ActiveTab;
   }>({
     key: UI_STATE_STORAGE_KEY,
-    initialValue: { step: WorkflowStep.IDLE, analysisStep: AnalysisSubStep.IDLE, currentEpIndex: 0, activeTab: 'lab' },
+    initialValue: { currentEpIndex: 0, activeTab: 'lab' },
     deserialize: (value) => {
       const parsed = JSON.parse(value);
       const parsedActiveTab = parsed.activeTab;
-      const parsedStep =
-        parsed.step === WorkflowStep.SETUP_CONTEXT || parsed.step === WorkflowStep.COMPLETED
-          ? parsed.step
-          : WorkflowStep.IDLE;
       return {
-        step: parsedStep,
-        analysisStep: parsed.analysisStep ?? AnalysisSubStep.IDLE,
         currentEpIndex: parsed.currentEpIndex ?? 0,
         activeTab:
-          parsedActiveTab === 'understanding'
-            ? 'lab'
-            : parsedActiveTab === 'visuals' ||
+          parsedActiveTab === 'visuals' ||
           parsedActiveTab === 'video' ||
           parsedActiveTab === 'lab' ||
           parsedActiveTab === 'stats'
@@ -615,16 +600,14 @@ const App: React.FC = () => {
     serialize: (value) => JSON.stringify(value)
   });
 
-  const workflow = useWorkflowEngine({
-    step: uiState.step,
-    analysisStep: uiState.analysisStep,
-    currentEpIndex: uiState.currentEpIndex,
-    activeTab: uiState.activeTab
-  });
-
-  const { state: wfState, setStep, setAnalysisStep, setCurrentEpIndex, setActiveTab, setProcessing, setStatus, setQueue, shiftQueue, resetWorkflow } = workflow;
-  const { step, analysisStep, currentEpIndex, activeTab, isProcessing, processingStatus, analysisQueue, analysisTotal } = wfState;
-  const [analysisError, setAnalysisError] = useState<{ step: AnalysisSubStep; message: string } | null>(null);
+  const [currentEpIndex, setCurrentEpIndex] = useState(uiState.currentEpIndex);
+  const [activeTab, setActiveTab] = useState<ActiveTab>(uiState.activeTab);
+  const [processingState, setProcessingState] = useState<{ active: boolean; status: string }>({ active: false, status: "" });
+  const isProcessing = processingState.active;
+  const processingStatus = processingState.status;
+  const setProcessing = useCallback((active: boolean, status = "") => {
+    setProcessingState({ active, status });
+  }, []);
 
   // Force Lab as the sole surface (no top tab selector)
   useEffect(() => {
@@ -637,21 +620,13 @@ const App: React.FC = () => {
   useEffect(() => {
     setUiState(prev => ({
       ...prev,
-      step,
-      analysisStep,
       currentEpIndex,
       activeTab
     }));
-  }, [step, analysisStep, currentEpIndex, activeTab, setUiState]);
-
-  useEffect(() => {
-    setAnalysisError(null);
-  }, [analysisStep]);
+  }, [currentEpIndex, activeTab, setUiState]);
 
   const [appView, setAppView] = useState<"main" | "landing">(() => readAppViewFromLocation());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [showWorkflow, setShowWorkflow] = useState(false);
-  const [workflowAnchor, setWorkflowAnchor] = useState<DOMRect | null>(null);
   const [hasLoadedRemote, setHasLoadedRemote] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>({
     project: { status: 'idle' },
@@ -720,7 +695,6 @@ const App: React.FC = () => {
 
   const openLandingPage = useCallback(() => {
     setOpenLabModal(null);
-    setShowWorkflow(false);
     navigateToAppView("landing");
   }, [navigateToAppView]);
   const closeLandingPage = useCallback(() => navigateToAppView("main"), [navigateToAppView]);
@@ -740,8 +714,6 @@ const App: React.FC = () => {
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
   }, []);
-
-  // Processing Queues for Phase 1 Batches handled via reducer
 
   // --- Cloud Sync Helpers ---
 
@@ -903,16 +875,6 @@ const App: React.FC = () => {
     }
   }, [projectData.episodes.length]);
 
-  // Load the drama guide on mount (only if not already loaded)
-  useEffect(() => {
-    if (!projectData.dramaGuide) {
-      setProjectData(prev => ({
-        ...prev,
-        dramaGuide: prev.dramaGuide || defaultDramaGuide
-      }));
-    }
-  }, []);
-
   // --- Helper: Stats Updater ---
   const updateStats = (phase: 'context', success: boolean) => {
     setProjectData(prev => {
@@ -936,8 +898,6 @@ const App: React.FC = () => {
       localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
       setProjectData(INITIAL_PROJECT_DATA);
       clearNodeFlow();
-      setStep(WorkflowStep.IDLE);
-      setAnalysisStep(AnalysisSubStep.IDLE);
       setCurrentEpIndex(0);
       setActiveTab('lab');
       localStorage.removeItem(PROJECT_STORAGE_KEY);
@@ -1019,10 +979,7 @@ const App: React.FC = () => {
 
   const handleAssetLoad = (
     type:
-      | 'script'
-      | 'globalStyleGuide'
-      | 'dramaGuide'
-      | 'understandingJson',
+      | 'script',
     content: string,
     fileName?: string
   ) => {
@@ -1030,7 +987,7 @@ const App: React.FC = () => {
       const episodes = parseScriptToEpisodes(content);
       const stats = buildCharacterStats(episodes);
       setProjectData(prev => {
-        const existingChars = projectRolesToCharacters(prev.context.roles || []);
+        const existingChars = projectRolesToCharacters(prev.roles || []);
         const existingNames = new Set(existingChars.map(c => c.name));
 
         // Update existing characters with fresh stats
@@ -1069,702 +1026,15 @@ const App: React.FC = () => {
           fileName: fileName || 'script.txt',
           rawScript: content,
           episodes,
-          context: {
-            ...prev.context,
-            roles: replaceRolesByKind(
-              prev.context.roles || [],
-              'person',
-              buildPersonRolesFromAnalysis([...updatedExisting, ...newChars])
-            ),
-          }
+          roles: replaceRolesByKind(
+            prev.roles || [],
+            'person',
+            buildPersonRolesFromAnalysis([...updatedExisting, ...newChars])
+          ),
         };
       });
       if (episodes.length > 0) setCurrentEpIndex(0);
       setActiveTab('lab');
-
-    } else if (type === 'understandingJson') {
-      try {
-        const payload = parseUnderstandingJSON(content);
-        setProjectData(prev => {
-          const episodeSummaryMap = new Map(
-            payload.context.episodeSummaries.map(summary => [summary.episodeId, summary.summary])
-          );
-          const updatedEpisodes = prev.episodes.map(ep => {
-            const summary = episodeSummaryMap.get(ep.id);
-            return summary ? { ...ep, summary } : ep;
-          });
-          return {
-            ...prev,
-            context: payload.context,
-            episodes: updatedEpisodes,
-        contextUsage: payload.contextUsage ?? prev.contextUsage,
-        phase1Usage: payload.phase1Usage ? { ...prev.phase1Usage, ...payload.phase1Usage } : prev.phase1Usage
-      };
-        });
-        alert('Successfully imported project archive data.');
-        setActiveTab('lab');
-      } catch (e: any) {
-        alert("Error importing project archive JSON: " + e.message);
-      }
-
-    } else if (type === 'globalStyleGuide') {
-      setProjectData(prev => ({ ...prev, globalStyleGuide: content }));
-    } else if (type === 'dramaGuide') {
-      setProjectData(prev => ({ ...prev, dramaGuide: content }));
-    }
-  };
-
-  const handleTryMe = async () => {
-    setProcessing(true, "Concocting a hilarious script with AI...");
-
-    try {
-      const dramaGuideText = projectData.dramaGuide || defaultDramaGuide;
-
-      const result = await ResponsesTextService.generateDemoScript(config.textConfig, dramaGuideText);
-
-      const episodes = parseScriptToEpisodes(result.script);
-
-      setProjectData(prev => ({
-        ...prev,
-        fileName: 'AI_Generated_Joke.txt',
-        rawScript: result.script,
-        episodes: episodes,
-        globalStyleGuide: result.styleGuide,
-        dramaGuide: prev.dramaGuide || dramaGuideText || '',
-        contextUsage: ResponsesTextService.addUsage(prev.contextUsage || { promptTokens: 0, responseTokens: 0, totalTokens: 0 }, result.usage),
-        stats: {
-          ...prev.stats,
-          context: {
-            total: prev.stats.context.total + 1,
-            success: prev.stats.context.success + 1,
-            error: prev.stats.context.error
-          }
-        }
-      }));
-
-      if (episodes.length > 0) setCurrentEpIndex(0);
-      setActiveTab('lab');
-      setStep(WorkflowStep.IDLE);
-      setProcessing(false);
-
-    } catch (e: any) {
-      console.error(e);
-      setProcessing(false);
-      alert("Failed to generate demo script: " + e.message);
-      updateStats('context', false);
-    }
-  };
-
-  // --- Workflow Logic ---
-
-  // === PHASE 1: KNOWLEDGE EXTRACTION WORKFLOW (Batched) ===
-
-  const startAnalysis = () => {
-    setAnalysisError(null);
-    setStep(WorkflowStep.SETUP_CONTEXT);
-    setAnalysisStep(AnalysisSubStep.PROJECT_SUMMARY);
-    processProjectSummary();
-  };
-
-  // Step 1: Project Summary
-  const processProjectSummary = async () => {
-    setAnalysisError(null);
-    setProcessing(true, "Step 1/6: Analyzing Global Project Arc...");
-    setActiveTab('lab');
-    try {
-      const result = await ResponsesTextService.generateProjectSummary(config.textConfig, projectData.rawScript, projectData.globalStyleGuide);
-
-      setProjectData(prev => ({
-        ...prev,
-        context: { ...prev.context, projectSummary: result.projectSummary },
-        contextUsage: ResponsesTextService.addUsage(prev.contextUsage || { promptTokens: 0, responseTokens: 0, totalTokens: 0 }, result.usage),
-        phase1Usage: { ...prev.phase1Usage, projectSummary: ResponsesTextService.addUsage(prev.phase1Usage.projectSummary, result.usage) }
-      }));
-
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-    } catch (e: any) {
-      setProcessing(false);
-      setAnalysisError({ step: AnalysisSubStep.PROJECT_SUMMARY, message: e.message || "Unknown error" });
-      alert("Project summary failed: " + e.message);
-      updateStats('context', false);
-    }
-  };
-
-  const confirmSummaryAndNext = () => {
-    setAnalysisError(null);
-    // Prepare batch for Episode Summaries
-    const epQueue = projectData.episodes.map(ep => ep.id);
-    setQueue(epQueue, epQueue.length);
-    setAnalysisStep(AnalysisSubStep.EPISODE_SUMMARIES);
-  };
-
-  // Step 2: Episode Summaries (Batched 1-by-1 for Detail)
-  useEffect(() => {
-    if (analysisStep === AnalysisSubStep.EPISODE_SUMMARIES && analysisQueue.length > 0 && !isProcessing) {
-      processNextEpisodeSummary();
-    }
-  }, [analysisStep, analysisQueue, isProcessing]);
-
-  const processNextEpisodeSummary = async () => {
-    const epId = analysisQueue[0];
-    const episode = projectData.episodes.find(e => e.id === epId);
-    if (!episode) {
-      shiftQueue();
-      return;
-    }
-
-    setAnalysisError(null);
-    setProcessing(true, `Step 2/6: Analyzing Episode ${epId} (${analysisTotal - analysisQueue.length + 1}/${analysisTotal})...`);
-
-    try {
-      const result = await ResponsesTextService.generateEpisodeSummary(
-        config.textConfig,
-        episode.title,
-        episode.content,
-        projectData.context,
-        epId
-      );
-
-      setProjectData(prev => {
-        const updatedEps = prev.episodes.map(e => e.id === epId ? { ...e, summary: result.summary } : e);
-        const updatedContextEpSummaries = [...prev.context.episodeSummaries, { episodeId: epId, summary: result.summary }];
-
-        return {
-          ...prev,
-          episodes: updatedEps,
-          context: { ...prev.context, episodeSummaries: updatedContextEpSummaries },
-          contextUsage: ResponsesTextService.addUsage(prev.contextUsage!, result.usage),
-          phase1Usage: { ...prev.phase1Usage, episodeSummaries: ResponsesTextService.addUsage(prev.phase1Usage.episodeSummaries, result.usage) }
-        };
-      });
-
-      shiftQueue();
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-    } catch (e: any) {
-      setProcessing(false);
-      const ignore = window.confirm(`Failed to summarize Episode ${epId}: ${e.message}. Skip this episode?`);
-      if (ignore) {
-        shiftQueue();
-        updateStats('context', false);
-        setAnalysisError(null);
-      } else {
-        setAnalysisError({ step: AnalysisSubStep.EPISODE_SUMMARIES, message: e.message || "Unknown error" });
-      }
-    }
-  };
-
-  const confirmEpSummariesAndNext = () => {
-    setAnalysisError(null);
-    setAnalysisStep(AnalysisSubStep.CHAR_IDENTIFICATION);
-    processCharacterList();
-  };
-
-  // Step 3: Character List
-  const processCharacterList = async () => {
-    setAnalysisError(null);
-    setProcessing(true, "Step 3/6: Building Character Roster from Parsed Script...");
-    try {
-      const stats = buildCharacterStats(projectData.episodes);
-      const existing = projectCharacters;
-      const existingByName = new Map(existing.map((c) => [c.name, c]));
-
-      const statNames = new Set(stats.keys());
-      let counter = 0;
-
-      // 1) Build a complete roster without deleting any existing characters.
-      const fromStats: Character[] = Array.from(stats.entries()).map(([name, stat]) => {
-        const existingChar = existingByName.get(name);
-        const appearanceCount = stat?.count ?? existingChar?.appearanceCount ?? 0;
-        const episodeUsage = formatEpisodeUsage(stat.episodeIds) || existingChar?.episodeUsage || "";
-        return {
-          id: existingChar?.id || `char-script-${Date.now()}-${counter++}`,
-          name,
-          role: existingChar?.role || "",
-          isMain: existingChar?.isMain ?? false,
-          bio: existingChar?.bio || "",
-          forms: ensureCharacterDefaultForms(name, existingChar?.forms || [], episodeUsage, true),
-          appearanceCount,
-          episodeUsage,
-          assetPriority: (existingChar?.assetPriority || (appearanceCount > 1 ? "medium" : "low")) as "low" | "medium" | "high",
-          archetype: existingChar?.archetype,
-          tags: existingChar?.tags,
-          voiceId: existingChar?.voiceId,
-          voicePrompt: existingChar?.voicePrompt,
-          previewAudioUrl: existingChar?.previewAudioUrl,
-        };
-      });
-
-      const fromExistingOnly: Character[] = existing
-        .filter((c) => c?.name && !statNames.has(c.name))
-        .map((c) => ({
-          ...c,
-          id: c.id || `char-existing-${Date.now()}-${c.name}`,
-          forms: ensureCharacterDefaultForms(c.name, c.forms || [], c.episodeUsage, true),
-        }));
-
-      const baseCharacters = [...fromStats, ...fromExistingOnly];
-
-      // 2) Normalize counts/usages and decide passersby vs candidates.
-      const countInfo = new Map<
-        string,
-        { count: number; countKnown: boolean; isPasserby: boolean; isCandidate: boolean }
-      >();
-
-      const normalizedCharacters = baseCharacters.map((char) => {
-        const stat = stats.get(char.name);
-        const statCount = typeof stat?.count === "number" ? stat.count : undefined;
-        const appearanceCount = typeof statCount === "number" ? statCount : (char.appearanceCount ?? 0);
-        const episodeUsage = (stat ? formatEpisodeUsage(stat.episodeIds) : "") || char.episodeUsage || "";
-        const countKnown = typeof statCount === "number" || typeof char.appearanceCount === "number";
-        const isPasserby = countKnown && appearanceCount <= 1;
-        const isCandidate = appearanceCount > 1;
-        countInfo.set(char.name, { count: appearanceCount, countKnown, isPasserby, isCandidate });
-        return {
-          ...char,
-          appearanceCount,
-          episodeUsage,
-          forms: ensureCharacterDefaultForms(char.name, char.forms || [], episodeUsage, true),
-          isCore: false,
-          isMain: isPasserby ? false : (isCandidate ? false : char.isMain),
-        };
-      });
-
-      // 3) Only send non-passerby candidates (count > 1) to AI for core classification + field filling.
-      const aiCandidates = normalizedCharacters.filter((c) => countInfo.get(c.name)?.isCandidate);
-
-      let briefResult: { characters: Character[]; usage: any } | null = null;
-      let briefMap = new Map<string, any>();
-
-      if (aiCandidates.length > 0) {
-        const seedsForAI = aiCandidates.map((c) => ({
-          name: c.name,
-          role: c.role,
-          episodeUsage: c.episodeUsage,
-          appearanceCount: c.appearanceCount,
-          forms: (c.forms || []).map((f) => ({
-            formName: f.formName,
-            episodeRange: f.episodeRange,
-          })),
-        }));
-
-        briefResult = await ResponsesTextService.generateCharacterRosterBriefs(
-          config.textConfig,
-          seedsForAI,
-          projectData.rawScript,
-          projectData.context.projectSummary,
-          projectData.globalStyleGuide
-        );
-        briefMap = new Map<string, any>((briefResult.characters || []).map((c) => [c.name, c]));
-      }
-
-      const aiTouched = new Set(aiCandidates.map((c) => c.name));
-      const finalCharacters = normalizedCharacters.map((seed) => {
-        const info = countInfo.get(seed.name);
-        if (!info) return seed;
-        if (info.isPasserby) {
-          return {
-            ...seed,
-            isMain: false,
-          };
-        }
-        if (!aiTouched.has(seed.name)) return seed;
-        const brief = briefMap.get(seed.name);
-        const isCore = !!brief?.isCore;
-
-        // Step 3 only classifies core, but does not fill core details.
-        if (isCore) {
-          return {
-            ...seed,
-            isMain: true,
-            isCore: true,
-          };
-        }
-
-        const mergedForms = mergeCharacterFormsByName(
-          seed.name,
-          seed.forms || [],
-          brief?.forms || [],
-          seed.episodeUsage,
-          { ensureDefault: true }
-        );
-        return {
-          ...seed,
-          isMain: false,
-          isCore: false,
-          role: brief?.role || seed.role,
-          bio: brief?.bio || seed.bio,
-          archetype: brief?.archetype || seed.archetype,
-          assetPriority: brief?.assetPriority || seed.assetPriority || "medium",
-          episodeUsage: seed.episodeUsage || brief?.episodeUsage,
-          tags: brief?.tags || seed.tags,
-          forms: mergedForms,
-        };
-      });
-
-      setProjectData(prev => ({
-        ...prev,
-        context: {
-          ...prev.context,
-          roles: replaceRolesByKind(prev.context.roles || [], 'person', buildPersonRolesFromAnalysis(finalCharacters)),
-        },
-        contextUsage: briefResult?.usage ? ResponsesTextService.addUsage(prev.contextUsage!, briefResult.usage) : prev.contextUsage,
-        phase1Usage: {
-          ...prev.phase1Usage,
-          charList: briefResult?.usage ? ResponsesTextService.addUsage(prev.phase1Usage.charList, briefResult.usage) : prev.phase1Usage.charList
-        }
-      }));
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-    } catch (e: any) {
-      setProcessing(false);
-      setAnalysisError({ step: AnalysisSubStep.CHAR_IDENTIFICATION, message: e.message || "Unknown error" });
-      alert("Character list generation failed: " + e.message);
-      updateStats('context', false);
-    }
-  };
-
-  const confirmCharListAndNext = () => {
-    setAnalysisError(null);
-    // Setup Queue for deep dive
-    const mainChars = projectCharacters.filter(c => c.isMain).map(c => c.name);
-    setQueue(mainChars, mainChars.length);
-    setAnalysisStep(AnalysisSubStep.CHAR_DEEP_DIVE);
-  };
-
-  // Step 4: Character Deep Dive
-  useEffect(() => {
-    if (analysisStep === AnalysisSubStep.CHAR_DEEP_DIVE && analysisQueue.length > 0 && !isProcessing) {
-      processNextCharacter();
-    }
-  }, [analysisStep, analysisQueue, isProcessing]);
-
-  const processNextCharacter = async () => {
-    const charName = analysisQueue[0];
-    setAnalysisError(null);
-    setProcessing(true, `Step 4/6: Deep Analysis for '${charName}' (${analysisTotal - analysisQueue.length + 1}/${analysisTotal})...`);
-
-    try {
-      const targetCharacter = projectCharacters.find((c) => c.name === charName);
-      if (!targetCharacter) {
-        shiftQueue();
-        setProcessing(false);
-        return;
-      }
-      const result = await ResponsesTextService.analyzeCharacterDepth(
-        config.textConfig,
-        {
-          name: targetCharacter.name,
-          role: targetCharacter.role,
-          episodeUsage: targetCharacter.episodeUsage,
-          forms: targetCharacter.forms,
-          bio: targetCharacter.bio,
-          archetype: targetCharacter.archetype,
-          tags: targetCharacter.tags,
-        },
-        projectData.rawScript,
-        projectData.context.projectSummary,
-        projectData.globalStyleGuide
-      );
-
-      setProjectData(prev => {
-        const updatedChars = projectRolesToCharacters(prev.context.roles || []).map(c =>
-          c.name === charName
-            ? {
-              ...c,
-              forms: mergeCharacterFormsByName(
-                c.name,
-                c.forms || [],
-                result.forms || [],
-                c.episodeUsage
-              ),
-              bio: result.bio || c.bio,
-              archetype: result.archetype || c.archetype,
-              episodeUsage: result.episodeUsage || c.episodeUsage,
-              tags: result.tags || c.tags
-            }
-            : c
-        );
-        return {
-          ...prev,
-          context: {
-            ...prev.context,
-            roles: replaceRolesByKind(prev.context.roles || [], 'person', buildPersonRolesFromAnalysis(updatedChars)),
-          },
-          contextUsage: ResponsesTextService.addUsage(prev.contextUsage!, result.usage),
-          phase1Usage: { ...prev.phase1Usage, charDeepDive: ResponsesTextService.addUsage(prev.phase1Usage.charDeepDive, result.usage) }
-        };
-      });
-
-      shiftQueue();
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-
-    } catch (e: any) {
-      console.error(e);
-      setProcessing(false);
-      const ignore = window.confirm(`Failed to analyze ${charName}: ${e.message}. Skip?`);
-      if (ignore) {
-        shiftQueue();
-        updateStats('context', false);
-        setAnalysisError(null);
-      } else {
-        setAnalysisError({ step: AnalysisSubStep.CHAR_DEEP_DIVE, message: e.message || "Unknown error" });
-      }
-    }
-  };
-
-  const confirmCharDepthAndNext = () => {
-    setAnalysisError(null);
-    setAnalysisStep(AnalysisSubStep.LOC_IDENTIFICATION);
-    processLocationList();
-  };
-
-  // Step 5: Location List
-  const processLocationList = async () => {
-    setAnalysisError(null);
-    setProcessing(true, "Step 5/6: Building Locations from Parsed Scenes...");
-    try {
-      const seeds = buildLocationSeedsFromScenes(projectData.episodes, projectLocations || []);
-      if (seeds.length === 0) {
-        setProcessing(false);
-        setAnalysisError({
-          step: AnalysisSubStep.LOC_IDENTIFICATION,
-          message: "解析结果未发现可用的场景/分区清单。",
-        });
-        return;
-      }
-      const countInfo = new Map<
-        string,
-        { count: number; countKnown: boolean; isPasserby: boolean; isCandidate: boolean }
-      >();
-
-      const normalizedSeeds = seeds.map((loc) => {
-        const countKnown = typeof loc.appearanceCount === "number";
-        const count = loc.appearanceCount ?? 0;
-        const isPasserby = countKnown && count <= 1;
-        const isCandidate = count > 1;
-        countInfo.set(loc.name, { count, countKnown, isPasserby, isCandidate });
-        const zones = ensureLocationDefaultZones(loc.name, loc.zones || [], loc.episodeUsage, true);
-        return {
-          ...loc,
-          zones,
-          type: isPasserby ? "secondary" : (isCandidate ? "secondary" : loc.type),
-        };
-      });
-
-      const aiCandidates = normalizedSeeds.filter((loc) => countInfo.get(loc.name)?.isCandidate);
-
-      let result: { locations: any[]; usage: any } | null = null;
-      let briefMap = new Map<string, any>();
-
-      if (aiCandidates.length > 0) {
-        const seedsForAI = aiCandidates.map((loc) => ({
-          name: loc.name,
-          episodeUsage: loc.episodeUsage,
-          appearanceCount: loc.appearanceCount,
-          zones: ensureLocationDefaultZones(loc.name, loc.zones || [], loc.episodeUsage, true).map((zone) => ({
-            name: zone.name,
-            episodeRange: zone.episodeRange,
-          })),
-        }));
-
-        result = await ResponsesTextService.generateLocationRosterBriefs(
-          config.textConfig,
-          seedsForAI,
-          projectData.rawScript,
-          projectData.context.projectSummary,
-          projectData.globalStyleGuide
-        );
-        briefMap = new Map((result.locations || []).map((loc) => [loc.name, loc]));
-      }
-
-      const finalLocations = normalizedSeeds.map((seed) => {
-        const info = countInfo.get(seed.name);
-        if (!info) return seed;
-        if (info.isPasserby) {
-          return {
-            ...seed,
-            type: "secondary",
-          };
-        }
-        if (!info.isCandidate) return seed;
-        const brief = briefMap.get(seed.name);
-        const isCore = brief?.type === "core";
-
-        // Step 5 only classifies core, but does not fill core details.
-        if (isCore) {
-          return {
-            ...seed,
-            type: "core",
-          };
-        }
-
-        const episodeUsage = seed.episodeUsage || brief?.episodeUsage;
-        const mergedZones = mergeLocationZonesByName(
-          seed.name,
-          seed.zones || [],
-          brief?.zones || [],
-          episodeUsage,
-          { ensureDefault: true }
-        );
-        return {
-          ...seed,
-          type: "secondary",
-          description: brief?.description || seed.description || "",
-          assetPriority: brief?.assetPriority || seed.assetPriority,
-          episodeUsage,
-          zones: mergedZones,
-        };
-      });
-
-      setProjectData(prev => ({
-        ...prev,
-        context: {
-          ...prev.context,
-          roles: replaceRolesByKind(prev.context.roles || [], 'scene', buildSceneRolesFromAnalysis(finalLocations)),
-        },
-        contextUsage: result?.usage ? ResponsesTextService.addUsage(prev.contextUsage!, result.usage) : prev.contextUsage,
-        phase1Usage: {
-          ...prev.phase1Usage,
-          locList: result?.usage ? ResponsesTextService.addUsage(prev.phase1Usage.locList, result.usage) : prev.phase1Usage.locList
-        }
-      }));
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-    } catch (e: any) {
-      setProcessing(false);
-      setAnalysisError({ step: AnalysisSubStep.LOC_IDENTIFICATION, message: e.message || "Unknown error" });
-      alert("Location mapping failed: " + e.message);
-      updateStats('context', false);
-    }
-  };
-
-  const confirmLocListAndNext = () => {
-    setAnalysisError(null);
-    const coreLocs = projectLocations.filter(l => l.type === 'core').map(l => l.name);
-    const priorityLocs = projectLocations
-      .filter((l) => l.assetPriority === "high" || l.assetPriority === "medium")
-      .map((l) => l.name);
-    const fallbackLocs = projectLocations.map((l) => l.name);
-    const queue = coreLocs.length ? coreLocs : (priorityLocs.length ? priorityLocs : fallbackLocs);
-    setQueue(queue, queue.length);
-    setAnalysisStep(AnalysisSubStep.LOC_DEEP_DIVE);
-  };
-
-  // Step 6: Location Deep Dive
-  useEffect(() => {
-    if (analysisStep === AnalysisSubStep.LOC_DEEP_DIVE && analysisQueue.length > 0 && !isProcessing) {
-      processNextLocation();
-    }
-  }, [analysisStep, analysisQueue, isProcessing]);
-
-  const processNextLocation = async () => {
-    const locName = analysisQueue[0];
-    setAnalysisError(null);
-    setProcessing(true, `Step 6/6: Visualizing '${locName}' (${analysisTotal - analysisQueue.length + 1}/${analysisTotal})...`);
-
-    try {
-      const targetLocation = projectLocations.find((l) => l.name === locName);
-      if (!targetLocation) {
-        shiftQueue();
-        setProcessing(false);
-        return;
-      }
-      const result = await ResponsesTextService.analyzeLocationDepth(
-        config.textConfig,
-        {
-          name: targetLocation.name,
-          description: targetLocation.description,
-          episodeUsage: targetLocation.episodeUsage,
-          zones: targetLocation.zones,
-        },
-        projectData.rawScript,
-        projectData.globalStyleGuide
-      );
-
-      setProjectData(prev => {
-        const updatedLocs = projectRolesToLocations(prev.context.roles || []).map(l =>
-          l.name === locName
-            ? {
-              ...l,
-              visuals: result.visuals || l.visuals,
-              zones: mergeLocationZonesByName(
-                l.name,
-                l.zones || [],
-                result.zones || [],
-                l.episodeUsage,
-                { ensureDefault: true }
-              ),
-            }
-            : l
-        );
-        return {
-          ...prev,
-          context: {
-            ...prev.context,
-            roles: replaceRolesByKind(prev.context.roles || [], 'scene', buildSceneRolesFromAnalysis(updatedLocs)),
-          },
-          contextUsage: ResponsesTextService.addUsage(prev.contextUsage!, result.usage),
-          phase1Usage: { ...prev.phase1Usage, locDeepDive: ResponsesTextService.addUsage(prev.phase1Usage.locDeepDive, result.usage) }
-        };
-      });
-
-      shiftQueue();
-      setProcessing(false);
-      setAnalysisError(null);
-      updateStats('context', true);
-
-    } catch (e: any) {
-      setProcessing(false);
-      const ignore = window.confirm(`Failed to visualize ${locName}: ${e.message}. Skip?`);
-      if (ignore) {
-        shiftQueue();
-        updateStats('context', false);
-        setAnalysisError(null);
-      } else {
-        setAnalysisError({ step: AnalysisSubStep.LOC_DEEP_DIVE, message: e.message || "Unknown error" });
-      }
-    }
-  };
-
-  const finishAnalysis = () => {
-    setAnalysisError(null);
-    setAnalysisStep(AnalysisSubStep.COMPLETE);
-    setStep(WorkflowStep.COMPLETED);
-    alert("Phase 1 Complete! Context is fully established.");
-  };
-
-  const retryAnalysisStep = () => {
-    if (isProcessing) return;
-    setAnalysisError(null);
-    switch (analysisStep) {
-      case AnalysisSubStep.PROJECT_SUMMARY:
-        processProjectSummary();
-        break;
-      case AnalysisSubStep.EPISODE_SUMMARIES:
-        if (analysisQueue.length > 0) processNextEpisodeSummary();
-        break;
-      case AnalysisSubStep.CHAR_IDENTIFICATION:
-        processCharacterList();
-        break;
-      case AnalysisSubStep.CHAR_DEEP_DIVE:
-        if (analysisQueue.length > 0) processNextCharacter();
-        break;
-      case AnalysisSubStep.LOC_IDENTIFICATION:
-        processLocationList();
-        break;
-      case AnalysisSubStep.LOC_DEEP_DIVE:
-        if (analysisQueue.length > 0) processNextLocation();
-        break;
-      default:
-        break;
     }
   };
 
@@ -1837,53 +1107,6 @@ const App: React.FC = () => {
     setIsSyncBannerDismissed(false);
   }, [syncBannerSignature]);
 
-  const handleExportUnderstandingJson = () => exportUnderstandingToJSON(projectData);
-
-  const handleToggleWorkflow = useCallback((anchorRect?: DOMRect) => {
-    setShowWorkflow((prev) => {
-      const next = !prev;
-      if (next) {
-        if (anchorRect) {
-          setWorkflowAnchor(anchorRect);
-        } else if (typeof document !== "undefined") {
-          const anchor = document.querySelector("[data-workflow-trigger]") as HTMLElement | null;
-          if (anchor) setWorkflowAnchor(anchor.getBoundingClientRect());
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!showWorkflow) return;
-    const updateAnchor = () => {
-      if (typeof document === "undefined") return;
-      const anchor = document.querySelector("[data-workflow-trigger]") as HTMLElement | null;
-      if (anchor) setWorkflowAnchor(anchor.getBoundingClientRect());
-    };
-    updateAnchor();
-    window.addEventListener("resize", updateAnchor);
-    window.addEventListener("scroll", updateAnchor, true);
-    return () => {
-      window.removeEventListener("resize", updateAnchor);
-      window.removeEventListener("scroll", updateAnchor, true);
-    };
-  }, [showWorkflow]);
-
-  const workflowPanelStyle = useMemo<React.CSSProperties>(() => {
-    if (!workflowAnchor || typeof window === "undefined") {
-      return { right: 16, bottom: 16 };
-    }
-    const panelWidth = 460;
-    const gap = 12;
-    const left = Math.min(
-      Math.max(workflowAnchor.left + workflowAnchor.width / 2 - panelWidth / 2, 12),
-      window.innerWidth - panelWidth - 12
-    );
-    const bottom = Math.max(16, window.innerHeight - workflowAnchor.top + gap);
-    return { left, bottom };
-  }, [workflowAnchor]);
-
   const handleLoadIdentityCard = useCallback((identityId: string) => {
     if (!identityId) return;
     navigateToAppView('main');
@@ -1931,9 +1154,6 @@ const App: React.FC = () => {
               onAssetLoad={handleAssetLoad}
               onOpenModule={handleOpenLabModule}
               syncIndicator={syncIndicator}
-              onExportUnderstandingJson={handleExportUnderstandingJson}
-              onToggleTheme={toggleTheme}
-              isDarkMode={isDarkMode}
               onOpenWorkspacePanel={() => openWorkspacePanel("assets:images")}
               onResetProject={handleResetProject}
               onSignOut={() => signOut()}
@@ -1947,8 +1167,6 @@ const App: React.FC = () => {
                 onSignOut: () => signOut(),
                 onUploadAvatar: handleAvatarUploadClick,
               }}
-              onTryMe={handleTryMe}
-              onToggleWorkflow={handleToggleWorkflow}
             />
           </div>
         );
@@ -1999,7 +1217,7 @@ const App: React.FC = () => {
   }
 
   if (appView === "landing") {
-    return <LandingPage isDarkMode={isDarkMode} onEnterApp={closeLandingPage} onTryMe={handleTryMe} />;
+    return <LandingPage isDarkMode={isDarkMode} onEnterApp={closeLandingPage} />;
   }
 
   return (
@@ -2047,40 +1265,6 @@ const App: React.FC = () => {
         )}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
       </AppShell>
-      {showWorkflow && (
-        <>
-          <div className="fixed inset-0 z-[55]" onClick={() => setShowWorkflow(false)} />
-          <div
-            className="fixed z-[60] pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300"
-            style={workflowPanelStyle}
-          >
-            <WorkflowCard
-              workflow={{
-                step,
-                analysisStep,
-                analysisQueueLength: analysisQueue.length,
-                analysisTotal,
-                isProcessing,
-                analysisError,
-                currentEpIndex,
-                episodes: projectData.episodes,
-                setCurrentEpIndex,
-                setStep,
-                setAnalysisStep,
-                onStartAnalysis: startAnalysis,
-                onConfirmSummaryNext: confirmSummaryAndNext,
-                onConfirmEpSummariesNext: confirmEpSummariesAndNext,
-                onConfirmCharListNext: confirmCharListAndNext,
-                onConfirmCharDepthNext: confirmCharDepthAndNext,
-                onConfirmLocListNext: confirmLocListAndNext,
-                onFinishAnalysis: finishAnalysis,
-                onRetryAnalysis: retryAnalysisStep,
-              }}
-              onClose={() => setShowWorkflow(false)}
-            />
-          </div>
-        </>
-      )}
     </>
   );
 };

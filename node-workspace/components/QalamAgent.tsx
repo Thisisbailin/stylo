@@ -22,6 +22,7 @@ import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
+import { projectRolesToCharacters, projectRolesToLocations } from "../../utils/projectRoles";
 
 type Props = {
   projectData: ProjectData;
@@ -540,7 +541,7 @@ export const QalamAgent: React.FC<Props> = ({
   const runtime = edgeRuntime;
   const mentionTargets = useMemo(() => {
     const targets: Array<{ kind: "character" | "location"; name: string; label: string; search: string; id?: string }> = [];
-    (projectData.context?.characters || []).forEach((c) => {
+    projectRolesToCharacters(projectData.roles || []).forEach((c) => {
       if (!c?.name) return;
       const aliases = [c.name, ...((c.aliases || []).map((item) => item.value))].filter(Boolean);
       const seen = new Set<string>();
@@ -557,7 +558,7 @@ export const QalamAgent: React.FC<Props> = ({
         });
       });
     });
-    (projectData.context?.locations || []).forEach((l) => {
+    projectRolesToLocations(projectData.roles || []).forEach((l) => {
       if (!l?.name) return;
       targets.push({
         kind: "location",
@@ -568,7 +569,7 @@ export const QalamAgent: React.FC<Props> = ({
       });
     });
     return targets;
-  }, [projectData.context?.characters, projectData.context?.locations]);
+  }, [projectData.roles]);
   const mentionIndex = useMemo(() => {
     const map = new Map<string, { kind: "character" | "location"; name: string; label: string; id?: string }>();
     mentionTargets.forEach((item) => {
@@ -1032,15 +1033,7 @@ export const QalamAgent: React.FC<Props> = ({
   };
 
   const tokenUsage = useMemo(() => {
-    const sumPhase = (obj: any): number => {
-      if (!obj) return 0;
-      return Object.keys(obj).reduce((acc: number, key) => acc + (obj[key]?.totalTokens || 0), 0);
-    };
-    return (
-      (projectData.contextUsage?.totalTokens || 0) +
-      sumPhase(projectData.phase1Usage) +
-      (projectData.phase5Usage?.totalTokens || 0)
-    );
+    return projectData.phase5Usage?.totalTokens || 0;
   }, [projectData]);
 
   const formatNumber = (n: number) => n.toLocaleString();

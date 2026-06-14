@@ -25,11 +25,9 @@ High-Level Architecture
 
 Data Model
 - Split project data into normalized tables (single-project per account):
-  - user_project_meta: fileName/rawScript/guides/context summaries/usage/stats + updated_at (global version)
-  - user_project_episodes: episode-level fields (no scenes/shots)
+  - user_project_meta: fileName/rawScript/guides/roles/designAssets/nodeFlow/nodeDefaults/usage/stats + updated_at (global version)
+  - user_project_episodes: episode-level fields (no scenes)
   - user_project_scenes: scene rows keyed by (episode_id, scene_id)
-  - user_project_shots: shot rows keyed by (episode_id, shot_id)
-  - user_project_characters / user_project_locations: context entities
 - Secrets remain separate (user_secrets).
 - Global OCC version uses user_project_meta.updated_at; any write bumps it.
 - Maintain an audit log:
@@ -44,7 +42,7 @@ Sync Protocol (Recommended)
 3. Apply locally
    - Client validates schema, applies changes, updates local version.
 4. Push phase
-   - Client sends per-entity deltas (meta/episodes/scenes/shots/characters/locations) with baseVersion.
+   - Client sends per-entity deltas (meta/episodes/scenes/roles) with baseVersion.
    - Server applies with compare-and-swap:
      - If baseVersion matches, accept -> new version.
      - If mismatch, return 409 conflict with latest version and server state.

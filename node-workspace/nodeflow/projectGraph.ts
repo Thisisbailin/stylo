@@ -80,7 +80,6 @@ export const buildProjectedSourceNodes = (projectData: ProjectData): ProjectGrap
         {
           episodeId: episode.id,
           content: trimText(episode.content),
-          summary: trimText(episode.summary),
           sceneIds: (episode.scenes || []).map((scene) => scene.id),
           sceneCount: (episode.scenes || []).length,
         },
@@ -103,19 +102,6 @@ export const buildProjectedSourceNodes = (projectData: ProjectData): ProjectGrap
         )
       );
     });
-  });
-
-  const guides = [
-    ["globalStyleGuide", "全局风格指南", projectData.globalStyleGuide],
-    ["dramaGuide", "戏剧指南", projectData.dramaGuide],
-  ] as const;
-
-  guides.forEach(([key, title, content]) => {
-    const text = trimText(content);
-    if (!text) return;
-    nodes.push(
-      createSourceNode(`source:guide:${key}`, "source.guide", title, { key, content: text }, `guide:${key}`)
-    );
   });
 
   return nodes;

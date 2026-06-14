@@ -1,22 +1,20 @@
-# 统一角色系统架构设计
+# 统一角色身份系统架构设计
 
 ## 1. 目标
-- 把“角色”提升为项目全局一级对象，成为剧本、理解、AIGC 定模、`@` 绑定、NodeFlow 工作流、Agent 工具的共同主键。
+- 把“角色”提升为项目全局一级对象，成为剧本、AIGC 定模、`@` 绑定、NodeFlow 工作流、Agent 工具的共同主键。
 - 让角色像“身份证”一样稳定存在：名字可以改、形态可以扩、资产可以追加，但角色身份本身不漂移。
 - 本期只设计角色系统；场景系统后续沿用同一思路扩展。
 
 ## 2. 当前系统现状
 
 ### 2.1 已有能力
-- 理解层已经有 `Character` 和 `CharacterForm` 两级结构，字段足够覆盖角色抽象描述、形态描述、定模清单、语音设计。
+- 身份系统已经有 `Character` 和 `CharacterForm` 两级结构，字段足够覆盖角色抽象描述、形态描述、定模清单、语音设计。
 - AIGC 流程已经明确要求为角色生成“形态级”定模需求：`hair/face/body/costume/accessories/props/materialPalette/poses/expressions/deliverables/genPrompts/voicePrompt` 等。
 - 设计资产层已经按 `form` 绑定定模图，`refId = ${character.id}|${form.id}`。
 - NodeFlow 已经能在文本节点、图片节点、视频节点里用 `@` 解析角色/形态，并将其映射到参考资产或 subjects。
 
 ### 2.2 当前断层
-- `Character.id` 仍然混用“稳定 id”和“角色名”。
-  - `identifyCharacters/generateCharacterBriefs/generateCharacterRosterBriefs` 里常直接把 `id` 设为 `name`。
-  - `edit_understanding_resource` 又会生成 `char-*` 风格 id。
+- `Character.id` 仍然混用“稳定 id”和“角色名”，需要统一收口到稳定身份主键。
 - `@` 绑定仍是“按可见文本模糊匹配”的轻绑定，而不是“按稳定身份引用”的强绑定。
   - 当前 `TextNodeData.atMentions` 只保存 `name/status/kind/characterId/formName` 等摘要，不保存文本区间、绑定版本、解析来源。
   - 文本中的 `@洛青舟` 本质仍靠名字匹配；改名、别名、同名角色都会造成歧义。
@@ -29,7 +27,7 @@
 
 ## 3. 现有代码里的真实约束
 
-### 3.1 理解模型约束
+### 3.1 角色模型约束
 来源：
 - `/Users/joe/Documents/APP/Qalam/types.ts`
 - `/Users/joe/Documents/APP/Qalam/services/responsesTextService.ts`
@@ -223,10 +221,9 @@ interface EntityBinding {
 - `ViduVideoGen` 的 `subjects` 应直接来自绑定后的角色形态，而不是从 prompt 文本再次猜。
 - `WanReferenceVideoGen` 的 project reference targets 应支持直接选择角色身份证，再由系统展开到默认形态或指定形态资产。
 
-### 7.3 对剧本和分镜
+### 7.3 对剧本
 - 剧本正文里的角色名字，未来可以升级为结构化角色绑定。
-- 分镜表里的人物字段、台词字段、调度字段，也应该可以解析角色绑定。
-- 这样 agent 在“读剧本 -> 生成分镜 -> 生成图/视频”链路里能保持同一角色身份。
+- 这样 agent 在“读剧本 -> 生成图/视频”链路里能保持同一角色身份。
 
 ## 8. NodeFlow 集成边界
 
@@ -258,10 +255,9 @@ interface EntityBinding {
 
 ## 9. Agent 工具的统一方向
 
-### 9.1 角色工具不再只写“理解档案”
+### 9.1 角色工具不再只写普通档案
 当前：
 - `read_project_resource(character_profile)`
-- `edit_understanding_resource(character_profile)`
 - `upsert_character`
 
 未来角色系统里，`character_profile` 应升级为“角色身份证”的一个视图，而不是全部本体。

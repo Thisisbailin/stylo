@@ -44,7 +44,7 @@ export const readProjectDataSchema = z.object({
   locationId: z.string().optional(),
   locationName: z.string().optional(),
   query: z.string().optional(),
-  queryScopes: z.array(z.enum(["script", "archives", "characters", "locations"])).optional(),
+  queryScopes: z.array(z.enum(["script", "characters", "locations"])).optional(),
   include: z.array(
     z.enum([
       "episodeContent",
@@ -52,9 +52,6 @@ export const readProjectDataSchema = z.object({
       "sceneList",
       "episodeCharacters",
       "matches",
-      "projectSummary",
-      "episodeSummary",
-      "episodeSummaries",
       "characters",
       "character",
       "locations",

@@ -9,12 +9,12 @@ const PROJECT_PATCH_KEYS = [
   "fileName",
   "rawScript",
   "episodes",
-  "context",
-  "contextUsage",
-  "phase1Usage",
+  "roles",
+  "designAssets",
+  "nodeFlow",
+  "nodeDefaults",
+  "scriptCanvas",
   "phase5Usage",
-  "dramaGuide",
-  "globalStyleGuide",
   "stats"
 ] as const;
 

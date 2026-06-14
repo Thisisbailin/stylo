@@ -14,23 +14,15 @@ export const validateProjectData = (data: unknown): ValidationResult => {
     return { ok: false, error: "rawScript is not a string" };
   }
 
-  const context = (data as Record<string, unknown>).context;
-  if (context !== undefined) {
-    if (!isRecord(context)) return { ok: false, error: "context is not an object" };
-    const projectSummary = (context as Record<string, unknown>).projectSummary;
-    if (projectSummary !== undefined && !isString(projectSummary)) {
-      return { ok: false, error: "context.projectSummary is not a string" };
-    }
-    const roles = (context as Record<string, unknown>).roles;
-    if (roles !== undefined) {
-      if (!Array.isArray(roles)) return { ok: false, error: "context.roles is not an array" };
-      for (let i = 0; i < roles.length; i += 1) {
-        const role = roles[i];
-        if (!isRecord(role)) return { ok: false, error: `context.roles[${i}] is not an object` };
-        if (!isString(role.name)) return { ok: false, error: `context.roles[${i}].name is not a string` };
-        if (!isString(role.mention)) return { ok: false, error: `context.roles[${i}].mention is not a string` };
-        if (!Array.isArray(role.portraits)) return { ok: false, error: `context.roles[${i}].portraits is not an array` };
-      }
+  const roles = (data as Record<string, unknown>).roles;
+  if (roles !== undefined) {
+    if (!Array.isArray(roles)) return { ok: false, error: "roles is not an array" };
+    for (let i = 0; i < roles.length; i += 1) {
+      const role = roles[i];
+      if (!isRecord(role)) return { ok: false, error: `roles[${i}] is not an object` };
+      if (!isString(role.name)) return { ok: false, error: `roles[${i}].name is not a string` };
+      if (!isString(role.mention)) return { ok: false, error: `roles[${i}].mention is not a string` };
+      if (!Array.isArray(role.portraits)) return { ok: false, error: `roles[${i}].portraits is not an array` };
     }
   }
 

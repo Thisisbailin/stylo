@@ -20,7 +20,6 @@ import { PromptCycle } from "./landing/PromptCycle";
 type Props = {
   isDarkMode?: boolean;
   onEnterApp: () => void;
-  onTryMe?: () => void | Promise<void>;
 };
 
 const capabilityBlocks = [
@@ -95,7 +94,7 @@ const eventRail = [
   "message_completed",
 ];
 
-export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, onTryMe }) => {
+export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp }) => {
   return (
     <div
       className={`${isDarkMode ? "dark" : ""} relative h-[100dvh] overflow-hidden bg-[#efe8dc] text-zinc-950 dark:bg-[#101311] dark:text-zinc-50`}
@@ -124,24 +123,6 @@ export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp, on
             <div className="hidden rounded-full border border-black/10 bg-white/55 px-4 py-2 text-zinc-700 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 md:block">
               Agent-first creative operating surface
             </div>
-            {onTryMe ? (
-              <button
-                type="button"
-                onClick={async () => {
-                  await onTryMe();
-                  onEnterApp();
-                }}
-                className="group hidden items-center gap-3 rounded-[1.15rem] border border-black/10 bg-white/70 px-4 py-2.5 text-left text-zinc-800 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.32)] backdrop-blur-xl transition hover:border-emerald-600/30 hover:bg-white/88 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-100 dark:hover:border-emerald-300/30 dark:hover:bg-white/[0.08] md:inline-flex"
-              >
-                <span className="flex h-9 w-9 items-center justify-center rounded-[0.95rem] border border-black/10 bg-black/[0.03] text-emerald-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-emerald-300">
-                  <Sparkle size={15} weight="duotone" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[12px] font-semibold tracking-[-0.02em]">从示例项目开始</span>
-                  <span className="mt-0.5 block text-[10px] text-zinc-500 dark:text-zinc-400">直接载入脚本、资产与节点结构</span>
-                </span>
-              </button>
-            ) : null}
             <MagneticButton
               type="button"
               onClick={onEnterApp}

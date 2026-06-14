@@ -5,11 +5,7 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
   fileName: '',
   rawScript: '',
   episodes: [],
-  context: {
-    projectSummary: '',
-    episodeSummaries: [],
-    roles: []
-  },
+  roles: [],
   designAssets: [],
   nodeFlow: null,
   nodeDefaults: {},
@@ -18,18 +14,6 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     images: [],
     textNodes: [],
     links: [],
-  },
-  dramaGuide: '',
-  globalStyleGuide: '', // Initialize as empty
-
-  contextUsage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-  phase1Usage: {
-    projectSummary: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-    episodeSummaries: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-    charList: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-    charDeepDive: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-    locList: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
-    locDeepDive: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
   },
   phase5Usage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
 

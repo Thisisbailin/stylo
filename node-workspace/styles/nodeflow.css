@@ -290,9 +290,7 @@
   width: calc(100% - var(--qalam-split-width, 0px));
 }
 
-:root.qalam-right-panel-open .qalam-bottom-controls,
-:root.qalam-right-panel-open .qalam-bottom-toolbar,
-:root.qalam-right-panel-open .qalam-bottom-assets {
+:root.qalam-right-panel-open .qalam-bottom-controls {
   opacity: 0 !important;
   pointer-events: none !important;
   transform: translateY(12px) !important;
@@ -2336,8 +2334,8 @@ body.qalam-resizing * {
   right: 0;
   left: 0;
   bottom: 16px;
-  z-index: auto;
-  width: min(1240px, calc(100% - 28px));
+  z-index: 45;
+  width: min(1180px, calc(100% - 96px));
   margin: 0 auto;
   pointer-events: none;
 }
@@ -2349,8 +2347,8 @@ body.qalam-resizing * {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  filter: drop-shadow(0 22px 30px rgba(15, 12, 9, 0.2));
+  gap: 18px;
+  filter: drop-shadow(0 18px 22px rgba(15, 12, 9, 0.22));
   animation: scriptFoundationPanelIn 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -2361,7 +2359,7 @@ body.qalam-resizing * {
   flex: 1 1 auto;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   transform-origin: center bottom;
   transition: opacity 220ms ease, transform 260ms cubic-bezier(0.16, 1, 0.3, 1), flex-basis 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -2385,7 +2383,7 @@ body.qalam-resizing * {
   pointer-events: none;
   position: fixed;
   inset: 0;
-  z-index: 3;
+  z-index: 2;
   height: 100vh;
   width: 100vw;
   overflow: visible;
@@ -2443,29 +2441,26 @@ body.qalam-resizing * {
   align-items: center;
   justify-content: center;
   overflow: visible;
-  border: 1px solid color-mix(in srgb, var(--foundation-color) 35%, var(--app-border));
-  border-radius: 15px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 18%, transparent), transparent 46%),
-    color-mix(in srgb, var(--foundation-color) 8%, var(--app-panel-muted));
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   padding: 0;
   color: var(--app-text-primary);
   cursor: pointer;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms ease, background 180ms ease, filter 180ms ease;
+  box-shadow: none;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), filter 180ms ease;
 }
 
 .script-foundation-head-block::after {
   content: "";
   position: absolute;
   top: 10px;
-  right: -4px;
+  right: -7px;
   bottom: 10px;
-  width: 1px;
-  background: color-mix(in srgb, var(--foundation-color) 42%, var(--app-border-strong));
-  opacity: 0.62;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foundation-color) 58%, var(--app-border-strong));
+  opacity: 0.72;
   pointer-events: none;
 }
 
@@ -2477,23 +2472,23 @@ body.qalam-resizing * {
   top: 6px;
   height: 3px;
   border-radius: 999px;
-  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--app-text-muted) 34%, transparent) 0 4px, transparent 4px 12px);
-  opacity: 0.26;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--app-text-muted) 42%, transparent) 0 4px, transparent 4px 12px);
+  opacity: 0.34;
   pointer-events: none;
 }
 
 .script-foundation-head-icon {
   display: block;
-  width: 36px;
-  height: 66px;
+  width: 46px;
+  height: 78px;
   overflow: visible;
   transform: translateX(-2px);
   transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease;
 }
 
 .script-foundation-head-icon__fill {
-  fill: color-mix(in srgb, var(--foundation-color) 12%, var(--app-panel-strong));
-  opacity: 0.5;
+  fill: color-mix(in srgb, var(--foundation-color) 28%, var(--app-panel-strong));
+  opacity: 0.96;
 }
 
 .script-foundation-head-icon__line,
@@ -2503,27 +2498,23 @@ body.qalam-resizing * {
 
 .script-foundation-head-icon__line {
   fill: none;
-  stroke: color-mix(in srgb, var(--foundation-color) 54%, var(--app-text-secondary));
+  stroke: color-mix(in srgb, var(--foundation-color) 54%, var(--app-text-primary));
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.2;
-  opacity: 0.72;
+  opacity: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .script-foundation-head-icon__perfs {
-  fill: color-mix(in srgb, var(--foundation-color) 54%, var(--app-text-secondary));
-  opacity: 0.52;
+  fill: color-mix(in srgb, var(--foundation-color) 42%, var(--app-bg));
+  opacity: 0.82;
   transition: fill 180ms ease, opacity 180ms ease;
 }
 
 .script-foundation-head-block:hover {
   transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--foundation-color) 58%, var(--app-border-strong));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 25%, transparent), transparent 48%),
-    color-mix(in srgb, var(--foundation-color) 12%, var(--app-panel-muted));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11), 0 16px 24px rgba(15, 12, 9, 0.14);
+  filter: drop-shadow(0 12px 16px rgba(15, 12, 9, 0.2));
 }
 
 .script-foundation-head-block:hover .script-foundation-head-icon {
@@ -2531,8 +2522,8 @@ body.qalam-resizing * {
 }
 
 .script-foundation-head-block:hover .script-foundation-head-icon__fill {
-  fill: color-mix(in srgb, var(--foundation-color) 18%, var(--app-panel-strong));
-  opacity: 0.66;
+  fill: color-mix(in srgb, var(--foundation-color) 34%, var(--app-panel-strong));
+  opacity: 1;
 }
 
 .script-foundation-head-block:hover .script-foundation-head-icon__line {
@@ -2548,9 +2539,9 @@ body.qalam-resizing * {
   display: flex;
   min-width: 0;
   min-height: 78px;
-  flex: 1 1 auto;
-  gap: 7px;
-  overflow-x: visible;
+  flex: 1 1 0;
+  gap: 8px;
+  overflow-x: clip;
   overflow-y: visible;
   padding-bottom: 0;
   scrollbar-width: none;
@@ -2564,19 +2555,17 @@ body.qalam-resizing * {
   --foundation-color: var(--app-accent);
   position: relative;
   min-width: 70px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   cursor: grab;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--foundation-color) 35%, var(--app-border));
   border-radius: 14px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 18%, transparent), transparent 44%),
-    color-mix(in srgb, var(--foundation-color) 8%, var(--app-panel-muted));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 22%, transparent), transparent 46%),
+    color-mix(in srgb, var(--foundation-color) 16%, var(--app-panel-strong));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 18px rgba(15, 12, 9, 0.08);
   color: var(--app-text-primary);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease, filter 220ms ease, opacity 220ms ease;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   animation: scriptFoundationBlockIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(var(--axis-index, 0) * 28ms);
 }
@@ -2714,20 +2703,19 @@ body.qalam-resizing * {
   --foundation-color: var(--app-accent);
   position: relative;
   display: flex;
-  width: 42px;
+  width: 44px;
   min-height: 78px;
   flex: 0 0 auto;
   align-items: stretch;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--foundation-color) 35%, var(--app-border));
-  border-radius: 15px;
+  border: 1px solid color-mix(in srgb, var(--foundation-color) 42%, var(--app-border-strong));
+  border-radius: 999px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 15%, transparent), transparent 46%),
-    color-mix(in srgb, var(--foundation-color) 8%, var(--app-panel-muted));
+    linear-gradient(135deg, color-mix(in srgb, var(--foundation-color) 18%, transparent), transparent 48%),
+    color-mix(in srgb, var(--foundation-color) 14%, var(--app-panel-strong));
   color: var(--app-text-primary);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 10px 18px rgba(15, 12, 9, 0.1);
   animation: scriptFoundationTailIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transition: width 260ms cubic-bezier(0.16, 1, 0.3, 1), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
@@ -2747,20 +2735,21 @@ body.qalam-resizing * {
   content: "";
   position: absolute;
   top: 6px;
-  right: 7px;
-  left: 7px;
+  right: 10px;
+  left: 10px;
   height: 3px;
   border-radius: 999px;
   background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--app-text-muted) 30%, transparent) 0 4px, transparent 4px 12px);
-  opacity: 0.22;
+  opacity: 0.28;
   pointer-events: none;
 }
 
 .script-foundation-tail.is-agent-open {
-  width: min(392px, calc(100vw - 120px));
+  width: min(560px, calc(100vw - 144px));
   justify-content: stretch;
   border-color: color-mix(in srgb, var(--foundation-color) 48%, var(--app-border-strong));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 26px rgba(15, 12, 9, 0.16);
+  border-radius: 30px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 16px 26px rgba(15, 12, 9, 0.16);
 }
 
 .script-foundation-tail-labels {
@@ -2782,9 +2771,9 @@ body.qalam-resizing * {
   height: 27px;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--app-border) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--foundation-color) 28%, var(--app-border-strong));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--app-panel-muted) 68%, transparent);
+  background: color-mix(in srgb, var(--foundation-color) 12%, var(--app-panel));
   color: color-mix(in srgb, var(--app-text-secondary) 84%, var(--foundation-color));
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
@@ -2802,9 +2791,9 @@ body.qalam-resizing * {
   z-index: 1;
   display: flex;
   width: 100%;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 11px 10px 12px;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 14px 12px 18px;
   animation: scriptFoundationTailComposerIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -2820,20 +2809,19 @@ body.qalam-resizing * {
 }
 
 .script-foundation-tail-composer textarea {
-  min-height: 48px;
-  max-height: 64px;
+  min-height: 44px;
+  max-height: 118px;
   flex: 1 1 auto;
   resize: none;
   border: 0;
   background: transparent;
   color: var(--app-text-primary);
-  font-size: 12px;
-  font-weight: 560;
-  line-height: 1.55;
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 1.6;
   outline: none;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--app-panel-muted) 56%, transparent);
-  padding: 9px 10px 7px;
+  border-radius: 18px;
+  padding: 9px 0 6px;
 }
 
 .script-foundation-tail-composer textarea::placeholder {
@@ -2841,19 +2829,31 @@ body.qalam-resizing * {
 }
 
 .script-foundation-tail-send {
-  width: 31px;
-  height: 31px;
+  width: 38px;
+  height: 38px;
   flex: 0 0 auto;
-  background: color-mix(in srgb, var(--foundation-color) 20%, var(--app-panel-muted));
-  color: color-mix(in srgb, var(--app-text-primary) 84%, var(--foundation-color));
+  border-color: color-mix(in srgb, var(--foundation-color) 30%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--foundation-color) 52%, var(--app-panel-muted));
+  color: color-mix(in srgb, var(--app-bg) 92%, var(--app-text-primary));
+}
+
+.script-foundation-tail-send.has-input {
+  border-color: color-mix(in srgb, var(--app-accent-strong) 62%, var(--app-border-strong));
+  background: var(--app-accent-strong);
+  color: color-mix(in srgb, var(--app-bg) 92%, var(--app-text-primary));
+}
+
+.script-foundation-tail-send.is-sending {
+  border-color: color-mix(in srgb, var(--app-accent) 58%, var(--app-border-strong));
+  background: color-mix(in srgb, var(--app-accent) 78%, transparent);
 }
 
 .script-foundation-resize {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 2;
-  width: 10px;
+  z-index: 4;
+  width: 16px;
   border: 0;
   background: transparent;
   cursor: ew-resize;
@@ -2862,26 +2862,23 @@ body.qalam-resizing * {
 .script-foundation-resize::after {
   content: "";
   position: absolute;
-  top: 20px;
-  bottom: 20px;
-  left: 4px;
+  top: 14px;
+  bottom: 14px;
+  left: 7px;
   width: 2px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--foundation-color) 56%, transparent);
-  opacity: 0;
-  transition: opacity 160ms ease;
+  opacity: 0.42;
+  transition: opacity 160ms ease, width 160ms ease, background 160ms ease;
 }
 
 .script-foundation-resize:hover::after {
   opacity: 1;
-}
-
-.script-foundation-resize--left {
-  left: 0;
+  width: 3px;
 }
 
 .script-foundation-resize--right {
-  right: 0;
+  right: -12px;
 }
 
 .script-foundation-field {
@@ -3264,69 +3261,193 @@ body.qalam-resizing * {
 .script-foundation-action-popover {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border-radius: 999px;
-  padding: 6px;
+  padding: 5px;
+  width: max-content;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.script-foundation-action-popover.script-foundation-floating-menu {
+  padding: 5px;
 }
 
 .script-foundation-node-popover {
-  display: grid;
-  width: 238px;
-  gap: 6px;
-  border-radius: 20px;
-  padding: 8px;
+  width: min(620px, calc(100vw - 24px));
+  border-radius: 24px;
+  padding: 12px;
 }
 
-.script-foundation-node-popover button {
+.script-foundation-node-palette {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.script-foundation-node-palette__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
+  padding: 2px 3px 11px;
+}
+
+.script-foundation-node-palette__head span {
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+}
+
+.script-foundation-node-palette__head strong {
+  color: var(--app-text-muted);
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 680;
+  letter-spacing: 0.05em;
+  text-align: right;
+}
+
+.script-foundation-node-palette__groups {
+  display: grid;
+  max-height: min(58dvh, 520px);
+  gap: 13px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.script-foundation-node-group {
+  display: grid;
+  gap: 7px;
+}
+
+.script-foundation-node-group p {
+  margin: 0;
+  color: color-mix(in srgb, var(--app-text-muted) 78%, var(--app-accent));
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+}
+
+.script-foundation-node-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.script-foundation-node-card {
+  --node-card-color: var(--app-accent);
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
-  border: 1px solid transparent;
-  border-radius: 15px;
-  background: transparent;
-  padding: 8px;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--node-card-color) 16%, var(--app-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--node-card-color) 10%, transparent), transparent 52%),
+    color-mix(in srgb, var(--app-panel-muted) 76%, transparent);
+  padding: 10px;
   color: var(--app-text-primary);
   text-align: left;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: transform 170ms ease, border-color 170ms ease, background 170ms ease;
 }
 
-.script-foundation-node-popover button:hover {
+.script-foundation-node-card:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--app-accent) 32%, var(--app-border-strong));
-  background: color-mix(in srgb, var(--app-panel-soft) 76%, transparent);
+  border-color: color-mix(in srgb, var(--node-card-color) 42%, var(--app-border-strong));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--node-card-color) 15%, transparent), transparent 58%),
+    color-mix(in srgb, var(--app-panel-soft) 82%, transparent);
 }
 
-.script-foundation-node-popover svg {
+.script-foundation-node-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.script-foundation-node-card.is-amber {
+  --node-card-color: #d8a72f;
+}
+
+.script-foundation-node-card.is-blue {
+  --node-card-color: #4fa6e8;
+}
+
+.script-foundation-node-card.is-moss {
+  --node-card-color: #6fcb8b;
+}
+
+.script-foundation-node-card.is-rose {
+  --node-card-color: #e17b8f;
+}
+
+.script-foundation-node-card.is-slate {
+  --node-card-color: #a8b0bb;
+}
+
+.script-foundation-node-card__icon {
   display: inline-flex;
-  width: 32px;
-  height: 32px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 62%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--app-panel-muted) 72%, transparent);
-  padding: 7px;
-  color: var(--app-text-secondary);
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--node-card-color) 24%, var(--app-border));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--node-card-color) 13%, var(--app-panel-muted));
+  color: color-mix(in srgb, var(--node-card-color) 74%, var(--app-text-primary));
 }
 
-.script-foundation-node-popover span {
+.script-foundation-node-card__body {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
-.script-foundation-node-popover strong {
+.script-foundation-node-card__meta {
+  color: color-mix(in srgb, var(--node-card-color) 72%, var(--app-text-muted));
+  font-family: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 8px;
+  font-weight: 760;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.script-foundation-node-card strong {
+  overflow: hidden;
   color: var(--app-text-primary);
   font-size: 12px;
   font-weight: 760;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.script-foundation-node-popover small {
+.script-foundation-node-card small {
   overflow: hidden;
   color: var(--app-text-muted);
   font-size: 10px;
   font-weight: 560;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .script-foundation-node-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .script-foundation-node-palette__head {
+    display: grid;
+    gap: 5px;
+  }
+
+  .script-foundation-node-palette__head strong {
+    text-align: left;
+  }
 }
 
 .script-foundation-color-list {
@@ -3410,7 +3531,7 @@ body.qalam-resizing * {
 
 @media (max-width: 1080px) {
   .script-foundation-dock {
-    width: min(880px, calc(100% - 24px));
+    width: min(880px, calc(100% - 56px));
   }
 
   .script-foundation-block-menu-wrap,
@@ -3447,11 +3568,11 @@ body.qalam-resizing * {
 @media (max-width: 760px) {
   .script-foundation-dock {
     bottom: 10px;
-    width: calc(100% - 16px);
+    width: calc(100% - 24px);
   }
 
   .script-foundation-filmstrip {
-    gap: 8px;
+    gap: 10px;
   }
 
   .script-foundation-axis-body {
@@ -3459,13 +3580,13 @@ body.qalam-resizing * {
   }
 
   .script-foundation-head-block {
-    width: 48px;
+    width: 44px;
     min-height: 74px;
   }
 
   .script-foundation-head-icon {
-    width: 34px;
-    height: 62px;
+    width: 40px;
+    height: 70px;
   }
 
   .script-foundation-track {
@@ -3488,12 +3609,12 @@ body.qalam-resizing * {
   }
 
   .script-foundation-tail {
-    width: 40px;
+    width: 42px;
     min-height: 74px;
   }
 
   .script-foundation-tail.is-agent-open {
-    width: min(360px, calc(100vw - 96px));
+    width: min(340px, calc(100vw - 72px));
   }
 
   .script-foundation-action-row {
@@ -4359,6 +4480,54 @@ body.qalam-resizing * {
 
 .theme-pattern-preview {
   background-repeat: repeat;
+}
+
+.theme-account-swatch {
+  height: 24px;
+  border: 1px solid var(--app-border);
+  border-radius: 9px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.theme-account-swatch:hover,
+.theme-account-swatch[data-active="true"] {
+  transform: translateY(-1px);
+  border-color: var(--app-border-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.theme-account-pattern {
+  display: flex;
+  min-height: 31px;
+  align-items: end;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background-repeat: repeat;
+  color: var(--app-text-primary);
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.theme-account-pattern span {
+  width: 100%;
+  background: color-mix(in srgb, var(--app-panel-strong) 78%, transparent);
+  padding: 3px 5px;
+  color: var(--app-text-secondary);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.theme-account-pattern:hover,
+.theme-account-pattern[data-active="true"] {
+  transform: translateY(-1px);
+  border-color: var(--app-border-strong);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.theme-account-pattern[data-active="true"] span {
+  color: var(--app-text-primary);
 }
 
 .qalam-surface {

@@ -1,4 +1,4 @@
-import type { DesignAssetItem, ProjectContext, ProjectRoleIdentity, ProjectRoleTone } from "../types";
+import type { DesignAssetItem, ProjectRoleIdentity, ProjectRoleTone } from "../types";
 import { getPrimaryPortrait, resolveRoleAsset } from "./projectRoles";
 
 export type ProjectIdentityTone = ProjectRoleTone;
@@ -9,8 +9,8 @@ export type ProjectIdentity = ProjectRoleIdentity & {
   primaryPortraitUrl?: string;
 };
 
-export const buildProjectIdentities = (context: ProjectContext, designAssets: DesignAssetItem[]) =>
-  (context.roles || [])
+export const buildProjectIdentities = (roles: ProjectRoleIdentity[], designAssets: DesignAssetItem[]) =>
+  (roles || [])
     .map((role) => ({
       ...role,
       primaryPortraitUrl:

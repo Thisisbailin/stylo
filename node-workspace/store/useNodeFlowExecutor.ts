@@ -1501,7 +1501,6 @@ export const useNodeFlowExecutor = () => {
         const fallbackResolution = data.quality === "high" ? "1080P" : "720P";
         const resolution = data.resolution || fallbackResolution;
         params.size = mapWanVideoSize(data.aspectRatio, resolution);
-        params.shotType = data.shotType;
         params.watermark = data.watermark;
         params.seed = data.seed;
         if (data.audioEnabled && data.audioUrl) {
@@ -1511,8 +1510,8 @@ export const useNodeFlowExecutor = () => {
       }
       let promptForRequest = prompt;
       if (isWanReferenceVideoNode) {
-        const latestProjectRefs = buildProjectReferenceIndex(store.nodeFlowContext.context.roles || [], store.nodeFlowContext.designAssets || []);
-        const roles = store.nodeFlowContext.context.roles || [];
+        const roles = store.nodeFlowContext.roles || [];
+        const latestProjectRefs = buildProjectReferenceIndex(roles, store.nodeFlowContext.designAssets || []);
         const { refs: promptDrivenRefs, replacements: promptDrivenReplacements } = resolvePromptProjectReferences(
           prompt,
           atMentions as MentionData[] | undefined,

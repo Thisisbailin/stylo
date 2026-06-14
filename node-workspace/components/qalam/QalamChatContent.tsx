@@ -636,7 +636,6 @@ const renderToolOutput = (tool: ToolPayload) => {
   const matches = Array.isArray(data.matches) ? data.matches : [];
   const sceneList = Array.isArray(data.sceneList) ? data.sceneList : [];
   const episodeCharacters = Array.isArray(data.episodeCharacters) ? data.episodeCharacters : [];
-  const episodeSummaries = Array.isArray(data.episodeSummaries) ? data.episodeSummaries : [];
   const characterList = Array.isArray(data.characters) ? data.characters : [];
   const locationList = Array.isArray(data.locations) ? data.locations : [];
 
@@ -701,37 +700,6 @@ const renderToolOutput = (tool: ToolPayload) => {
       renderSection(
         "Episode Content",
         <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{data.episodeContent}</div>
-      )
-    );
-  }
-  if (data.projectSummary) {
-    blocks.push(
-      renderSection(
-        "Project Summary",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{data.projectSummary}</div>
-      )
-    );
-  }
-  if (data.episodeSummary) {
-    blocks.push(
-      renderSection(
-        "Episode Summary",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{data.episodeSummary}</div>
-      )
-    );
-  }
-  if (episodeSummaries.length > 0) {
-    blocks.push(
-      renderSection(
-        "Episode Summaries",
-        <ul className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          {episodeSummaries.map((s: any, idx: number) => (
-            <li key={`${idx}-${s.episodeId}`}>
-              <span className="text-[11px] text-[var(--app-text-muted)]">Ep {s.episodeId}: </span>
-              {s.summary}
-            </li>
-          ))}
-        </ul>
       )
     );
   }

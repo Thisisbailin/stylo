@@ -1,5 +1,12 @@
 import type { Episode, ProjectData, Scene } from "../../../types";
 import { createStableId, ensureStableId, ensureTypedStableId } from "../../../utils/id";
+import {
+  buildPersonRolesFromAnalysis,
+  buildSceneRolesFromAnalysis,
+  projectRolesToCharacters,
+  projectRolesToLocations,
+  replaceRolesByKind,
+} from "../../../utils/projectRoles";
 
 type Character = {
   id: string;
@@ -384,7 +391,7 @@ export const upsertCharacter = (prev: ProjectData, args: any): UpsertResult => {
   const formsMode = args?.formsMode === "replace" ? "replace" : "merge";
   const formsToDelete = Array.isArray(args?.formsToDelete) ? args.formsToDelete : [];
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  const chars = [...((((prev.context as any)?.characters) || []) as Character[])];
+  const chars = [...(projectRolesToCharacters(prev.roles || []) as Character[])];
   let matchIndex = -1;
   if (input.id) {
     matchIndex = chars.findIndex((c) => c.id === input.id);
@@ -508,7 +515,7 @@ export const upsertCharacter = (prev: ProjectData, args: any): UpsertResult => {
   return {
     next: {
       ...prev,
-      context: { ...prev.context, characters: updatedChars } as any,
+      roles: replaceRolesByKind(prev.roles || [], "person", buildPersonRolesFromAnalysis(updatedChars as any)),
       designAssets,
     },
     result: {
@@ -711,18 +718,12 @@ const buildSceneListItem = (scene: Scene, index: number, previewChars: number) =
   contentPreview: clipText(scene.content || "", previewChars),
 });
 
-const findEpisodeSummary = (data: ProjectData, episodeId?: number) => {
-  if (!episodeId) return "";
-  return data.context?.episodeSummaries?.find((entry) => entry.episodeId === episodeId)?.summary || "";
-};
-
 export const getEpisodeScript = (data: ProjectData, args: any): ReadResult => {
   const episodes = data.episodes || [];
   const { episodeId, episodeTitle, episode } = resolveEpisodeSelection(episodes, args);
   const maxChars = Math.max(400, Math.min(12000, toNumber(args?.maxChars) || 4000));
   const maxScenes = Math.max(1, Math.min(200, toNumber(args?.maxScenes) || 50));
   const includeSceneList = args?.includeSceneList !== false;
-  const includeEpisodeSummary = args?.includeEpisodeSummary !== false;
   const includeCharacters = args?.includeCharacters !== false;
   const previewChars = Math.max(80, Math.min(320, Math.floor(maxChars / 10)));
 
@@ -759,13 +760,6 @@ export const getEpisodeScript = (data: ProjectData, args: any): ReadResult => {
     result.data.episodeCharacters = (episode.characters || []).slice(0, 50);
   }
 
-  if (includeEpisodeSummary) {
-    const summary = findEpisodeSummary(data, episode.id);
-    if (summary) {
-      result.data.episodeSummary = clipText(summary, Math.min(maxChars, 2400));
-    }
-  }
-
   if (includeSceneList) {
     const scenes = (episode.scenes || []).slice(0, maxScenes);
     result.data.sceneList = scenes.map((scene, index) => buildSceneListItem(scene, index, previewChars));
@@ -782,7 +776,6 @@ export const getSceneScript = (data: ProjectData, args: any): ReadResult => {
   const episodeSelection = resolveEpisodeSelection(episodes, args);
   const { episode, scene, sceneId, sceneIndex } = resolveSceneSelection(episodes, args, episodeSelection.episode);
   const maxChars = Math.max(200, Math.min(8000, toNumber(args?.maxChars) || 2400));
-  const includeEpisodeSummary = args?.includeEpisodeSummary !== false;
   const includeCharacters = args?.includeCharacters !== false;
   const includeSceneMetadata = args?.includeSceneMetadata !== false;
 
@@ -845,13 +838,6 @@ export const getSceneScript = (data: ProjectData, args: any): ReadResult => {
 
   if (includeCharacters) {
     result.data.episodeCharacters = (episode.characters || []).slice(0, 50);
-  }
-
-  if (includeEpisodeSummary) {
-    const summary = findEpisodeSummary(data, episode.id);
-    if (summary) {
-      result.data.episodeSummary = clipText(summary, Math.min(maxChars, 2000));
-    }
   }
 
   return { result };
@@ -969,7 +955,7 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
   const includeList = Array.isArray(args?.include) ? args.include : [];
   const include = new Set(includeList.map((item: any) => String(item)));
   const queryScopes = new Set(
-    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations", "archives"]).map(
+    (Array.isArray(args?.queryScopes) ? args.queryScopes : ["script", "characters", "locations"]).map(
       (item: any) => String(item)
     )
   );
@@ -977,21 +963,17 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
   if (!include.size) {
     if (sceneId || sceneIndex) {
       include.add("sceneContent");
-      include.add("episodeSummary");
-      include.add("projectSummary");
     } else if (episodeId || episodeTitle) {
       include.add("episodeContent");
       include.add("sceneList");
-      include.add("episodeSummary");
     } else if (characterId || characterName) {
       include.add("character");
     } else if (locationId || locationName) {
       include.add("location");
     } else if (query) {
       include.add("matches");
-      include.add("projectSummary");
     } else {
-      include.add("projectSummary");
+      include.add("rawScript");
     }
   }
 
@@ -1022,8 +1004,8 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
     }
   }
 
-  const characters = (((data.context as any)?.characters) || []) as Character[];
-  const locations = (((data.context as any)?.locations) || []) as Location[];
+  const characters = projectRolesToCharacters(data.roles || []) as Character[];
+  const locations = projectRolesToLocations(data.roles || []) as Location[];
   let character = undefined as Character | undefined;
   let location = undefined as Location | undefined;
   if (characterId) {
@@ -1079,22 +1061,6 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
     result.data.episodeCharacters = (episode.characters || []).slice(0, maxItems);
   }
 
-  if (include.has("projectSummary") && data.context?.projectSummary) {
-    result.data.projectSummary = clipText(data.context.projectSummary, maxChars);
-  }
-  if (include.has("episodeSummary") && episode && data.context?.episodeSummaries) {
-    const summary = data.context.episodeSummaries.find((s) => s.episodeId === episode.id);
-    if (summary?.summary) {
-      result.data.episodeSummary = clipText(summary.summary, maxChars);
-    }
-  }
-  if (include.has("episodeSummaries") && data.context?.episodeSummaries) {
-    result.data.episodeSummaries = data.context.episodeSummaries.slice(0, maxItems).map((s) => ({
-      episodeId: s.episodeId,
-      summary: clipText(s.summary || "", maxChars),
-    }));
-  }
-
   if (include.has("characters") && characters.length) {
     result.data.characters = summarizeCharacters(characters, maxChars, maxItems);
   }
@@ -1144,28 +1110,6 @@ export const readProjectData = (data: ProjectData, args: any): ReadResult => {
               sceneId: sc.id,
               sceneTitle: sc.title,
               snippet: buildSnippet(scContent || scTitle, query, snippetRadius),
-            });
-          }
-        }
-      }
-    }
-
-    if (matches.length < maxMatches && queryScopes.has("archives")) {
-      const projectSummary = data.context?.projectSummary || "";
-      if (projectSummary && toLower(projectSummary).includes(lowerQuery)) {
-        matches.push({
-          scope: "projectSummary",
-          snippet: buildSnippet(projectSummary, query, snippetRadius),
-        });
-      }
-      if (matches.length < maxMatches) {
-        for (const summary of data.context?.episodeSummaries || []) {
-          if (matches.length >= maxMatches) break;
-          if (summary.summary && toLower(summary.summary).includes(lowerQuery)) {
-            matches.push({
-              scope: "episodeSummary",
-              episodeId: summary.episodeId,
-              snippet: buildSnippet(summary.summary, query, snippetRadius),
             });
           }
         }
@@ -1231,7 +1175,7 @@ export const upsertLocation = (prev: ProjectData, args: any): UpsertResult => {
   const zonesMode = args?.zonesMode === "replace" ? "replace" : "merge";
   const zonesToDelete = Array.isArray(args?.zonesToDelete) ? args.zonesToDelete : [];
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  const locations = [...((((prev.context as any)?.locations) || []) as Location[])];
+  const locations = [...(projectRolesToLocations(prev.roles || []) as Location[])];
   let matchIndex = -1;
   if (input.id) {
     matchIndex = locations.findIndex((l) => l.id === input.id);
@@ -1297,7 +1241,7 @@ export const upsertLocation = (prev: ProjectData, args: any): UpsertResult => {
   return {
     next: {
       ...prev,
-      context: { ...prev.context, locations: updatedLocs } as any,
+      roles: replaceRolesByKind(prev.roles || [], "scene", buildSceneRolesFromAnalysis(updatedLocs as any)),
       designAssets,
     },
     result: {

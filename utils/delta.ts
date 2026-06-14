@@ -6,18 +6,10 @@ export type SceneDelta = Scene & { episodeId: number };
 export type ProjectMetaDelta = {
   fileName: string;
   rawScript: string;
-  dramaGuide: string;
-  globalStyleGuide: string;
+  roles: ProjectRoleIdentity[];
   designAssets: ProjectData["designAssets"];
   nodeFlow: ProjectData["nodeFlow"];
   nodeDefaults: ProjectData["nodeDefaults"];
-  context: {
-    projectSummary: string;
-    episodeSummaries: { episodeId: number; summary: string }[];
-    roles: ProjectRoleIdentity[];
-  };
-  contextUsage: ProjectData["contextUsage"];
-  phase1Usage: ProjectData["phase1Usage"];
   phase5Usage: ProjectData["phase5Usage"];
   stats: ProjectData["stats"];
 };
@@ -45,18 +37,10 @@ const stableStringify = (value: unknown) => {
 const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   fileName: data.fileName,
   rawScript: data.rawScript,
-  dramaGuide: data.dramaGuide,
-  globalStyleGuide: data.globalStyleGuide,
+  roles: data.roles,
   designAssets: data.designAssets,
   nodeFlow: data.nodeFlow,
   nodeDefaults: data.nodeDefaults,
-  context: {
-    projectSummary: data.context.projectSummary,
-    episodeSummaries: data.context.episodeSummaries,
-    roles: data.context.roles,
-  },
-  contextUsage: data.contextUsage,
-  phase1Usage: data.phase1Usage,
   phase5Usage: data.phase5Usage,
   stats: data.stats,
 });
@@ -65,7 +49,6 @@ const toEpisodeDelta = (episode: Episode): EpisodeDelta => ({
   id: episode.id,
   title: episode.title,
   content: episode.content,
-  summary: episode.summary,
   status: episode.status,
   errorMsg: episode.errorMsg,
 });
@@ -93,7 +76,7 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
       meta: buildMeta(current),
       episodes: current.episodes.map(toEpisodeDelta),
       scenes: current.episodes.flatMap((ep) => ep.scenes.map((scene) => toSceneDelta(ep.id, scene))),
-      roles: current.context.roles,
+      roles: current.roles,
       deleted: {},
     };
   }
@@ -148,8 +131,8 @@ export const computeProjectDelta = (current: ProjectData, base: ProjectData | nu
   if (sceneUpserts.length > 0) delta.scenes = sceneUpserts;
   if (sceneDeletes.length > 0) delta.deleted!.scenes = sceneDeletes;
 
-  const currentRolesMap = mapByKey(current.context.roles, (role) => role.id);
-  const baseRolesMap = mapByKey(base.context.roles, (role) => role.id);
+  const currentRolesMap = mapByKey(current.roles, (role) => role.id);
+  const baseRolesMap = mapByKey(base.roles, (role) => role.id);
   const roleUpserts: ProjectRoleIdentity[] = [];
   const roleDeletes: string[] = [];
   currentRolesMap.forEach((role, key) => {
