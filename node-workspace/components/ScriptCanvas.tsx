@@ -34,6 +34,7 @@ import type {
   Episode,
   ProjectData,
   ScriptCanvasState,
+  ScriptCanvasMeasuredSize,
   ScriptCanvasTextNode,
   ScriptSpatialBlock,
   ScriptTimelineBlock,
@@ -553,7 +554,7 @@ const toRuntimeScriptTextNode = (
   id: scriptNodeId(episode.id),
   type: "text",
   position: page?.position || getDefaultScriptPosition(index),
-  measured: page?.measured,
+  measured: sanitizeScriptMeasured(page?.measured),
   data: {
     ...createDefaultNodeFlowNodeData("text"),
     title: episode.title || `第${episode.id}集`,
@@ -569,7 +570,7 @@ const toRuntimeMarkdownTextNode = (
   id: markdownNodeId(textNode.id),
   type: "text",
   position: position || getDefaultMarkdownPosition(index),
-  measured: textNode.measured,
+  measured: sanitizeScriptMeasured(textNode.measured),
   data: {
     ...createDefaultNodeFlowNodeData("text"),
     title: textNode.title || "档案文档",
@@ -584,7 +585,7 @@ const toRuntimeImageNode = (
   id: imageNodeId(image.id),
   type: "imageInput",
   position: image.position || getDefaultImagePosition(index),
-  measured: image.measured,
+  measured: sanitizeScriptMeasured(image.measured),
   data: {
     ...createDefaultNodeFlowNodeData("imageInput"),
     image: image.imageUrl,
@@ -598,6 +599,7 @@ const toRuntimeImageNode = (
 const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => ({
   ...node,
   position: node.position || getDefaultFlowNodePosition(index),
+  measured: sanitizeScriptMeasured(node.measured),
   selected: false,
   data: {
     ...createDefaultNodeFlowNodeData(node.type),
@@ -779,8 +781,15 @@ const getFoundationMenuStyle = (x: number, y: number, menuWidth = 390): CSSPrope
   } as CSSProperties;
 };
 
+const sanitizeScriptMeasured = (measured?: { width?: unknown; height?: unknown } | null): ScriptCanvasMeasuredSize | undefined => {
+  if (!measured) return undefined;
+  const width = typeof measured.width === "number" && Number.isFinite(measured.width) && measured.width > 0 ? measured.width : undefined;
+  const height = typeof measured.height === "number" && Number.isFinite(measured.height) && measured.height > 0 ? measured.height : undefined;
+  return width || height ? { width, height } : undefined;
+};
+
 const getScriptCanvasNodeSize = (node: ScriptCanvasNode) => {
-  const measured = node.measured;
+  const measured = sanitizeScriptMeasured(node.measured);
   const style = node.style || {};
   const styleWidth = typeof style.width === "number" ? style.width : undefined;
   const styleHeight = typeof style.height === "number" ? style.height : undefined;
@@ -1575,7 +1584,7 @@ export const useScriptCanvasSurface = ({
       id: scriptNodeId(episode.id),
       type: "scriptPage",
       position: pagePositionById.get(episode.id) || getDefaultScriptPosition(index),
-      measured: pageNodeById.get(episode.id)?.measured,
+      measured: sanitizeScriptMeasured(pageNodeById.get(episode.id)?.measured),
       selected: selectedNodeIds.has(scriptNodeId(episode.id)),
       data: {
         episodeId: episode.id,
@@ -1588,7 +1597,7 @@ export const useScriptCanvasSurface = ({
       id: imageNodeId(image.id),
       type: "imageInput",
       position: image.position || getDefaultImagePosition(index),
-      measured: image.measured,
+      measured: sanitizeScriptMeasured(image.measured),
       selected: selectedNodeIds.has(imageNodeId(image.id)),
       data: {
         ...createDefaultNodeFlowNodeData("imageInput"),
@@ -1604,7 +1613,7 @@ export const useScriptCanvasSurface = ({
       id: markdownNodeId(textNode.id),
       type: "mdText",
       position: textNode.position || getDefaultMarkdownPosition(index),
-      measured: textNode.measured,
+      measured: sanitizeScriptMeasured(textNode.measured),
       selected: selectedNodeIds.has(markdownNodeId(textNode.id)),
       data: {
         documentId: textNode.id,
@@ -1782,7 +1791,7 @@ export const useScriptCanvasSurface = ({
               parentId: storeNode.parentId,
               extent: storeNode.extent,
               style: storeNode.style,
-              measured: storeNode.measured,
+              measured: sanitizeScriptMeasured(storeNode.measured),
             };
           });
         const newStoreFlowNodes = state.nodes
@@ -1792,6 +1801,7 @@ export const useScriptCanvasSurface = ({
           .filter((node) => !flowNodeIds.has(node.id))
           .map((node) => ({
             ...node,
+            measured: sanitizeScriptMeasured(node.measured),
             selected: false,
             data: {
               ...createDefaultNodeFlowNodeData(node.type),
@@ -2421,6 +2431,7 @@ export const useScriptCanvasSurface = ({
           return {
             ...node,
             id: nextId,
+            measured: sanitizeScriptMeasured(node.measured),
             position: {
               x: (node.position?.x || 0) + 80,
               y: (node.position?.y || 0) + 80,
@@ -2593,14 +2604,14 @@ export const useScriptCanvasSurface = ({
           .map((image) => ({
             ...image,
             position: positionById.get(imageNodeId(image.id)) || image.position,
-            measured: nextNodeById.get(imageNodeId(image.id))?.measured || image.measured,
+            measured: sanitizeScriptMeasured(nextNodeById.get(imageNodeId(image.id))?.measured) || sanitizeScriptMeasured(image.measured),
           }));
         const textNodes = (currentCanvas.textNodes || [])
           .filter((node) => !removedMarkdownSet.has(node.id))
           .map((node, index) => ({
             ...node,
             position: positionById.get(markdownNodeId(node.id)) || node.position || getDefaultMarkdownPosition(index),
-            measured: nextNodeById.get(markdownNodeId(node.id))?.measured || node.measured,
+            measured: sanitizeScriptMeasured(nextNodeById.get(markdownNodeId(node.id))?.measured) || sanitizeScriptMeasured(node.measured),
           }));
 
         return {
@@ -2612,15 +2623,15 @@ export const useScriptCanvasSurface = ({
               currentCanvas.pages.find((page) => page.episodeId === episode.id)?.position ||
               getDefaultScriptPosition(index),
             measured:
-              nextNodeById.get(scriptNodeId(episode.id))?.measured ||
-              currentCanvas.pages.find((page) => page.episodeId === episode.id)?.measured,
+              sanitizeScriptMeasured(nextNodeById.get(scriptNodeId(episode.id))?.measured) ||
+              sanitizeScriptMeasured(currentCanvas.pages.find((page) => page.episodeId === episode.id)?.measured),
           })),
           flowNodes: (currentCanvas.flowNodes || [])
             .filter((node) => !removedFlowNodeSet.has(node.id))
             .map((node, index) => ({
               ...node,
               position: positionById.get(node.id) || node.position || getDefaultFlowNodePosition(index),
-              measured: nextNodeById.get(node.id)?.measured || node.measured,
+              measured: sanitizeScriptMeasured(nextNodeById.get(node.id)?.measured) || sanitizeScriptMeasured(node.measured),
             })),
           images,
           textNodes,
