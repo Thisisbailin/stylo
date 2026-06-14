@@ -122,7 +122,7 @@ const parseArgs = (input: unknown) => {
 export const searchProjectResourceToolDef = {
   name: "search_project_resource",
   description:
-    "Search across the shared project world when the exact locator is unknown. Public search centers on Script and NodeFlow.",
+    "Search across the shared Flow project world when the exact locator is unknown. Public search centers on Script archives and visible canvas graph resources.",
   parameters: searchProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);

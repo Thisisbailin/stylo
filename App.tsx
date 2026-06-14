@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser, useClerk, useAuth } from './lib/auth';
-import { ProjectData, AppConfig, Episode, ActiveTab, SyncState, SyncStatus } from './types';
+import { ProjectData, AppConfig, Episode, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA, INITIAL_VIDEO_CONFIG, INITIAL_TEXT_CONFIG, INITIAL_MULTIMODAL_CONFIG } from './constants';
 import {
   parseScriptToEpisodes,
@@ -20,14 +20,12 @@ import { useSecretsSync } from './hooks/useSecretsSync';
 import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
-import { ScriptWorkspace } from './node-workspace/components/NodeFlow';
-import type { NodeFlowNodeDefaults } from './node-workspace/types';
+import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
 import type { AgentSettingsPanelKey } from './node-workspace/components/AgentSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import * as ResponsesTextService from './services/responsesTextService';
-import { useNodeFlowStore } from './node-workspace/store/nodeFlowStore';
 import {
   buildPersonRolesFromAnalysis,
   buildSceneRolesFromAnalysis,
@@ -330,7 +328,6 @@ const PROJECT_STORAGE_KEY = 'qalam_project_v1';
 const CONFIG_STORAGE_KEY = 'qalam_config_v1';
 const UI_STATE_STORAGE_KEY = 'qalam_ui_state_v1';
 const THEME_STORAGE_KEY = 'qalam_theme_v1';
-const NODEFLOW_STORAGE_KEY = 'qalam_nodeflow_v1';
 const LOCAL_BACKUP_KEY = 'qalam_local_backup';
 const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
 const LANDING_ROUTE_HASH = "#/landing";
@@ -405,61 +402,6 @@ const App: React.FC = () => {
   );
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
-  const setAppConfigStore = useNodeFlowStore(state => state.setAppConfig);
-  const addWorkflowNode = useNodeFlowStore(state => state.addNode);
-  const workflowNodes = useNodeFlowStore(state => state.nodes);
-  const workflowViewport = useNodeFlowStore(state => state.viewport);
-  const workflowNodeDefaults = useNodeFlowStore(state => state.nodeDefaults);
-  const clearNodeFlow = useNodeFlowStore(state => state.clearNodeFlow);
-  const setWorkflowNodeDefaults = useNodeFlowStore(state => state.setNodeDefaults);
-  const hasHydratedNodeDefaultsRef = useRef(false);
-  const lastNodeDefaultsSerializedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    setAppConfigStore(config);
-  }, [config, setAppConfigStore]);
-
-  useEffect(() => {
-    try {
-      const remoteNodeDefaults = (projectData.nodeDefaults || {}) as NodeFlowNodeDefaults;
-      const serialized = JSON.stringify(remoteNodeDefaults);
-      if (serialized === lastNodeDefaultsSerializedRef.current) {
-        hasHydratedNodeDefaultsRef.current = true;
-        return;
-      }
-      hasHydratedNodeDefaultsRef.current = true;
-      lastNodeDefaultsSerializedRef.current = serialized;
-      setWorkflowNodeDefaults(remoteNodeDefaults);
-    } catch (e) {
-      console.warn("Failed to restore node defaults from project data", e);
-    }
-  }, [projectData.nodeDefaults, setWorkflowNodeDefaults]);
-
-  useEffect(() => {
-    if (!hasHydratedNodeDefaultsRef.current) return;
-    const timeout = window.setTimeout(() => {
-      try {
-        const serialized = JSON.stringify(workflowNodeDefaults || {});
-        lastNodeDefaultsSerializedRef.current = serialized;
-        setProjectData((prev) => {
-          try {
-            const prevSerialized = JSON.stringify(prev.nodeDefaults || {});
-            if (prevSerialized === serialized) return prev;
-          } catch {
-            // Fall through and overwrite with the latest node defaults.
-          }
-          return {
-            ...prev,
-            nodeDefaults: (workflowNodeDefaults || {}) as NodeFlowNodeDefaults,
-          };
-        });
-      } catch (e) {
-        console.warn("Failed to persist node defaults", e);
-      }
-    }, 150);
-
-    return () => window.clearTimeout(timeout);
-  }, [workflowNodeDefaults, setProjectData]);
 
   // Sync global theme classes for both Tailwind dark styles and CSS variable themes
   useEffect(() => {
@@ -483,29 +425,19 @@ const App: React.FC = () => {
 
   const [uiState, setUiState] = usePersistedState<{
     currentEpIndex: number;
-    activeTab: ActiveTab;
   }>({
     key: UI_STATE_STORAGE_KEY,
-    initialValue: { currentEpIndex: 0, activeTab: 'lab' },
+    initialValue: { currentEpIndex: 0 },
     deserialize: (value) => {
       const parsed = JSON.parse(value);
-      const parsedActiveTab = parsed.activeTab;
       return {
         currentEpIndex: parsed.currentEpIndex ?? 0,
-        activeTab:
-          parsedActiveTab === 'visuals' ||
-          parsedActiveTab === 'video' ||
-          parsedActiveTab === 'lab' ||
-          parsedActiveTab === 'stats'
-            ? parsedActiveTab
-            : 'lab'
       };
     },
     serialize: (value) => JSON.stringify(value)
   });
 
   const [currentEpIndex, setCurrentEpIndex] = useState(uiState.currentEpIndex);
-  const [activeTab, setActiveTab] = useState<ActiveTab>(uiState.activeTab);
   const [processingState, setProcessingState] = useState<{ active: boolean; status: string }>({ active: false, status: "" });
   const isProcessing = processingState.active;
   const processingStatus = processingState.status;
@@ -513,21 +445,13 @@ const App: React.FC = () => {
     setProcessingState({ active, status });
   }, []);
 
-  // Force Lab as the sole surface (no top tab selector)
-  useEffect(() => {
-    if (activeTab !== 'lab') {
-      setActiveTab('lab');
-    }
-  }, [activeTab, setActiveTab]);
-
   // Keep persisted uiState in sync with reducer core fields
   useEffect(() => {
     setUiState(prev => ({
       ...prev,
       currentEpIndex,
-      activeTab
     }));
-  }, [currentEpIndex, activeTab, setUiState]);
+  }, [currentEpIndex, setUiState]);
 
   const [appView, setAppView] = useState<"main" | "landing">(() => readAppViewFromLocation());
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -542,9 +466,6 @@ const App: React.FC = () => {
   const activeConflictRef = useRef<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
   const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
 
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
-  const [splitTab, setSplitTab] = useState<ActiveTab | null>(null);
-  const [isSplitMenuOpen, setIsSplitMenuOpen] = useState(false);
   const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
   const [agentSettingsRequest, setAgentSettingsRequest] = useState<{ panel: AgentSettingsPanelKey; nonce: number } | null>(null);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
@@ -800,11 +721,8 @@ const App: React.FC = () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
       localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
       setProjectData(INITIAL_PROJECT_DATA);
-      clearNodeFlow();
       setCurrentEpIndex(0);
-      setActiveTab('lab');
       localStorage.removeItem(PROJECT_STORAGE_KEY);
-      localStorage.removeItem(NODEFLOW_STORAGE_KEY);
       localStorage.removeItem(UI_STATE_STORAGE_KEY);
       localStorage.removeItem(LOCAL_BACKUP_KEY);
       localStorage.removeItem(REMOTE_BACKUP_KEY);
@@ -937,7 +855,6 @@ const App: React.FC = () => {
         };
       });
       if (episodes.length > 0) setCurrentEpIndex(0);
-      setActiveTab('lab');
     }
   };
 
@@ -1013,94 +930,69 @@ const App: React.FC = () => {
   const handleLoadIdentityCard = useCallback((identityId: string) => {
     if (!identityId) return;
     navigateToAppView('main');
-    if (activeTab !== 'lab') setActiveTab('lab');
 
-    const existing = workflowNodes.find(
-      (node) => node.type === 'identityCard' && (node.data as any).identityId === identityId
-    );
-
-    if (existing) {
-      useNodeFlowStore.setState((state) => ({
-        nodes: state.nodes.map((node) => ({
-          ...node,
-          selected: node.id === existing.id,
-        })),
-      }));
-      return;
-    }
-
-    const zoom = workflowViewport?.zoom || 1;
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440;
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 960;
-    const position = workflowViewport
-      ? {
-          x: (-workflowViewport.x + viewportWidth * 0.54) / zoom,
-          y: (-workflowViewport.y + viewportHeight * 0.22) / zoom,
-        }
-      : { x: 280, y: 180 };
-
-    addWorkflowNode('identityCard', position, undefined, {
-      identityId,
-      title: '身份证卡片',
-    });
-  }, [activeTab, addWorkflowNode, navigateToAppView, setActiveTab, workflowNodes, workflowViewport]);
-
-  const renderTabContent = (tabKey: ActiveTab) => {
-    switch (tabKey) {
-      case 'lab':
-        return (
-          <div className="h-full">
-            <ScriptWorkspace
-              projectData={projectData}
-              setProjectData={setProjectData}
-              config={config}
-              setConfig={setConfig}
-              isSignedIn={!!authSignedIn}
-              getAuthToken={getAuthToken}
-              syncState={syncState}
-              syncRollout={syncRollout}
-              onForceSync={forceCloudPull}
-              onOpenLanding={openLandingPage}
-              externalAgentSettingsRequest={agentSettingsRequest}
-              onAssetLoad={handleAssetLoad}
-              onOpenModule={handleOpenLabModule}
-              syncIndicator={syncIndicator}
-              onResetProject={handleResetProject}
-              onSignOut={() => signOut()}
-              accountInfo={{
-                isLoaded: isUserLoaded,
-                isSignedIn: !!userSignedIn,
-                name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Qalam User",
-                email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress,
-                avatarUrl: avatarUrl || user?.imageUrl,
-                onSignIn: () => openSignIn(),
-                onSignOut: () => signOut(),
-                onUploadAvatar: handleAvatarUploadClick,
-              }}
-            />
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const renderMainContent = () => {
-    if (splitTab) {
-      return (
-        <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-4 px-4 md:px-6 pb-4 overflow-hidden">
-          <div className="min-h-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)]/60 bg-[var(--bg-panel)]/60">
-            <div className="h-full overflow-auto">{renderTabContent(activeTab)}</div>
-          </div>
-          <div className="min-h-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)]/60 bg-[var(--bg-panel)]/60">
-            <div className="h-full overflow-auto">{renderTabContent(splitTab)}</div>
-          </div>
-        </div>
+    setProjectData((prev) => {
+      const flow = prev.flow || {};
+      const flowNodes = Array.isArray(flow.flowNodes) ? flow.flowNodes : [];
+      const existing = flowNodes.find(
+        (node) => node.type === 'identityCard' && (node.data as any)?.identityId === identityId
       );
-    }
+      if (existing) return prev;
 
-    return renderTabContent(activeTab);
-  };
+      return {
+        ...prev,
+        flow: {
+          ...flow,
+          flowNodes: [
+            ...flowNodes,
+            {
+              id: `identity-${identityId}`,
+              type: 'identityCard',
+              position: { x: 280, y: 180 },
+              data: {
+                identityId,
+                title: '身份卡片',
+                avatarOverrides: {},
+              },
+            },
+          ],
+        },
+      };
+    });
+  }, [navigateToAppView, setProjectData]);
+
+  const renderMainContent = () => (
+    <div className="h-full">
+      <CreativeWorkspace
+        projectData={projectData}
+        setProjectData={setProjectData}
+        config={config}
+        setConfig={setConfig}
+        isSignedIn={!!authSignedIn}
+        getAuthToken={getAuthToken}
+        syncState={syncState}
+        syncRollout={syncRollout}
+        onForceSync={forceCloudPull}
+        onOpenLanding={openLandingPage}
+        externalAgentSettingsRequest={agentSettingsRequest}
+        onAssetLoad={handleAssetLoad}
+        onOpenModule={handleOpenLabModule}
+        syncIndicator={syncIndicator}
+        onResetProject={handleResetProject}
+        onSignOut={() => signOut()}
+        accountInfo={{
+          isLoaded: isUserLoaded,
+          isSignedIn: !!userSignedIn,
+          name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Qalam User",
+          email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress,
+          avatarUrl: avatarUrl || user?.imageUrl,
+          onSignIn: () => openSignIn(),
+          onSignOut: () => signOut(),
+          onUploadAvatar: handleAvatarUploadClick,
+        }}
+      />
+    </div>
+  );
 
   if (appView === "landing") {
     return <LandingPage isDarkMode={isDarkMode} onEnterApp={closeLandingPage} />;

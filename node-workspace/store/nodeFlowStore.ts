@@ -12,7 +12,6 @@ import {
   NodeType,
   NodeFlowNodeData,
   NodeFlowFile,
-  NodeFlowNodeDefaults,
   GlobalAssetHistoryItem,
   GlobalAssetType,
   NodeFlowContextSnapshot,
@@ -25,7 +24,6 @@ import {
   patchNodeFlowNodeStyle,
 } from "../nodeflow/mutations";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
-import { normalizeNodeFlowNodeDefaults, upsertNodeDefault } from "../nodeflow/nodeDefaults";
 import {
   applyNodeFlowCanvasLinkChangesCommand,
   applyNodeFlowCanvasNodeChangesCommand,
@@ -103,7 +101,6 @@ interface NodeFlowStore {
   clipboard: ClipboardData | null;
   globalAssetHistory: GlobalAssetHistoryItem[];
   viewport: NodeFlowViewport | null;
-  nodeDefaults: NodeFlowNodeDefaults;
   availableImageModels: string[];
   availableVideoModels: string[];
   setAvailableImageModels: (models: string[]) => void;
@@ -111,7 +108,6 @@ interface NodeFlowStore {
   nodeFlowContext: NodeFlowContextSnapshot;
   setNodeFlowContext: (ctx: NodeFlowContextSnapshot) => void;
   setViewportState: (viewport: NodeFlowViewport | null) => void;
-  setNodeDefaults: (defaults: NodeFlowNodeDefaults) => void;
 
   // Settings
   setLinkStyle: (style: LinkStyle) => void;
@@ -188,7 +184,7 @@ const assertExpectedRevision = (currentRevision: number, expectedRevision?: numb
   if (typeof expectedRevision !== "number") return;
   if (currentRevision !== expectedRevision) {
     throw new Error(
-      `NodeFlow revision mismatch: expected ${expectedRevision}, current ${currentRevision}. 请先重新读取最新 NodeFlow 再执行修改。`
+      `Flow revision mismatch: expected ${expectedRevision}, current ${currentRevision}. 请先重新读取最新 Flow 再执行修改。`
     );
   }
 };
@@ -208,13 +204,11 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   availableImageModels: [],
   availableVideoModels: [],
   nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
-  nodeDefaults: {},
 
   setAvailableImageModels: (models) => set({ availableImageModels: models }),
   setAvailableVideoModels: (models) => set({ availableVideoModels: models }),
   setNodeFlowContext: (ctx) => set((state) => setNodeFlowContextState(state, ctx)),
   setViewportState: (viewport) => set((state) => setNodeFlowViewportState(state, viewport)),
-  setNodeDefaults: (defaults) => set({ nodeDefaults: normalizeNodeFlowNodeDefaults(defaults) }),
 
   setActiveView: (view) => set((state) => setNodeFlowActiveViewState(state, view)),
   setReadingMode: (mode) => set((state) => setNodeFlowReadingModeState(state, mode)),
@@ -232,17 +226,14 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   setLinkStyle: (style: LinkStyle) => set({ linkStyle: style }),
   addNode: (type: NodeType, position: XYPosition, parentId?: string, extraData?: Partial<NodeFlowNodeData>, options?: RevisionGuardOptions) => {
-    const { revision, nodeDefaults } = get();
+    const { revision } = get();
     assertExpectedRevision(revision, options?.expectedRevision);
     const result = createNodeFlowNodeCommand({
       state: get(),
       type,
       position,
       parentId,
-      extraData: {
-        ...(nodeDefaults[type] || {}),
-        ...(extraData || {}),
-      },
+      extraData,
       allocateNodeId: (nodeType) => `${nodeType}-${++nodeIdCounter}`,
     });
     set(result.state);
@@ -250,21 +241,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
   },
 
   updateNodeData: (nodeId, data) => {
-    set((state) => {
-      const node = state.nodes.find((item) => item.id === nodeId);
-      if (!node) return state;
-      const nextState = patchNodeFlowNodeData(state, nodeId, data);
-      const nextDefaults = upsertNodeDefault(
-        state.nodeDefaults,
-        node.type,
-        { ...(node.data || {}), ...(data || {}) } as Partial<NodeFlowNodeData>
-      );
-      if (nextDefaults === state.nodeDefaults) return nextState;
-      return {
-        ...nextState,
-        nodeDefaults: nextDefaults,
-      };
-    });
+    set((state) => patchNodeFlowNodeData(state, nodeId, data));
   },
 
   moveNode: (nodeId, position, options) => {

@@ -5,7 +5,7 @@ const cancelGenerationExecutionParameters = {
   properties: {
     node_id: {
       type: "string",
-      description: "NodeFlow node id for the pending generation request.",
+      description: "Flow node id for the pending generation request.",
     },
     node_ref: {
       type: "string",

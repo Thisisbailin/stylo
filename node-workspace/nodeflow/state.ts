@@ -12,6 +12,8 @@ import { normalizeNodeFlowGraphLinks } from "./graphLinks";
 import { dedupeNodeFlowRefs } from "./refs";
 
 const NODE_TYPES = new Set<NodeType>([
+  "scriptPage",
+  "mdText",
   "imageInput",
   "audioInput",
   "videoInput",

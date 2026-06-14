@@ -82,27 +82,27 @@ const summarizeArtifact = (call: AgentExecutedToolCall) => {
     return `Script map · ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:node" && typeof artifact.title === "string") {
-    return `NodeFlow node · ${artifact.title}`;
+    return `Flow node · ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:link") {
     const source = artifact.source?.node_ref || artifact.source?.node_id || "source";
     const destination = artifact.destination?.node_ref || artifact.destination?.node_id || "target";
-    return `NodeFlow link · ${source} -> ${destination}`;
+    return `Flow link · ${source} -> ${destination}`;
   }
   if (artifact?.target === "nodeflow:map" && typeof artifact.title === "string") {
-    return `NodeFlow map · ${artifact.title}`;
+    return `Flow map · ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:approval" && typeof artifact.title === "string") {
-    return `NodeFlow approval · ${artifact.title}`;
+    return `Flow approval · ${artifact.title}`;
   }
   if (output.target === "nodeflow:node" && typeof output.item?.title === "string") {
-    return `NodeFlow node · ${output.item.title}`;
+    return `Flow node · ${output.item.title}`;
   }
   if (output.target === "nodeflow:link" && output.role === "connection") {
-    return `NodeFlow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
+    return `Flow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
   }
   if (output.target === "nodeflow:link" && output.role === "reference") {
-    return `NodeFlow reference · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
+    return `Flow reference · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
   }
   if (output.target === "script:archive" && typeof output.item?.title === "string") {
     return `Script archive · ${output.item.title}`;

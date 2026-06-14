@@ -16,7 +16,7 @@ import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import { QalamAgent } from "./QalamAgent";
-import { useScriptCanvasSurface } from "./ScriptCanvas";
+import { useFlowSurface } from "./FlowSurface";
 import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
@@ -29,7 +29,7 @@ import { FileText, List } from "lucide-react";
 import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
 import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
 
-interface ScriptWorkspaceProps {
+interface CreativeWorkspaceProps {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   config: AppConfig;
@@ -302,7 +302,7 @@ const getPatternDefinitions = (
   });
 };
 
-const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
+const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   projectData,
   setProjectData,
   config,
@@ -356,6 +356,7 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
   const {
     nodes,
     setNodeFlowContext,
+    setAppConfig,
     setProjectRoleUpdater,
     setViewportState,
     readingMode,
@@ -376,11 +377,16 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
   const [isLocked, setIsLocked] = useState(false);
   const [snapToGrid] = useState(true);
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
-  const [zoomValue, setZoomValue] = useState(() => getViewport().zoom ?? 1);
-  const [liveViewport, setLiveViewport] = useState(() => getViewport());
+  const initialCanvasViewport = projectData.canvas?.viewport || null;
+  const [zoomValue, setZoomValue] = useState(() => initialCanvasViewport?.zoom ?? getViewport().zoom ?? 1);
+  const [liveViewport, setLiveViewport] = useState(() => initialCanvasViewport || getViewport());
   const liveViewportRef = useRef(liveViewport);
   const viewportCommitTimeoutRef = useRef<number | null>(null);
   const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
+
+  useEffect(() => {
+    setAppConfig(config);
+  }, [config, setAppConfig]);
 
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
@@ -448,8 +454,34 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
     setViewportState(getViewport());
   }, [getViewport, setViewportState]);
 
+  const persistCanvasViewport = useCallback(
+    (nextViewport: SharedCanvasViewport) => {
+      setProjectData((previous) => ({
+        ...previous,
+        canvas: {
+          ...(previous.canvas || {}),
+          viewport: nextViewport,
+        },
+      }));
+    },
+    [setProjectData]
+  );
+
   const lastViewportRef = useRef<string>("");
   const didInitFitRef = useRef(false);
+  const didHydrateCanvasViewportRef = useRef(false);
+  useEffect(() => {
+    if (didHydrateCanvasViewportRef.current) return;
+    const savedViewport = projectData.canvas?.viewport;
+    if (!savedViewport) return;
+    didHydrateCanvasViewportRef.current = true;
+    liveViewportRef.current = savedViewport;
+    setLiveViewport(savedViewport);
+    setZoomValue(savedViewport.zoom);
+    setViewport(savedViewport, { duration: 0 });
+    setViewportState(savedViewport);
+  }, [projectData.canvas?.viewport, setViewport, setViewportState]);
+
   useEffect(() => {
     if (!viewport) return;
     const key = `${viewport.x}:${viewport.y}:${viewport.zoom}`;
@@ -543,8 +575,9 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
       setZoomValue(nextZoom);
       setViewport(nextViewport, { duration: 120 });
       setViewportState(nextViewport);
+      persistCanvasViewport(nextViewport);
     },
-    [getViewport, maxZoom, minZoom, setViewport, setViewportState]
+    [getViewport, maxZoom, minZoom, persistCanvasViewport, setViewport, setViewportState]
   );
 
   const handleSharedViewportChange = useCallback(
@@ -558,9 +591,10 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
         setLiveViewport(nextViewport);
         setZoomValue(nextViewport.zoom);
         setViewportState(nextViewport);
+        persistCanvasViewport(nextViewport);
       }
     },
-    [setViewportState]
+    [persistCanvasViewport, setViewportState]
   );
 
   const handleCanvasWheelCapture = useCallback(
@@ -598,9 +632,10 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
         setLiveViewport(committed);
         setZoomValue(committed.zoom);
         setViewportState(committed);
+        persistCanvasViewport(committed);
       }, 120);
     },
-    [getViewport, handleSharedViewportChange, isLocked, maxZoom, minZoom, setViewport, setViewportState]
+    [getViewport, handleSharedViewportChange, isLocked, maxZoom, minZoom, persistCanvasViewport, setViewport, setViewportState]
   );
 
   const handleToggleLock = useCallback(() => {
@@ -634,7 +669,7 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
     [handleSharedViewportChange, isLocked, liveViewport, maxZoom, minZoom, showMiniMap, snapToGrid]
   );
 
-  const scriptSurface = useScriptCanvasSurface({
+  const flowSurface = useFlowSurface({
     projectData,
     setProjectData,
     onOpenEpisode: (episodeId) => setEditingScriptEpisodeId(episodeId),
@@ -664,21 +699,21 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
     [screenToFlowPosition]
   );
 
-  const handleScriptAddNode = useCallback(
+  const handleFlowAddNode = useCallback(
     (type: NodeType, fallback: XYPosition) => {
       const position = getToolbarNodePosition(fallback);
-      return scriptSurface.actions?.addNode?.(type, position) ?? null;
+      return flowSurface.actions?.addNode?.(type, position) ?? null;
     },
-    [getToolbarNodePosition, scriptSurface.actions]
+    [getToolbarNodePosition, flowSurface.actions]
   );
 
-  const handleScriptExportNodeFlow = useCallback(() => {
-    scriptSurface.actions?.exportNodeFlow?.();
-  }, [scriptSurface.actions]);
+  const handleFlowExport = useCallback(() => {
+    flowSurface.actions?.exportNodeFlow?.();
+  }, [flowSurface.actions]);
 
-  const handleScriptRunAll = useCallback(() => {
-    void scriptSurface.actions?.runAll?.();
-  }, [scriptSurface.actions]);
+  const handleFlowRunAll = useCallback(() => {
+    void flowSurface.actions?.runAll?.();
+  }, [flowSurface.actions]);
 
   const handleFileImport = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -688,15 +723,15 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
       reader.onload = (evt) => {
         try {
           const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
-          scriptSurface.actions?.importNodeFlow?.(data);
+          flowSurface.actions?.importNodeFlow?.(data);
         } catch (err) {
-          alert("Failed to import NodeFlow JSON");
+          alert("Failed to import Flow JSON");
         }
       };
       reader.readAsText(file);
       event.target.value = "";
     },
-    [scriptSurface.actions]
+    [flowSurface.actions]
   );
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
@@ -952,41 +987,41 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
           active={!showThemeModal}
         />
         <ReactFlow
-          nodes={scriptSurface.nodes}
-          edges={scriptSurface.edges}
-          onNodesChange={scriptSurface.onNodesChange}
-          onEdgesChange={scriptSurface.onEdgesChange}
-          onConnect={scriptSurface.onConnect}
-          onConnectStart={scriptSurface.onConnectStart}
-          onConnectEnd={scriptSurface.onConnectEnd}
-          onNodeClick={scriptSurface.onNodeClick}
-          onNodeDragStart={scriptSurface.onNodeDragStart}
-          onNodeDrag={scriptSurface.onNodeDrag}
-          onNodeDragStop={scriptSurface.onNodeDragStop}
+          nodes={flowSurface.nodes}
+          edges={flowSurface.edges}
+          onNodesChange={flowSurface.onNodesChange}
+          onEdgesChange={flowSurface.onEdgesChange}
+          onConnect={flowSurface.onConnect}
+          onConnectStart={flowSurface.onConnectStart}
+          onConnectEnd={flowSurface.onConnectEnd}
+          onNodeClick={flowSurface.onNodeClick}
+          onNodeDragStart={flowSurface.onNodeDragStart}
+          onNodeDrag={flowSurface.onNodeDrag}
+          onNodeDragStop={flowSurface.onNodeDragStop}
           onMove={(_, vp) => handleSharedViewportChange(vp)}
           onMoveEnd={(_, vp) => {
             handleSharedViewportChange(vp, { commit: true });
           }}
           minZoom={minZoom}
           maxZoom={maxZoom}
-          nodesDraggable={scriptSurface.nodesDraggable ?? !isLocked}
-          nodesConnectable={scriptSurface.nodesConnectable ?? !isLocked}
-          elementsSelectable={scriptSurface.elementsSelectable ?? !isLocked}
+          nodesDraggable={flowSurface.nodesDraggable ?? !isLocked}
+          nodesConnectable={flowSurface.nodesConnectable ?? !isLocked}
+          elementsSelectable={flowSurface.elementsSelectable ?? !isLocked}
           panOnDrag={!isLocked}
           panOnScroll={!isLocked}
-          panOnScrollMode={scriptSurface.panOnScrollMode ?? PanOnScrollMode.Free}
+          panOnScrollMode={flowSurface.panOnScrollMode ?? PanOnScrollMode.Free}
           zoomOnScroll={false}
           zoomOnPinch={!isLocked}
           zoomOnDoubleClick={!isLocked}
-          nodeTypes={scriptSurface.nodeTypes}
-          edgeTypes={scriptSurface.edgeTypes}
+          nodeTypes={flowSurface.nodeTypes}
+          edgeTypes={flowSurface.edgeTypes}
           connectionMode={ConnectionMode.Loose}
-          connectionLineType={scriptSurface.connectionLineType ?? ConnectionLineType.Bezier}
+          connectionLineType={flowSurface.connectionLineType ?? ConnectionLineType.Bezier}
           defaultViewport={liveViewport}
-          connectionLineStyle={scriptSurface.connectionLineStyle}
-          onlyRenderVisibleElements={scriptSurface.onlyRenderVisibleElements}
+          connectionLineStyle={flowSurface.connectionLineStyle}
+          onlyRenderVisibleElements={flowSurface.onlyRenderVisibleElements}
           proOptions={{ hideAttribution: true }}
-          data-canvas-surface="script"
+          data-canvas-surface="flow"
         >
           {showMiniMap && (
             <div
@@ -1003,9 +1038,9 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
               />
             </div>
           )}
-          {scriptSurface.miniMap}
+          {flowSurface.miniMap}
         </ReactFlow>
-        {scriptSurface.overlays}
+        {flowSurface.overlays}
 
         {snapToGrid ? (
           <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
@@ -1016,21 +1051,21 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
       {qalamGlobalHeader}
 
       <FloatingActionBar
-        onAddText={() => handleScriptAddNode("text", { x: 100, y: 100 })}
-        onAddIdentityCard={() => handleScriptAddNode("identityCard", { x: 220, y: 160 })}
-        onAddImage={() => handleScriptAddNode("imageInput", { x: 200, y: 100 })}
-        onAddAudio={() => handleScriptAddNode("audioInput", { x: 220, y: 120 })}
-        onAddVideo={() => handleScriptAddNode("videoInput", { x: 240, y: 140 })}
-        onAddImageGen={() => handleScriptAddNode("imageGen", { x: 400, y: 100 })}
-        onAddNanoBananaImageGen={() => handleScriptAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
-        onAddWanImageGen={() => handleScriptAddNode("wanImageGen", { x: 420, y: 120 })}
-        onAddVideoGen={() => handleScriptAddNode("soraVideoGen", { x: 500, y: 100 })}
-        onAddViduVideoGen={() => handleScriptAddNode("viduVideoGen", { x: 510, y: 110 })}
-        onAddWanReferenceVideoGen={() => handleScriptAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
-        onAddSeedanceVideoGen={() => handleScriptAddNode("seedanceVideoGen", { x: 560, y: 160 })}
+        onAddText={() => handleFlowAddNode("text", { x: 100, y: 100 })}
+        onAddIdentityCard={() => handleFlowAddNode("identityCard", { x: 220, y: 160 })}
+        onAddImage={() => handleFlowAddNode("imageInput", { x: 200, y: 100 })}
+        onAddAudio={() => handleFlowAddNode("audioInput", { x: 220, y: 120 })}
+        onAddVideo={() => handleFlowAddNode("videoInput", { x: 240, y: 140 })}
+        onAddImageGen={() => handleFlowAddNode("imageGen", { x: 400, y: 100 })}
+        onAddNanoBananaImageGen={() => handleFlowAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
+        onAddWanImageGen={() => handleFlowAddNode("wanImageGen", { x: 420, y: 120 })}
+        onAddVideoGen={() => handleFlowAddNode("soraVideoGen", { x: 500, y: 100 })}
+        onAddViduVideoGen={() => handleFlowAddNode("viduVideoGen", { x: 510, y: 110 })}
+        onAddWanReferenceVideoGen={() => handleFlowAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
+        onAddSeedanceVideoGen={() => handleFlowAddNode("seedanceVideoGen", { x: 560, y: 160 })}
         onImport={() => fileInputRef.current?.click()}
-        onExport={handleScriptExportNodeFlow}
-        onRun={handleScriptRunAll}
+        onExport={handleFlowExport}
+        onRun={handleFlowRunAll}
         floating={false}
         syncIndicator={syncIndicator}
         onResetProject={onResetProject}
@@ -1210,12 +1245,10 @@ const ScriptWorkspaceInner: React.FC<ScriptWorkspaceProps> = ({
   );
 };
 
-export const ScriptWorkspace: React.FC<ScriptWorkspaceProps> = (props) => {
+export const CreativeWorkspace: React.FC<CreativeWorkspaceProps> = (props) => {
   return (
     <ReactFlowProvider>
-      <ScriptWorkspaceInner {...props} />
+      <CreativeWorkspaceInner {...props} />
     </ReactFlowProvider>
   );
 };
-
-export const NodeFlow = ScriptWorkspace;

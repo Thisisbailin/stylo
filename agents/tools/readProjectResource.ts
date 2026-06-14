@@ -52,7 +52,7 @@ const readProjectResourceParameters = {
     layer: {
       type: "string",
       enum: [...READ_PROJECT_RESOURCE_LAYERS],
-      description: "Which project layer to read from: script or nodeflow.",
+      description: "Which Flow access path to read from: script or nodeflow.",
     },
     entity: {
       type: "string",
@@ -66,7 +66,7 @@ const readProjectResourceParameters = {
     },
     name: {
       type: "string",
-      description: "Name for nodeflow map lookup.",
+      description: "Name for Flow graph map lookup.",
     },
     node_id: {
       type: "string",
@@ -83,11 +83,11 @@ const readProjectResourceParameters = {
     link_role: {
       type: "string",
       enum: ["connection", "reference"],
-      description: "Which NodeFlow link role to read when entity=link.",
+      description: "Which Flow graph link role to read when entity=link.",
     },
     map_id: {
       type: "string",
-      description: "NodeFlow map id such as map:workspace or map:view:xxx.",
+      description: "Flow graph map id such as map:workspace or map:view:xxx.",
     },
     lens_kind: {
       type: "string",
@@ -204,7 +204,7 @@ const parseArgs = (input: unknown) => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete entity from the shared project world. Public reads focus on Script source/foundation/archive resources and NodeFlow canvas resources.",
+    "Read a concrete entity from the shared Flow project world. Public reads focus on Script source/foundation/archive resources and visible canvas graph resources.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -618,14 +618,14 @@ export const readProjectResourceToolDef = {
       return `读取 Script 地图 ${output.item?.name || output?.view || "foundation"}`;
     }
     if (output?.layer === "nodeflow" && output?.entity === "node") {
-      return `读取 NodeFlow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;
+      return `读取 Flow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;
     }
     if (output?.layer === "nodeflow" && output?.entity === "link") {
-      return `读取 NodeFlow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output.item?.link_id || output.link_id || ""}`.trim();
+      return `读取 Flow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output.item?.link_id || output.link_id || ""}`.trim();
     }
     if (output?.layer === "nodeflow" && output?.entity === "approval") {
-      return `读取 NodeFlow 待审批执行请求 ${output.item?.node_title || output.item?.node_ref || output.item?.node_id || ""}`;
+      return `读取 Flow 待审批执行请求 ${output.item?.node_title || output.item?.node_ref || output.item?.node_id || ""}`;
     }
-    return `读取 NodeFlow 地图 ${output.item?.name || output.map_id || ""}`.trim();
+    return `读取 Flow 地图 ${output.item?.name || output.map_id || ""}`.trim();
   },
 };

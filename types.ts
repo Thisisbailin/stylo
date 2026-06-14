@@ -4,7 +4,6 @@ import type {
   HandleType,
   NodeFlowGraphLink,
   NodeFlowNode,
-  NodeFlowNodeDefaults,
 } from "./node-workspace/types";
 
 export interface BaseNodeData extends Record<string, unknown> {
@@ -72,43 +71,51 @@ export interface Episode {
   errorMsg?: string;
 }
 
-export type ActiveTab = 'visuals' | 'video' | 'lab' | 'stats';
-
-export interface ScriptCanvasPosition {
+export interface CanvasPosition {
   x: number;
   y: number;
 }
 
-export interface ScriptCanvasMeasuredSize {
+export interface CanvasMeasuredSize {
   width?: number;
   height?: number;
 }
 
-export interface ScriptCanvasPageNode {
-  episodeId: number;
-  position: ScriptCanvasPosition;
-  measured?: ScriptCanvasMeasuredSize;
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
 }
 
-export interface ScriptCanvasImageNode {
+export interface CanvasState {
+  viewport?: CanvasViewport | null;
+}
+
+export interface FlowPageNode {
+  episodeId: number;
+  position: CanvasPosition;
+  measured?: CanvasMeasuredSize;
+}
+
+export interface FlowImageNode {
   id: string;
   imageUrl: string;
   filename?: string;
-  position: ScriptCanvasPosition;
-  measured?: ScriptCanvasMeasuredSize;
+  position: CanvasPosition;
+  measured?: CanvasMeasuredSize;
   createdAt: number;
 }
 
-export interface ScriptCanvasTextNode {
+export interface FlowTextNode {
   id: string;
   title: string;
   content: string;
-  position: ScriptCanvasPosition;
-  measured?: ScriptCanvasMeasuredSize;
+  position: CanvasPosition;
+  measured?: CanvasMeasuredSize;
   createdAt: number;
 }
 
-export interface ScriptCanvasLink {
+export interface FlowLink {
   id: string;
   source: string;
   target: string;
@@ -116,7 +123,7 @@ export interface ScriptCanvasLink {
   targetHandle?: HandleType;
 }
 
-export interface ScriptTimelineBlock {
+export interface FlowTimelineBlock {
   id: string;
   title: string;
   content: string;
@@ -127,13 +134,13 @@ export interface ScriptTimelineBlock {
   linkedNodeIds: string[];
 }
 
-export interface ScriptTimelineHead {
+export interface FlowFoundationHead {
   title: string;
   content: string;
   linkedNodeIds: string[];
 }
 
-export interface ScriptSpatialBlock {
+export interface FlowSpatialBlock {
   id: string;
   title: string;
   content: string;
@@ -143,27 +150,27 @@ export interface ScriptSpatialBlock {
   linkedNodeIds: string[];
 }
 
-export interface ScriptTimelineState {
+export interface FlowFoundationState {
   id: string;
   title: string;
   durationMin: number;
-  head?: ScriptTimelineHead;
-  spaceBlocks?: ScriptSpatialBlock[];
-  blocks: ScriptTimelineBlock[];
+  head?: FlowFoundationHead;
+  spaceBlocks?: FlowSpatialBlock[];
+  blocks: FlowTimelineBlock[];
 }
 
-export interface ScriptCanvasState {
+export interface FlowState {
   revision?: number;
-  pages: ScriptCanvasPageNode[];
-  images: ScriptCanvasImageNode[];
-  textNodes?: ScriptCanvasTextNode[];
+  pages: FlowPageNode[];
+  images: FlowImageNode[];
+  textNodes?: FlowTextNode[];
   flowNodes?: NodeFlowNode[];
   graphLinks?: NodeFlowGraphLink[];
   globalAssetHistory?: GlobalAssetHistoryItem[];
   linkStyle?: "angular" | "curved";
   activeView?: string | null;
-  links: ScriptCanvasLink[];
-  timeline?: ScriptTimelineState;
+  links: FlowLink[];
+  timeline?: FlowFoundationState;
 }
 
 // --- Unified Role Identity Types ---
@@ -252,8 +259,8 @@ export interface ProjectData {
   episodes: Episode[];
   roles: ProjectRoleIdentity[];
   designAssets: DesignAssetItem[];
-  nodeDefaults?: NodeFlowNodeDefaults;
-  scriptCanvas?: ScriptCanvasState;
+  canvas: CanvasState;
+  flow?: FlowState;
 
   phase5Usage?: TokenUsage; // Video Studio (Reserved for Prompt Refinement or API cost mapping)
 

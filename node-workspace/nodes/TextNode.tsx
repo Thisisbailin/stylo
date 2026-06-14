@@ -200,6 +200,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     }, [mentionState, mentionTargets]);
 
     const showMentionPicker = isFocused && !!mentionState;
+    const isDocumentTextNode = typeof data.episodeId === "number" || typeof data.documentId === "string";
 
     const renderedHtml = useMemo(() => {
         if (!draftText) return "";
@@ -398,10 +399,11 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
         <BaseNode
             title={data.title || "Text"}
             onTitleChange={(title) => updateNodeData(id, { title })}
-            inputs={["text"]}
+            inputs={isDocumentTextNode ? ["image", "text"] : ["text"]}
             outputs={["text"]}
             selected={selected}
             variant="text"
+            nodeType={isDocumentTextNode ? "text-document" : "text"}
         >
             <div
                 ref={shellRef}

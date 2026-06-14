@@ -208,13 +208,13 @@ export const createQalamToolInputGuardrails = (
             const nodeRef = typeof (args.node_ref ?? args.nodeRef) === "string" ? String(args.node_ref ?? args.nodeRef).trim() : "";
             const patch = args.patch && typeof args.patch === "object" && !Array.isArray(args.patch) ? args.patch : null;
             if (!nodeId && !nodeRef) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("更新 NodeFlow node 需要 node_id 或 node_ref。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("更新 Flow 节点需要 node_id 或 node_ref。", {
                 entity,
                 action,
               });
             }
             if (!patch || Object.keys(patch).length === 0) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("更新 NodeFlow node 需要非空 patch。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("更新 Flow 节点需要非空 patch。", {
                 entity,
                 action,
               });
@@ -228,13 +228,13 @@ export const createQalamToolInputGuardrails = (
             const x = Number(args.x);
             const y = Number(args.y);
             if (!nodeId && !nodeRef) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("移动 NodeFlow node 需要 node_id 或 node_ref。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("移动 Flow 节点需要 node_id 或 node_ref。", {
                 entity,
                 action,
               });
             }
             if (!Number.isFinite(x) || !Number.isFinite(y)) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("移动 NodeFlow node 需要合法的 x 和 y。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("移动 Flow 节点需要合法的 x 和 y。", {
                 entity,
                 action,
               });
@@ -246,7 +246,7 @@ export const createQalamToolInputGuardrails = (
             const nodeId = typeof (args.node_id ?? args.nodeId) === "string" ? String(args.node_id ?? args.nodeId).trim() : "";
             const nodeRef = typeof (args.node_ref ?? args.nodeRef) === "string" ? String(args.node_ref ?? args.nodeRef).trim() : "";
             if (!nodeId && !nodeRef) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("删除 NodeFlow node 需要 node_id 或 node_ref。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("删除 Flow 节点需要 node_id 或 node_ref。", {
                 entity,
                 action,
               });
@@ -268,7 +268,7 @@ export const createQalamToolInputGuardrails = (
           if (entity === "link" && action === "unlink") {
             const linkId = typeof (args.link_id ?? args.linkId) === "string" ? String(args.link_id ?? args.linkId).trim() : "";
             if (!linkId) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("断开 NodeFlow link 需要 link_id。", {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("断开 Flow 连线需要 link_id。", {
                 entity,
                 action,
               });
@@ -284,7 +284,7 @@ export const createQalamToolInputGuardrails = (
           }
 
           return ToolGuardrailFunctionOutputFactory.rejectContent(
-            "operate_project_resource 仅支持 NodeFlow node create/update/move/remove 与 link connect/unlink。",
+            "operate_project_resource 仅支持 Flow 节点 create/update/move/remove 与连线 connect/unlink。",
             { entity, action }
           );
         },

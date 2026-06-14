@@ -190,7 +190,7 @@ const TOOL_ITEMS: ToolItem[] = [
     surfaces: ["script source", "script archive", "script map", "canvas node", "canvas link", "canvas map"],
     boundary: "只读，不允许直接修改项目状态。",
     artifact: "返回 Script source / archive / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
-    note: "负责统一读取 Script Workspace 内的项目事实。",
+    note: "负责统一读取 Flow Workspace 内的项目事实。",
     Icon: Eye,
   },
   {
@@ -202,14 +202,14 @@ const TOOL_ITEMS: ToolItem[] = [
     surfaces: ["script archive", "script space block"],
     boundary: "只写入 Script foundation 的档案文档和既有空间轴区块；不直接覆写锁定的剧本源文本。",
     artifact: "输出新的 Script 档案或更新后的空间轴区块，作为项目长期档案的正式写入结果。",
-    note: "负责项目档案的沉淀与修正，不越过 Script Workspace 的写入边界。",
+    note: "负责项目档案的沉淀与修正，不越过 Flow Workspace 的写入边界。",
     Icon: Sparkles,
   },
   {
     key: "workflow-builder",
     capability: "operate",
     title: "operate",
-    description: "Agent 通过统一操作接口在 Script Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
+    description: "Agent 通过统一操作接口在 Flow Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
     tools: ["operate_project_resource"],
     surfaces: ["text node", "script board", "character card", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
@@ -2217,7 +2217,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div>
                             <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">操作开关</div>
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以把理解转成 Script Workspace 中的真实节点与连线。
+                              控制 Agent 是否可以把理解转成 Flow Workspace 中的真实节点与连线。
                             </div>
                           </div>
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">

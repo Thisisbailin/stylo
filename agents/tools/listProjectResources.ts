@@ -32,7 +32,7 @@ const listProjectResourcesParameters = {
     layer: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_LAYERS],
-      description: "Which project layer to inspect: script for source/foundation/archive resources or nodeflow for the visible working canvas.",
+      description: "Which Flow access path to inspect: script for source/foundation/archive resources or nodeflow for the visible graph runtime.",
     },
     entity: {
       type: "string",
@@ -42,7 +42,7 @@ const listProjectResourcesParameters = {
     link_role: {
       type: "string",
       enum: ["connection", "reference"],
-      description: "Optional NodeFlow link role filter when listing links.",
+      description: "Optional Flow graph link role filter when listing links.",
     },
     max_items: {
       type: "integer",
@@ -98,7 +98,7 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List project entities before reading them. The public project world has two main layers: Script for source/foundation/archive resources and NodeFlow for the visible working canvas.",
+    "List project entities before reading them. Flow exposes source/foundation/archive resources through script and visible graph runtime resources through the internal nodeflow key.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -335,9 +335,9 @@ export const listProjectResourcesToolDef = {
     if (layer === "script" && entity === "node") return `列出 ${count} 个 Script 资源`;
     if (layer === "script" && entity === "link") return `列出 ${count} 条 Script 关系`;
     if (layer === "script" && entity === "map") return `列出 ${count} 种 Script 地图视图`;
-    if (layer === "nodeflow" && entity === "node") return `列出 ${count} 个 NodeFlow 节点`;
-    if (layer === "nodeflow" && entity === "link") return `列出 ${count} 条 NodeFlow 连线`;
-    if (layer === "nodeflow" && entity === "approval") return `列出 ${count} 个 NodeFlow 待审批执行请求`;
-    return `列出 ${count} 张 NodeFlow 地图`;
+    if (layer === "nodeflow" && entity === "node") return `列出 ${count} 个 Flow 节点`;
+    if (layer === "nodeflow" && entity === "link") return `列出 ${count} 条 Flow 连线`;
+    if (layer === "nodeflow" && entity === "approval") return `列出 ${count} 个 Flow 待审批执行请求`;
+    return `列出 ${count} 张 Flow 地图`;
   },
 };

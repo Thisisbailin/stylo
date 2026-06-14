@@ -47,7 +47,7 @@ export const buildToolSummary = (name: string, args: any) => {
     return `Script 编辑：${args?.entity || "archive"} / ${args?.action || "create"}`;
   }
   if (name === "operate_project_resource") {
-    return `NodeFlow 操作：${args?.entity || "node"} / ${args?.action || "create"}`;
+    return `Flow 操作：${args?.entity || "node"} / ${args?.action || "create"}`;
   }
   return "工具调用";
 };

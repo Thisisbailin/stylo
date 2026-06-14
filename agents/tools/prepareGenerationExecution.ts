@@ -5,7 +5,7 @@ const prepareGenerationExecutionParameters = {
   properties: {
     node_id: {
       type: "string",
-      description: "NodeFlow node id for the generation node.",
+      description: "Flow node id for the generation node.",
     },
     node_ref: {
       type: "string",

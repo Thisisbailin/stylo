@@ -11,8 +11,8 @@ const PROJECT_PATCH_KEYS = [
   "episodes",
   "roles",
   "designAssets",
-  "nodeDefaults",
-  "scriptCanvas",
+  "canvas",
+  "flow",
   "phase5Usage",
   "stats"
 ] as const;

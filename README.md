@@ -1,54 +1,48 @@
 # Qalam
 
-Qalam is a node-first creative workspace for script organization, identity assets, and AI-assisted production flow design.
+Qalam is a canvas-first creative workspace for script writing, project archives, identity assets, and AI-assisted image production.
 
-The current product is no longer related to Google AI Studio. This repository now centers on one primary canvas system plus two supporting runtime surfaces:
+The current product is no longer related to Google AI Studio. The application now centers on two independent layers:
 
-- `Nodes`: the central infinite canvas with two planes
-  - `Flow`: the user-facing workflow surface
-  - `Script`: the project archive and script-organization surface
+- `Canvas`: the infinite spatial support layer for viewport, zoom, pan, selection, rendering, and visual organization
+- `Flow`: the creative node-and-link layer that spans script writing, project archives, foundation structure, and AIGC image/video workflows
 - `Qalam Agent`: a single general-purpose project agent built on `@openai/agents`
 
 ## What The App Does
 
 - Import and organize project/script data
-- Build visual workflows in `Nodes / Flow`
-- Organize script archives in `Nodes / Script`
+- Build visual creative flows on the infinite canvas
+- Organize script documents, archive documents, and production nodes in one Flow graph
 - Run image, video, audio, and reference-based generation flows
 - Use `Qalam Agent` to collaborate across the same graph world:
   - read project archive facts
-  - edit script resources
-  - operate the visible workflow canvas
+  - edit durable flow resources
+  - operate the visible creative flow
 - Persist project state locally, with optional cloud sync
 
 ## Core Architecture
 
-Qalam no longer treats reading, editing, and operating as actions over three unrelated modules.
+Qalam no longer treats reading, editing, and operating as actions over unrelated business modules.
 
-The project now revolves around one shared graph philosophy:
+The project now revolves around a two-layer architecture:
 
-- `node`
-- `link`
-- `map`
-
-This philosophy lands in two tightly related systems:
-
-- `Script`
-  - the project archive and script organization surface
-  - user-facing on the space axis
-  - used by the agent for grounded project context
-- `NodeFlow`
-  - the upper-level workflow canvas for user work and execution
-  - user-facing flow design and execution
+- `Canvas`
+  - the spatial support system
+  - owns viewport, zoom, pan, selection, background, rendering, and hit testing
+  - should not understand script writing, identity assets, or generation semantics
+- `Flow`
+  - the creative node system
+  - owns nodes, links, documents, foundation axes, approvals, and agent operations
+  - contains script documents as one node/document type rather than a top-level app mode
 
 In tool terms, the runtime aims to stay aligned to three atomic actions:
 
 - `read`
-  - unified graph reading across `Script` and `NodeFlow`
+  - unified graph reading across Flow resources
 - `edit`
-  - script-resource mutation for project archives
+  - durable Flow resource mutation for project archives and foundation blocks
 - `operate`
-  - nodeflow-layer mutation for the visible workflow canvas
+  - visible Flow graph mutation
 
 The public tool protocol is now intentionally graph-shaped instead of module-shaped:
 
@@ -60,11 +54,11 @@ The public tool protocol is now intentionally graph-shaped instead of module-sha
   - reads `node / link / map / approval`
 - `edit`
   - `edit_script_resource`
-  - writes project archive entities on the script surface
+  - writes durable project archive entities inside Flow
 - `operate`
   - `operate_project_resource`
   - uses `entity / action`
-  - operates only `NodeFlow` graph entities
+  - operates only `Flow` graph entities
   - current atomic actions:
     - node: `create / update / move / remove`
     - link: `connect / unlink`
@@ -80,11 +74,11 @@ So the agent is no longer switching between unrelated tool worlds. It is acting 
 
 This means the agent and the user are no longer modeled as working in separate systems.
 
-They collaborate around the same central `Nodes` world:
+They collaborate around the same central `Canvas + Flow` world:
 
-- the user works mainly on the `Flow` front side
-- the agent reads and edits project archives through `Script`
-- the agent helps operate the visible workflow canvas
+- the Canvas layer provides the infinite spatial workspace
+- the Flow layer provides creative documents, nodes, and relationships
+- the agent reads, edits, and operates the same Flow graph the user sees
 
 ## Current Runtime Stack
 
@@ -240,7 +234,7 @@ The project sync endpoints create and evolve the required D1 tables in code, so 
 ## Product Structure
 
 - `App.tsx`: top-level application shell
-- `node-workspace/components/NodeFlow.tsx`: central `Script` + `Flow` canvas
+- `node-workspace/components/CreativeWorkspace.tsx`: central `Flow` workspace
 - `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
 - `node-workspace/components/AgentSettingsPanel.tsx`: provider, tool, and runtime settings
 - `agents/`: Qalam agent runtime, unified graph tools, memory, bridge, and guardrails

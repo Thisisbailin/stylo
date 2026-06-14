@@ -227,7 +227,7 @@ export const validateNodeFlowState = ({
       });
 
   if (nodes.length === 0) {
-    errors.push("NodeFlow is empty");
+    errors.push("Flow is empty");
     return { valid: false, errors };
   }
 

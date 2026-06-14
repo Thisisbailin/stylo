@@ -4,6 +4,8 @@ import { DesignAssetItem, Episode, ProjectRoleIdentity, SeedanceModel, ViduRefer
 export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 
 export type NodeType =
+  | "scriptPage"
+  | "mdText"
   | "imageInput"
   | "audioInput"
   | "videoInput"
@@ -161,6 +163,21 @@ export interface TextNodeData extends BaseNodeData {
   entityBindings?: EntityBinding[];
 }
 
+export interface ScriptPageNodeData extends TextNodeData {
+  title: string;
+  episodeId?: number;
+  text: string;
+  preview?: string;
+}
+
+export interface MarkdownTextNodeData extends TextNodeData {
+  title: string;
+  text: string;
+  content?: string;
+  documentId?: string;
+  preview?: string;
+}
+
 export interface ScriptBoardNodeData extends BaseNodeData {
   title: string;
   episodeId?: number;
@@ -302,14 +319,14 @@ export type NodeFlowNodeData =
   | VideoInputNodeData
   | AnnotationNodeData
   | TextNodeData
+  | ScriptPageNodeData
+  | MarkdownTextNodeData
   | ScriptBoardNodeData
   | IdentityCardNodeData
   | ImageGenNodeData
   | VideoGenNodeData
   | ViduVideoGenNodeData
   | SeedanceVideoGenNodeData;
-
-export type NodeFlowNodeDefaults = Partial<Record<NodeType, Partial<NodeFlowNodeData>>>;
 
 export type NodeFlowPosition = {
   x: number;

@@ -124,9 +124,9 @@ const humanizeToolName = (name: string) => {
     case "search_project_resource":
       return "搜索项目内容";
     case "edit_script_resource":
-      return "编辑 Script";
+      return "编辑 Flow 档案";
     case "operate_project_resource":
-      return "操作 Script Workspace";
+      return "操作 Flow";
     default:
       return name;
   }

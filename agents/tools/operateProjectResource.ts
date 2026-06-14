@@ -29,33 +29,33 @@ const operateProjectResourceParameters = {
     entity: {
       type: "string",
       enum: [...OPERATE_NODEFLOW_ENTITIES],
-      description: "Which NodeFlow graph entity to operate on.",
+      description: "Which Flow graph entity to operate on.",
     },
     action: {
       type: "string",
       enum: [...OPERATE_NODEFLOW_ACTIONS],
-      description: "Atomic NodeFlow action. Nodes support create, update, move, remove. Links support connect, unlink.",
+      description: "Atomic Flow graph action. Nodes support create, update, move, remove. Links support connect, unlink.",
     },
     link_role: {
       type: "string",
       enum: ["connection", "reference"],
-      description: "Whether the NodeFlow link is a visible canvas connection or an internal reference relation.",
+      description: "Whether the Flow graph link is a visible canvas connection or an internal reference relation.",
     },
     node_kind: {
       type: "string",
-      description: "NodeFlow node kind to create. Supports text, script_board, character_card, plus aliases script and character.",
+      description: "Flow graph node kind to create. Supports text, script_board, character_card, plus aliases script and character.",
     },
     node_id: {
       type: "string",
-      description: "Existing NodeFlow node id.",
+      description: "Existing Flow graph node id.",
     },
     node_ref: {
       type: "string",
-      description: "Existing NodeFlow node ref.",
+      description: "Existing Flow graph node ref.",
     },
     link_id: {
       type: "string",
-      description: "Existing NodeFlow link id for unlink.",
+      description: "Existing Flow graph link id for unlink.",
     },
     title: {
       type: "string",
@@ -67,7 +67,7 @@ const operateProjectResourceParameters = {
     },
     patch: {
       type: "object",
-      description: "Structured NodeFlow node patch for update.",
+      description: "Structured Flow graph node patch for update.",
       additionalProperties: true,
     },
     x: {
@@ -96,19 +96,19 @@ const operateProjectResourceParameters = {
     },
     source_ref: {
       type: "string",
-      description: "Source node ref when connecting NodeFlow links.",
+      description: "Source node ref when connecting Flow graph links.",
     },
     target_ref: {
       type: "string",
-      description: "Target node ref when connecting NodeFlow links.",
+      description: "Target node ref when connecting Flow graph links.",
     },
     source_node_id: {
       type: "string",
-      description: "Source node id when connecting NodeFlow links.",
+      description: "Source node id when connecting Flow graph links.",
     },
     target_node_id: {
       type: "string",
-      description: "Target node id when connecting NodeFlow links.",
+      description: "Target node id when connecting Flow graph links.",
     },
     source_handle: {
       type: "string",
@@ -254,7 +254,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       const characterId = normalizeString(raw.character_id ?? raw.characterId) || undefined;
 
       if (!nodeKind) {
-        throw new Error("创建 NodeFlow node 需要合法的 node_kind。");
+        throw new Error("创建 Flow 节点需要合法的 node_kind。");
       }
       if (nodeKind === "text" && !text) {
         throw new Error("创建 text 节点时需要 text。");
@@ -283,13 +283,13 @@ const parseArgs = (input: unknown): ParsedArgs => {
     }
 
     if (!nodeId && !nodeRef) {
-      throw new Error(`NodeFlow node ${action} 需要 node_id 或 node_ref。`);
+      throw new Error(`Flow 节点 ${action} 需要 node_id 或 node_ref。`);
     }
 
     if (action === "update") {
       const patch = buildNodePatch(raw);
       if (!Object.keys(patch).length) {
-        throw new Error("更新 NodeFlow node 需要 patch 或可映射到 patch 的字段。");
+        throw new Error("更新 Flow 节点需要 patch 或可映射到 patch 的字段。");
       }
       return {
         entity: "node",
@@ -304,7 +304,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       const x = typeof raw.x === "number" ? raw.x : undefined;
       const y = typeof raw.y === "number" ? raw.y : undefined;
       if (typeof x !== "number" || typeof y !== "number") {
-        throw new Error("移动 NodeFlow node 需要明确的 x 和 y。");
+        throw new Error("移动 Flow 节点需要明确的 x 和 y。");
       }
       return {
         entity: "node",
@@ -325,7 +325,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       };
     }
 
-    throw new Error(`NodeFlow node 当前不支持 action=${action}`);
+    throw new Error(`Flow 节点当前不支持 action=${action}`);
   }
 
   if (action === "connect") {
@@ -340,10 +340,10 @@ const parseArgs = (input: unknown): ParsedArgs => {
     const targetHandle = normalizeString(raw.target_handle ?? raw.targetHandle) || undefined;
 
     if ((!sourceRef && !sourceNodeId) || (!targetRef && !targetNodeId)) {
-      throw new Error("连接 NodeFlow link 时需要为两端分别提供 ref 或 node_id。");
+      throw new Error("连接 Flow 连线时需要为两端分别提供 ref 或 node_id。");
     }
     if ((sourceRef || sourceNodeId) === (targetRef || targetNodeId)) {
-      throw new Error("NodeFlow link 不能连接同一个节点到自己。");
+      throw new Error("Flow 连线不能连接同一个节点到自己。");
     }
 
     return {
@@ -365,7 +365,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
       | "connection"
       | "reference";
     if (!linkId) {
-      throw new Error("断开 NodeFlow link 需要 link_id。");
+      throw new Error("断开 Flow 连线需要 link_id。");
     }
     return {
       entity: "link",
@@ -375,7 +375,7 @@ const parseArgs = (input: unknown): ParsedArgs => {
     };
   }
 
-  throw new Error(`NodeFlow link 当前不支持 action=${action}`);
+  throw new Error(`Flow 连线当前不支持 action=${action}`);
 };
 
 const resolveNodeType = (nodeKind: OperateNodeKind) => {
@@ -423,7 +423,7 @@ const resolveNodeFlowRefForGraph = (
 export const operateProjectResourceToolDef = {
   name: "operate_project_resource",
   description:
-    "Operate the NodeFlow layer by performing atomic node or link actions on the visible working canvas. Use this tool only for the NodeFlow side of the central graph world.",
+    "Operate the visible Flow graph by performing atomic node or link actions. The internal layer key is nodeflow, but this is not a separate product mode.",
   parameters: operateProjectResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -606,7 +606,7 @@ export const operateProjectResourceToolDef = {
       const sourceRef = resolveNodeFlowRefForGraph(bridge, workflow, args.sourceNodeId, args.sourceRef);
       const targetRef = resolveNodeFlowRefForGraph(bridge, workflow, args.targetNodeId, args.targetRef);
       if (!sourceRef || !targetRef) {
-        throw new Error("创建 NodeFlow graph link 需要可解析的 source_ref 和 target_ref。");
+        throw new Error("创建 Flow 引用关系需要可解析的 source_ref 和 target_ref。");
       }
       const created = bridge.createNodeFlowGraphLink({
         expectedRevision,
@@ -697,20 +697,20 @@ export const operateProjectResourceToolDef = {
   },
   summarize: (output: any) => {
     if (output?.entity === "node" && output?.action === "create") {
-      return `创建 NodeFlow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+      return `创建 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "node" && output?.action === "update") {
-      return `更新 NodeFlow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+      return `更新 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "node" && output?.action === "move") {
-      return `移动 NodeFlow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+      return `移动 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "node" && output?.action === "remove") {
-      return `删除 NodeFlow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+      return `删除 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "link" && output?.action === "connect") {
-      return `连接 NodeFlow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
+      return `连接 Flow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
     }
-    return `断开 NodeFlow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
+    return `断开 Flow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
   },
 };

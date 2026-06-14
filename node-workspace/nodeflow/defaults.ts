@@ -4,8 +4,10 @@ import type {
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
+  MarkdownTextNodeData,
   NodeFlowNodeData,
   NodeType,
+  ScriptPageNodeData,
   ScriptBoardNodeData,
   SeedanceVideoGenNodeData,
   TextNodeData,
@@ -16,6 +18,21 @@ import type {
 
 export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData => {
   switch (type) {
+    case "scriptPage":
+      return {
+        title: "剧本文档",
+        text: "",
+        episodeId: undefined,
+        preview: "",
+      } as ScriptPageNodeData;
+    case "mdText":
+      return {
+        title: "档案文档",
+        text: "",
+        content: "",
+        documentId: undefined,
+        preview: "",
+      } as MarkdownTextNodeData;
     case "imageInput":
       return {
         image: null,

@@ -1,6 +1,6 @@
-import type { ProjectData, ScriptCanvasState } from "../../types";
+import type { ProjectData, FlowState } from "../../types";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { ensureScriptCanvas, findScriptResourceNode } from "./scriptResources";
+import { ensureFlow, findScriptResourceNode } from "./scriptResources";
 
 export const EDIT_SCRIPT_ENTITIES = ["archive", "space_block"] as const;
 export const EDIT_SCRIPT_ACTIONS = ["create", "update"] as const;
@@ -63,7 +63,7 @@ const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "")
 
 const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const normalizeCanvas = (projectData: ProjectData): ScriptCanvasState => ensureScriptCanvas(projectData.scriptCanvas);
+const normalizeCanvas = (projectData: ProjectData): FlowState => ensureFlow(projectData.flow);
 
 type ParsedArgs =
   | {
@@ -170,7 +170,7 @@ const spaceBlockIdFromArgs = (
 export const editScriptResourceToolDef = {
   name: "edit_script_resource",
   description:
-    "Edit the Script foundation plane. Use it for durable project archive documents and existing space-axis blocks. This writes to ProjectData.scriptCanvas.",
+    "Edit Flow archive resources. Use it for durable project archive documents and existing space-axis blocks. This writes to ProjectData.flow.",
   parameters: editScriptResourceParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -178,23 +178,33 @@ export const editScriptResourceToolDef = {
     if (args.entity === "archive" && args.action === "create") {
       const id = createId("archive");
       const createdAt = Date.now();
+      const nodeId = `md-${id}`;
       const node = {
-        id,
-        title: args.title,
-        content: args.content,
+        id: nodeId,
+        type: "mdText" as const,
         position: {
           x: typeof args.x === "number" ? args.x : 160,
           y: typeof args.y === "number" ? args.y : 180,
         },
-        createdAt,
+        style: { width: 320, height: 252 },
+        data: {
+          documentId: id,
+          title: args.title,
+          text: args.content,
+          content: args.content,
+          preview: args.content.replace(/\s+/g, " ").trim().slice(0, 180),
+          createdAt,
+        },
       };
       bridge.updateProjectData((prev) => {
         const canvas = normalizeCanvas(prev);
         return {
           ...prev,
-          scriptCanvas: {
+          flow: {
             ...canvas,
-            textNodes: [...(canvas.textNodes || []), node],
+            pages: [],
+            textNodes: [],
+            flowNodes: [...(canvas.flowNodes || []), node],
           },
         };
       });
@@ -209,13 +219,13 @@ export const editScriptResourceToolDef = {
           target: "script:archive",
           id: `archive:${id}`,
           ref: `script:archive:${id}`,
-          title: node.title,
+          title: args.title,
         },
         item: {
           node_id: `archive:${id}`,
           node_ref: `script:archive:${id}`,
           document_id: id,
-          title: node.title,
+          title: args.title,
         },
       };
     }
@@ -227,8 +237,27 @@ export const editScriptResourceToolDef = {
       let updatedTitle = "";
       bridge.updateProjectData((prev) => {
         const canvas = normalizeCanvas(prev);
+        const flowNodes = (canvas.flowNodes || []).map((node) => {
+          const data = node.data as { documentId?: string; title?: string; text?: string; content?: string };
+          const nodeDocumentId = typeof data.documentId === "string" ? data.documentId : node.id.replace(/^md-/, "");
+          if (node.type !== "mdText" || nodeDocumentId !== documentId) return node;
+          updatedTitle = args.title ?? data.title ?? "档案文档";
+          return {
+            ...node,
+            data: {
+              ...data,
+              title: args.title ?? data.title ?? "档案文档",
+              text: args.content ?? data.text ?? data.content ?? "",
+              content: args.content ?? data.content ?? data.text ?? "",
+            },
+          };
+        });
+        const updatedFlowNode = flowNodes.some((node) => {
+          const data = node.data as { documentId?: string };
+          return node.type === "mdText" && (data.documentId === documentId || node.id === `md-${documentId}`);
+        });
         const textNodes = (canvas.textNodes || []).map((node) => {
-          if (node.id !== documentId) return node;
+          if (updatedFlowNode || node.id !== documentId) return node;
           updatedTitle = args.title ?? node.title;
           return {
             ...node,
@@ -236,14 +265,15 @@ export const editScriptResourceToolDef = {
             content: args.content ?? node.content,
           };
         });
-        if (!textNodes.some((node) => node.id === documentId)) {
+        if (!updatedFlowNode && !textNodes.some((node) => node.id === documentId)) {
           throw new Error("未找到要更新的 archive 文档。");
         }
         return {
           ...prev,
-          scriptCanvas: {
+          flow: {
             ...canvas,
-            textNodes,
+            textNodes: updatedFlowNode ? [] : textNodes,
+            flowNodes,
           },
         };
       });
@@ -291,7 +321,7 @@ export const editScriptResourceToolDef = {
       }
       return {
         ...prev,
-        scriptCanvas: {
+        flow: {
           ...canvas,
           timeline: {
             ...timeline,
