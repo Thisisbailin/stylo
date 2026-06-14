@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Rect, Circle, Arrow, Line, Text } from "react-konva";
+import { Stage, Layer, Rect, Circle, Arrow, Line, Text, Image as KonvaImage } from "react-konva";
 import { useAnnotationStore } from "../store/annotationStore";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AnnotationShape } from "../types";
@@ -61,8 +61,10 @@ export const AnnotationModal: React.FC = () => {
   const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
   const [drawing, setDrawing] = useState(false);
   const [newPoints, setNewPoints] = useState<number[]>([]);
+  const [imageElement, setImageElement] = useState<HTMLImageElement | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<any>(null);
 
   useEffect(() => {
     const resize = () => {
@@ -83,7 +85,40 @@ export const AnnotationModal: React.FC = () => {
     });
   }, [annotations, isModalOpen, sourceImage, sourceNodeId, updateNodeData]);
 
+  useEffect(() => {
+    if (!sourceImage) {
+      setImageElement(null);
+      return;
+    }
+    const image = new window.Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => setImageElement(image);
+    image.src = sourceImage;
+    return () => {
+      image.onload = null;
+    };
+  }, [sourceImage]);
+
   if (!isModalOpen) return null;
+
+  const saveAndClose = () => {
+    if (sourceNodeId && stageRef.current) {
+      try {
+        const outputImage = stageRef.current.toDataURL({ pixelRatio: 1 });
+        updateNodeData(sourceNodeId, {
+          annotations,
+          sourceImage: sourceImage || null,
+          outputImage,
+        });
+      } catch {
+        updateNodeData(sourceNodeId, {
+          annotations,
+          sourceImage: sourceImage || null,
+        });
+      }
+    }
+    closeModal();
+  };
 
   const startPoint = (e: any) => {
     const pos = e.target.getStage().getPointerPosition();
@@ -164,13 +199,14 @@ export const AnnotationModal: React.FC = () => {
               onChange={(e) => setToolOptions({ strokeWidth: Number(e.target.value) })}
               className="w-12 bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded px-2 py-1 text-xs text-[var(--app-text-primary)]"
             />
-            <button onClick={closeModal} className="px-3 py-1 text-xs bg-red-600 rounded">
-              Close
+            <button onClick={saveAndClose} className="px-3 py-1 text-xs bg-[var(--app-panel-soft)] border border-[var(--app-border)] rounded text-[var(--app-text-primary)]">
+              完成
             </button>
           </div>
         </div>
         <div ref={containerRef} className="flex-1">
           <Stage
+            ref={stageRef}
             width={stageSize.width}
             height={stageSize.height}
             onMouseDown={startPoint}
@@ -178,7 +214,9 @@ export const AnnotationModal: React.FC = () => {
             onMouseUp={endPoint}
           >
             <Layer>
-              {sourceImage && <img src={sourceImage} alt="bg" className="hidden" />}
+              {imageElement ? (
+                <KonvaImage image={imageElement} x={0} y={0} width={stageSize.width} height={stageSize.height} />
+              ) : null}
               {annotations.map((s) => drawShape(s, false))}
               {drawing && currentTool === "freehand" && newPoints.length > 0 && (
                 <Line points={newPoints} stroke={toolOptions.strokeColor} strokeWidth={toolOptions.strokeWidth} />

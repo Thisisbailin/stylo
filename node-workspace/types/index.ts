@@ -16,7 +16,6 @@ export type NodeType =
   | "imageGen"
   | "nanoBananaImageGen"
   | "wanImageGen"
-  | "soraVideoGen"
   | "wanReferenceVideoGen"
   | "viduVideoGen"
   | "seedanceVideoGen";

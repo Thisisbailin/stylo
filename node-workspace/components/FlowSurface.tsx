@@ -16,7 +16,6 @@ import {
 import {
   AudioLines,
   Bot,
-  BookOpen,
   GripVertical,
   Image as ImageIcon,
   Layers,
@@ -52,7 +51,6 @@ import {
   ImageGenNode,
   NanoBananaImageGenNode,
   WanImageGenNode,
-  SoraVideoGenNode,
   WanReferenceVideoGenNode,
   ViduVideoGenNode,
   SeedanceVideoGenNode,
@@ -69,6 +67,7 @@ import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConn
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
+import { FilmRollCanister, FilmRollRibbon } from "./FilmRollControl";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -178,7 +177,6 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "剧本文档", hint: "创建一个新的分集稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
   { label: "档案文档", hint: "连接空间轴的全局 Markdown 档案", type: "mdText", Icon: Plus, group: "script", meta: "Markdown", tone: "is-slate", surface: "paper" },
-  { label: "Writing Panel", hint: "Episode and scene browser", type: "scriptBoard", Icon: BookOpen, group: "script", meta: "Panel", tone: "is-blue", surface: "glass" },
   { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers, group: "library", meta: "Library", tone: "is-moss", surface: "card" },
   { label: "Text", hint: "Draft prompts, notes, and structure", type: "text", Icon: MessageSquare, group: "library", meta: "Writing", tone: "is-slate", surface: "card" },
   { label: "Image", hint: "Upload a reference image or still", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
@@ -187,7 +185,6 @@ const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
   { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
   { label: "WAN Img", hint: "Wan 2.6 image workflow", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-moss", surface: "gen" },
-  { label: "Sora Video", hint: "Generate Sora clips", type: "soraVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
   { label: "Vidu", hint: "Vidu reference-to-video", type: "viduVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
   { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", type: "wanReferenceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-rose", surface: "motion" },
   { label: "Seedance", hint: "Multimodal reference-to-video", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
@@ -666,7 +663,6 @@ const nodeTypes: NodeTypes = {
   imageGen: ImageGenNode,
   nanoBananaImageGen: NanoBananaImageGenNode,
   wanImageGen: WanImageGenNode,
-  soraVideoGen: SoraVideoGenNode,
   wanReferenceVideoGen: WanReferenceVideoGenNode,
   viduVideoGen: ViduVideoGenNode,
   seedanceVideoGen: SeedanceVideoGenNode,
@@ -1124,7 +1120,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         </svg>
       ) : null}
 
-      <div className="script-foundation-filmstrip" aria-label="剧本基地">
+      <div className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""}`} aria-label="剧本基地">
+        <div className="script-foundation-ribbon-background">
+          <FilmRollRibbon isOpen={!isAgentTailOpen} height={78} />
+        </div>
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
           <button
             type="button"
@@ -1136,23 +1135,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             onDoubleClick={handleHeadDoubleClick}
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
-            <svg className="script-foundation-head-icon" viewBox="0 0 56 100" aria-hidden="true">
-              <path
-                className="script-foundation-head-icon__fill"
-                d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
-              />
-              <path
-                className="script-foundation-head-icon__line"
-                d="M10 9H41C45.4 9 48 11.9 48 16.3V84.2C48 88.8 45 91 40.8 91H25.5C21.7 91 19.7 89.2 19 85.5L16 69.8H10.2C6 69.8 4 67.4 4 63.5V16.2C4 11.8 6.5 9 10 9Z"
-              />
-              <g className="script-foundation-head-icon__perfs">
-                <rect x="13" y="20" width="5" height="13" rx="2.5" />
-                <rect x="24" y="19" width="5" height="14" rx="2.5" />
-                <rect x="35" y="20" width="5" height="13" rx="2.5" />
-                <rect x="25" y="72" width="5" height="14" rx="2.5" />
-                <rect x="36" y="72" width="5" height="14" rx="2.5" />
-              </g>
-            </svg>
+            <FilmRollCanister
+              isOpen={!isAgentTailOpen}
+              scale={0.47}
+              styleConfig={{
+                brandText: activeAxis === "time" ? "TIME" : "SPACE",
+                iso: activeAxis === "time" ? 200 : 400,
+                exp: activeAxis === "time" ? 36 : 24,
+              }}
+            />
           </button>
 
           {!isAgentTailOpen ? (
@@ -2446,7 +2437,6 @@ export const useFlowSurface = ({
         await runImageGen(node.id);
       }
       if (
-        node.type === "soraVideoGen" ||
         node.type === "wanReferenceVideoGen" ||
         node.type === "viduVideoGen" ||
         node.type === "seedanceVideoGen"

@@ -8,7 +8,7 @@ import { findProjectedSourceNode } from "../../node-workspace/nodeflow/projectGr
 export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
 export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "remove", "connect", "unlink"] as const;
 export const OPERATE_NODEFLOW_TARGETS = ["nodeflow:node", "nodeflow:link"] as const;
-export const OPERATE_NODEFLOW_NODE_KINDS = ["text", "script_board", "character_card"] as const;
+export const OPERATE_NODEFLOW_NODE_KINDS = ["script", "archive", "text", "image", "audio", "video"] as const;
 
 type OperateEntity = (typeof OPERATE_NODEFLOW_ENTITIES)[number];
 type OperateAction = (typeof OPERATE_NODEFLOW_ACTIONS)[number];
@@ -43,7 +43,7 @@ const operateProjectResourceParameters = {
     },
     node_kind: {
       type: "string",
-      description: "Flow graph node kind to create. Supports text, script_board, character_card, plus aliases script and character.",
+      description: "Flow graph node kind to create. Only supports basic nodes: script, archive, text, image, audio, video.",
     },
     node_id: {
       type: "string",
@@ -65,6 +65,30 @@ const operateProjectResourceParameters = {
       type: "string",
       description: "Text content for text nodes or text patches.",
     },
+    content: {
+      type: "string",
+      description: "Markdown/Fountain content for archive, script, or text nodes.",
+    },
+    image_url: {
+      type: "string",
+      description: "Image URL for image nodes.",
+    },
+    audio_url: {
+      type: "string",
+      description: "Audio URL for audio nodes.",
+    },
+    video_url: {
+      type: "string",
+      description: "Video URL for video nodes.",
+    },
+    filename: {
+      type: "string",
+      description: "Optional file label for media nodes.",
+    },
+    mime_type: {
+      type: "string",
+      description: "Optional MIME type for audio or video nodes.",
+    },
     patch: {
       type: "object",
       description: "Structured Flow graph node patch for update.",
@@ -84,15 +108,11 @@ const operateProjectResourceParameters = {
     },
     episode_id: {
       type: "integer",
-      description: "Episode number for script_board nodes, or for node patching.",
+      description: "Episode number for script nodes, or for node patching.",
     },
     scene_id: {
       type: "string",
       description: "Optional scene id for node patching.",
-    },
-    character_id: {
-      type: "string",
-      description: "Character id for character_card nodes, or for node patching.",
     },
     source_ref: {
       type: "string",
@@ -136,8 +156,11 @@ const toPositiveInteger = (value: unknown) => {
 
 const normalizeNodeKind = (rawNodeKind: unknown): OperateNodeKind | "" => {
   const value = normalizeString(rawNodeKind);
-  if (value === "script") return "script_board";
-  if (value === "character") return "character_card";
+  if (value === "script_page" || value === "script_node" || value === "script_document") return "script";
+  if (value === "archive_document" || value === "archive_node" || value === "document" || value === "md_text") return "archive";
+  if (value === "image_input") return "image";
+  if (value === "audio_input") return "audio";
+  if (value === "video_input") return "video";
   if ((OPERATE_NODEFLOW_NODE_KINDS as readonly string[]).includes(value)) {
     return value as OperateNodeKind;
   }
@@ -153,11 +176,15 @@ type ParsedArgs =
       parentId?: string;
       title?: string;
       text?: string;
+      content?: string;
+      imageUrl?: string;
+      audioUrl?: string;
+      videoUrl?: string;
+      filename?: string;
+      mimeType?: string;
       x?: number;
       y?: number;
       episodeId?: number;
-      sceneId?: string;
-      characterId?: string;
     }
   | {
       entity: "node";
@@ -206,20 +233,28 @@ const buildNodePatch = (raw: Record<string, unknown>) => {
 
   const title = normalizeString(raw.title);
   const text = normalizeString(raw.text);
+  const content = normalizeString(raw.content);
+  const imageUrl = normalizeString(raw.image_url ?? raw.imageUrl);
+  const audioUrl = normalizeString(raw.audio_url ?? raw.audioUrl);
+  const videoUrl = normalizeString(raw.video_url ?? raw.videoUrl);
+  const filename = normalizeString(raw.filename);
+  const mimeType = normalizeString(raw.mime_type ?? raw.mimeType);
   const sceneId = normalizeString(raw.scene_id ?? raw.sceneId);
-  const characterId = normalizeString(raw.character_id ?? raw.characterId);
   const episodeId = toPositiveInteger(raw.episode_id ?? raw.episodeId);
 
   if (title) explicitPatch.title = title;
   if (text) explicitPatch.text = text;
+  if (content) {
+    explicitPatch.content = content;
+    if (!text) explicitPatch.text = content;
+  }
+  if (imageUrl) explicitPatch.image = imageUrl;
+  if (audioUrl) explicitPatch.audio = audioUrl;
+  if (videoUrl) explicitPatch.video = videoUrl;
+  if (filename) explicitPatch.filename = filename;
+  if (mimeType) explicitPatch.mimeType = mimeType;
   if (typeof episodeId === "number") explicitPatch.episodeId = episodeId;
   if (sceneId) explicitPatch.sceneId = sceneId;
-  if (characterId) {
-    explicitPatch.entityId = characterId;
-    if (explicitPatch.entityType == null) {
-      explicitPatch.entityType = "character";
-    }
-  }
   return explicitPatch;
 };
 
@@ -247,23 +282,24 @@ const parseArgs = (input: unknown): ParsedArgs => {
       const parentId = normalizeString(raw.parent_id ?? raw.parentId) || undefined;
       const title = normalizeString(raw.title) || undefined;
       const text = normalizeString(raw.text) || undefined;
+      const content = typeof raw.content === "string" ? raw.content : undefined;
+      const imageUrl = normalizeString(raw.image_url ?? raw.imageUrl) || undefined;
+      const audioUrl = normalizeString(raw.audio_url ?? raw.audioUrl) || undefined;
+      const videoUrl = normalizeString(raw.video_url ?? raw.videoUrl) || undefined;
+      const filename = normalizeString(raw.filename) || undefined;
+      const mimeType = normalizeString(raw.mime_type ?? raw.mimeType) || undefined;
       const x = typeof raw.x === "number" ? raw.x : undefined;
       const y = typeof raw.y === "number" ? raw.y : undefined;
       const episodeId = toPositiveInteger(raw.episode_id ?? raw.episodeId);
-      const sceneId = normalizeString(raw.scene_id ?? raw.sceneId) || undefined;
-      const characterId = normalizeString(raw.character_id ?? raw.characterId) || undefined;
 
       if (!nodeKind) {
         throw new Error("创建 Flow 节点需要合法的 node_kind。");
       }
-      if (nodeKind === "text" && !text) {
+      if (nodeKind === "text" && !(text || content?.trim())) {
         throw new Error("创建 text 节点时需要 text。");
       }
-      if (nodeKind === "script_board" && !episodeId) {
-        throw new Error(`${nodeKind} 需要 episode_id。`);
-      }
-      if (nodeKind === "character_card" && !characterId) {
-        throw new Error("character_card 需要 character_id。");
+      if (nodeKind === "script" && !episodeId) {
+        throw new Error("script 节点需要 episode_id。");
       }
 
       return {
@@ -274,11 +310,15 @@ const parseArgs = (input: unknown): ParsedArgs => {
         parentId,
         title,
         text,
+        content,
+        imageUrl,
+        audioUrl,
+        videoUrl,
+        filename,
+        mimeType,
         x,
         y,
         episodeId,
-        sceneId,
-        characterId,
       };
     }
 
@@ -379,26 +419,36 @@ const parseArgs = (input: unknown): ParsedArgs => {
 };
 
 const resolveNodeType = (nodeKind: OperateNodeKind) => {
-  if (nodeKind === "script_board") return "scriptBoard" as const;
-  if (nodeKind === "character_card") return "identityCard" as const;
+  if (nodeKind === "script") return "scriptPage" as const;
+  if (nodeKind === "archive") return "mdText" as const;
+  if (nodeKind === "image") return "imageInput" as const;
+  if (nodeKind === "audio") return "audioInput" as const;
+  if (nodeKind === "video") return "videoInput" as const;
   return "text" as const;
 };
 
 const defaultTitle = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.title) return args.title;
-  if (args.nodeKind === "script_board") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本";
-  if (args.nodeKind === "character_card") return "角色卡片";
-  return args.text?.slice(0, 24) || "文本";
+  if (args.nodeKind === "script") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本文档";
+  if (args.nodeKind === "archive") return "档案文档";
+  if (args.nodeKind === "image") return args.filename || "图片节点";
+  if (args.nodeKind === "audio") return args.filename || "音频节点";
+  if (args.nodeKind === "video") return args.filename || "视频节点";
+  return (args.text || args.content || "").slice(0, 24) || "文本节点";
 };
 
 const defaultNodeRef = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.nodeRef) return args.nodeRef;
-  if (args.nodeKind === "script_board") return `ep${args.episodeId || "x"}_script_board`;
-  if (args.nodeKind === "character_card") {
-    return `${slugifyRefToken(args.characterId || args.title || "character", "character")}_card`;
-  }
-  return `text_${slugifyRefToken(args.title || args.text || Date.now().toString(), "note")}`;
+  if (args.nodeKind === "script") return `ep${args.episodeId || "x"}_script`;
+  if (args.nodeKind === "archive") return `archive_${slugifyRefToken(args.title || Date.now().toString(), "document")}`;
+  if (args.nodeKind === "image") return `image_${slugifyRefToken(args.filename || args.title || Date.now().toString(), "asset")}`;
+  if (args.nodeKind === "audio") return `audio_${slugifyRefToken(args.filename || args.title || Date.now().toString(), "asset")}`;
+  if (args.nodeKind === "video") return `video_${slugifyRefToken(args.filename || args.title || Date.now().toString(), "asset")}`;
+  return `text_${slugifyRefToken(args.title || args.text || args.content || Date.now().toString(), "note")}`;
 };
+
+const defaultDocumentId = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) =>
+  `${slugifyRefToken(args.nodeRef || args.title || "document", "document")}-${Date.now().toString(36)}`;
 
 const resolveNodeFlowRefForGraph = (
   bridge: QalamAgentBridge,
@@ -437,14 +487,20 @@ export const operateProjectResourceToolDef = {
         type: nodeType,
         nodeRef: defaultNodeRef(args),
         title: defaultTitle(args),
-        text: args.nodeKind === "text" ? args.text : undefined,
+        text: args.nodeKind === "text" || args.nodeKind === "script" || args.nodeKind === "archive"
+          ? args.text || args.content
+          : undefined,
+        content: args.content,
+        documentId: args.nodeKind === "archive" ? defaultDocumentId(args) : undefined,
+        imageUrl: args.nodeKind === "image" ? args.imageUrl : undefined,
+        audioUrl: args.nodeKind === "audio" ? args.audioUrl : undefined,
+        videoUrl: args.nodeKind === "video" ? args.videoUrl : undefined,
+        filename: args.filename,
+        mimeType: args.mimeType,
         x: args.x,
         y: args.y,
         parentId: args.parentId,
-        episodeId: args.nodeKind === "script_board" ? args.episodeId : undefined,
-        sceneId: undefined,
-        entityType: args.nodeKind === "character_card" ? "character" : undefined,
-        entityId: args.nodeKind === "character_card" ? args.characterId : undefined,
+        episodeId: args.nodeKind === "script" ? args.episodeId : undefined,
       });
       return {
         layer: "nodeflow",

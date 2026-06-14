@@ -38,8 +38,6 @@ import {
   SEEDANCE_DEFAULT_BASE_URL,
   SEEDANCE_DEFAULT_MODEL,
   SEEDANCE_FAST_MODEL,
-  SORA_DEFAULT_BASE_URL,
-  SORA_DEFAULT_MODEL,
   VIDU_DEFAULT_BASE_URL,
 } from "../../constants";
 import {
@@ -58,6 +56,7 @@ import { CharacterSceneLibraryPanel } from "./CharacterSceneLibraryPanel";
 import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
+import type { ModuleKey } from "./ModuleBar";
 
 type Props = {
   isOpen: boolean;
@@ -75,7 +74,7 @@ type Props = {
   onResetProject?: () => void;
   onOpenLanding?: () => void;
   requestedPanel?: AgentSettingsPanelKey;
-  onOpenVisualLab?: () => void;
+  onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab">) => void;
 };
 
 export type AgentSettingsPanelKey =
@@ -211,7 +210,7 @@ const TOOL_ITEMS: ToolItem[] = [
     title: "operate",
     description: "Agent 通过统一操作接口在 Flow Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
     tools: ["operate_project_resource"],
-    surfaces: ["text node", "script board", "character card", "node connection"],
+    surfaces: ["script node", "archive node", "text node", "image node", "audio node", "video node", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
     artifact: "输出可继续编辑和执行的节点 scaffold，承接“查阅”和“编辑”的结果。",
     note: "负责操作表层节点图，把 Script 中的事实与档案继续落成可执行画布结构。",
@@ -421,7 +420,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
-  const [activeVideoProvider, setActiveVideoProvider] = useState<"sora" | "qwen" | "vidu" | "seedance">("sora");
+  const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
   const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPanelKey>("provider");
   const [activeTool, setActiveTool] = useState<ToolKey>("project-data");
   const [assetsSection, setAssetsSection] = useState<MaterialsSectionKey>("images");
@@ -1248,26 +1247,40 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                     roles
                   </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={onOpenVisualLab}
-                  disabled={!onOpenVisualLab}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
+                <div
+                  className={`grid gap-2 rounded-xl border px-3 py-2 text-[12px] transition ${
                     onOpenVisualLab
-                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50 cursor-not-allowed"
+                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)]"
+                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50"
                   }`}
                 >
-                  <span className="flex items-center gap-3 text-left">
-                    <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
-                      <ScanSearch size={14} className="text-[var(--app-text-secondary)]" />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-3 text-left">
+                      <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
+                        <ScanSearch size={14} className="text-[var(--app-text-secondary)]" />
+                      </span>
+                      <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">visual lab</span>
                     </span>
-                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">visual lab</span>
-                  </span>
-                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    glass
-                  </span>
-                </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenVisualLab?.("glassLab")}
+                      disabled={!onOpenVisualLab}
+                      className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
+                    >
+                      glass
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenVisualLab?.("filmRollLab")}
+                      disabled={!onOpenVisualLab}
+                      className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
+                    >
+                      film
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
@@ -1536,7 +1549,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Video Providers</div>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { key: "sora" as const, label: "Sora", Icon: Sparkles },
                           { key: "qwen" as const, label: "Qwen", Icon: QwenIcon },
                           { key: "vidu" as const, label: "Vidu", Icon: Video },
                           { key: "seedance" as const, label: "Seedance", Icon: Video },
@@ -1956,21 +1968,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "video" && activeVideoProvider === "sora" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-              <div className="text-sm font-semibold text-[var(--app-text-primary)]">Sora</div>
-              <div className="text-[11px] text-[var(--app-text-muted)]">
-                Base URL: {SORA_DEFAULT_BASE_URL}
-              </div>
-              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 text-[12px] text-[var(--app-text-secondary)]">
-                固定模型：<span className="text-[var(--app-text-primary)] font-semibold">{SORA_DEFAULT_MODEL}</span>
-              </div>
-              <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用 Video API Key（可通过设置模块/Secrets 同步或在配置文件里填入）。
-              </div>
-            </div>
-          )}
-
           {activeType === "video" && activeVideoProvider === "qwen" && (
             <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
@@ -2234,7 +2231,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              `operate_project_resource` 负责创建统一画布中的 text、script board、character card。
+                              `operate_project_resource` 只负责创建统一画布中的 script、archive、text、image、audio、video 基础节点。
                             </div>
                           </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
@@ -2246,7 +2243,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Safety</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              创建前校验 ref、剧集与角色定位；连线前校验节点与 handle 合法性。
+                              创建前校验 ref 与剧集定位；连线前校验节点与 handle 合法性。
                             </div>
                           </div>
                         </div>

@@ -21,15 +21,18 @@ export type CreateTextNodeResult = {
 
 export type CreateNodeFlowNodeInput = {
   expectedRevision?: number;
-  type: Extract<NodeType, "text" | "imageGen" | "scriptBoard" | "identityCard">;
+  type: Extract<NodeType, "scriptPage" | "mdText" | "text" | "imageInput" | "audioInput" | "videoInput">;
   nodeRef?: string;
   title?: string;
   text?: string;
-  aspectRatio?: string;
+  content?: string;
+  documentId?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  videoUrl?: string;
+  filename?: string;
+  mimeType?: string;
   episodeId?: number;
-  sceneId?: string;
-  entityType?: "character" | "scene";
-  entityId?: string;
   x?: number;
   y?: number;
   parentId?: string;
@@ -124,16 +127,17 @@ export type NodeFlowNodeLookupResult = {
   outputHandles: NodeFlowHandle[];
 };
 
-export type NodeFlowHandle = "image" | "text" | "audio" | "multi";
+export type NodeFlowHandle = "image" | "text" | "audio" | "video" | "multi";
 
 export type CreateNodeFlowMapNodeInput = {
   key: string;
   type: Extract<
     NodeType,
-    "text" | "annotation" | "imageGen" | "wanImageGen" | "soraVideoGen" | "wanReferenceVideoGen" | "viduVideoGen" | "seedanceVideoGen"
+    "scriptPage" | "mdText" | "text" | "imageInput" | "audioInput" | "videoInput"
   >;
   title?: string;
   text?: string;
+  content?: string;
   x?: number;
   y?: number;
   width?: number;

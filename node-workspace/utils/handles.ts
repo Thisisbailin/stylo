@@ -7,6 +7,8 @@ const IMAGE_SOURCE_NODE_TYPES = new Set([
 ]);
 
 const TEXT_SOURCE_NODE_TYPES = new Set([
+  "scriptPage",
+  "mdText",
   "text",
   "scriptBoard",
   "identityCard",
@@ -63,6 +65,9 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: [], outputs: ["text"] };
     case "text":
       return { inputs: ["text"], outputs: ["text"] };
+    case "scriptPage":
+    case "mdText":
+      return { inputs: ["text"], outputs: ["text"] };
     case "scriptBoard":
       return { inputs: [], outputs: ["text"] };
     case "identityCard":
@@ -72,8 +77,6 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: ["multi", "image", "text"], outputs: ["image"] };
     case "wanImageGen":
       return { inputs: ["multi", "image", "text"], outputs: ["image"] };
-    case "soraVideoGen":
-      return { inputs: ["multi", "image", "text"], outputs: [] };
     case "wanReferenceVideoGen":
       return { inputs: ["multi", "image", "video", "audio", "text"], outputs: [] };
     case "viduVideoGen":

@@ -35,10 +35,8 @@ type Props = {
   onAddImage: () => void;
   onAddAudio: () => void;
   onAddVideo: () => void;
-  onAddImageGen: () => void;
   onAddNanoBananaImageGen: () => void;
   onAddWanImageGen: () => void;
-  onAddVideoGen: () => void;
   onAddViduVideoGen: () => void;
   onAddWanReferenceVideoGen: () => void;
   onAddSeedanceVideoGen: () => void;
@@ -64,10 +62,8 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddImage,
   onAddAudio,
   onAddVideo,
-  onAddImageGen,
   onAddNanoBananaImageGen,
   onAddWanImageGen,
-  onAddVideoGen,
   onAddViduVideoGen,
   onAddWanReferenceVideoGen,
   onAddSeedanceVideoGen,
@@ -105,7 +101,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     : floating
       ? "fixed bottom-4 right-4 z-30"
       : "relative z-30";
-  const panelClass = "rounded-3xl app-panel overflow-hidden";
+  const panelClass = "rounded-[24px] app-panel overflow-hidden";
   const panelStyle: React.CSSProperties = {
     backgroundColor: "var(--app-panel)",
     borderColor: "var(--app-border)",
@@ -120,7 +116,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const docButtonClass =
     "group w-full rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:text-[var(--app-text-muted)] disabled:hover:border-[var(--app-border)] disabled:hover:bg-[var(--app-panel-muted)]";
   const compactTabClass =
-    "inline-flex h-8 items-center justify-center rounded-full border px-3 text-[11px] font-semibold transition active:translate-y-px";
+    "inline-flex h-7 items-center justify-center rounded-full border px-2.5 text-[10px] font-semibold transition active:translate-y-px";
   const embeddedLabelClass =
     "group inline-flex h-8 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-3 text-[11px] font-medium tracking-[-0.01em] text-[var(--app-text-secondary)] shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const toolbarChipClass =
@@ -216,18 +212,18 @@ export const FloatingActionBar: React.FC<Props> = ({
   }, [showFileMenu, showPalette]);
 
   const panelActions = [
-    { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "Library", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
+    { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "档案", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
   ];
   const nodeActions = [
-    { label: "Text", hint: "Draft prompts, notes, and structure", meta: "Writing", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
-    { label: "Image", hint: "Upload a reference image or still", meta: "Input", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
-    { label: "Audio", hint: "Upload a reference audio clip", meta: "Input", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
-    { label: "Video", hint: "Upload a reference video clip", meta: "Input", onClick: onAddVideo, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
-    { label: "Nano Banana", hint: "Nano Banana Pro image", meta: "Generation", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
-    { label: "WAN Img", hint: "Wan 2.6 image workflow", meta: "Generation", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
-    { label: "Vidu", hint: "Vidu reference-to-video", meta: "Motion", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
-    { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", meta: "Motion", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
-    { label: "Seedance", hint: "Multimodal reference-to-video", meta: "Motion", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
+    { label: "文本", hint: "提示词、备忘与结构片段", meta: "文本", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
+    { label: "图片", hint: "上传参考图或剧照", meta: "输入", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
+    { label: "音频", hint: "上传声音参考", meta: "输入", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
+    { label: "视频", hint: "上传视频参考", meta: "输入", onClick: onAddVideo, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
+    { label: "Nano Banana", hint: "图像生成", meta: "图像", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
+    { label: "WAN 图像", hint: "Wan 2.6 图像工作流", meta: "图像", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
+    { label: "Vidu", hint: "参考生成视频", meta: "视频", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
+    { label: "WAN 视频", hint: "Wan 参考生视频", meta: "视频", onClick: onAddWanReferenceVideoGen, Icon: Video, tone: "text-fuchsia-300", surface: "bg-fuchsia-500/12" },
+    { label: "Seedance", hint: "多模态参考视频", meta: "视频", onClick: onAddSeedanceVideoGen, Icon: Video, tone: "text-sky-300", surface: "bg-sky-500/12" },
   ];
   const accountLoaded = accountInfo?.isLoaded ?? true;
   const accountSignedIn = accountLoaded && !!accountInfo?.isSignedIn;
@@ -428,11 +424,11 @@ export const FloatingActionBar: React.FC<Props> = ({
               <div className="max-h-[min(58vh,520px)] space-y-3 overflow-y-auto p-3">
               <div className="flex items-start justify-between gap-3 px-1">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-[var(--app-text-secondary)]">Add Nodes</div>
+                  <div className="text-[11px] font-bold tracking-[-0.02em] text-[var(--app-text-primary)]">添加节点</div>
                   <div className="mt-1 max-w-[34ch] text-[11px] leading-5 text-[var(--app-text-secondary)]">
                     {nodePaletteMode === "panels"
-                      ? "浏览项目面板类节点，组织角色与档案资产。"
-                      : "浏览 flow 节点，搭建输入、生成和引用链路。"}
+                      ? "添加角色、场景与项目档案节点。"
+                      : "添加输入、生成与参考节点。"}
                   </div>
                 </div>
                 <div className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-1">
@@ -445,7 +441,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                         : "border-transparent text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
                     }`}
                   >
-                    Panels
+                    档案
                   </button>
                   <button
                     type="button"
@@ -462,19 +458,19 @@ export const FloatingActionBar: React.FC<Props> = ({
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
-                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panels" ? "Panel Nodes" : "Flow Nodes"}</div>
+                  <div className={sectionEyebrowClass}>{nodePaletteMode === "panels" ? "Archive" : "Nodes"}</div>
                   <div className="text-[10px] text-[var(--app-text-muted)]">
-                    {nodePaletteMode === "panels" ? `${panelActions.length} entries` : `${nodeActions.length} actions`}
+                    {nodePaletteMode === "panels" ? `${panelActions.length} 类` : `${nodeActions.length} 类`}
                   </div>
                 </div>
                 {nodePaletteMode === "panels" ? (
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between px-1">
-                        <div className={sectionEyebrowClass}>Panel Nodes</div>
-                        <div className="text-[10px] text-[var(--app-text-muted)]">{panelActions.length} custom types</div>
+                        <div className={sectionEyebrowClass}>Archive</div>
+                        <div className="text-[10px] text-[var(--app-text-muted)]">{panelActions.length} 类</div>
                       </div>
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                         {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
                           <button
                             key={label}
@@ -482,7 +478,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                               onClick();
                               closeMenus();
                             }}
-                            className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                            className="group/node relative overflow-hidden rounded-[16px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-0"
                           >
                             <div className={`flex h-9 w-9 items-center justify-center rounded-[13px] border border-[var(--app-border)] ${surface} ${tone}`}>
                               <Icon size={16} />
@@ -510,7 +506,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                           onClick();
                           closeMenus();
                         }}
-                        className="group/node relative overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-2.5 text-left transition-all hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)]"
+                        className="group/node relative overflow-hidden rounded-[16px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent)] px-3 py-2.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-0"
                       >
                         <div className={`flex h-8 w-8 items-center justify-center rounded-[12px] border border-[var(--app-border)] ${surface} ${tone}`}>
                           <Icon size={15} />

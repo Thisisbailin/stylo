@@ -70,7 +70,6 @@ const WORK_HINT_KEYWORDS = [
   "改写",
   "优化",
   "Prompt",
-  "Sora",
   "节点",
   "工作流",
   "workflow",

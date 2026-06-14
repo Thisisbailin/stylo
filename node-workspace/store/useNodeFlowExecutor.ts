@@ -1,6 +1,5 @@
 import { useNodeFlowStore } from "./nodeFlowStore";
 import * as MultimodalService from "../../services/multimodalService";
-import * as SoraService from "../../services/soraService";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import * as ViduService from "../../services/viduService";
 import * as WuyinkejiService from "../../services/wuyinkejiService";
@@ -1442,6 +1441,10 @@ export const useNodeFlowExecutor = () => {
     const data = node.data as any;
     const prompt = (connectedText || "").trim();
     const isWanReferenceVideoNode = node.type === "wanReferenceVideoGen";
+    if (!isWanReferenceVideoNode) {
+      store.updateNodeData(nodeId, { status: "error", error: "Unsupported video node type." });
+      return;
+    }
     const referenceImages = Array.isArray(data.referenceImages) ? data.referenceImages.filter(Boolean) : [];
     const referenceVideos = Array.from(
       new Set([...(Array.isArray(data.referenceVideos) ? data.referenceVideos.filter(Boolean) : []), ...(videos || []).filter(Boolean)])
@@ -1684,25 +1687,6 @@ export const useNodeFlowExecutor = () => {
         return;
       }
 
-      const { id } = await SoraService.submitSoraTask(prompt || "Animate this", configToUse, params);
-
-      store.updateNodeData(nodeId, { status: "loading", videoId: id, videoUrl: undefined, error: null });
-
-      const maxAttempts = 60;
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const result = await SoraService.checkSoraTaskStatus(id, configToUse);
-        if (result.status === "succeeded") {
-          store.updateNodeData(nodeId, { status: "complete", videoUrl: result.url, error: null });
-          return;
-        }
-        if (result.status === "failed") {
-          store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Video generation failed." });
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-      }
-
-      store.updateNodeData(nodeId, { status: "error", error: "Video generation timed out." });
     } catch (e: any) {
       store.updateNodeData(nodeId, { status: "error", error: e.message || "Video submit failed" });
     }

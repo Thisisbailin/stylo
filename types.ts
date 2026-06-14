@@ -38,7 +38,7 @@ export interface VideoParams {
   quality: 'standard' | 'high'; // New: Maps to specific resolutions
   resolution?: string; // "1280x720", "1792x1024", etc.
   duration?: string; // "4s", "8s", "12s"
-  inputImage?: File | null; // New: For Sora input_reference
+  inputImage?: File | null;
   inputImageUrl?: string; // Optional: URL reference for image-to-video endpoints
 }
 

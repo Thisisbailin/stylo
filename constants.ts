@@ -72,17 +72,15 @@ export const INITIAL_TEXT_CONFIG: TextServiceConfig = {
   qalamTools: DEFAULT_QALAM_TOOL_SETTINGS,
 };
 
-export const SORA_DEFAULT_BASE_URL = "https://api.wuyinkeji.com/api/sora2/submit";
-export const SORA_DEFAULT_MODEL = "sora-2";
 export const VIDU_DEFAULT_BASE_URL = "https://api.vidu.cn/ent/v2";
 export const SEEDANCE_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 export const SEEDANCE_DEFAULT_MODEL = "doubao-seedance-2-0-260128";
 export const SEEDANCE_FAST_MODEL = "doubao-seedance-2-0-fast-260128";
 
 export const INITIAL_VIDEO_CONFIG: VideoServiceConfig = {
-  baseUrl: SORA_DEFAULT_BASE_URL,
+  baseUrl: QWEN_WAN_VIDEO_ENDPOINT,
   apiKey: '',
-  model: SORA_DEFAULT_MODEL
+  model: QWEN_WAN_REFERENCE_VIDEO_MODEL
 };
 
 export const INITIAL_VIDU_CONFIG: ViduServiceConfig = {

@@ -1,0 +1,6 @@
+{
+  "name": "Interactive 35mm Film Roll",
+  "description": "A realistic 35mm film canister and interactive filmstrip simulator with pull/retract damping physics, photo uploads, vintage negative styling, and frame splitting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

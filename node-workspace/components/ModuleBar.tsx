@@ -4,7 +4,8 @@ import type { LucideIcon } from "lucide-react";
 export type ModuleKey =
   | "characters"
   | "scenes"
-  | "glassLab";
+  | "glassLab"
+  | "filmRollLab";
 
 type ModuleItem = {
   key: ModuleKey;
@@ -22,6 +23,7 @@ export const ModuleBar: React.FC<Props> = ({ modules, onOpen }) => {
     characters: "#34d399",
     scenes: "#22d3ee",
     glassLab: "#a3a3a3",
+    filmRollLab: "#f0b429",
   };
 
   return (

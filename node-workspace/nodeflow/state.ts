@@ -24,7 +24,6 @@ const NODE_TYPES = new Set<NodeType>([
   "imageGen",
   "nanoBananaImageGen",
   "wanImageGen",
-  "soraVideoGen",
   "wanReferenceVideoGen",
   "viduVideoGen",
   "seedanceVideoGen",

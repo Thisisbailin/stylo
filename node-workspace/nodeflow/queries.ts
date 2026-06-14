@@ -240,17 +240,6 @@ export const validateNodeFlowState = ({
     });
 
   nodes
-    .filter((node) => node.type === "soraVideoGen")
-    .forEach((node) => {
-      if (!hasIncomingHandleType(node.id, "image")) {
-        errors.push(`VideoGen node "${node.id}" missing image input`);
-      }
-      if (!hasIncomingHandleType(node.id, "text")) {
-        errors.push(`VideoGen node "${node.id}" missing text input`);
-      }
-    });
-
-  nodes
     .filter((node) => node.type === "seedanceVideoGen")
     .forEach((node) => {
       const edgeInputTypes = links

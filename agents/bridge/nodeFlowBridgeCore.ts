@@ -58,10 +58,12 @@ type NodeFlowBridgeDeps = {
 };
 
 const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
+  "scriptPage",
+  "mdText",
   "text",
-  "imageGen",
-  "scriptBoard",
-  "identityCard",
+  "imageInput",
+  "audioInput",
+  "videoInput",
 ]);
 
 const getNodeFlowPlacement = (
@@ -84,45 +86,79 @@ const getNodeFlowPlacement = (
 
 const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string) =>
   (title || "").trim() ||
-  (type === "text"
-    ? "文本节点"
-    : type === "imageGen"
-        ? "Img Gen"
-      : type === "scriptBoard"
-        ? "剧本卡片"
-        : "身份卡片");
+  (type === "scriptPage"
+    ? "剧本文档"
+    : type === "mdText"
+      ? "档案文档"
+      : type === "text"
+        ? "文本节点"
+        : type === "imageInput"
+          ? "图片节点"
+          : type === "audioInput"
+            ? "音频节点"
+            : "视频节点");
 
 const buildNodeExtraData = (
   input: CreateNodeFlowNodeInput,
   resolvedTitle: string
 ): Partial<NodeFlowNodeData> => {
-  const { type, text, aspectRatio, episodeId, entityType, entityId } = input;
+  const { type, text, content, documentId, imageUrl, audioUrl, videoUrl, filename, mimeType, episodeId } = input;
+  const bodyText = (text ?? content ?? "").trim();
+  const preview = bodyText.replace(/\s+/g, " ").slice(0, 180);
+  if (type === "scriptPage") {
+    return {
+      title: resolvedTitle,
+      text: bodyText,
+      episodeId,
+      preview,
+    } as Partial<NodeFlowNodeData>;
+  }
+  if (type === "mdText") {
+    return {
+      title: resolvedTitle,
+      text: bodyText,
+      content: bodyText,
+      documentId: (documentId || "").trim() || undefined,
+      preview,
+      createdAt: Date.now(),
+    } as Partial<NodeFlowNodeData>;
+  }
   if (type === "text") {
-    const trimmedText = (text || "").trim();
-    if (!trimmedText) {
+    if (!bodyText) {
       throw new Error("createNodeFlowNode 创建文本节点时缺少 text。");
     }
     return {
       title: resolvedTitle,
-      text: trimmedText,
+      text: bodyText,
     } as Partial<NodeFlowNodeData>;
   }
-  if (type === "imageGen") {
+  if (type === "imageInput") {
     return {
       title: resolvedTitle,
-      aspectRatio: (aspectRatio || "1:1").trim() || "1:1",
+      label: resolvedTitle,
+      image: (imageUrl || "").trim() || null,
+      filename: (filename || "").trim() || null,
+      dimensions: null,
     } as Partial<NodeFlowNodeData>;
   }
-  if (type === "scriptBoard") {
+  if (type === "audioInput") {
     return {
       title: resolvedTitle,
-      episodeId,
+      label: resolvedTitle,
+      audio: (audioUrl || "").trim() || null,
+      filename: (filename || "").trim() || null,
+      mimeType: (mimeType || "").trim() || null,
+      durationMs: null,
     } as Partial<NodeFlowNodeData>;
   }
   return {
     title: resolvedTitle,
-    entityType: entityType === "scene" ? "scene" : "character",
-    entityId: (entityId || "").trim() || undefined,
+    label: resolvedTitle,
+    video: (videoUrl || "").trim() || null,
+    filename: (filename || "").trim() || null,
+    mimeType: (mimeType || "").trim() || null,
+    durationMs: null,
+    dimensions: null,
   } as Partial<NodeFlowNodeData>;
 };
 
@@ -157,10 +193,10 @@ export const lookupNodeFlowNodeInSnapshot = (
 export const resolvePreferredConnectionHandles = (sourceType: string, targetType: string) => {
   const sourceOutputs = getNodeHandles(sourceType).outputs;
   const targetInputs = getNodeHandles(targetType).inputs;
-  const multimodalSourceHandle = sourceOutputs.find((handle) => handle === "image" || handle === "text" || handle === "audio");
+  const multimodalSourceHandle = sourceOutputs.find((handle) => handle === "image" || handle === "text" || handle === "audio" || handle === "video");
   if (multimodalSourceHandle && targetInputs.includes("multi")) {
     return {
-      sourceHandle: multimodalSourceHandle as "image" | "text" | "audio",
+      sourceHandle: multimodalSourceHandle as "image" | "text" | "audio" | "video",
       targetHandle: "multi" as const,
     };
   }
@@ -169,6 +205,9 @@ export const resolvePreferredConnectionHandles = (sourceType: string, targetType
   }
   if (sourceOutputs.includes("audio") && targetInputs.includes("audio")) {
     return { sourceHandle: "audio" as const, targetHandle: "audio" as const };
+  }
+  if (sourceOutputs.includes("video") && targetInputs.includes("video")) {
+    return { sourceHandle: "video" as const, targetHandle: "video" as const };
   }
   return null;
 };
@@ -180,7 +219,7 @@ const createNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
-    throw new Error("createNodeFlowNode 当前仅支持 text、imageGen、scriptBoard、identityCard。");
+    throw new Error("createNodeFlowNode 当前仅支持 scriptPage、mdText、text、imageInput、audioInput、videoInput。");
   }
   const position = getNodeFlowPlacement(snapshot, input.x, input.y);
   const resolvedTitle = resolveNodeTitle(input.type, input.title);

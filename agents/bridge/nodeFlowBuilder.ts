@@ -18,33 +18,31 @@ type NodeFlowBuilderDeps = {
 };
 
 const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: number; height: number }> = {
+  scriptPage: { width: 320, height: 249 },
+  mdText: { width: 320, height: 252 },
   text: { width: 320, height: 240 },
-  annotation: { width: 320, height: 240 },
-  imageGen: { width: 320, height: 420 },
-  wanImageGen: { width: 320, height: 420 },
-  soraVideoGen: { width: 320, height: 360 },
-  wanReferenceVideoGen: { width: 340, height: 460 },
-  viduVideoGen: { width: 320, height: 420 },
-  seedanceVideoGen: { width: 360, height: 520 },
+  imageInput: { width: 320, height: 240 },
+  audioInput: { width: 320, height: 180 },
+  videoInput: { width: 340, height: 260 },
 };
 
 const GAP = { x: 72, y: 56 };
 const NODE_HANDLES: Record<CreateNodeFlowMapNodeInput["type"], { inputs: string[]; outputs: string[] }> = {
+  scriptPage: { inputs: ["text"], outputs: ["text"] },
+  mdText: { inputs: ["text"], outputs: ["text"] },
   text: { inputs: ["text"], outputs: ["text"] },
-  annotation: { inputs: ["image"], outputs: ["image"] },
-  imageGen: { inputs: ["image", "text"], outputs: ["image"] },
-  wanImageGen: { inputs: ["image", "text"], outputs: ["image"] },
-  soraVideoGen: { inputs: ["image", "text"], outputs: [] },
-  wanReferenceVideoGen: { inputs: ["image", "text"], outputs: [] },
-  viduVideoGen: { inputs: ["image", "text"], outputs: [] },
-  seedanceVideoGen: { inputs: ["multi", "image", "text", "audio"], outputs: [] },
+  imageInput: { inputs: [], outputs: ["image"] },
+  audioInput: { inputs: [], outputs: ["audio"] },
+  videoInput: { inputs: ["multi", "image", "text", "audio", "video"], outputs: ["video"] },
 };
 
 const buildNodeData = (node: CreateNodeFlowMapNodeInput): Partial<NodeFlowNodeData> => {
   const data = { ...(node.data || {}) } as Record<string, unknown>;
   if (node.title !== undefined) data.title = node.title;
-  if (node.type === "text" && node.text !== undefined) {
-    data.text = node.text;
+  if ((node.type === "text" || node.type === "scriptPage" || node.type === "mdText") && (node.text !== undefined || node.content !== undefined)) {
+    const text = node.text ?? node.content ?? "";
+    data.text = text;
+    if (node.type === "mdText") data.content = text;
     if (data.title == null && node.title == null) data.title = "Agent Note";
   }
   return data as Partial<NodeFlowNodeData>;
@@ -127,8 +125,8 @@ const normalizeLinks = (input: CreateNodeFlowMapInput) => {
     }
     return {
       ...edge,
-      fromHandle: sourceHandle as "image" | "text",
-      toHandle: targetHandle as "image" | "text",
+      fromHandle: sourceHandle as "image" | "text" | "audio" | "video" | "multi",
+      toHandle: targetHandle as "image" | "text" | "audio" | "video" | "multi",
     };
   });
 };

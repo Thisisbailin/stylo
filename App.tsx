@@ -23,6 +23,7 @@ import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
 import type { AgentSettingsPanelKey } from './node-workspace/components/AgentSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
+import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import * as ResponsesTextService from './services/responsesTextService';
@@ -1037,6 +1038,7 @@ const App: React.FC = () => {
         />
         {renderMainContent()}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
+        <FilmRollLab isOpen={openLabModal === "filmRollLab"} onClose={closeLabModal} />
       </AppShell>
     </>
   );

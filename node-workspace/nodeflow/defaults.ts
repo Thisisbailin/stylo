@@ -133,15 +133,6 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         watermark: false,
         outputCount: 1,
       } as ImageGenNodeData;
-    case "soraVideoGen":
-      return {
-        inputImages: [],
-        videoId: undefined,
-        videoUrl: undefined,
-        status: "idle",
-        error: null,
-        aspectRatio: "16:9",
-      } as VideoGenNodeData;
     case "wanReferenceVideoGen":
       return {
         inputImages: [],

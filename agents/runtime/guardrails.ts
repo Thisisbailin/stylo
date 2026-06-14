@@ -188,16 +188,23 @@ export const createQalamToolInputGuardrails = (
           if (entity === "node" && action === "create") {
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
             const episodeId = Number(args.episode_id ?? args.episodeId);
+            const text = typeof args.text === "string" ? args.text.trim() : "";
+            const content = typeof args.content === "string" ? args.content.trim() : "";
 
-            if (!["text", "script_board", "character_card", "script", "character"].includes(nodeKind)) {
+            if (!["script", "script_page", "script_node", "script_document", "archive", "archive_document", "archive_node", "document", "md_text", "text", "image", "image_input", "audio", "audio_input", "video", "video_input"].includes(nodeKind)) {
               return ToolGuardrailFunctionOutputFactory.rejectContent(
-                "nodeflow_node 当前只支持 text、script_board、character_card。",
+                "nodeflow_node 当前只支持 script、archive、text、image、audio、video 基础节点。",
                 { nodeKind }
               );
             }
-            if (nodeKind === "script_board" && !Number.isInteger(episodeId)) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent(`${nodeKind} 需要合法的 episode_id。`, {
+            if (["script", "script_page", "script_node", "script_document"].includes(nodeKind) && !Number.isInteger(episodeId)) {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("script 节点需要合法的 episode_id。", {
                 episodeId,
+              });
+            }
+            if (nodeKind === "text" && !text && !content) {
+              return ToolGuardrailFunctionOutputFactory.rejectContent("text 节点需要 text 或 content。", {
+                nodeKind,
               });
             }
             return ToolGuardrailFunctionOutputFactory.allow({ entity, action, nodeKind });

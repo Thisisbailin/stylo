@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import { AudioLines, BookOpen, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool } from "lucide-react";
+import React, { useEffect, useMemo, useRef } from "react";
+import { AudioLines, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool, Plus } from "lucide-react";
 import { NodeType } from "../types";
 
 export type ConnectionDropMenuOption<T extends string = NodeType> = {
@@ -7,6 +7,10 @@ export type ConnectionDropMenuOption<T extends string = NodeType> = {
   hint: string;
   type: T;
   Icon: React.ComponentType<{ size?: number }>;
+  group?: string;
+  meta?: string;
+  tone?: string;
+  surface?: string;
 };
 
 type Props<T extends string = NodeType> = {
@@ -18,7 +22,8 @@ type Props<T extends string = NodeType> = {
 };
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
-    { label: "Script Panel", hint: "Episode and scene browser", type: "scriptBoard", Icon: BookOpen },
+    { label: "剧本文档", hint: "Fountain writing document", type: "scriptPage", Icon: Plus, group: "Writing", meta: "Fountain" },
+    { label: "档案文档", hint: "Markdown archive document", type: "mdText", Icon: Plus, group: "Writing", meta: "Markdown" },
     { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers },
     { label: "Text", hint: "Input text", type: "text", Icon: MessageSquare },
     { label: "Image Input", hint: "Upload an image", type: "imageInput", Icon: ImageIcon },
@@ -27,12 +32,22 @@ const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
     { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles },
     { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles },
     { label: "WAN Img", hint: "Wan 2.6 image", type: "wanImageGen", Icon: Sparkles },
-    { label: "Sora Video", hint: "Generate Sora clips", type: "soraVideoGen", Icon: Video },
     { label: "Vidu", hint: "Reference to video", type: "viduVideoGen", Icon: Video },
     { label: "WAN Ref Vid", hint: "Wan 2.7 reference video", type: "wanReferenceVideoGen", Icon: Video },
     { label: "Seedance", hint: "Multimodal reference video", type: "seedanceVideoGen", Icon: Video },
     { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool },
   ];
+
+const groupLabels: Record<string, string> = {
+  script: "文档",
+  library: "档案",
+  input: "输入",
+  generation: "图像",
+  motion: "视频",
+  edit: "编辑",
+  Writing: "文档",
+  Flow: "Flow",
+};
 
 export const ConnectionDropMenu = <T extends string = NodeType>({
   position,
@@ -43,6 +58,17 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
 }: Props<T>) => {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const resolvedOptions = (options || defaultOptions) as ConnectionDropMenuOption<T>[];
+  const groupedOptions = useMemo(() => {
+    const groups: Array<{ key: string; options: ConnectionDropMenuOption<T>[] }> = [];
+    resolvedOptions.forEach((option) => {
+      const rawKey = option.group || option.meta || "Flow";
+      const key = groupLabels[rawKey] || rawKey;
+      const existing = groups.find((group) => group.key === key);
+      if (existing) existing.options.push(option);
+      else groups.push({ key, options: [option] });
+    });
+    return groups;
+  }, [resolvedOptions]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -57,36 +83,40 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
   return (
     <div
       ref={menuRef}
-      className="connection-menu absolute z-20 w-64"
+      className="connection-menu absolute z-20"
       style={{ left: position.x, top: position.y }}
     >
       <div className="connection-menu-header">
-        <div className="connection-menu-title">Create Node</div>
+        <div className="connection-menu-title">Add Node</div>
         <div className="connection-menu-subtitle">{subtitle}</div>
       </div>
       <div className="connection-menu-list">
-        {resolvedOptions.map((opt) => (
-          <button
-            key={opt.type}
-            className="connection-menu-item"
-            onClick={() => {
-              onCreate(opt.type);
-              onClose();
-            }}
-          >
-            <div className="connection-menu-icon">
-              <opt.Icon size={16} />
+        {groupedOptions.map((group) => (
+          <div key={group.key} className="connection-menu-group">
+            <div className="connection-menu-group-label">{group.key}</div>
+            <div className="connection-menu-grid">
+              {group.options.map((opt) => (
+                <button
+                  key={opt.type}
+                  className="connection-menu-item"
+                  onClick={() => {
+                    onCreate(opt.type);
+                    onClose();
+                  }}
+                >
+                  <span className="connection-menu-icon">
+                    <opt.Icon size={15} />
+                  </span>
+                  <span className="connection-menu-text">
+                    <span className="connection-menu-label">{opt.label}</span>
+                    <span className="connection-menu-hint">{opt.meta || opt.hint}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-            <div className="connection-menu-text">
-              <div className="connection-menu-label">{opt.label}</div>
-              <div className="connection-menu-hint">{opt.hint}</div>
-            </div>
-          </button>
+          </div>
         ))}
       </div>
-      <button onClick={onClose} className="connection-menu-cancel">
-        Cancel
-      </button>
     </div>
   );
 };

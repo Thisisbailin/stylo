@@ -8,7 +8,6 @@ export * from "./IdentityCardNode";
 export { ImageGenNode } from "./ImageGenNode";
 export { NanoBananaImageGenNode } from "./NanoBananaImageGenNode";
 export { WanImageGenNode } from "./WanImageGenNode";
-export { SoraVideoGenNode } from "./SoraVideoGenNode";
 export { WanReferenceVideoGenNode } from "./WanReferenceVideoGenNode";
 export { ViduVideoGenNode } from "./ViduVideoGenNode";
 export { SeedanceVideoGenNode } from "./SeedanceVideoGenNode";

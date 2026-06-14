@@ -121,9 +121,6 @@ const resolveVideoProviderAndModel = (
   if (node.type === "wanReferenceVideoGen") {
     return { providerLabel: "WAN", modelLabel: data.model || "wan-video" };
   }
-  if (node.type === "soraVideoGen") {
-    return { providerLabel: "Sora", modelLabel: data.model || runtimeDefaults?.videoModelLabel || "global default" };
-  }
   return {
     providerLabel: runtimeDefaults?.videoProviderLabel || "Video",
     modelLabel: data.model || runtimeDefaults?.videoModelLabel || "global default",
@@ -135,7 +132,6 @@ export const isExecutionApprovalCapableNode = (nodeType: NodeType) =>
     "imageGen",
     "nanoBananaImageGen",
     "wanImageGen",
-    "soraVideoGen",
     "wanReferenceVideoGen",
     "viduVideoGen",
     "seedanceVideoGen",
@@ -145,7 +141,7 @@ export const inferExecutionApprovalAction = (
   nodeType: NodeType
 ): NodeFlowExecutionApprovalAction | null => {
   if (["imageGen", "nanoBananaImageGen", "wanImageGen"].includes(nodeType)) return "image_generation";
-  if (["soraVideoGen", "wanReferenceVideoGen", "viduVideoGen", "seedanceVideoGen"].includes(nodeType)) {
+  if (["wanReferenceVideoGen", "viduVideoGen", "seedanceVideoGen"].includes(nodeType)) {
     return "video_generation";
   }
   return null;

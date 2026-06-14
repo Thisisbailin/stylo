@@ -535,7 +535,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   useEffect(() => {
     const videoNodes = nodes.filter(
       (node) =>
-        node.type === "soraVideoGen" ||
         node.type === "wanReferenceVideoGen" ||
         node.type === "seedanceVideoGen"
     );
@@ -1056,10 +1055,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onAddImage={() => handleFlowAddNode("imageInput", { x: 200, y: 100 })}
         onAddAudio={() => handleFlowAddNode("audioInput", { x: 220, y: 120 })}
         onAddVideo={() => handleFlowAddNode("videoInput", { x: 240, y: 140 })}
-        onAddImageGen={() => handleFlowAddNode("imageGen", { x: 400, y: 100 })}
         onAddNanoBananaImageGen={() => handleFlowAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
         onAddWanImageGen={() => handleFlowAddNode("wanImageGen", { x: 420, y: 120 })}
-        onAddVideoGen={() => handleFlowAddNode("soraVideoGen", { x: 500, y: 100 })}
         onAddViduVideoGen={() => handleFlowAddNode("viduVideoGen", { x: 510, y: 110 })}
         onAddWanReferenceVideoGen={() => handleFlowAddNode("wanReferenceVideoGen", { x: 540, y: 140 })}
         onAddSeedanceVideoGen={() => handleFlowAddNode("seedanceVideoGen", { x: 560, y: 160 })}
@@ -1094,7 +1091,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onOpenLanding={onOpenLanding}
         onResetProject={onResetProject}
         requestedPanel={agentSettingsPanel}
-        onOpenVisualLab={() => onOpenModule?.("glassLab")}
+        onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
       {editingScriptEpisodeId !== null ? (
         <WritingPanel
