@@ -62,9 +62,28 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
 
   switch (node.type) {
+    case "scriptPage":
+      return {
+        documentId: trimString(data.documentId) || node.id,
+        documentKind: "script",
+        format: "fountain",
+        content: trimString(data.content) || trimString(data.text) || "",
+        preview: trimString(data.preview) || "",
+      };
+    case "mdText":
+      return {
+        documentId: trimString(data.documentId) || node.id.replace(/^md-/, ""),
+        documentKind: "archive",
+        format: "markdown",
+        content: trimString(data.content) || trimString(data.text) || "",
+        preview: trimString(data.preview) || "",
+      };
     case "text":
       return {
-        text: trimString(data.text) || "",
+        documentId: trimString(data.documentId) || node.id,
+        documentKind: trimString(data.documentKind) || "note",
+        format: trimString(data.format) || "markdown",
+        content: trimString(data.content) || trimString(data.text) || "",
       };
     case "scriptBoard":
       return {

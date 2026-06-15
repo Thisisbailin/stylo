@@ -19,9 +19,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   Layers,
-  MessageSquare,
   Network,
-  PenTool,
   Plus,
   Scissors,
   Sparkles,
@@ -184,7 +182,7 @@ const markdownNodeId = (documentId: string) => `md-${documentId}`;
 const isImageNodeId = (id?: string | null) => !!id && id.startsWith("image-");
 const isScriptPageNodeId = (id?: string | null) => !!id && id.startsWith("script-");
 const isMarkdownNodeId = (id?: string | null) => !!id && id.startsWith("md-");
-type ScriptCreateGroup = "script" | "library" | "input" | "generation" | "motion" | "edit";
+type ScriptCreateGroup = "script" | "library" | "input" | "generation" | "motion";
 type ScriptCreateOption = ConnectionDropMenuOption<FlowCreateType> & {
   group: ScriptCreateGroup;
   meta: string;
@@ -193,29 +191,26 @@ type ScriptCreateOption = ConnectionDropMenuOption<FlowCreateType> & {
 };
 
 const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
-  { key: "script", label: "Writing" },
-  { key: "library", label: "Library" },
-  { key: "input", label: "Input" },
-  { key: "generation", label: "Generate" },
-  { key: "motion", label: "Motion" },
-  { key: "edit", label: "Edit" },
+  { key: "script", label: "文档" },
+  { key: "library", label: "资料" },
+  { key: "input", label: "输入" },
+  { key: "generation", label: "图像" },
+  { key: "motion", label: "影像" },
 ];
 
 const scriptCreateOptions: ScriptCreateOption[] = [
-  { label: "剧本文档", hint: "创建一个新的分集稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
-  { label: "档案文档", hint: "连接空间轴的全局 Markdown 档案", type: "mdText", Icon: Plus, group: "script", meta: "Markdown", tone: "is-slate", surface: "paper" },
-  { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers, group: "library", meta: "Library", tone: "is-moss", surface: "card" },
-  { label: "Text", hint: "Draft prompts, notes, and structure", type: "text", Icon: MessageSquare, group: "library", meta: "Writing", tone: "is-slate", surface: "card" },
-  { label: "Image", hint: "Upload a reference image or still", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
-  { label: "Audio", hint: "Upload a reference audio clip", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
-  { label: "Video", hint: "Upload a reference video clip", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
-  { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
-  { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
-  { label: "WAN Img", hint: "Wan 2.6 image workflow", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-moss", surface: "gen" },
-  { label: "Vidu", hint: "Vidu reference-to-video", type: "viduVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
-  { label: "WAN Ref Vid", hint: "Wan 2.6 reference-to-video", type: "wanReferenceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-rose", surface: "motion" },
-  { label: "Seedance", hint: "Multimodal reference-to-video", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
-  { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool, group: "edit", meta: "Edit", tone: "is-amber", surface: "edit" },
+  { label: "剧本文档", hint: "Fountain 稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
+  { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive", tone: "is-slate", surface: "paper" },
+  { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile", tone: "is-moss", surface: "card" },
+  { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
+  { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
+  { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
+  { label: "图像生成", hint: "生成概念图", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
+  { label: "Nano Banana", hint: "图像生成", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
+  { label: "WAN 图像", hint: "图像工作流", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-moss", surface: "gen" },
+  { label: "Vidu 视频", hint: "参考生成视频", type: "viduVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
+  { label: "WAN 视频", hint: "参考生成视频", type: "wanReferenceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-rose", surface: "motion" },
+  { label: "Seedance", hint: "多模态视频", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
 ];
 
 const TIMELINE_COLORS = [
@@ -1356,8 +1351,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 620)}>
           <section className="script-foundation-floating-menu script-foundation-node-popover script-foundation-node-palette">
             <header className="script-foundation-node-palette__head">
-              <span>Add Nodes</span>
-              <strong>Flow uses one shared node system.</strong>
+              <span>新增节点</span>
+              <strong>文档、素材与生成流</strong>
             </header>
             <div className="script-foundation-node-palette__groups">
               {scriptCreateGroups.map((group) => {
@@ -1534,16 +1529,11 @@ export const useFlowSurface = ({
     setProjectData((previous) => {
       const currentFlow = ensureFlow(previous.flow);
       const existingIds = new Set((currentFlow.flowNodes || []).map((node) => node.id));
-      const pageByEpisodeId = new Map(currentFlow.pages.map((page) => [page.episodeId, page]));
-      const migratedScriptNodes = (previous.episodes || [])
-        .filter((episode) => !existingIds.has(scriptNodeId(episode.id)))
-        .map((episode, index) => createScriptPageFlowNode(episode, index, pageByEpisodeId.get(episode.id)));
-      migratedScriptNodes.forEach((node) => existingIds.add(node.id));
       const migratedMarkdownNodes = (currentFlow.textNodes || [])
         .filter((textNode) => !existingIds.has(markdownNodeId(textNode.id)))
         .map((textNode, index) => createMarkdownTextFlowNode(textNode, index));
 
-      if (!migratedScriptNodes.length && !migratedMarkdownNodes.length && !currentFlow.pages.length && !(currentFlow.textNodes || []).length) {
+      if (!migratedMarkdownNodes.length && !currentFlow.pages.length && !(currentFlow.textNodes || []).length) {
         return previous;
       }
 
@@ -1555,13 +1545,12 @@ export const useFlowSurface = ({
           textNodes: [],
           flowNodes: [
             ...(currentFlow.flowNodes || []),
-            ...migratedScriptNodes,
             ...migratedMarkdownNodes,
           ],
         },
       };
     });
-  }, [flow.flowNodes, flow.pages, flow.textNodes, isActive, projectData.episodes, setProjectData]);
+  }, [flow.flowNodes, flow.pages, flow.textNodes, isActive, setProjectData]);
 
   const nodes = useMemo<FlowRenderNode[]>(() => {
     const imageNodes: FlowRenderNode[] = flow.images.map((image, index) => ({
@@ -2212,28 +2201,26 @@ export const useFlowSurface = ({
   const handleAddScriptPage = useCallback((position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
     let createdNodeId: string | null = null;
     setProjectData((previous) => {
-      const nextId = previous.episodes.length
-        ? Math.max(...previous.episodes.map((episode) => episode.id)) + 1
-        : 1;
-      const nextEpisode = createEmptyEpisode(nextId);
       const nextFlow = ensureFlow(previous.flow);
-      createdNodeId = scriptNodeId(nextId);
+      const documentId = `script-${Date.now().toString(36)}`;
+      createdNodeId = `script-${documentId}`;
       const nextNode: NodeFlowNode = {
         id: createdNodeId,
         type: "scriptPage",
-        position: position || getDefaultScriptPosition(previous.episodes.length),
+        position: position || getDefaultScriptPosition(nextFlow.flowNodes?.length || 0),
         style: SCRIPT_PAGE_NODE_SIZE,
         data: {
           ...createDefaultNodeFlowNodeData("scriptPage"),
-          title: nextEpisode.title,
-          episodeId: nextId,
+          title: "剧本文档",
+          documentId,
+          documentKind: "script",
+          format: "fountain",
           text: "",
-          preview: compactScriptPreview(nextEpisode),
+          preview: "",
         },
       };
       return {
         ...previous,
-        episodes: [...previous.episodes, nextEpisode],
         flow: {
           ...nextFlow,
           pages: [],

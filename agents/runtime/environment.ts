@@ -95,13 +95,9 @@ export const buildAgentEnvironment = ({
     .slice(0, MAX_SCENE_ROLES)
     .map(summarizeRole);
 
-  const sceneCount = (projectData.episodes || []).reduce(
-    (count, episode) => count + (episode.scenes || []).length,
-    0
-  );
   const scriptNodes = buildScriptResourceNodes(projectData);
   const scriptLinks = buildScriptResourceLinks(projectData);
-  const sourceNodeCount = scriptNodes.filter((node) => node.resourceType === "source_node").length;
+  const documentNodeCount = scriptNodes.filter((node) => node.resourceType === "document_node").length;
   const archiveNodeCount = scriptNodes.filter((node) => node.resourceType === "archive_node").length;
   const spaceBlockCount = scriptNodes.filter((node) => node.resourceType === "space_block").length;
 
@@ -111,8 +107,8 @@ export const buildAgentEnvironment = ({
   return {
     project: {
       fileName: projectData.fileName?.trim() || undefined,
-      episodeCount: (projectData.episodes || []).length,
-      sceneCount,
+      episodeCount: 0,
+      sceneCount: 0,
       primaryRoles,
       sceneRoles,
       scriptCoverage: {
@@ -125,7 +121,8 @@ export const buildAgentEnvironment = ({
         script: {
           nodeCount: scriptNodes.length,
           linkCount: scriptLinks.length,
-          sourceNodeCount,
+          sourceNodeCount: documentNodeCount,
+          documentNodeCount,
           archiveNodeCount,
           spaceBlockCount,
         },

@@ -187,7 +187,6 @@ export const createQalamToolInputGuardrails = (
 
           if (entity === "node" && action === "create") {
             const nodeKind = typeof (args.node_kind ?? args.nodeKind) === "string" ? String(args.node_kind ?? args.nodeKind).trim() : "";
-            const episodeId = Number(args.episode_id ?? args.episodeId);
             const text = typeof args.text === "string" ? args.text.trim() : "";
             const content = typeof args.content === "string" ? args.content.trim() : "";
 
@@ -196,11 +195,6 @@ export const createQalamToolInputGuardrails = (
                 "nodeflow_node 当前只支持 script、archive、text、image、audio、video 基础节点。",
                 { nodeKind }
               );
-            }
-            if (["script", "script_page", "script_node", "script_document"].includes(nodeKind) && !Number.isInteger(episodeId)) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("script 节点需要合法的 episode_id。", {
-                episodeId,
-              });
             }
             if (nodeKind === "text" && !text && !content) {
               return ToolGuardrailFunctionOutputFactory.rejectContent("text 节点需要 text 或 content。", {

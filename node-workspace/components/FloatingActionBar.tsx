@@ -122,7 +122,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const toolbarChipClass =
     "group inline-flex h-9 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-3.5 text-[11px] font-semibold tracking-[0.01em] text-[var(--app-text-secondary)] shadow-[0_10px_24px_-18px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const globalAccountButtonClass =
-    "group inline-flex h-11 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-2.5 pr-3 text-[11px] font-semibold text-[var(--app-text-secondary)] shadow-[0_14px_34px_-20px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
+    "group inline-flex h-11 items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel))] px-2.5 text-[11px] font-semibold text-[var(--app-text-secondary)] shadow-[0_14px_34px_-20px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition duration-200 hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] hover:text-[var(--app-text-primary)] active:translate-y-px";
   const getPopoverStyle = (anchorRect: DOMRect | null, desiredWidth: number): React.CSSProperties | undefined => {
     if (typeof window === "undefined") return undefined;
     if (!anchorRect) {
@@ -405,10 +405,10 @@ export const FloatingActionBar: React.FC<Props> = ({
                   <User size={14} />
                 </span>
               )}
-              <span className="max-w-[10rem] truncate">{accountSignedIn ? accountName : "Account"}</span>
-              {syncIndicator ? (
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: syncIndicator.color }} />
-              ) : null}
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: syncIndicator?.color || "rgba(142, 142, 147, 0.82)" }}
+              />
             </button>
           </div>
         ) : null}

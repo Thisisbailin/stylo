@@ -3,7 +3,6 @@ import type {
   QalamAgentBridge,
 } from "../bridge/qalamBridge";
 import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
-import { findProjectedSourceNode } from "../../node-workspace/nodeflow/projectGraph";
 
 export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
 export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "remove", "connect", "unlink"] as const;
@@ -108,7 +107,7 @@ const operateProjectResourceParameters = {
     },
     episode_id: {
       type: "integer",
-      description: "Episode number for script nodes, or for node patching.",
+      description: "Legacy optional episode number. New script documents do not require it.",
     },
     scene_id: {
       type: "string",
@@ -298,10 +297,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
       if (nodeKind === "text" && !(text || content?.trim())) {
         throw new Error("创建 text 节点时需要 text。");
       }
-      if (nodeKind === "script" && !episodeId) {
-        throw new Error("script 节点需要 episode_id。");
-      }
-
       return {
         entity: "node",
         action: "create",
@@ -429,7 +424,7 @@ const resolveNodeType = (nodeKind: OperateNodeKind) => {
 
 const defaultTitle = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.title) return args.title;
-  if (args.nodeKind === "script") return args.episodeId ? `第 ${args.episodeId} 集剧本` : "剧本文档";
+  if (args.nodeKind === "script") return "剧本文档";
   if (args.nodeKind === "archive") return "档案文档";
   if (args.nodeKind === "image") return args.filename || "图片节点";
   if (args.nodeKind === "audio") return args.filename || "音频节点";
@@ -439,7 +434,7 @@ const defaultTitle = (args: Extract<ParsedArgs, { entity: "node"; action: "creat
 
 const defaultNodeRef = (args: Extract<ParsedArgs, { entity: "node"; action: "create" }>) => {
   if (args.nodeRef) return args.nodeRef;
-  if (args.nodeKind === "script") return `ep${args.episodeId || "x"}_script`;
+  if (args.nodeKind === "script") return `script_${slugifyRefToken(args.title || Date.now().toString(), "document")}`;
   if (args.nodeKind === "archive") return `archive_${slugifyRefToken(args.title || Date.now().toString(), "document")}`;
   if (args.nodeKind === "image") return `image_${slugifyRefToken(args.filename || args.title || Date.now().toString(), "asset")}`;
   if (args.nodeKind === "audio") return `audio_${slugifyRefToken(args.filename || args.title || Date.now().toString(), "asset")}`;
@@ -451,7 +446,6 @@ const defaultDocumentId = (args: Extract<ParsedArgs, { entity: "node"; action: "
   `${slugifyRefToken(args.nodeRef || args.title || "document", "document")}-${Date.now().toString(36)}`;
 
 const resolveNodeFlowRefForGraph = (
-  bridge: QalamAgentBridge,
   workflow: ReturnType<QalamAgentBridge["getNodeFlowSnapshot"]>,
   nodeId?: string,
   nodeRef?: string
@@ -460,12 +454,6 @@ const resolveNodeFlowRefForGraph = (
   if (nodeId) {
     const workflowNode = workflow.nodes.find((node) => node.id === nodeId);
     if (workflowNode) return getNodeFlowRef(workflowNode) || workflowNode.id;
-    const projected = findProjectedSourceNode(bridge.getProjectData(), {
-      ref: nodeId,
-      sourceRef: nodeId,
-      title: nodeId,
-    });
-    if (projected) return projected.ref;
   }
   return undefined;
 };
@@ -491,7 +479,7 @@ export const operateProjectResourceToolDef = {
           ? args.text || args.content
           : undefined,
         content: args.content,
-        documentId: args.nodeKind === "archive" ? defaultDocumentId(args) : undefined,
+        documentId: args.nodeKind === "archive" || args.nodeKind === "script" ? defaultDocumentId(args) : undefined,
         imageUrl: args.nodeKind === "image" ? args.imageUrl : undefined,
         audioUrl: args.nodeKind === "audio" ? args.audioUrl : undefined,
         videoUrl: args.nodeKind === "video" ? args.videoUrl : undefined,
@@ -500,7 +488,7 @@ export const operateProjectResourceToolDef = {
         x: args.x,
         y: args.y,
         parentId: args.parentId,
-        episodeId: args.nodeKind === "script" ? args.episodeId : undefined,
+        episodeId: undefined,
       });
       return {
         layer: "nodeflow",
@@ -659,8 +647,8 @@ export const operateProjectResourceToolDef = {
     }
 
     if (args.entity === "link" && args.action === "connect" && args.linkKind === "graph") {
-      const sourceRef = resolveNodeFlowRefForGraph(bridge, workflow, args.sourceNodeId, args.sourceRef);
-      const targetRef = resolveNodeFlowRefForGraph(bridge, workflow, args.targetNodeId, args.targetRef);
+      const sourceRef = resolveNodeFlowRefForGraph(workflow, args.sourceNodeId, args.sourceRef);
+      const targetRef = resolveNodeFlowRefForGraph(workflow, args.targetNodeId, args.targetRef);
       if (!sourceRef || !targetRef) {
         throw new Error("创建 Flow 引用关系需要可解析的 source_ref 和 target_ref。");
       }

@@ -145,6 +145,9 @@ export interface EntityBinding {
 export interface TextNodeData extends BaseNodeData {
   title: string;
   text: string;
+  documentId?: string;
+  documentKind?: "script" | "archive" | "note";
+  format?: "fountain" | "markdown" | "plain";
   refId?: string;
   atMentions?: {
     name: string;
@@ -166,6 +169,9 @@ export interface ScriptPageNodeData extends TextNodeData {
   title: string;
   episodeId?: number;
   text: string;
+  documentId?: string;
+  documentKind?: "script";
+  format?: "fountain";
   preview?: string;
 }
 
@@ -174,6 +180,8 @@ export interface MarkdownTextNodeData extends TextNodeData {
   text: string;
   content?: string;
   documentId?: string;
+  documentKind?: "archive";
+  format?: "markdown";
   preview?: string;
 }
 

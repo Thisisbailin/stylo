@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { AudioLines, Layers, MessageSquare, Image as ImageIcon, Sparkles, Video, PenTool, Plus } from "lucide-react";
+import { AudioLines, Layers, Image as ImageIcon, Sparkles, Video, Plus } from "lucide-react";
 import { NodeType } from "../types";
 
 export type ConnectionDropMenuOption<T extends string = NodeType> = {
@@ -22,20 +22,18 @@ type Props<T extends string = NodeType> = {
 };
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
-    { label: "剧本文档", hint: "Fountain writing document", type: "scriptPage", Icon: Plus, group: "Writing", meta: "Fountain" },
-    { label: "档案文档", hint: "Markdown archive document", type: "mdText", Icon: Plus, group: "Writing", meta: "Markdown" },
-    { label: "Identity Card", hint: "Character and scene cards", type: "identityCard", Icon: Layers },
-    { label: "Text", hint: "Input text", type: "text", Icon: MessageSquare },
-    { label: "Image Input", hint: "Upload an image", type: "imageInput", Icon: ImageIcon },
-    { label: "Audio Input", hint: "Upload an audio clip", type: "audioInput", Icon: AudioLines },
-    { label: "Video Input", hint: "Upload a video clip", type: "videoInput", Icon: Video },
-    { label: "Image Gen", hint: "Create images", type: "imageGen", Icon: Sparkles },
-    { label: "Nano Banana", hint: "Nano Banana Pro image", type: "nanoBananaImageGen", Icon: Sparkles },
-    { label: "WAN Img", hint: "Wan 2.6 image", type: "wanImageGen", Icon: Sparkles },
-    { label: "Vidu", hint: "Reference to video", type: "viduVideoGen", Icon: Video },
-    { label: "WAN Ref Vid", hint: "Wan 2.7 reference video", type: "wanReferenceVideoGen", Icon: Video },
-    { label: "Seedance", hint: "Multimodal reference video", type: "seedanceVideoGen", Icon: Video },
-    { label: "Annotation", hint: "Markup image", type: "annotation", Icon: PenTool },
+    { label: "剧本文档", hint: "Fountain 稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain" },
+    { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive" },
+    { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile" },
+    { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input" },
+    { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input" },
+    { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input" },
+    { label: "图像生成", hint: "生成概念图", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image" },
+    { label: "Nano Banana", hint: "图像生成", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image" },
+    { label: "WAN 图像", hint: "图像工作流", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image" },
+    { label: "Vidu 视频", hint: "参考生成视频", type: "viduVideoGen", Icon: Video, group: "motion", meta: "Video" },
+    { label: "WAN 视频", hint: "参考生成视频", type: "wanReferenceVideoGen", Icon: Video, group: "motion", meta: "Video" },
+    { label: "Seedance", hint: "多模态视频", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video" },
   ];
 
 const groupLabels: Record<string, string> = {
@@ -45,7 +43,6 @@ const groupLabels: Record<string, string> = {
   generation: "图像",
   motion: "视频",
   edit: "编辑",
-  Writing: "文档",
   Flow: "Flow",
 };
 
@@ -54,7 +51,7 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
   onCreate,
   onClose,
   options,
-  subtitle = "Quick add from the flow",
+  subtitle = "从连接线创建节点",
 }: Props<T>) => {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const resolvedOptions = (options || defaultOptions) as ConnectionDropMenuOption<T>[];
@@ -87,7 +84,7 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
       style={{ left: position.x, top: position.y }}
     >
       <div className="connection-menu-header">
-        <div className="connection-menu-title">Add Node</div>
+        <div className="connection-menu-title">新增节点</div>
         <div className="connection-menu-subtitle">{subtitle}</div>
       </div>
       <div className="connection-menu-list">

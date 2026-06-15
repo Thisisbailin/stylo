@@ -204,7 +204,7 @@ const parseArgs = (input: unknown) => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete entity from the shared Flow project world. Public reads focus on Script source/foundation/archive resources and visible canvas graph resources.",
+    "Read a concrete entity from the shared Flow project world. Public reads focus on Script foundation/document resources and visible canvas graph resources.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -308,12 +308,12 @@ export const readProjectResourceToolDef = {
       const effectiveMap = map || maps[0] || null;
       const visibleNodes =
         effectiveMap?.view === "source"
-          ? nodes.filter((node) => node.resourceType === "source_node")
+          ? nodes.filter((node) => node.resourceType === "document_node" || node.resourceType === "archive_node")
           : effectiveMap?.view === "archives"
             ? nodes.filter((node) => node.resourceType === "archive_node")
             : effectiveMap?.view === "timeline"
               ? nodes.filter((node) => node.resourceType === "timeline_block" || node.resourceType === "script_index")
-              : nodes.filter((node) => node.resourceType !== "source_node");
+              : nodes;
       return {
         layer: "script",
         entity: "map",

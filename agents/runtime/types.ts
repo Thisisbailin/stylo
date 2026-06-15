@@ -45,6 +45,7 @@ export type AgentEnvironmentProjectDigest = {
       nodeCount: number;
       linkCount: number;
       sourceNodeCount: number;
+      documentNodeCount: number;
       archiveNodeCount: number;
       spaceBlockCount: number;
     };

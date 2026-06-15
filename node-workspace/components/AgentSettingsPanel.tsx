@@ -1083,10 +1083,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed right-4 top-4 bottom-4 z-[80] min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
+      className="fixed right-[3px] top-[3px] bottom-[3px] z-[80] min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
       style={{
-        width: "calc(50vw - 12px)",
-        maxWidth: "calc(100vw - 8px)",
+        width: "calc(50vw - 6px)",
+        maxWidth: "calc(100vw - 6px)",
       }}
     >
       <div className="grid h-full min-w-0 grid-cols-1 xl:grid-cols-[292px_minmax(0,1fr)]">

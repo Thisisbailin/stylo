@@ -1730,18 +1730,6 @@ export const WritingPanel: React.FC<Props> = ({
 
               {isInfoPanelOpen ? (
               <aside className="writing-card writing-info-card">
-                <header className="writing-info-header">
-                  <div>
-                    <div className="writing-card-kicker">写作</div>
-                    <div className="writing-info-title">信息</div>
-                  </div>
-                  <div className="writing-header-actions">
-                    <button type="button" onClick={() => setIsInfoPanelOpen(false)} className="writing-icon-button" title="隐藏信息">
-                      <X size={17} strokeWidth={1.8} />
-                    </button>
-                  </div>
-                </header>
-
                 <div className="writing-side-section">
                   <div className="writing-side-label">操作</div>
                   <div className="writing-side-actions">

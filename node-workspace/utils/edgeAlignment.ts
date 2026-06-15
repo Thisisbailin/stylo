@@ -16,8 +16,8 @@ type AlignmentResult = {
 
 const DEFAULT_NODE_WIDTH = 320;
 const DEFAULT_NODE_HEIGHT = 180;
-const ALIGN_THRESHOLD = 24;
-const ALIGN_LOCK_THRESHOLD = 6;
+const ALIGN_THRESHOLD = 36;
+const ALIGN_LOCK_THRESHOLD = 10;
 
 type Bounds = ReturnType<typeof getAlignableNodeBounds>;
 
@@ -27,13 +27,13 @@ const isHorizontalNeighbor = (active: Bounds, target: Bounds) => target.right <=
 
 const getMagneticPosition = (current: number, aligned: number, distance: number, threshold: number) => {
   if (distance <= ALIGN_LOCK_THRESHOLD) return aligned;
-  const pull = Math.pow(1 - distance / threshold, 1.55) * 0.72;
+  const pull = Math.pow(1 - distance / threshold, 1.2) * 0.9;
   return current + (aligned - current) * pull;
 };
 
 const getGuideStrength = (distance: number, threshold: number) => {
   if (distance <= ALIGN_LOCK_THRESHOLD) return 1;
-  return Math.max(0.24, 1 - distance / threshold);
+  return Math.max(0.38, 1 - distance / threshold);
 };
 
 const parseSize = (value: unknown): number | null => {

@@ -3,9 +3,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useUser, useClerk, useAuth } from './lib/auth';
 import { ProjectData, AppConfig, Episode, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA, INITIAL_VIDEO_CONFIG, INITIAL_TEXT_CONFIG, INITIAL_MULTIMODAL_CONFIG } from './constants';
-import {
-  parseScriptToEpisodes,
-} from './utils/parser';
 import { normalizeProjectData } from './utils/projectData';
 import { dropFileReplacer, isProjectEmpty, backupData, FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
 import { getDeviceId } from './utils/device';
@@ -806,56 +803,43 @@ const App: React.FC = () => {
     fileName?: string
   ) => {
     if (type === 'script') {
-      const episodes = parseScriptToEpisodes(content);
-      const stats = buildCharacterStats(episodes);
       setProjectData(prev => {
-        const existingChars = projectRolesToCharacters(prev.roles || []);
-        const existingNames = new Set(existingChars.map(c => c.name));
-
-        // Update existing characters with fresh stats
-        const updatedExisting = existingChars.map((c) => {
-          const stat = stats.get(c.name);
-          if (!stat) return c;
-          const appearanceCount = stat.count;
-          const episodeUsage = formatEpisodeUsage(stat.episodeIds);
-          return {
-            ...c,
-            appearanceCount,
-            episodeUsage,
-            isMain: c.isMain,
-            assetPriority: (c.assetPriority || (appearanceCount > 1 ? "medium" : "low")) as "low" | "medium" | "high",
-          };
-        });
-
-        // Add any new characters parsed from script
-        let counter = 0;
-        const newChars = Array.from(stats.entries())
-          .filter(([name]) => name && !existingNames.has(name))
-          .map(([name, stat]) => ({
-            id: `char-script-${Date.now()}-${counter++}`,
-            name,
-            role: "",
-            isMain: false,
-            bio: "",
-            forms: [],
-            appearanceCount: stat.count,
-            episodeUsage: formatEpisodeUsage(stat.episodeIds),
-            assetPriority: (stat.count > 1 ? "medium" : "low") as "low" | "medium" | "high",
-          }));
+        const now = Date.now();
+        const baseName = (fileName || "script.fountain").replace(/\.[^.]+$/, "").trim() || "Script";
+        const documentId = `script-${now.toString(36)}`;
+        const nodeId = `script-${documentId}`;
+        const currentFlow = prev.flow || { pages: [], images: [], links: [] };
+        const existingFlowNodes = Array.isArray(currentFlow.flowNodes) ? currentFlow.flowNodes : [];
 
         return {
           ...prev,
-          fileName: fileName || 'script.txt',
-          rawScript: content,
-          episodes,
-          roles: replaceRolesByKind(
-            prev.roles || [],
-            'person',
-            buildPersonRolesFromAnalysis([...updatedExisting, ...newChars])
-          ),
+          fileName: fileName || 'script.fountain',
+          rawScript: "",
+          episodes: [],
+          flow: {
+            ...currentFlow,
+            pages: [],
+            textNodes: [],
+            flowNodes: [
+              ...existingFlowNodes,
+              {
+                id: nodeId,
+                type: "scriptPage",
+                position: { x: 120 + existingFlowNodes.length * 36, y: 120 + existingFlowNodes.length * 24 },
+                style: { width: 320, height: 249 },
+                data: {
+                  title: baseName,
+                  text: content,
+                  documentId,
+                  documentKind: "script",
+                  format: "fountain",
+                  preview: content.replace(/\s+/g, " ").slice(0, 180),
+                },
+              },
+            ],
+          },
         };
       });
-      if (episodes.length > 0) setCurrentEpIndex(0);
     }
   };
 

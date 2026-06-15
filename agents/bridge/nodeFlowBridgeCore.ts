@@ -3,7 +3,7 @@ import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
-import { findProjectGraphNodeByRef } from "../../node-workspace/nodeflow/projectGraph";
+import { findGraphNode } from "../../node-workspace/nodeflow/projectGraph";
 import { buildConnectedInputs } from "../../node-workspace/nodeflow/queries";
 import {
   buildNodeFlowExecutionApprovalProposal,
@@ -102,14 +102,16 @@ const buildNodeExtraData = (
   input: CreateNodeFlowNodeInput,
   resolvedTitle: string
 ): Partial<NodeFlowNodeData> => {
-  const { type, text, content, documentId, imageUrl, audioUrl, videoUrl, filename, mimeType, episodeId } = input;
+  const { type, text, content, documentId, imageUrl, audioUrl, videoUrl, filename, mimeType } = input;
   const bodyText = (text ?? content ?? "").trim();
   const preview = bodyText.replace(/\s+/g, " ").slice(0, 180);
   if (type === "scriptPage") {
     return {
       title: resolvedTitle,
       text: bodyText,
-      episodeId,
+      documentId: (documentId || "").trim() || undefined,
+      format: "fountain",
+      documentKind: "script",
       preview,
     } as Partial<NodeFlowNodeData>;
   }
@@ -337,7 +339,6 @@ const createNodeFlowGraphLink = (
   input: CreateNodeFlowGraphLinkInput
 ): CreateNodeFlowGraphLinkResult => {
   const snapshot = deps.getNodeFlowSnapshot();
-  const projectData = deps.getProjectData();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   const sourceRef = normalizeNodeRef(input.sourceRef);
   const targetRef = normalizeNodeRef(input.targetRef);
@@ -347,10 +348,10 @@ const createNodeFlowGraphLink = (
   if (sourceRef === targetRef) {
     throw new Error("createNodeFlowGraphLink 不能连接同一个 ref 到自己。");
   }
-  const sourceNode = findProjectGraphNodeByRef(projectData, snapshot, sourceRef);
-  const targetNode = findProjectGraphNodeByRef(projectData, snapshot, targetRef);
+  const sourceNode = findGraphNode(snapshot, { nodeRef: sourceRef });
+  const targetNode = findGraphNode(snapshot, { nodeRef: targetRef });
   if (!sourceNode || !targetNode) {
-    throw new Error("createNodeFlowGraphLink 只能连接已存在的 source/graph 节点。");
+    throw new Error("createNodeFlowGraphLink 只能连接已存在的 nodeflow 节点。");
   }
   const linkId = deps.addGraphLink(sourceRef, targetRef);
   return {

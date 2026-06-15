@@ -21,7 +21,7 @@ const EXIT_DURATION = 180;
 const hasGuide = (guide: EdgeAlignmentGuide | null): guide is EdgeAlignmentGuide =>
   Boolean(guide && (guide.x != null || guide.y != null));
 
-const getOpacity = (strength = 1) => Math.min(0.96, 0.38 + strength * 0.5);
+const getOpacity = (strength = 1) => Math.min(0.98, 0.48 + strength * 0.42);
 
 export const EdgeAlignmentGuides: React.FC<Props> = ({ guide, viewport }) => {
   const [renderedGuide, setRenderedGuide] = useState<EdgeAlignmentGuide | null>(guide);

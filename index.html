@@ -80,6 +80,115 @@
       color: var(--text-primary);
     }
 
+    body.qalam-invite-gated #root {
+      opacity: 0;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .qalam-entry {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 32%, rgba(16, 185, 129, 0.12), transparent 30%),
+        #0f0f0f;
+      color: #f8fafc;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .qalam-entry__panel {
+      width: min(360px, calc(100vw - 48px));
+      display: grid;
+      gap: 22px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .qalam-entry__loader {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(248, 250, 252, 0.18);
+      border-top-color: #10b981;
+      border-radius: 999px;
+      animation: qalam-entry-spin 0.9s linear infinite;
+    }
+
+    .qalam-entry__title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 650;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .qalam-entry__form {
+      width: 100%;
+      display: grid;
+      gap: 10px;
+    }
+
+    .qalam-entry__input {
+      height: 44px;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid rgba(248, 250, 252, 0.14);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      color: #f8fafc;
+      outline: none;
+      padding: 0 14px;
+      text-align: center;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .qalam-entry__input:focus {
+      border-color: rgba(16, 185, 129, 0.7);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+    }
+
+    .qalam-entry__button {
+      height: 40px;
+      border: 0;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .qalam-entry__message {
+      min-height: 18px;
+      margin: 0;
+      color: #94a3b8;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .qalam-entry[data-state="error"] .qalam-entry__message {
+      color: #f87171;
+    }
+
+    .qalam-entry[data-state="loading"] .qalam-entry__form {
+      opacity: 0.48;
+      pointer-events: none;
+    }
+
+    .qalam-entry.qalam-entry--exit {
+      opacity: 0;
+      transition: opacity 180ms ease;
+    }
+
+    @keyframes qalam-entry-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
     .bg-dot-grid {
       background-color: var(--bg-panel);
       background-image:
@@ -133,8 +242,82 @@
 </script>
 </head>
 
-<body class="font-sans antialiased overflow-hidden">
+<body class="font-sans antialiased overflow-hidden qalam-invite-gated">
+  <div id="qalam-entry" class="qalam-entry" data-state="idle" role="dialog" aria-modal="true" aria-labelledby="qalam-entry-title">
+    <div class="qalam-entry__panel">
+      <div class="qalam-entry__loader" aria-hidden="true"></div>
+      <h1 id="qalam-entry-title" class="qalam-entry__title">Qalam</h1>
+      <form id="qalam-entry-form" class="qalam-entry__form" autocomplete="off">
+        <input
+          id="qalam-entry-input"
+          class="qalam-entry__input"
+          name="qalam-entry-token"
+          type="password"
+          inputmode="text"
+          autocomplete="new-password"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="邀请码"
+          aria-label="邀请码"
+        />
+        <button class="qalam-entry__button" type="submit">Enter</button>
+        <p id="qalam-entry-message" class="qalam-entry__message">Enter invite code to continue.</p>
+      </form>
+    </div>
+  </div>
   <div id="root"></div>
+  <script>
+    (() => {
+      const inviteCode = "#0000";
+      const entry = document.getElementById("qalam-entry");
+      const form = document.getElementById("qalam-entry-form");
+      const input = document.getElementById("qalam-entry-input");
+      const message = document.getElementById("qalam-entry-message");
+      const root = document.getElementById("root");
+
+      const revealApp = () => {
+        document.body.classList.remove("qalam-invite-gated");
+        entry.classList.add("qalam-entry--exit");
+        window.setTimeout(() => entry.remove(), 180);
+      };
+
+      const waitForApp = () => {
+        const startedAt = Date.now();
+        const tick = () => {
+          if (root && root.childElementCount > 0) {
+            revealApp();
+            return;
+          }
+          if (Date.now() - startedAt > 120000) {
+            message.textContent = "Still loading...";
+          }
+          window.requestAnimationFrame(tick);
+        };
+        tick();
+      };
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (input.value.trim() !== inviteCode) {
+          entry.dataset.state = "error";
+          message.textContent = "Invalid invite code.";
+          input.value = "";
+          input.focus();
+          return;
+        }
+        entry.dataset.state = "loading";
+        input.value = "";
+        input.blur();
+        message.textContent = "Loading workspace...";
+        waitForApp();
+      });
+
+      window.addEventListener("pageshow", () => {
+        input.value = "";
+        input.focus({ preventScroll: true });
+      });
+    })();
+  </script>
   <script type="module" src="/index.tsx"></script>
 </body>
 

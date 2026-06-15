@@ -22,6 +22,9 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       return {
         title: "剧本文档",
         text: "",
+        documentId: undefined,
+        documentKind: "script",
+        format: "fountain",
         episodeId: undefined,
         preview: "",
       } as ScriptPageNodeData;
@@ -31,6 +34,8 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         text: "",
         content: "",
         documentId: undefined,
+        documentKind: "archive",
+        format: "markdown",
         preview: "",
       } as MarkdownTextNodeData;
     case "imageInput":
@@ -77,6 +82,9 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       return {
         title: "",
         text: "",
+        documentId: undefined,
+        documentKind: "note",
+        format: "markdown",
       } as TextNodeData;
     case "scriptBoard":
       return {
