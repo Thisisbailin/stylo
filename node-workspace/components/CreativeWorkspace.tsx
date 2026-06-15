@@ -985,6 +985,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           alignmentGuide={snapGuide}
           active={!showThemeModal}
         />
+        {flowSurface.underlays}
         <ReactFlow
           nodes={flowSurface.nodes}
           edges={flowSurface.edges}

@@ -67,7 +67,9 @@ import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConn
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
-import { FilmRollCanister, FilmRollRibbon } from "./FilmRollControl";
+import { Canister as OriginalFilmCanister } from "./film-roll-lab/components/Canister";
+import { Filmstrip as OriginalFilmstrip } from "./film-roll-lab/components/Filmstrip";
+import type { CanisterStyle, FilmFilter, FilmFrame, PhysicsParams } from "./film-roll-lab/types";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -87,6 +89,31 @@ type FlowRenderNode = Node<NodeFlowNodeData, NodeType>;
 type FlowRenderEdge = Edge<Record<string, never>>;
 type FlowCreateType = "scriptPage" | "mdText" | NodeType;
 type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
+
+const FOUNDATION_FILM_PHYSICS: PhysicsParams = {
+  stiffness: 140,
+  damping: 18,
+  mass: 1.1,
+  rotationMultiplier: 2.5,
+  filmstripHeight: 54,
+  frameWidth: 118,
+};
+
+const FOUNDATION_FILM_FRAMES: FilmFrame[] = [];
+const FOUNDATION_FILM_NOOP = () => {};
+const FOUNDATION_FILM_FILTER_NOOP = (_frameId: string, _filter: FilmFilter) => {};
+
+const getFoundationCanisterStyle = (activeAxis: "time" | "space"): CanisterStyle => ({
+  id: activeAxis === "time" ? "retro-yellow" : "fuji-green",
+  name: activeAxis === "time" ? "Time Axis" : "Space Axis",
+  primaryColor: activeAxis === "time" ? "#facc15" : "#10b981",
+  accentColor: activeAxis === "time" ? "#ef4444" : "#f43f5e",
+  backgroundColor: activeAxis === "time" ? "#eab308" : "#047857",
+  textColor: activeAxis === "time" ? "#18181b" : "#ffffff",
+  brandText: activeAxis === "time" ? "TIME" : "SPACE",
+  iso: activeAxis === "time" ? 200 : 400,
+  exp: activeAxis === "time" ? 36 : 24,
+});
 
 type ScriptConnectionDropState = {
   position: { x: number; y: number };
@@ -698,6 +725,7 @@ type ScriptFoundationProps = {
   isAgentFirstMode?: boolean;
   onOpenMarkdownCard?: () => void;
   onCloseMarkdownCard?: () => void;
+  onFoundationGuideLinesChange?: (lines: ScriptFoundationGuideLine[]) => void;
   nodes: FlowRenderNode[];
   viewport: SharedCanvasControls["viewport"];
 };
@@ -783,14 +811,17 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   isAgentFirstMode = false,
   onOpenMarkdownCard,
   onCloseMarkdownCard,
+  onFoundationGuideLinesChange,
   nodes,
   viewport,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
   const clickTimerRef = useRef<number | null>(null);
+  const axisSwitchTimerRef = useRef<number | null>(null);
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [activeAxis, setActiveAxis] = useState<ScriptAxisMode>("time");
+  const [isAxisSwitching, setIsAxisSwitching] = useState(false);
   const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
   const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
   const [isTimelineDocumentOpen, setIsTimelineDocumentOpen] = useState(false);
@@ -824,6 +855,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   useEffect(
     () => () => {
       if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+      if (axisSwitchTimerRef.current) window.clearTimeout(axisSwitchTimerRef.current);
     },
     []
   );
@@ -836,14 +868,25 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     textarea.style.overflowY = textarea.scrollHeight > 118 ? "auto" : "hidden";
   }, [agentComposerValue, isAgentTailOpen]);
 
-  useEffect(() => {
-    if (!axisRevealRequest) return;
+  const switchAxisWithFilmMotion = useCallback(() => {
+    if (axisSwitchTimerRef.current) window.clearTimeout(axisSwitchTimerRef.current);
     setIsAgentTailOpen(false);
-    setActiveAxis((current) => (current === "time" ? "space" : "time"));
+    setIsAxisSwitching(true);
     setMenuState(null);
     setEditingTarget(null);
     setIsTimelineDocumentOpen(false);
-  }, [axisRevealRequest]);
+    const nextAxis = activeAxis === "time" ? "space" : "time";
+    axisSwitchTimerRef.current = window.setTimeout(() => {
+      setActiveAxis(nextAxis);
+      setIsAxisSwitching(false);
+      axisSwitchTimerRef.current = null;
+    }, 180);
+  }, [activeAxis]);
+
+  useEffect(() => {
+    if (!axisRevealRequest) return;
+    switchAxisWithFilmMotion();
+  }, [axisRevealRequest, switchAxisWithFilmMotion]);
 
   useEffect(() => {
     if (!menuState && !nodeCreateMenu) return;
@@ -1011,6 +1054,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     return nextLines;
   }, [activeAxis, activeBlockId, liveViewport, nodes, spaceBlocks, targetPositions, timeline.blocks]);
 
+  useEffect(() => {
+    onFoundationGuideLinesChange?.(foundationGuideLines);
+    return () => onFoundationGuideLinesChange?.([]);
+  }, [foundationGuideLines, onFoundationGuideLinesChange]);
+
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
     blockId: string,
@@ -1037,11 +1085,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
     event.preventDefault();
     clickTimerRef.current = window.setTimeout(() => {
-      setIsAgentTailOpen(false);
-      setActiveAxis((current) => (current === "time" ? "space" : "time"));
-      setMenuState(null);
-      setEditingTarget(null);
-      setIsTimelineDocumentOpen(false);
+      switchAxisWithFilmMotion();
     }, 170);
   };
 
@@ -1107,22 +1151,25 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   };
 
   return (
-    <div className="script-foundation-dock">
-      {foundationGuideLines.length ? (
-        <svg className="script-foundation-connection-layer" aria-hidden="true">
-          {foundationGuideLines.map((line) => (
-            <path
-              key={line.id}
-              className={`script-foundation-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
-              d={line.path}
-            />
-          ))}
-        </svg>
-      ) : null}
-
-      <div className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""}`} aria-label="剧本基地">
+    <>
+      <div className="script-foundation-dock">
+      <div
+        className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
+        aria-label="剧本基地"
+      >
         <div className="script-foundation-ribbon-background">
-          <FilmRollRibbon isOpen={!isAgentTailOpen} height={78} />
+          <OriginalFilmstrip
+            frames={FOUNDATION_FILM_FRAMES}
+            isOpen={!isAgentTailOpen && !isAxisSwitching}
+            onUploadImage={FOUNDATION_FILM_NOOP}
+            onUpdateFilter={FOUNDATION_FILM_FILTER_NOOP}
+            onCutFrame={FOUNDATION_FILM_NOOP}
+            onDeleteFrame={FOUNDATION_FILM_NOOP}
+            onAddFrame={FOUNDATION_FILM_NOOP}
+            onDevelopScan={FOUNDATION_FILM_NOOP}
+            physics={FOUNDATION_FILM_PHYSICS}
+            onToggleCanister={handleHeadClick}
+          />
         </div>
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
           <button
@@ -1135,15 +1182,16 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             onDoubleClick={handleHeadDoubleClick}
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
-            <FilmRollCanister
-              isOpen={!isAgentTailOpen}
-              scale={0.47}
-              styleConfig={{
-                brandText: activeAxis === "time" ? "TIME" : "SPACE",
-                iso: activeAxis === "time" ? 200 : 400,
-                exp: activeAxis === "time" ? 36 : 24,
-              }}
-            />
+            <span className="script-foundation-original-canister">
+              <span className="script-foundation-original-canister__scale">
+                <OriginalFilmCanister
+                  isOpen={!isAgentTailOpen && !isAxisSwitching}
+                  onToggle={FOUNDATION_FILM_NOOP}
+                  physics={FOUNDATION_FILM_PHYSICS}
+                  styleConfig={getFoundationCanisterStyle(activeAxis)}
+                />
+              </span>
+            </span>
           </button>
 
           {!isAgentTailOpen ? (
@@ -1441,7 +1489,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           </div>
         </section>
       ) : null}
-    </div>
+      </div>
+    </>
   );
 };
 
@@ -1472,6 +1521,7 @@ export const useFlowSurface = ({
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
   const [axisRevealRequest, setAxisRevealRequest] = useState(0);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
+  const [foundationGuideLines, setFoundationGuideLines] = useState<ScriptFoundationGuideLine[]>([]);
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
@@ -2810,6 +2860,18 @@ export const useFlowSurface = ({
     [onOpenEpisode, timeline.blocks]
   );
 
+  const foundationUnderlay = foundationGuideLines.length ? (
+    <svg className="script-foundation-connection-layer" aria-hidden="true">
+      {foundationGuideLines.map((line) => (
+        <path
+          key={line.id}
+          className={`script-foundation-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
+          d={line.path}
+        />
+      ))}
+    </svg>
+  ) : null;
+
   const overlays = (
     <>
       {connectionDrop ? (
@@ -2875,6 +2937,7 @@ export const useFlowSurface = ({
           isAgentFirstMode={isAgentFirstMode}
           onOpenMarkdownCard={onCollapseCanvasCards}
           onCloseMarkdownCard={onRestoreCanvasCards}
+          onFoundationGuideLinesChange={setFoundationGuideLines}
           nodes={nodes}
           viewport={canvasControls.viewport}
         />
@@ -2899,6 +2962,7 @@ export const useFlowSurface = ({
     nodesDraggable: !isLocked,
     nodesConnectable: !isLocked,
     elementsSelectable: !isLocked,
+    underlays: foundationUnderlay,
     overlays,
     actions: {
       addNode: handleAddFlowNode,

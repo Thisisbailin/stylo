@@ -53,6 +53,7 @@ export const toNodeFlowCanvasLink = (link: NodeFlowLink): NodeFlowCanvasLink => 
   selected: link.selected,
   type: link.type,
   markerEnd: link.markerEnd,
+  zIndex: 0,
 });
 
 export const fromNodeFlowCanvasLink = (link: NodeFlowCanvasLink): NodeFlowLink => ({

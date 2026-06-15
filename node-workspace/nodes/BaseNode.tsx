@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Handle, Position, NodeResizer } from "@xyflow/react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Handle, Position } from "@xyflow/react";
 import { HandleType } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 
@@ -21,7 +21,6 @@ type Props = {
   outputs?: NodeHandleSpec[];
   selected?: boolean;
   variant?: "default" | "text" | "media";
-  resizerKeepAspect?: boolean;
   nodeType?: string;
   headerActions?: React.ReactNode;
 };
@@ -34,55 +33,16 @@ export const BaseNode: React.FC<Props> = ({
   outputs = [],
   selected,
   variant = "default",
-  resizerKeepAspect,
   nodeType,
   headerActions,
 }) => {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [showResizer, setShowResizer] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const readingMode = useNodeFlowStore((state) => state.readingMode);
   const isIdentityMode = readingMode === "identity";
 
-  const minHeight = isIdentityMode ? 76 : variant === "text" ? 256 : 160;
-  const keepAspectRatio = resizerKeepAspect ?? variant === "media";
-
   useEffect(() => {
     setDraftTitle(title);
   }, [title]);
-
-  const updateResizerVisibility = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (isResizing) return;
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const threshold = 26;
-      const x = event.clientX;
-      const y = event.clientY;
-      const nearLeft = x - rect.left <= threshold;
-      const nearRight = rect.right - x <= threshold;
-      const nearTop = y - rect.top <= threshold;
-      const nearBottom = rect.bottom - y <= threshold;
-      const next = (nearLeft || nearRight) && (nearTop || nearBottom);
-      if (next !== showResizer) setShowResizer(next);
-    },
-    [isResizing, showResizer]
-  );
-
-  const clearResizer = useCallback(() => {
-    if (!isResizing) setShowResizer(false);
-  }, [isResizing]);
-
-  const handleResizeStart = useCallback(() => {
-    setIsResizing(true);
-    setShowResizer(true);
-  }, []);
-
-  const handleResizeEnd = useCallback(() => {
-    setIsResizing(false);
-    setShowResizer(false);
-  }, []);
 
   const commitTitle = useCallback(() => {
     const nextTitle = draftTitle.trim() || title;
@@ -146,29 +106,12 @@ export const BaseNode: React.FC<Props> = ({
 
   return (
     <div
-      ref={cardRef}
       className="node-card-base transition-shadow duration-300 overflow-visible text-xs flex flex-col"
       data-selected={!!selected}
       data-variant={variant}
       data-node-type={nodeType || ""}
       data-reading-mode={readingMode}
-      data-resizer-visible={showResizer || isResizing}
-      data-resizing={isResizing}
-      onMouseMove={updateResizerVisibility}
-      onMouseLeave={clearResizer}
     >
-      <NodeResizer
-        color="var(--node-accent)"
-        isVisible={!isIdentityMode}
-        minWidth={320}
-        minHeight={minHeight}
-        keepAspectRatio={keepAspectRatio}
-        handleClassName="custom-node-handle"
-        lineClassName="custom-node-line"
-        onResizeStart={handleResizeStart}
-        onResizeEnd={handleResizeEnd}
-      />
-
       <div className="node-card-floating-header">
         <div className="node-card-header-copy min-w-0 flex-1">
           {onTitleChange && !isIdentityMode ? (

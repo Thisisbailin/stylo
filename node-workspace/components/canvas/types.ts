@@ -63,6 +63,7 @@ export type CanvasSurfaceConfig = {
   connectionLineType?: ConnectionLineType;
   connectionLineStyle?: React.CSSProperties;
   panOnScrollMode?: PanOnScrollMode;
+  underlays?: React.ReactNode;
   overlays?: React.ReactNode;
   miniMap?: React.ReactNode;
   actions?: {
