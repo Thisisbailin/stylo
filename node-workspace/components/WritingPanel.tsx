@@ -339,36 +339,36 @@ const FOUNTAIN_FORMAT_ORDER: FountainLineKind[] = [
 ];
 
 const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
-  action: "动作",
-  scene_heading: "场景",
-  character: "角色",
-  dual_dialogue: "双人",
-  dialogue: "对白",
-  parenthetical: "括注",
-  lyric: "歌词",
-  transition: "转场",
-  centered: "居中",
-  note: "注释",
-  boneyard: "隐藏",
-  section: "章节",
-  synopsis: "梗概",
-  page_break: "分页",
+  action: "Action",
+  scene_heading: "Scene Heading",
+  character: "Character",
+  dual_dialogue: "Dual Dialogue",
+  dialogue: "Dialogue",
+  parenthetical: "Parenthetical",
+  lyric: "Lyric",
+  transition: "Transition",
+  centered: "Centered",
+  note: "Note",
+  boneyard: "Boneyard",
+  section: "Section",
+  synopsis: "Synopsis",
+  page_break: "Page Break",
 };
 
 const FOUNTAIN_FORMAT_META: Record<FountainLineKind, { marker: string; sample: string }> = {
-  action: { marker: "!", sample: "!动作描述" },
-  scene_heading: { marker: ".", sample: ".内景 房间 - 日" },
-  character: { marker: "@", sample: "@角色" },
-  dual_dialogue: { marker: "^", sample: "@角色 ^" },
-  dialogue: { marker: "\"", sample: "对白内容" },
-  parenthetical: { marker: "()", sample: "(停顿)" },
-  lyric: { marker: "~", sample: "~歌词" },
-  transition: { marker: ">", sample: "> 切至:" },
-  centered: { marker: "><", sample: "> 居中文本 <" },
-  note: { marker: "[[]]", sample: "[[注释]]" },
-  boneyard: { marker: "/* */", sample: "/* 隐藏文本 */" },
-  section: { marker: "#", sample: "# 章节" },
-  synopsis: { marker: "=", sample: "= 梗概" },
+  action: { marker: "!", sample: "!Action description" },
+  scene_heading: { marker: ".", sample: ".INT. APARTMENT - DAY" },
+  character: { marker: "@", sample: "@CHARACTER" },
+  dual_dialogue: { marker: "^", sample: "@CHARACTER ^" },
+  dialogue: { marker: "\"", sample: "Dialogue text" },
+  parenthetical: { marker: "()", sample: "(beat)" },
+  lyric: { marker: "~", sample: "~Lyric line" },
+  transition: { marker: ">", sample: "> CUT TO:" },
+  centered: { marker: "><", sample: "> CENTERED TEXT <" },
+  note: { marker: "[[]]", sample: "[[Note]]" },
+  boneyard: { marker: "/* */", sample: "/* Hidden text */" },
+  section: { marker: "#", sample: "# Section" },
+  synopsis: { marker: "=", sample: "= Synopsis" },
   page_break: { marker: "===", sample: "===" },
 };
 
@@ -398,17 +398,17 @@ const FOUNTAIN_VISUAL_TEMPLATE_INDENT: Partial<Record<FountainLineKind, string>>
 };
 
 const FOUNTAIN_EMPTY_TEMPLATE_LINES = new Set([
-  ".内景 场景 - 日",
-  "@角色",
-  "@角色 ^",
-  "(停顿)",
-  "~歌词",
-  "> 切至:",
-  "> 居中文本 <",
-  "[[注释]]",
-  "/* 隐藏文本 */",
-  "# 章节",
-  "= 梗概",
+  ".INT. APARTMENT - DAY",
+  "@CHARACTER",
+  "@CHARACTER ^",
+  "(beat)",
+  "~Lyric line",
+  "> CUT TO:",
+  "> CENTERED TEXT <",
+  "[[Note]]",
+  "/* Hidden text */",
+  "# Section",
+  "= Synopsis",
   "===",
 ]);
 
@@ -533,33 +533,33 @@ const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
 
   switch (targetKind) {
     case "scene_heading":
-      return raw ? `.${raw.toUpperCase()}` : ".内景 场景 - 日";
+      return raw ? `.${raw.toUpperCase()}` : ".INT. APARTMENT - DAY";
     case "character":
-      return raw ? `@${raw.toUpperCase()}` : `${templateIndent}@角色`;
+      return raw ? `@${raw.toUpperCase()}` : `${templateIndent}@CHARACTER`;
     case "dual_dialogue": {
       const cleaned = raw.replace(/\s*\^\s*$/, "").trim();
-      return cleaned ? `@${cleaned.toUpperCase()} ^` : `${templateIndent}@角色 ^`;
+      return cleaned ? `@${cleaned.toUpperCase()} ^` : `${templateIndent}@CHARACTER ^`;
     }
     case "dialogue":
       return raw;
     case "parenthetical":
-      return raw ? `(${raw})` : `${templateIndent}(停顿)`;
+      return raw ? `(${raw})` : `${templateIndent}(beat)`;
     case "lyric":
-      return `~${raw || "歌词"}`;
+      return `~${raw || "Lyric line"}`;
     case "transition":
       return raw
         ? `> ${raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`}`
-        : `${templateIndent}> 切至:`;
+        : `${templateIndent}> CUT TO:`;
     case "centered":
-      return raw ? `> ${raw} <` : `${templateIndent}> 居中文本 <`;
+      return raw ? `> ${raw} <` : `${templateIndent}> CENTERED TEXT <`;
     case "note":
-      return `[[${raw || "注释"}]]`;
+      return `[[${raw || "Note"}]]`;
     case "boneyard":
-      return raw ? `/* ${raw} */` : "/* 隐藏文本 */";
+      return raw ? `/* ${raw} */` : "/* Hidden text */";
     case "section":
-      return `# ${raw || "章节"}`;
+      return `# ${raw || "Section"}`;
     case "synopsis":
-      return `= ${raw || "梗概"}`;
+      return `= ${raw || "Synopsis"}`;
     case "page_break":
       return "===";
     case "action":
@@ -1395,9 +1395,9 @@ export const WritingPanel: React.FC<Props> = ({
   ).size;
   const writingGuides = useMemo(
     () => [
-      "Fountain 以纯文本保存剧本，并通过行首标记表达格式。",
-      "行格式可通过 Tab、Shift+Tab 或底部格式候选切换。",
-      "场景元信息会保留在稿纸上，并随剧本一起导出。",
+      "Fountain keeps the screenplay as plain text, with line prefixes carrying structure.",
+      "Use Tab, Shift+Tab, or the format bar to cycle line styles.",
+      "Scene metadata stays on the page and exports with the script.",
     ],
     []
   );
@@ -1466,7 +1466,16 @@ export const WritingPanel: React.FC<Props> = ({
                       className="writing-icon-button writing-more-button"
                       title={isInfoPanelOpen ? "隐藏信息" : "显示信息"}
                     >
-                      <MoreHorizontal size={18} strokeWidth={1.8} />
+                      {isInfoPanelOpen ? <X size={18} strokeWidth={1.8} /> : <MoreHorizontal size={18} strokeWidth={1.8} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteScene(selectedScene.id)}
+                      className="writing-icon-button writing-icon-button--danger"
+                      disabled={selectedEpisode.scenes.length <= 1}
+                      title={selectedEpisode.scenes.length <= 1 ? "至少保留一个场景" : "删除当前稿纸"}
+                    >
+                      <Trash2 size={17} strokeWidth={1.9} />
                     </button>
                     <button
                       type="button"
@@ -1580,16 +1589,6 @@ export const WritingPanel: React.FC<Props> = ({
                               placeholder="CAST"
                             />
                           </label>
-                          <button
-                            type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => deleteScene(scene.id)}
-                            className="writing-scene-delete"
-                            disabled={selectedEpisode.scenes.length <= 1}
-                            title={selectedEpisode.scenes.length <= 1 ? "至少保留一个场景" : "删除场景"}
-                          >
-                            <Trash2 size={14} strokeWidth={1.9} />
-                          </button>
                         </div>
 
                         <div className="writing-paper-body relative flex-1">
@@ -1764,7 +1763,7 @@ export const WritingPanel: React.FC<Props> = ({
                 </div>
 
                 <div className="writing-side-section">
-                  <div className="writing-side-label">格式</div>
+                  <div className="writing-side-label">Format</div>
                   <div className="writing-guide-list">
                     <div className="writing-format-summary">
                       <span className="writing-format-summary__marker">{currentFountainMeta.marker}</span>

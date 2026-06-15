@@ -1032,8 +1032,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
-  const dockLeft = leftOffset > 0 ? Math.min(leftOffset, Math.max(0, viewportWidth - 360)) : 0;
   const panelMeta =
     selectedPanel === "provider"
       ? {
@@ -1085,10 +1083,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed right-4 top-4 bottom-4 z-[80] min-w-0 overflow-hidden rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
+      className="fixed right-4 top-4 bottom-4 z-[80] min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
       style={{
-        width: `min(max(560px, calc(100vw - ${Math.max(468, dockLeft + 48)}px)), calc(100vw - 32px))`,
-        maxWidth: "calc(100vw - 32px)",
+        width: "calc(50vw - 12px)",
+        maxWidth: "calc(100vw - 8px)",
       }}
     >
       <div className="grid h-full min-w-0 grid-cols-1 xl:grid-cols-[292px_minmax(0,1fr)]">
@@ -1104,10 +1102,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-9 w-9 shrink-0 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 text-[12px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
                   title="Close"
                 >
-                  <X size={14} className="mx-auto" />
+                  <span>关闭</span>
+                  <X size={14} />
                 </button>
               </div>
             </div>

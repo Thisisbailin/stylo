@@ -1658,26 +1658,27 @@ body.qalam-resizing * {
 }
 
 .writing-floating-header {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  z-index: 40;
-  width: min(100%, 980px);
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  left: auto;
+  z-index: 82;
+  width: auto;
   min-height: 0;
   justify-content: flex-end;
   padding: 0 6px;
-  pointer-events: none;
-  transform: translate3d(-50%, 0, 0);
+  pointer-events: auto;
+  transform: none;
   transition: opacity 220ms ease, transform 220ms ease;
 }
 
 .writing-room.is-focus-mode.is-editor-focused .writing-floating-header:not(:hover):not(:focus-within) {
   opacity: 0.5;
-  transform: translate3d(-50%, -6px, 0) scale(0.992);
+  transform: translate3d(0, -6px, 0) scale(0.992);
 }
 
 .writing-floating-header .writing-header-actions {
-  max-width: min(100%, 980px);
+  max-width: min(calc(100vw - 24px), 980px);
   overflow-x: auto;
   padding: 2px;
   scrollbar-width: none;
@@ -1795,10 +1796,12 @@ body.qalam-resizing * {
   flex: 1 1 auto;
   min-height: 0;
   width: min(100%, 980px);
+  box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
   padding-top: 54px;
-  padding-bottom: 92px;
+  padding-inline: clamp(18px, 2.1vw, 28px);
+  padding-bottom: 120px;
   scroll-padding-top: 76px;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -3948,13 +3951,14 @@ body.qalam-resizing * {
   position: relative;
   z-index: 2;
   display: flex;
+  align-items: center;
   min-width: 0;
-  min-height: 50px;
+  min-height: 42px;
   flex: 1 1 0;
   gap: 0;
   overflow-x: clip;
   overflow-y: visible;
-  padding: 1px 0;
+  padding: 0;
   scrollbar-width: none;
 }
 
@@ -3965,6 +3969,7 @@ body.qalam-resizing * {
 .script-foundation-block {
   --foundation-color: var(--app-accent);
   position: relative;
+  height: 46px;
   min-width: 62px;
   flex: 1 1 auto;
   margin-inline: 2px;
@@ -4106,10 +4111,10 @@ body.qalam-resizing * {
   position: relative;
   z-index: 1;
   display: flex;
-  min-height: 48px;
+  min-height: 46px;
   flex-direction: column;
   justify-content: space-between;
-  padding: 6px 7px 3px;
+  padding: 4px 7px 2px;
 }
 
 .script-foundation-block__meta,
@@ -4335,7 +4340,7 @@ body.qalam-resizing * {
   z-index: 6;
   display: block;
   flex: 0 0 0;
-  min-height: 58px;
+  min-height: 46px;
   pointer-events: none;
 }
 
@@ -4356,8 +4361,8 @@ body.qalam-resizing * {
 .script-foundation-resize::before {
   content: "";
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 6px;
+  bottom: 6px;
   left: 10px;
   width: 1px;
   border-radius: 999px;
@@ -4369,8 +4374,8 @@ body.qalam-resizing * {
 .script-foundation-resize::after {
   content: "";
   position: absolute;
-  top: 19px;
-  bottom: 19px;
+  top: 15px;
+  bottom: 15px;
   left: 8px;
   width: 5px;
   border-radius: 999px;
@@ -5110,18 +5115,19 @@ body.qalam-resizing * {
   }
 
   .script-foundation-track {
-    min-height: 50px;
+    min-height: 38px;
     gap: 3px;
-    padding: 1px 0;
+    padding: 0;
   }
 
   .script-foundation-block {
     min-width: 62px;
+    height: 42px;
   }
 
   .script-foundation-block__inner {
-    min-height: 48px;
-    padding: 6px 7px;
+    min-height: 42px;
+    padding: 4px 7px 1px;
   }
 
   .script-foundation-block-menu-wrap,
@@ -5152,8 +5158,9 @@ body.qalam-resizing * {
 
   .writing-floating-header {
     align-items: flex-end;
-    top: 8px;
-    width: min(100%, calc(100vw - 24px));
+    top: max(8px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    width: auto;
     padding: 0;
   }
 

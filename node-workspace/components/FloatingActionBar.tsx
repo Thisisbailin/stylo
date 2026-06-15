@@ -381,7 +381,7 @@ export const FloatingActionBar: React.FC<Props> = ({
 
       <div className="relative z-20 flex justify-center">
         {showGlobalAccountTrigger ? (
-          <div className="pointer-events-none fixed right-4 top-4 z-[60]">
+          <div className="pointer-events-none fixed right-4 bottom-4 z-[60]">
             <button
               ref={accountButtonRef}
               data-account-trigger
