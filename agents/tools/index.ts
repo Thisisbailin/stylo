@@ -2,6 +2,17 @@ import { tool } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import type { AgentExecutedToolCall, AgentRuntimeEvent } from "../runtime/types";
 import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
+import type { QalamToolBudgetPolicy } from "../runtime/toolBudget";
+import {
+  createDocumentToolDef,
+  findDocumentsToolDef,
+  readDocumentToolDef,
+  updateDocumentToolDef,
+} from "./documentTools";
+import {
+  connectFlowNodesToolDef,
+  moveFlowNodeToolDef,
+} from "./flowTools";
 import { listProjectResourcesToolDef } from "./listProjectResources";
 import { operateProjectResourceToolDef } from "./operateProjectResource";
 import { pingToolDef } from "./ping";
@@ -11,11 +22,17 @@ import { prepareGenerationExecutionToolDef } from "./prepareGenerationExecution"
 import { cancelGenerationExecutionToolDef } from "./cancelGenerationExecution";
 
 const LOOKUP_TOOL_NAMES = new Set([
+  "find_documents",
+  "read_document",
   "list_project_resources",
   "read_project_resource",
   "search_project_resource",
 ]);
 const MUTATING_TOOL_NAMES = new Set([
+  "create_document",
+  "update_document",
+  "connect_flow_nodes",
+  "move_flow_node",
   "operate_project_resource",
   "prepare_generation_execution",
   "cancel_generation_execution",
@@ -23,6 +40,12 @@ const MUTATING_TOOL_NAMES = new Set([
 
 const TOOL_DEFS = [
   pingToolDef,
+  findDocumentsToolDef,
+  readDocumentToolDef,
+  createDocumentToolDef,
+  updateDocumentToolDef,
+  connectFlowNodesToolDef,
+  moveFlowNodeToolDef,
   listProjectResourcesToolDef,
   readProjectResourceToolDef,
   searchProjectResourceToolDef,
@@ -30,6 +53,22 @@ const TOOL_DEFS = [
   prepareGenerationExecutionToolDef,
   cancelGenerationExecutionToolDef,
 ] as const;
+
+const LEGACY_DISABLED_TOOL_NAMES = new Set([
+  "get_episode_script",
+  "get_scene_script",
+  "read_project_data",
+  "search_script_data",
+]);
+
+const assertNoLegacyTools = () => {
+  const legacyTool = TOOL_DEFS.find((toolDef) => LEGACY_DISABLED_TOOL_NAMES.has(toolDef.name));
+  if (legacyTool) {
+    throw new Error(`Legacy Qalam tool must not be registered in TOOL_DEFS: ${legacyTool.name}`);
+  }
+};
+
+assertNoLegacyTools();
 
 const stableSerialize = (value: unknown): string => {
   if (value == null) return "null";
@@ -45,10 +84,12 @@ export const createQalamTools = ({
   bridge,
   emitEvent,
   disabledTools = [],
+  toolBudget,
 }: {
   bridge: QalamAgentBridge;
   emitEvent?: (event: AgentRuntimeEvent) => void;
   disabledTools?: string[];
+  toolBudget?: QalamToolBudgetPolicy;
 }) => {
   const disabled = new Set(disabledTools);
   const lookupCache = new Map<string, { output: unknown; summary: string }>();
@@ -58,7 +99,7 @@ export const createQalamTools = ({
       name: toolDef.name,
       description: toolDef.description,
       parameters: toolDef.parameters as any,
-      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge),
+      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge, toolBudget),
       outputGuardrails: createQalamToolOutputGuardrails(toolDef.name),
       execute: async (input) => {
         const callId = `${toolDef.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

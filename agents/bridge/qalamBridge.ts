@@ -32,7 +32,6 @@ export type CreateNodeFlowNodeInput = {
   videoUrl?: string;
   filename?: string;
   mimeType?: string;
-  episodeId?: number;
   x?: number;
   y?: number;
   parentId?: string;

@@ -34,7 +34,7 @@ const sanitizeOpenAICompatibleJsonSchema = (schema: unknown): unknown => {
 const toOpenAICompatibleParameters = <T extends z.ZodTypeAny>(schema: T) =>
   sanitizeOpenAICompatibleJsonSchema(z.toJSONSchema(schema)) as Record<string, unknown>;
 
-export const readProjectDataSchema = z.object({
+export const legacyReadProjectDataSchema = z.object({
   episodeId: z.number().int().optional(),
   episodeTitle: z.string().optional(),
   sceneId: z.string().optional(),
@@ -64,7 +64,7 @@ export const readProjectDataSchema = z.object({
   maxItems: z.number().int().optional(),
 });
 
-export const searchScriptDataSchema = z.object({
+export const legacySearchScriptDataSchema = z.object({
   query: z.string(),
   episodeId: z.number().int().optional(),
   episodeTitle: z.string().optional(),
@@ -72,7 +72,7 @@ export const searchScriptDataSchema = z.object({
   maxSnippetChars: z.number().int().optional(),
 });
 
-export const getEpisodeScriptSchema = z.object({
+export const legacyGetEpisodeScriptSchema = z.object({
   episodeId: z.number().int().optional(),
   episodeTitle: z.string().optional(),
   maxChars: z.number().int().optional(),
@@ -82,7 +82,7 @@ export const getEpisodeScriptSchema = z.object({
   includeCharacters: z.boolean().optional(),
 });
 
-export const getSceneScriptSchema = z.object({
+export const legacyGetSceneScriptSchema = z.object({
   episodeId: z.number().int().optional(),
   episodeTitle: z.string().optional(),
   sceneId: z.string().optional(),
@@ -246,10 +246,20 @@ export const createNodeWorkflowSchema = z.object({
     .optional(),
 });
 
-export const readProjectDataParameters = toOpenAICompatibleParameters(readProjectDataSchema);
-export const searchScriptDataParameters = toOpenAICompatibleParameters(searchScriptDataSchema);
-export const getEpisodeScriptParameters = toOpenAICompatibleParameters(getEpisodeScriptSchema);
-export const getSceneScriptParameters = toOpenAICompatibleParameters(getSceneScriptSchema);
+export const readProjectDataSchema = legacyReadProjectDataSchema;
+export const searchScriptDataSchema = legacySearchScriptDataSchema;
+export const getEpisodeScriptSchema = legacyGetEpisodeScriptSchema;
+export const getSceneScriptSchema = legacyGetSceneScriptSchema;
+
+export const legacyReadProjectDataParameters = toOpenAICompatibleParameters(legacyReadProjectDataSchema);
+export const legacySearchScriptDataParameters = toOpenAICompatibleParameters(legacySearchScriptDataSchema);
+export const legacyGetEpisodeScriptParameters = toOpenAICompatibleParameters(legacyGetEpisodeScriptSchema);
+export const legacyGetSceneScriptParameters = toOpenAICompatibleParameters(legacyGetSceneScriptSchema);
+
+export const readProjectDataParameters = legacyReadProjectDataParameters;
+export const searchScriptDataParameters = legacySearchScriptDataParameters;
+export const getEpisodeScriptParameters = legacyGetEpisodeScriptParameters;
+export const getSceneScriptParameters = legacyGetSceneScriptParameters;
 export const upsertCharacterParameters = toOpenAICompatibleParameters(upsertCharacterSchema);
 export const upsertLocationParameters = toOpenAICompatibleParameters(upsertLocationSchema);
 export const createTextNodeParameters = toOpenAICompatibleParameters(createTextNodeSchema);

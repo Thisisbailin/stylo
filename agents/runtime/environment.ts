@@ -40,16 +40,16 @@ const sortRoles = (roles: ProjectRoleIdentity[]) =>
 
 const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
   read: {
-    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
+    tools: ["find_documents", "read_document", "list_project_resources", "read_project_resource", "search_project_resource"],
     resources: [...LIST_PROJECT_RESOURCE_TARGETS, ...READ_PROJECT_RESOURCE_TARGETS],
     scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS],
   },
   edit: {
-    tools: ["operate_project_resource"],
+    tools: ["create_document", "update_document", "operate_project_resource"],
     resources: [...OPERATE_NODEFLOW_TARGETS],
   },
   operate: {
-    tools: ["operate_project_resource"],
+    tools: ["connect_flow_nodes", "move_flow_node", "operate_project_resource"],
     resources: [...OPERATE_NODEFLOW_TARGETS],
     nodeKinds: [...OPERATE_NODEFLOW_NODE_KINDS],
   },

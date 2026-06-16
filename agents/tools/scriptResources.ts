@@ -47,6 +47,7 @@ export const ensureFlow = (canvas?: FlowState): FlowState => ({
   textNodes: Array.isArray(canvas?.textNodes) ? canvas.textNodes : [],
   flowNodes: Array.isArray(canvas?.flowNodes) ? canvas.flowNodes : [],
   links: Array.isArray(canvas?.links) ? canvas.links : [],
+  graphLinks: Array.isArray(canvas?.graphLinks) ? canvas.graphLinks : [],
   timeline: canvas?.timeline,
 });
 
@@ -216,10 +217,33 @@ const timelineBlockToScriptNode = (block: FlowTimelineBlock): ScriptResourceNode
   },
 });
 
-const buildScriptResourceNodesFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptResourceNode[] =>
-  nodeFlow.nodes
+const buildTimelineResourceNodes = (timeline: FlowState["timeline"]): ScriptResourceNode[] => {
+  const nodes: ScriptResourceNode[] = [];
+  if (timeline?.head) {
+    nodes.push({
+      resourceType: "script_index",
+      nodeId: "script:index",
+      ref: "script:index",
+      type: "script.index",
+      title: trim(timeline.head.title) || "椤圭洰绱㈠紩",
+      body: {
+        content: timeline.head.content || "",
+        linkedNodeIds: timeline.head.linkedNodeIds || [],
+      },
+      locked: false,
+    });
+  }
+  nodes.push(...(timeline?.spaceBlocks || []).map(spaceBlockToScriptNode));
+  nodes.push(...(timeline?.blocks || []).map(timelineBlockToScriptNode));
+  return nodes;
+};
+
+const buildScriptResourceNodesFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptResourceNode[] => [
+  ...buildTimelineResourceNodes(nodeFlow.timeline),
+  ...nodeFlow.nodes
     .map(documentNodeFlowNodeToScriptNode)
-    .filter((node): node is ScriptResourceNode => Boolean(node));
+    .filter((node): node is ScriptResourceNode => Boolean(node)),
+];
 
 export const buildScriptResourceNodes = (projectData: ProjectData, nodeFlow?: NodeFlowFile): ScriptResourceNode[] => {
   if (nodeFlow) return buildScriptResourceNodesFromNodeFlow(nodeFlow);
@@ -246,15 +270,9 @@ export const buildScriptResourceNodes = (projectData: ProjectData, nodeFlow?: No
   nodes.push(...(timeline?.blocks || []).map(timelineBlockToScriptNode));
   nodes.push(
     ...(canvas.flowNodes || [])
-      .map(documentFlowNodeToScriptNode)
+      .map(documentNodeFlowNodeToScriptNode)
       .filter((node): node is ScriptResourceNode => Boolean(node))
   );
-  const archiveFlowNodes = (canvas.flowNodes || []).filter((node) => node.type === "mdText").map(archiveFlowNodeToScriptNode);
-  const archiveFlowDocumentIds = new Set(
-    archiveFlowNodes.map((node) => (typeof node.meta?.documentId === "string" ? node.meta.documentId : ""))
-  );
-  nodes.push(...archiveFlowNodes);
-  nodes.push(...(canvas.textNodes || []).filter((node) => !archiveFlowDocumentIds.has(node.id)).map(archiveToScriptNode));
 
   return nodes;
 };
@@ -288,6 +306,7 @@ const buildScriptResourceLinksFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptRes
   );
   const byRef = new Map(nodes.map((node) => [node.ref, node]));
   const links: ScriptResourceLink[] = [];
+  const resolveResourceRef = (value: string) => refByRawNodeId.get(value) || refByNodeFlowRef.get(value) || resolveLinkedRef(value);
   const pushLink = (fromRef: string | undefined, toRef: string | undefined, type: ScriptResourceLink["type"]) => {
     if (!fromRef || !toRef || fromRef === toRef) return;
     if (!byRef.has(fromRef) || !byRef.has(toRef)) return;
@@ -301,6 +320,15 @@ const buildScriptResourceLinksFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptRes
     });
   };
 
+  (nodeFlow.timeline?.head?.linkedNodeIds || []).forEach((nodeId) => {
+    pushLink("script:index", resolveResourceRef(nodeId), "links_to");
+  });
+  (nodeFlow.timeline?.spaceBlocks || []).forEach((block) => {
+    block.linkedNodeIds.forEach((nodeId) => pushLink(`script:space:${block.id}`, resolveResourceRef(nodeId), "links_to"));
+  });
+  (nodeFlow.timeline?.blocks || []).forEach((block) => {
+    block.linkedNodeIds.forEach((nodeId) => pushLink(`script:timeline:${block.id}`, resolveResourceRef(nodeId), "links_to"));
+  });
   nodeFlow.links.forEach((link) => {
     pushLink(refByRawNodeId.get(link.source), refByRawNodeId.get(link.target), "links_to");
   });
@@ -323,11 +351,22 @@ export const buildScriptResourceLinks = (projectData: ProjectData, nodeFlow?: No
       })
       .filter((item): item is readonly [string, string] => Boolean(item))
   );
+  const refByNodeFlowRef = new Map(
+    nodes
+      .map((node) => {
+        const rawRef = typeof node.meta?.nodeRef === "string" ? node.meta.nodeRef : "";
+        return rawRef ? ([rawRef, node.ref] as const) : null;
+      })
+      .filter((item): item is readonly [string, string] => Boolean(item))
+  );
   const links: ScriptResourceLink[] = [];
-  const pushLink = (fromRef: string, rawToId: string, type: ScriptResourceLink["type"]) => {
-    const toRef = refByRawNodeId.get(rawToId) || resolveLinkedRef(rawToId);
+  const resolveRef = (value: string) => refByRawNodeId.get(value) || refByNodeFlowRef.get(value) || resolveLinkedRef(value);
+  const pushLink = (rawFrom: string, rawToId: string, type: ScriptResourceLink["type"]) => {
+    const fromRef = resolveRef(rawFrom);
+    const toRef = resolveRef(rawToId);
     const from = byRef.get(fromRef);
     const to = byRef.get(toRef);
+    if (!from || !to || fromRef === toRef) return;
     links.push({
       id: `script-link:${fromRef}->${toRef}`,
       fromRef,
@@ -349,7 +388,8 @@ export const buildScriptResourceLinks = (projectData: ProjectData, nodeFlow?: No
     const ref = `script:timeline:${block.id}`;
     block.linkedNodeIds.forEach((nodeId) => pushLink(ref, nodeId, "links_to"));
   });
-  canvas.links.forEach((link) => pushLink(resolveLinkedRef(link.source), link.target, "links_to"));
+  canvas.links.forEach((link) => pushLink(link.source, link.target, "links_to"));
+  (canvas.graphLinks || []).forEach((link) => pushLink(link.sourceRef, link.targetRef, "links_to"));
 
   return links;
 };

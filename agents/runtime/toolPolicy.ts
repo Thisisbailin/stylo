@@ -14,13 +14,21 @@ export const buildDisabledTools = (
   disabledTools.push(...STABILIZATION_DISABLED_TOOLS);
   if (!toolSettings.projectData.enabled) {
     disabledTools.push(
+      "find_documents",
+      "read_document",
       "list_project_resources",
       "read_project_resource",
       "search_project_resource"
     );
   }
   if (!toolSettings.workflowBuilder.enabled) {
-    disabledTools.push("operate_project_resource");
+    disabledTools.push(
+      "create_document",
+      "update_document",
+      "connect_flow_nodes",
+      "move_flow_node",
+      "operate_project_resource"
+    );
   }
   return Array.from(new Set(disabledTools));
 };

@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import type {
-  Episode,
   ProjectData,
   FlowState,
   CanvasMeasuredSize,
@@ -74,8 +73,9 @@ import type { CanisterStyle, FilmFilter, FilmFrame, PhysicsParams } from "./film
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
-  episodeId?: number;
   text?: string;
+  content?: string;
+  documentId?: string;
 };
 
 type MarkdownTextData = NodeFlowNodeData & {
@@ -182,7 +182,6 @@ const ensureFlow = (flow?: FlowState): FlowState => ({
   timeline: flow?.timeline,
 });
 
-const scriptNodeId = (episodeId: number) => `script-${episodeId}`;
 const imageNodeId = (imageId: string) => `image-${imageId}`;
 const markdownNodeId = (documentId: string) => `md-${documentId}`;
 
@@ -566,25 +565,6 @@ const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextS
   roles: projectData.roles || [],
 });
 
-const createScriptPageFlowNode = (
-  episode: Episode,
-  index: number,
-  page?: FlowState["pages"][number]
-): NodeFlowNode => ({
-  id: scriptNodeId(episode.id),
-  type: "scriptPage",
-  position: page?.position || getDefaultScriptPosition(index),
-  measured: sanitizeScriptMeasured(page?.measured),
-  style: SCRIPT_PAGE_NODE_SIZE,
-  data: {
-    ...createDefaultNodeFlowNodeData("scriptPage"),
-    title: episode.title || `第${episode.id}集`,
-    episodeId: episode.id,
-    text: episode.content || "",
-    preview: compactScriptPreview(episode),
-  },
-});
-
 const createMarkdownTextFlowNode = (
   textNode: NonNullable<FlowState["textNodes"]>[number],
   index: number
@@ -653,24 +633,6 @@ const getScriptNodeHandlesForType = (type?: FlowRenderNode["type"] | null) => {
     inputs: handles.inputs as ScriptHandleType[],
     outputs: handles.outputs as ScriptHandleType[],
   };
-};
-
-const createEmptyEpisode = (id: number): Episode => ({
-  id,
-  title: `第${id}集`,
-  content: "",
-  scenes: [],
-  status: "pending",
-});
-
-const compactScriptPreview = (episode: Episode) => {
-  const source =
-    episode.content ||
-    episode.scenes?.map((scene) => [scene.title, scene.content].filter(Boolean).join("\n")).find((value) => value.trim()) ||
-    "";
-  const clean = source.replace(/\s+/g, " ").trim();
-  if (!clean) return "打开全屏编辑器开始写作。";
-  return clean.length > 180 ? `${clean.slice(0, 180)}...` : clean;
 };
 
 const compactMarkdownPreview = (content: string) => {
@@ -2345,6 +2307,7 @@ export const useFlowSurface = ({
           documentKind: "script",
           format: "fountain",
           text: "",
+          content: "",
           preview: "",
         },
       };

@@ -5,7 +5,7 @@ import type {
 import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
 
 export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
-export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "remove", "connect", "unlink"] as const;
+export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "connect"] as const;
 export const OPERATE_NODEFLOW_TARGETS = ["nodeflow:node", "nodeflow:link"] as const;
 export const OPERATE_NODEFLOW_NODE_KINDS = ["script", "archive", "text", "image", "audio", "video"] as const;
 
@@ -33,7 +33,7 @@ const operateProjectResourceParameters = {
     action: {
       type: "string",
       enum: [...OPERATE_NODEFLOW_ACTIONS],
-      description: "Atomic Flow graph action. Nodes support create, update, move, remove. Links support connect, unlink.",
+      description: "Atomic Flow graph action. Nodes support create, update, move. Links support connect. Destructive remove/unlink actions are not directly exposed to the agent.",
     },
     link_role: {
       type: "string",
@@ -54,7 +54,7 @@ const operateProjectResourceParameters = {
     },
     link_id: {
       type: "string",
-      description: "Existing Flow graph link id for unlink.",
+      description: "Existing Flow graph link id. Destructive unlink is not directly exposed to the agent.",
     },
     title: {
       type: "string",
@@ -105,10 +105,6 @@ const operateProjectResourceParameters = {
       type: "string",
       description: "Optional parent node id when creating a node.",
     },
-    episode_id: {
-      type: "integer",
-      description: "Legacy optional episode number. New script documents do not require it.",
-    },
     scene_id: {
       type: "string",
       description: "Optional scene id for node patching.",
@@ -144,15 +140,6 @@ const operateProjectResourceParameters = {
 
 const normalizeString = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
-const toPositiveInteger = (value: unknown) => {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  }
-  return undefined;
-};
-
 const normalizeNodeKind = (rawNodeKind: unknown): OperateNodeKind | "" => {
   const value = normalizeString(rawNodeKind);
   if (value === "script_page" || value === "script_node" || value === "script_document") return "script";
@@ -183,7 +170,6 @@ type ParsedArgs =
       mimeType?: string;
       x?: number;
       y?: number;
-      episodeId?: number;
     }
   | {
       entity: "node";
@@ -201,12 +187,6 @@ type ParsedArgs =
       y: number;
     }
   | {
-      entity: "node";
-      action: "remove";
-      nodeId?: string;
-      nodeRef?: string;
-    }
-  | {
       entity: "link";
       action: "connect";
       linkKind: "canvas" | "graph";
@@ -216,12 +196,6 @@ type ParsedArgs =
       targetNodeId?: string;
       sourceHandle?: string;
       targetHandle?: string;
-    }
-  | {
-      entity: "link";
-      action: "unlink";
-      linkKind: "canvas" | "graph";
-      linkId: string;
     };
 
 const buildNodePatch = (raw: Record<string, unknown>) => {
@@ -239,7 +213,6 @@ const buildNodePatch = (raw: Record<string, unknown>) => {
   const filename = normalizeString(raw.filename);
   const mimeType = normalizeString(raw.mime_type ?? raw.mimeType);
   const sceneId = normalizeString(raw.scene_id ?? raw.sceneId);
-  const episodeId = toPositiveInteger(raw.episode_id ?? raw.episodeId);
 
   if (title) explicitPatch.title = title;
   if (text) explicitPatch.text = text;
@@ -252,7 +225,6 @@ const buildNodePatch = (raw: Record<string, unknown>) => {
   if (videoUrl) explicitPatch.video = videoUrl;
   if (filename) explicitPatch.filename = filename;
   if (mimeType) explicitPatch.mimeType = mimeType;
-  if (typeof episodeId === "number") explicitPatch.episodeId = episodeId;
   if (sceneId) explicitPatch.sceneId = sceneId;
   return explicitPatch;
 };
@@ -289,7 +261,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
       const mimeType = normalizeString(raw.mime_type ?? raw.mimeType) || undefined;
       const x = typeof raw.x === "number" ? raw.x : undefined;
       const y = typeof raw.y === "number" ? raw.y : undefined;
-      const episodeId = toPositiveInteger(raw.episode_id ?? raw.episodeId);
 
       if (!nodeKind) {
         throw new Error("创建 Flow 节点需要合法的 node_kind。");
@@ -313,7 +284,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
         mimeType,
         x,
         y,
-        episodeId,
       };
     }
 
@@ -351,15 +321,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
       };
     }
 
-    if (action === "remove") {
-      return {
-        entity: "node",
-        action: "remove",
-        nodeId,
-        nodeRef,
-      };
-    }
-
     throw new Error(`Flow 节点当前不支持 action=${action}`);
   }
 
@@ -391,22 +352,6 @@ const parseArgs = (input: unknown): ParsedArgs => {
       targetNodeId,
       sourceHandle,
       targetHandle,
-    };
-  }
-
-  if (action === "unlink") {
-    const linkId = normalizeString(raw.link_id ?? raw.linkId);
-    const linkRole = (normalizeString(raw.link_role ?? raw.linkRole) || "connection") as
-      | "connection"
-      | "reference";
-    if (!linkId) {
-      throw new Error("断开 Flow 连线需要 link_id。");
-    }
-    return {
-      entity: "link",
-      action: "unlink",
-      linkKind: linkRole === "reference" ? "graph" : "canvas",
-      linkId,
     };
   }
 
@@ -488,7 +433,6 @@ export const operateProjectResourceToolDef = {
         x: args.x,
         y: args.y,
         parentId: args.parentId,
-        episodeId: undefined,
       });
       return {
         layer: "nodeflow",
@@ -569,35 +513,6 @@ export const operateProjectResourceToolDef = {
           node_kind: moved.nodeType,
           title: moved.title,
           position: moved.position,
-        },
-      };
-    }
-
-    if (args.entity === "node" && args.action === "remove") {
-      const removed = bridge.removeNodeFlowNode({
-        expectedRevision,
-        nodeId: args.nodeId,
-        nodeRef: args.nodeRef,
-      });
-      return {
-        layer: "nodeflow",
-        entity: "node",
-        target: "nodeflow:node",
-        action: "remove",
-        removed: true,
-        artifact: {
-          kind: "node",
-          target: "nodeflow:node",
-          id: removed.nodeId,
-          ref: removed.nodeRef,
-          title: removed.title,
-          node_kind: removed.nodeType,
-        },
-        item: {
-          node_id: removed.nodeId,
-          node_ref: removed.nodeRef,
-          node_kind: removed.nodeType,
-          title: removed.title,
         },
       };
     }
@@ -683,61 +598,7 @@ export const operateProjectResourceToolDef = {
       };
     }
 
-    const removed = bridge.removeNodeFlowLink({
-      expectedRevision,
-      linkId: args.linkId,
-      linkKind: args.linkKind,
-    });
-    return {
-      layer: "nodeflow",
-      entity: "link",
-      target: "nodeflow:link",
-      action: "unlink",
-      role: removed.linkKind === "graph" ? "reference" : "connection",
-      removed: true,
-      artifact: {
-        kind: "link",
-        target: "nodeflow:link",
-        id: removed.linkId,
-        title: removed.linkKind === "graph" ? "reference" : "connection",
-        source:
-          removed.linkKind === "graph"
-            ? {
-                node_ref: removed.sourceRef,
-              }
-            : {
-                node_id: removed.sourceNodeId,
-                node_ref: removed.sourceRef,
-                handle: removed.sourceHandle,
-              },
-        destination:
-          removed.linkKind === "graph"
-            ? {
-                node_ref: removed.targetRef,
-              }
-            : {
-                node_id: removed.targetNodeId,
-                node_ref: removed.targetRef,
-                handle: removed.targetHandle,
-              },
-      },
-      item:
-        removed.linkKind === "graph"
-          ? {
-              link_id: removed.linkId,
-              source_ref: removed.sourceRef,
-              target_ref: removed.targetRef,
-            }
-          : {
-              link_id: removed.linkId,
-              source_node_id: removed.sourceNodeId,
-              target_node_id: removed.targetNodeId,
-              source_ref: removed.sourceRef,
-              target_ref: removed.targetRef,
-              source_handle: removed.sourceHandle,
-              target_handle: removed.targetHandle,
-            },
-    };
+    throw new Error(`operate_project_resource 不支持 action=${args.action}`);
   },
   summarize: (output: any) => {
     if (output?.entity === "node" && output?.action === "create") {
@@ -749,12 +610,9 @@ export const operateProjectResourceToolDef = {
     if (output?.entity === "node" && output?.action === "move") {
       return `移动 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
-    if (output?.entity === "node" && output?.action === "remove") {
-      return `删除 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
-    }
     if (output?.entity === "link" && output?.action === "connect") {
       return `连接 Flow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
     }
-    return `断开 Flow ${output?.role === "reference" ? "引用关系" : "连接关系"} ${output?.item?.link_id || ""}`.trim();
+    return "更新 Flow 资源";
   },
 };

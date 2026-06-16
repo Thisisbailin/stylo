@@ -109,6 +109,7 @@ const buildNodeExtraData = (
     return {
       title: resolvedTitle,
       text: bodyText,
+      content: bodyText,
       documentId: (documentId || "").trim() || undefined,
       format: "fountain",
       documentKind: "script",

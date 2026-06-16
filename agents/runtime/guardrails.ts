@@ -8,6 +8,7 @@ import {
   type ToolOutputGuardrailDefinition,
 } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { QalamToolBudgetPolicy } from "./toolBudget";
 
 export type QalamGuardrailContext = {
   runtimeMode: "browser" | "edge_full";
@@ -91,10 +92,33 @@ export const createQalamOutputGuardrails = (): OutputGuardrail[] => [
 
 export const createQalamToolInputGuardrails = (
   toolName: string,
-  bridge: QalamAgentBridge
+  bridge: QalamAgentBridge,
+  toolBudget?: QalamToolBudgetPolicy
 ): ToolInputGuardrailDefinition[] => {
+  const budgetGuardrail = toolBudget
+    ? defineToolInputGuardrail({
+        name: "tool_budget_guardrail",
+        run: async ({ toolCall }) => {
+          const args = parseToolArguments((toolCall as any).arguments);
+          const decision = toolBudget.reserve(toolName, args);
+          if (!decision.allowed) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent(decision.reason, {
+              toolName,
+              budget: decision.snapshot,
+            });
+          }
+          return ToolGuardrailFunctionOutputFactory.allow({
+            toolName,
+            budget: decision.snapshot,
+          });
+        },
+      })
+    : null;
+  const withBudget = (guardrails: ToolInputGuardrailDefinition[]) =>
+    budgetGuardrail ? [...guardrails, budgetGuardrail] : guardrails;
+
   if (toolName === "search_project_resource") {
-    return [
+    return withBudget([
       defineToolInputGuardrail({
         name: "search_query_guardrail",
         run: async ({ toolCall }) => {
@@ -109,11 +133,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ queryLength: query.length });
         },
       }),
-    ];
+    ]);
   }
 
   if (toolName === "read_project_resource") {
-    return [
+    return withBudget([
       defineToolInputGuardrail({
         name: "read_locator_guardrail",
         run: async ({ toolCall }) => {
@@ -126,11 +150,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ layer, entity });
         },
       }),
-    ];
+    ]);
   }
 
   if (toolName === "edit_script_resource") {
-    return [
+    return withBudget([
       defineToolInputGuardrail({
         name: "edit_script_resource_guardrail",
         run: async ({ toolCall }) => {
@@ -173,11 +197,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ entity, action });
         },
       }),
-    ];
+    ]);
   }
 
   if (toolName === "operate_project_resource") {
-    return [
+    return withBudget([
       defineToolInputGuardrail({
         name: "operate_project_resource_guardrail",
         run: async ({ toolCall }) => {
@@ -244,15 +268,10 @@ export const createQalamToolInputGuardrails = (
           }
 
           if (entity === "node" && action === "remove") {
-            const nodeId = typeof (args.node_id ?? args.nodeId) === "string" ? String(args.node_id ?? args.nodeId).trim() : "";
-            const nodeRef = typeof (args.node_ref ?? args.nodeRef) === "string" ? String(args.node_ref ?? args.nodeRef).trim() : "";
-            if (!nodeId && !nodeRef) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("删除 Flow 节点需要 node_id 或 node_ref。", {
-                entity,
-                action,
-              });
-            }
-            return ToolGuardrailFunctionOutputFactory.allow({ entity, action });
+            return ToolGuardrailFunctionOutputFactory.rejectContent(
+              "Direct Flow node removal is disabled for the agent. Ask the user to remove the node manually, or use a future approval-gated removal tool.",
+              { entity, action }
+            );
           }
 
           if (entity === "link" && action === "connect") {
@@ -267,33 +286,99 @@ export const createQalamToolInputGuardrails = (
           }
 
           if (entity === "link" && action === "unlink") {
-            const linkId = typeof (args.link_id ?? args.linkId) === "string" ? String(args.link_id ?? args.linkId).trim() : "";
-            if (!linkId) {
-              return ToolGuardrailFunctionOutputFactory.rejectContent("断开 Flow 连线需要 link_id。", {
-                entity,
-                action,
-              });
-            }
-            return ToolGuardrailFunctionOutputFactory.allow({
-              entity,
-              action,
-              linkRole:
-                typeof (args.link_role ?? args.linkRole) === "string"
-                  ? String(args.link_role ?? args.linkRole).trim()
-                  : "connection",
-            });
+            return ToolGuardrailFunctionOutputFactory.rejectContent(
+              "Direct Flow unlink is disabled for the agent. Ask the user to unlink manually, or use a future approval-gated unlink tool.",
+              { entity, action }
+            );
           }
 
           return ToolGuardrailFunctionOutputFactory.rejectContent(
-            "operate_project_resource 仅支持 Flow 节点 create/update/move/remove 与连线 connect/unlink。",
+            "operate_project_resource supports Flow node create/update/move and link connect. Destructive remove/unlink actions are disabled.",
             { entity, action }
           );
         },
       }),
-    ];
+    ]);
   }
 
-  return [];
+  if (toolName === "move_flow_node") {
+    return withBudget([
+      defineToolInputGuardrail({
+        name: "move_flow_node_guardrail",
+        run: async ({ toolCall }) => {
+          const args = parseToolArguments((toolCall as any).arguments);
+          const nodeId = typeof (args.node_id ?? args.nodeId) === "string" ? String(args.node_id ?? args.nodeId).trim() : "";
+          const nodeRef = typeof (args.node_ref ?? args.nodeRef) === "string" ? String(args.node_ref ?? args.nodeRef).trim() : "";
+          const x = Number(args.x);
+          const y = Number(args.y);
+          if (!nodeId && !nodeRef) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent("move_flow_node needs node_id or node_ref.", {
+              toolName,
+            });
+          }
+          if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent("move_flow_node needs finite x and y.", {
+              toolName,
+            });
+          }
+          return ToolGuardrailFunctionOutputFactory.allow({ nodeId, nodeRef, x, y });
+        },
+      }),
+    ]);
+  }
+
+  if (toolName === "connect_flow_nodes") {
+    return withBudget([
+      defineToolInputGuardrail({
+        name: "connect_flow_nodes_guardrail",
+        run: async ({ toolCall }) => {
+          const args = parseToolArguments((toolCall as any).arguments);
+          const sourceNodeId =
+            typeof (args.source_node_id ?? args.sourceNodeId) === "string"
+              ? String(args.source_node_id ?? args.sourceNodeId).trim()
+              : "";
+          const targetNodeId =
+            typeof (args.target_node_id ?? args.targetNodeId) === "string"
+              ? String(args.target_node_id ?? args.targetNodeId).trim()
+              : "";
+          const sourceRef =
+            typeof (args.source_ref ?? args.sourceRef) === "string" ? String(args.source_ref ?? args.sourceRef).trim() : "";
+          const targetRef =
+            typeof (args.target_ref ?? args.targetRef) === "string" ? String(args.target_ref ?? args.targetRef).trim() : "";
+          const connectionKind =
+            typeof (args.connection_kind ?? args.connectionKind) === "string"
+              ? String(args.connection_kind ?? args.connectionKind).trim()
+              : "canvas";
+          if ((!sourceNodeId && !sourceRef) || (!targetNodeId && !targetRef)) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent(
+              "connect_flow_nodes needs source and target node_id or node_ref.",
+              { toolName }
+            );
+          }
+          if ((sourceNodeId || sourceRef) === (targetNodeId || targetRef)) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent("connect_flow_nodes cannot connect a node to itself.", {
+              toolName,
+            });
+          }
+          if (connectionKind === "reference" && (!sourceRef || !targetRef)) {
+            return ToolGuardrailFunctionOutputFactory.rejectContent(
+              "connect_flow_nodes connection_kind=reference needs source_ref and target_ref.",
+              { toolName }
+            );
+          }
+          return ToolGuardrailFunctionOutputFactory.allow({
+            sourceNodeId,
+            targetNodeId,
+            sourceRef,
+            targetRef,
+            connectionKind,
+          });
+        },
+      }),
+    ]);
+  }
+
+  return withBudget([]);
 };
 
 export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {

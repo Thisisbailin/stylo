@@ -117,6 +117,19 @@ export type QalamAgentMemory = {
   recentFailedTools: AgentMemoryToolRecord[];
 };
 
+export type QalamToolBudgetContext = {
+  totalCalls: number;
+  lookupCalls: number;
+  mutationCalls: number;
+  fullReadCalls: number;
+  limits: {
+    totalCalls: number;
+    lookupCalls: number;
+    mutationCalls: number;
+    fullReadCalls: number;
+  };
+};
+
 export type QalamAgentEnvironment = {
   project: AgentEnvironmentProjectDigest;
   capabilityManifest: AgentEnvironmentCapabilityManifest;
@@ -138,6 +151,7 @@ export type QalamRunContext = {
   runtimeMode: "browser" | "edge_full";
   agentEnvironment: QalamAgentEnvironment;
   agentMemory: QalamAgentMemory;
+  toolBudget: QalamToolBudgetContext;
   uiContext?: AgentUiContext;
 };
 

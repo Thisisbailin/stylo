@@ -18,6 +18,7 @@ import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guard
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems } from "./memory";
 import { formatModelAccessError, isModelAccessError, type QalamAgentApiMode, type QalamAgentProvider } from "./providerConfig";
+import { createQalamToolBudgetPolicy } from "./toolBudget";
 import type {
   AgentExecutedToolCall,
   AgentRuntimeEvent,
@@ -306,6 +307,7 @@ export const runQalamAgentCore = async ({
   setDefaultOpenAIClient(client);
 
   const toolEvents: AgentExecutedToolCall[] = [];
+  const toolBudget = createQalamToolBudgetPolicy();
   let streamedTextDelta = "";
   let streamedResponseText = "";
   let streamedReasoningText = "";
@@ -326,8 +328,10 @@ export const runQalamAgentCore = async ({
     bridge,
     emitEvent: emitToolEvent,
     disabledTools,
+    toolBudget,
   });
   const agentMemory = buildAgentMemorySnapshot(sessionMessages);
+  const initialToolBudgetSnapshot = toolBudget.snapshot();
   const runContext: QalamRunContext = {
     runtimeMode,
     agentEnvironment: buildAgentEnvironment({
@@ -339,6 +343,18 @@ export const runQalamAgentCore = async ({
       sessionMessages,
     }),
     agentMemory,
+    toolBudget: {
+      totalCalls: initialToolBudgetSnapshot.totalCalls,
+      lookupCalls: initialToolBudgetSnapshot.lookupCalls,
+      mutationCalls: initialToolBudgetSnapshot.mutationCalls,
+      fullReadCalls: initialToolBudgetSnapshot.fullReadCalls,
+      limits: {
+        totalCalls: initialToolBudgetSnapshot.limits.totalCalls,
+        lookupCalls: initialToolBudgetSnapshot.limits.lookupCalls,
+        mutationCalls: initialToolBudgetSnapshot.limits.mutationCalls,
+        fullReadCalls: initialToolBudgetSnapshot.limits.fullReadCalls,
+      },
+    },
     uiContext: input.uiContext,
   };
   const runInputItems = buildRunInputItems(input);
@@ -351,7 +367,10 @@ export const runQalamAgentCore = async ({
     "info",
     "Tools prepared",
     `${tools.length} tools enabled`,
-    JSON.stringify(tools.map((tool) => tool.name), null, 2)
+    JSON.stringify({
+      tools: tools.map((tool) => tool.name),
+      budget: initialToolBudgetSnapshot.limits,
+    }, null, 2)
   );
 
   const agent = new Agent<QalamRunContext>({

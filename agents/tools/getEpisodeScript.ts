@@ -1,5 +1,6 @@
-import { getEpisodeScript } from "../../node-workspace/components/qalam/toolActions";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+
+export const LEGACY_GET_EPISODE_SCRIPT_DISABLED = true;
 
 const getEpisodeScriptParameters = {
   type: "object",
@@ -43,33 +44,12 @@ const parseArgs = (input: unknown) => {
 
 export const getEpisodeScriptToolDef = {
   name: "get_episode_script",
-  description: "Read the full script text of a specific episode by episode id.",
+  description: "LEGACY DISABLED. Use list_project_resources/read_project_resource over script document nodes instead.",
   parameters: getEpisodeScriptParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
-    const args = parseArgs(input);
-    const result = getEpisodeScript(bridge.getProjectData(), {
-      episodeId: args.episodeId,
-      maxChars: args.maxChars,
-      includeSceneList: false,
-      includeEpisodeSummary: false,
-      includeCharacters: false,
-    }).result;
-
-    const episodeData = result?.data?.episode;
-    if (!episodeData) {
-      return {
-        found: false,
-        episode_id: args.episodeId,
-        warnings: Array.isArray(result?.warnings) ? result.warnings : [],
-      };
-    }
-
-    return {
-      found: true,
-      episode_id: episodeData.id,
-      episode_label: episodeData.title,
-      content: episodeData.content || "",
-    };
+  execute: (_input: unknown, _bridge: QalamAgentBridge) => {
+    throw new Error(
+      "get_episode_script is a disabled legacy episode tool. Use read_project_resource with layer=script and entity=node for Flow document nodes."
+    );
   },
   summarize: (output: any) => {
     if (!output?.found) {

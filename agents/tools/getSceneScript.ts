@@ -1,5 +1,6 @@
-import { getSceneScript } from "../../node-workspace/components/qalam/toolActions";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
+
+export const LEGACY_GET_SCENE_SCRIPT_DISABLED = true;
 
 const getSceneScriptParameters = {
   type: "object",
@@ -63,38 +64,12 @@ const parseArgs = (input: unknown) => {
 
 export const getSceneScriptToolDef = {
   name: "get_scene_script",
-  description: "Read the full script text of a specific scene by scene id, or by episode id plus scene index.",
+  description: "LEGACY DISABLED. Use list_project_resources/read_project_resource over script document nodes instead.",
   parameters: getSceneScriptParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
-    const args = parseArgs(input);
-    const result = getSceneScript(bridge.getProjectData(), {
-      sceneId: args.sceneId,
-      episodeId: args.episodeId,
-      sceneIndex: args.sceneIndex,
-      maxChars: args.maxChars,
-      includeEpisodeSummary: false,
-      includeCharacters: false,
-      includeSceneMetadata: false,
-    }).result;
-
-    const sceneData = result?.data?.scene;
-    if (!sceneData) {
-      return {
-        found: false,
-        scene_id: args.sceneId || null,
-        episode_id: args.episodeId || null,
-        scene_index: args.sceneIndex || null,
-        warnings: Array.isArray(result?.warnings) ? result.warnings : [],
-      };
-    }
-
-    return {
-      found: true,
-      episode_id: result?.data?.episode?.id ?? args.episodeId ?? null,
-      scene_id: sceneData.id,
-      scene_title: sceneData.title,
-      content: sceneData.content || "",
-    };
+  execute: (_input: unknown, _bridge: QalamAgentBridge) => {
+    throw new Error(
+      "get_scene_script is a disabled legacy scene tool. Use read_project_resource with layer=script and entity=node for Flow document nodes."
+    );
   },
   summarize: (output: any) => {
     if (!output?.found) return "未找到目标场景";
