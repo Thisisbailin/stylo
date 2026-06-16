@@ -1,335 +1,277 @@
-# 统一角色身份系统架构设计
+# 身份系统 ProjectData 架构设计
 
-## 1. 目标
-- 把“角色”提升为项目全局一级对象，成为剧本、AIGC 定模、`@` 绑定、NodeFlow 工作流、Agent 工具的共同主键。
-- 让角色像“身份证”一样稳定存在：名字可以改、形态可以扩、资产可以追加，但角色身份本身不漂移。
-- 本期只设计角色系统；场景系统后续沿用同一思路扩展。
+## 1. 当前决策
 
-## 2. 当前系统现状
+身份系统从旧剧本解析模块切出。旧的 `ProjectData.rawScript`、`ProjectData.episodes`、`Episode.characters`、`Episode.scenes` 不再作为身份生成、身份合并、角色统计或场景统计的输入。
 
-### 2.1 已有能力
-- 身份系统已经有 `Character` 和 `CharacterForm` 两级结构，字段足够覆盖角色抽象描述、形态描述、定模清单、语音设计。
-- AIGC 流程已经明确要求为角色生成“形态级”定模需求：`hair/face/body/costume/accessories/props/materialPalette/poses/expressions/deliverables/genPrompts/voicePrompt` 等。
-- 设计资产层已经按 `form` 绑定定模图，`refId = ${character.id}|${form.id}`。
-- NodeFlow 已经能在文本节点、图片节点、视频节点里用 `@` 解析角色/形态，并将其映射到参考资产或 subjects。
+当前身份系统的运行事实是：
 
-### 2.2 当前断层
-- `Character.id` 仍然混用“稳定 id”和“角色名”，需要统一收口到稳定身份主键。
-- `@` 绑定仍是“按可见文本模糊匹配”的轻绑定，而不是“按稳定身份引用”的强绑定。
-  - 当前 `TextNodeData.atMentions` 只保存 `name/status/kind/characterId/formName` 等摘要，不保存文本区间、绑定版本、解析来源。
-  - 文本中的 `@洛青舟` 本质仍靠名字匹配；改名、别名、同名角色都会造成歧义。
-- 工作流层对角色的真实消费单位其实是“形态”，但产品层暴露的概念还在“角色 / 角色形态 / formTag / subjects / identityCard”之间切换，没有统一词汇。
-- 角色定模资产目前是“形态资产集合”，但没有一张真正的“角色身份证”主卡来统领：
-  - 默认形态是谁
-  - 可接受哪些别名
-  - AIGC 工作流默认应该引用哪个形态
-  - 角色语音是角色级还是形态级继承
+- 身份主存储是 `ProjectData.roles`，类型为 `ProjectRoleIdentity[]`。
+- 身份视觉资产通过 `ProjectData.designAssets` 与 `ProjectRolePortrait` 关联。
+- 身份卡节点 `identityCard` 只读取和更新 `roles`，不读取旧解析结果。
+- Agent 当前公开工具已转向 Flow 文档节点和资源工具，旧 `get_episode_script` / `get_scene_script` / `read_project_data` / `search_script_data` 不注册。
 
-## 3. 现有代码里的真实约束
+旧解析数据可以继续作为历史项目兼容字段存在，但不能再驱动身份系统业务逻辑。
 
-### 3.1 角色模型约束
-来源：
-- `/Users/joe/Documents/APP/Qalam/types.ts`
-- `/Users/joe/Documents/APP/Qalam/services/responsesTextService.ts`
+## 2. 新边界
 
-当前 `Character` 更像“角色档案”，`CharacterForm` 更像“角色形态定模条目”。
+### 2.1 ProjectData
 
-这说明统一角色系统不应该推翻现有模型，而应该在其上补齐：
-- 稳定身份主键
-- 绑定别名
-- 默认形态
-- 绑定解析结果
-- 生命周期状态
+`ProjectData` 是项目数据外壳，承载：
 
-### 3.2 `@` 绑定约束
-来源：
-- `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/TextNode.tsx`
-- `/Users/joe/Documents/APP/Qalam/node-workspace/nodes/ImageInputNode.tsx`
-- `/Users/joe/Documents/APP/Qalam/node-workspace/store/useNodeFlowExecutor.ts`
+- `roles`: 身份索引与稳定主键
+- `designAssets`: 身份相关生成资产索引
+- `flow.flowNodes`: Flow 文档节点、身份卡节点、生成节点、媒体节点
+- `flow.graphLinks`: 文档、身份和工作流之间的语义引用
 
-当前机制：
-- 文本输入时通过 `@xxx` 做实时解析。
-- 可选目标分为 `form / character / zone`。
-- 执行期再把 mention 解析成资产或视频 `subjects`。
+身份模块可以读写 `roles`、`designAssets` 和身份相关 Flow 节点，但不直接依赖旧 `episodes`。
 
-问题不是功能缺失，而是“绑定结果没有成为一等数据”。
+### 2.2 Flow 文档节点
 
-### 3.3 AIGC 定模约束
-来源：
-- `/Users/joe/Documents/APP/Qalam/services/responsesTextService.ts`
-- `/Users/joe/Documents/APP/Qalam/node-workspace/components/CharacterSceneLibraryPanel.tsx`
-- `/Users/joe/Documents/APP/Qalam/node-workspace/components/qalam/toolActions.ts`
+Flow 文档节点是后续身份系统的内容来源和设计承载层。
 
-角色定模在当前产品里天然是“形态级”：
-- 一个角色会有多个 forms
-- 每个 form 有独立设计要素、交付要求、生成提示、参考图、语音设计
-- design assets 实际挂在 `form` 上
+关键文档类型：
 
-所以“角色身份证”必须是父对象，“形态”必须是子对象，不能反过来。
+- Fountain 剧本文档：`scriptPage`，`documentKind=script`，`format=fountain`
+- 角色档案文档：`mdText` 或后续专用 `identityProfile`，`documentKind=archive`
+- 普通设计说明：`mdText` / `text`
 
-## 4. 统一角色系统的核心设计
+身份系统不再把“角色档案”塞进一个巨大结构字段里。`roles` 只保留稳定索引和生产需要的摘要，细化设计进入角色档案文档。
 
-### 4.1 设计原则
-- `角色` 是身份主体，不是视觉主体。
-- `形态` 是角色在某一时期/状态下的可生产视觉版本。
-- `@` 绑定的默认目标是角色身份证；当工作流需要可执行视觉主体时，再落到默认形态或指定形态。
-- 用户可继续输入自然语言 `@名字`，但系统内部必须保存为稳定 id 绑定。
+## 3. 身份对象职责
 
-### 4.2 统一对象层级
-```ts
-CharacterCard
-  -> CharacterFormCard[]
-  -> CharacterAlias[]
-  -> CharacterVoiceProfile?
-  -> CharacterBindingProfile
-  -> CharacterEvidence[]
-```
+### 3.1 `ProjectRoleIdentity`
 
-其中：
-- `CharacterCard`：项目里的唯一角色身份证。
-- `CharacterFormCard`：该角色的一个可生产形态。
-- `CharacterAlias`：角色的名字、称谓、别名、可触发 `@` 的别称。
-- `CharacterBindingProfile`：默认形态、默认 voice、绑定规则。
-- `CharacterEvidence`：角色在剧本里的证据位置，用于 agent 和后续自动修复。
+`ProjectRoleIdentity` 是身份索引卡，不是完整角色档案。
 
-## 5. 推荐数据模型
+它负责：
 
-### 5.1 角色身份证
-建议在现有 `Character` 上演进，而不是新起一套平行类型。
+- 稳定身份 id
+- 展示名、mention、别名
+- 身份类型：人物或场景
+- 当前摘要、状态、标签
+- 默认视觉形态与定妆图索引
+- 语音、资产优先级、生成引用需要的轻量字段
+- 指向角色档案文档的关联关系
+
+建议补充的字段：
 
 ```ts
-type CharacterStatus = "draft" | "verified" | "locked" | "archived";
-
-interface CharacterAlias {
+interface ProjectRoleIdentity {
   id: string;
-  value: string;
-  kind: "primary" | "alias" | "title" | "short";
-  normalized: string;
-}
+  name: string;
+  displayName: string;
+  mention: string;
+  kind: "person" | "scene";
+  status?: "draft" | "verified" | "locked" | "archived";
+  aliases?: ProjectRoleAlias[];
+  portraits: ProjectRolePortrait[];
 
-interface CharacterBindingProfile {
-  defaultFormId?: string;
-  defaultVoiceScope?: "character" | "form";
-  mentionPolicy?: "character-first" | "form-first";
-  canonicalMention: string;
-}
-
-interface CharacterEvidenceRef {
-  episodeId: number;
-  sceneId?: string;
-  quote?: string;
-}
-
-interface CharacterCard extends Character {
-  id: string;                  // 必须稳定，统一为 char-*
-  slug: string;                // 只用于人类阅读/URL/搜索
-  aliases: CharacterAlias[];   // 名字、称谓、别名
-  status: CharacterStatus;
-  binding: CharacterBindingProfile;
-  evidence?: CharacterEvidenceRef[];
-  version: number;
+  profileDocumentId?: string;
+  profileNodeId?: string;
+  sourceDocumentIds?: string[];
+  evidenceRefs?: IdentityEvidenceRef[];
+  lastDerivedAt?: number;
 }
 ```
 
-### 5.2 角色形态卡
-保留 `CharacterForm`，但补齐“这是角色子卡”的显式语义。
+### 3.2 角色档案文档
+
+每个角色默认拥有一个同名档案文档。文档标题默认等于角色名。
+
+档案文档负责承载：
+
+- 角色定位
+- 人物关系
+- 动机、欲望、弱点、转变
+- 视觉设计细节
+- 服装和阶段状态
+- 表演与语音设计
+- 已确认事实与待确认推断
+
+建议的默认 Markdown 模板：
+
+```md
+# 角色名
+
+## 身份摘要
+
+## 剧情功能
+
+## 人物关系
+
+## 视觉设定
+
+## 形态与阶段
+
+## 语音与表演
+
+## 证据与来源
+
+## 待确认
+```
+
+### 3.3 视觉形态
+
+现有 `ProjectRolePortrait` 继续作为可生产视觉形态的轻量索引。
+
+它不再承担完整 `CharacterForm` 职责。复杂的形态设计进入角色档案文档的“形态与阶段”章节，或后续拆成子文档节点。
+
+## 4. Fountain 解析器接入方式
+
+后续 Fountain 解析器只做文档解析，不直接制造旧 `episodes` 身份输入。
+
+输入：
+
+- Flow 中的 Fountain 剧本文档节点
+
+输出：
+
+- 文档结构索引：幕、场、角色 cue、对白块、动作块、位置
+- 角色候选：规范名、出现次数、证据位置、上下文片段
+- 场景候选：场景标题、位置、时间、证据位置
+
+解析器输出应先进入“候选层”，再由身份模块合并到 `roles`。
 
 ```ts
-type CharacterFormType =
-  | "default"
-  | "age"
-  | "costume"
-  | "identity"
-  | "state"
-  | "disguise"
-  | "battle"
-  | "special";
-
-interface CharacterFormCard extends CharacterForm {
-  id: string;               // 稳定，统一为 form-*
-  characterId: string;      // 父角色 id
-  type: CharacterFormType;
-  key: string;              // 机器稳定键，如 default / wedding / wounded
-  isDefault?: boolean;
-  aliases?: string[];       // 允许 @婚服洛青舟 / @洛青舟-婚服
-  status?: "draft" | "ready" | "deprecated";
+interface FountainIdentityCandidate {
+  name: string;
+  normalizedName: string;
+  kind: "person";
+  sourceDocumentId: string;
+  occurrences: Array<{
+    blockId: string;
+    sceneHeading?: string;
+    lineStart?: number;
+    lineEnd?: number;
+    excerpt?: string;
+  }>;
 }
 ```
 
-### 5.3 文本绑定结果
-当前 `atMentions` 需要升级为真正的“绑定记录”。
+## 5. 自动建档业务流程
+
+### 5.1 导入或更新 Fountain 文档
+
+1. 用户创建或更新 Fountain 剧本文档节点。
+2. Fountain 解析器读取该文档节点。
+3. 解析器产出角色候选列表。
+4. 身份模块按规范名、别名和人工锁定状态匹配现有 `roles`。
+5. 对新增角色创建 `ProjectRoleIdentity`。
+6. 对每个新增角色创建同名档案文档。
+7. 建立身份与文档的语义链接。
+
+### 5.2 匹配规则
+
+匹配优先级：
+
+1. 已存在 `mention` 精确匹配
+2. `name/displayName` 精确匹配
+3. aliases 精确匹配
+4. 人工确认的候选映射
+
+禁止在自动流程中用模糊匹配直接合并身份。模糊结果只能进入待确认队列。
+
+### 5.3 自动创建角色
+
+默认创建：
 
 ```ts
-interface EntityBinding {
-  id: string;
-  rawText: string;          // 用户输入的原始片段，如 @洛青舟
-  entityType: "character";
-  entityId: string;         // char-*
-  formId?: string;          // 若明确绑定到形态
-  aliasId?: string;         // 通过哪个别名解析成功
-  status: "resolved" | "ambiguous" | "missing";
-  start: number;
-  end: number;
-  resolutionSource: "manual" | "auto";
-  version: number;          // 绑定时的角色系统版本
+{
+  id: "role-*",
+  name: candidate.name,
+  displayName: candidate.name,
+  mention: buildRoleMention(candidate.name),
+  kind: "person",
+  tone: "emerald",
+  status: "draft",
+  summary: "人物身份",
+  description: "",
+  aliases: [candidate.name, `@${mention}`],
+  portraits: [],
+  profileDocumentId,
+  profileNodeId,
+  sourceDocumentIds: [candidate.sourceDocumentId],
+  evidenceRefs: candidate.occurrences
 }
 ```
 
-说明：
-- 用户界面仍显示 `@名字`，不强迫暴露 id。
-- 但节点数据必须保存区间级绑定，而不是只保存去重后的名字列表。
-- 这样角色改名后，文本仍可自动重渲染或重新定位。
+自动创建的身份只能是 `draft`。`verified` 和 `locked` 必须由用户或显式 Agent 操作设置。
 
-## 6. `@` 绑定规则
+## 6. 身份与文档关系
 
-### 6.1 用户侧语法
-统一支持三层：
-- `@角色名`
-  - 绑定到 `CharacterCard`
-  - 执行期自动回落到 `binding.defaultFormId`
-- `@角色名/形态名`
-  - 显式绑定到某个 `CharacterFormCard`
-- `@别名`
-  - 通过 `aliases` 解析回角色身份证
+建议用 `flow.graphLinks` 表示关系，而不是把所有引用塞进角色对象。
 
-不建议再长期把“只输入 `@形态名`”作为主路径。
+关系类型：
 
-原因：
-- 形态名脱离角色名容易重名
-- 难以在脚本正文里形成可读的统一语义
-- 不符合“角色身份证”这个主模型
+- `identity.profile`: 身份 -> 默认档案文档
+- `identity.source`: 身份 -> Fountain 剧本文档
+- `identity.evidence`: 身份 -> 剧本文档中的具体 block/ref
+- `identity.asset`: 身份 -> 生成资产或定妆图节点
+- `identity.derived`: 档案文档 -> 派生出来的形态或设计文档
 
-兼容策略：
-- 旧文本里的 `@形态名` 继续可解析
-- 但新系统内部会把它标准化为 `entityId + formId`
+这样角色档案可以自由拆分为多个文档节点，身份索引仍保持稳定。
 
-### 6.2 解析优先级
-1. 精确匹配 `角色名/形态名`
-2. 精确匹配角色主名
-3. 精确匹配角色别名
-4. 精确匹配形态别名
-5. 模糊搜索，仅用于 picker，不用于自动落库
+## 7. Agent 工具方向
 
-## 7. AIGC 工作流中的角色系统职责
+短期：
 
-### 7.1 对图像生成
-- 角色身份证决定“这个提示里提到的是谁”。
-- 角色形态卡决定“应该引用哪组定模资产”。
-- 图像生成节点不再依赖裸 `formTag` 文本，而应优先使用 `entityId/formId`。
+- 继续使用 `find_documents`、`read_document`、`create_document`、`update_document` 操作档案文档。
+- 继续使用 `read_project_resource` / `operate_project_resource` 操作 Flow 节点和链接。
+- 不恢复旧 `upsert_character` / `upsert_location` 作为公开工具。
 
-### 7.2 对视频生成
-- `ViduVideoGen` 的 `subjects` 应直接来自绑定后的角色形态，而不是从 prompt 文本再次猜。
-- `WanReferenceVideoGen` 的 project reference targets 应支持直接选择角色身份证，再由系统展开到默认形态或指定形态资产。
+中期建议新增专用身份工具：
 
-### 7.3 对剧本
-- 剧本正文里的角色名字，未来可以升级为结构化角色绑定。
-- 这样 agent 在“读剧本 -> 生成图/视频”链路里能保持同一角色身份。
+- `find_identities`
+- `read_identity`
+- `create_identity_from_candidate`
+- `link_identity_profile_document`
+- `sync_identities_from_fountain_document`
 
-## 8. NodeFlow 集成边界
+这些工具应直接读写 `ProjectData.roles` 和 Flow 文档链接，不经过旧 `Character/forms` 或 `Episode` 结构。
 
-### 8.1 文本节点
-从：
-- `atMentions: { name, kind, characterId, formName... }[]`
+## 8. AIGC 工作流消费规则
 
-升级到：
-- `entityBindings: EntityBinding[]`
-- `mentionViewModel` 仅作为 UI 派生结果，不作为真实数据源
+生成节点消费身份时按以下顺序解析：
 
-### 8.2 身份卡节点
-当前 `IdentityCardNode` 是“角色/场景身份卡片”的混合节点。  
-后续角色系统成熟后，建议拆为：
-- `characterCard`：真正的角色身份证节点
-- `sceneCard`：后续单独扩展
+1. 节点显式 `identityId`
+2. `entityBindings` 中的 `identity` 绑定
+3. `@mention` 到 `roles` 的精确匹配
+4. 旧节点数据的兼容回退
 
-在角色节点里，父卡就是 `CharacterCard`，子卡就是 `CharacterFormCard`。
+身份引用产出：
 
-### 8.3 工作流执行器
-`useNodeFlowExecutor` 目前已经具备：
-- 从 mention 找 form 资产
-- 从 character 回落到第一个可用 form 资产
+- prompt 中使用 `displayName`、summary、档案文档摘要
+- 参考图使用 primary portrait 或最新身份资产
+- 语音使用角色级 voice 字段
+- 复杂形态说明从档案文档或后续形态子文档读取
 
-统一角色系统上线后，执行器应改为：
-- 优先读取 `entityBindings`
-- 角色绑定时走 `binding.defaultFormId`
-- 只有旧节点数据才回退到基于文本的 mention 猜测
+生成节点不应读取旧 `episodes.characters` 来补全主体。
 
-## 9. Agent 工具的统一方向
+## 9. 模块划分建议
 
-### 9.1 角色工具不再只写普通档案
-当前：
-- `read_project_resource(character_profile)`
-- `upsert_character`
+建议后续新增模块：
 
-未来角色系统里，`character_profile` 应升级为“角色身份证”的一个视图，而不是全部本体。
+- `utils/identityIndex.ts`: 身份匹配、mention、别名、候选合并
+- `utils/fountainIdentityCandidates.ts`: Fountain 解析结果到身份候选
+- `utils/identityProfileDocuments.ts`: 默认档案文档创建和模板
+- `agents/tools/identityTools.ts`: Agent 身份专用工具
+- `node-workspace/nodeflow/identityLinks.ts`: 身份与文档、资产的 graph link 管理
 
-建议 agent 侧最终形成三类角色工具：
-- `read_character_card`
-- `upsert_character_card`
-- `bind_text_entities`
+模块边界：
 
-其中本期不必马上加工具，但架构上应这样收口。
+- Fountain 解析器只产出候选和证据。
+- 身份模块决定是否创建、合并、锁定身份。
+- 文档模块负责档案文档内容读写。
+- NodeFlow 负责节点和语义链接。
+- 生成执行器只消费已经解析好的身份引用。
 
-### 9.2 Agent 的主输入不应再偏向名字
-优先级应为：
-1. `character_id`
-2. `name`
-3. `alias`
+## 10. 迁移原则
 
-否则 agent 每次写角色都有机会制造新角色或误绑旧角色。
+- 保留旧字段读取能力，避免历史项目崩溃。
+- 禁止新增从 `episodes` 派生身份的运行时代码。
+- 禁止新增以角色名作为主键的身份写入逻辑。
+- 禁止让 Agent 直接写旧 `Character/forms` 结构后再转换回 `roles`。
+- 新身份能力必须以 `roles + profile document + graph links` 为核心。
 
-## 10. 兼容现有代码的最小演进方案
-
-### Phase A：统一主键
-- 强制 `Character.id` 统一为 `char-*`
-- 保留 `name` 作为展示名
-- 所有生成角色的入口都不再用 `name` 充当 `id`
-
-### Phase B：补齐角色身份证字段
-- 在 `Character` 上新增：
-  - `aliases`
-  - `status`
-  - `binding`
-  - `version`
-  - `evidence`
-- 在 `CharacterForm` 上新增：
-  - `characterId`
-  - `type`
-  - `key`
-  - `isDefault`
-  - `aliases`
-
-### Phase C：升级绑定存储
-- 文本节点新增 `entityBindings`
-- 保留旧 `atMentions` 一段时间作为兼容字段
-- 所有执行器优先吃 `entityBindings`
-
-### Phase D：升级工作流消费
-- `formTag` 逐步废弃，改为 `characterId/formId`
-- `subjects.id` 改为使用稳定 `formId` 或 `characterId:formId`
-- project references 增加角色身份证入口
-
-## 11. 明确保留与废弃
-
-### 保留
-- `Character`
-- `CharacterForm`
-- `designAssets(category="form")`
-- 角色级与形态级 voice 字段
-- `upsert_character` 作为过渡入口
-
-### 逐步废弃
-- 用 `name` 作为角色主键
-- 只靠 `formName` 做工作流身份引用
-- 只保存名字去重列表的 `atMentions`
-- `identityCard` 里角色/场景混合建模
-
-## 12. 推荐结论
-
-统一角色系统不需要推倒重来。  
-正确路线是：
-- 保留现有 `Character -> forms -> designAssets(form)` 主结构
-- 补一个真正的“角色身份证层”
-- 把 `@` 从“字符串提示”升级为“结构化实体绑定”
-- 让 NodeFlow/AIGC/Agent 全部围绕 `char-* / form-*` 这套稳定身份工作
-
-这样后续扩到场景系统时，只需要把同一套“身份证 + 子卡 + 绑定 + 资产 + 工作流消费”模式复制到 `Location / Zone`，而不需要再发明第二套体系。
+最终状态：Fountain 文档是源材料，角色档案是可编辑设计文档，`ProjectData.roles` 是稳定身份索引，AIGC 工作流通过身份索引和文档节点消费角色设计。

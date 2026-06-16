@@ -59,6 +59,8 @@ const LEGACY_DISABLED_TOOL_NAMES = new Set([
   "get_scene_script",
   "read_project_data",
   "search_script_data",
+  "upsert_character",
+  "upsert_location",
 ]);
 
 const assertNoLegacyTools = () => {
@@ -80,6 +82,47 @@ const stableSerialize = (value: unknown): string => {
   return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
 };
 
+const toToolArgs = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+const clipToolOutputText = (value: string, limit = 1600) => {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit)}...`;
+};
+
+const compactToolOutputForEvents = (output: unknown) => {
+  if (output == null) return output;
+  if (typeof output === "string") return clipToolOutputText(output);
+  if (typeof output !== "object") return output;
+  const record = output as Record<string, unknown>;
+  if (typeof record.summary === "string") {
+    return {
+      ...record,
+      summary: clipToolOutputText(record.summary, 800),
+    };
+  }
+  if (typeof record.target === "string" && typeof record.action === "string") {
+    return {
+      target: record.target,
+      action: record.action,
+      skipped: record.skipped,
+      reason: record.reason,
+      tool_name: record.tool_name,
+      updated: record.updated,
+      item: record.item,
+      summary: record.summary,
+      budget: record.budget,
+    };
+  }
+  const json = JSON.stringify(output);
+  if (json.length <= 1800) return output;
+  return {
+    target: typeof record.target === "string" ? record.target : "tool",
+    truncated: true,
+    summary: clipToolOutputText(json, 1600),
+  };
+};
+
 export const createQalamTools = ({
   bridge,
   emitEvent,
@@ -99,7 +142,7 @@ export const createQalamTools = ({
       name: toolDef.name,
       description: toolDef.description,
       parameters: toolDef.parameters as any,
-      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge, toolBudget),
+      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge),
       outputGuardrails: createQalamToolOutputGuardrails(toolDef.name),
       execute: async (input) => {
         const callId = `${toolDef.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -111,6 +154,26 @@ export const createQalamTools = ({
         };
         emitEvent?.({ type: "tool_called", call: runningCall });
         try {
+          const budgetDecision = toolBudget?.reserve(toolDef.name, toToolArgs(input));
+          if (budgetDecision && !budgetDecision.allowed) {
+            const output = {
+              target: "tool_budget",
+              action: "skip",
+              skipped: true,
+              tool_name: toolDef.name,
+              reason: budgetDecision.reason,
+              budget: budgetDecision.snapshot,
+            };
+            const completedCall: AgentExecutedToolCall = {
+              ...runningCall,
+              status: "success",
+              output: compactToolOutputForEvents(output),
+              summary: `Tool skipped: ${budgetDecision.reason}`,
+            };
+            emitEvent?.({ type: "tool_completed", call: completedCall });
+            return output;
+          }
+
           const isLookupTool = LOOKUP_TOOL_NAMES.has(toolDef.name);
           const lookupSignature = isLookupTool ? `${toolDef.name}:${stableSerialize(input)}` : "";
 
@@ -119,7 +182,7 @@ export const createQalamTools = ({
             const completedCall: AgentExecutedToolCall = {
               ...runningCall,
               status: "success",
-              output: cached.output,
+              output: compactToolOutputForEvents(cached.output),
               summary: `${cached.summary}（复用本轮已有结果）`,
             };
             emitEvent?.({ type: "tool_completed", call: completedCall });
@@ -137,7 +200,7 @@ export const createQalamTools = ({
           const completedCall: AgentExecutedToolCall = {
             ...runningCall,
             status: "success",
-            output,
+            output: compactToolOutputForEvents(output),
             summary,
           };
           emitEvent?.({ type: "tool_completed", call: completedCall });

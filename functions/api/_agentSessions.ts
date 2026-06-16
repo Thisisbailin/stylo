@@ -15,6 +15,9 @@ type PersistedAgentSessionRecord = {
   updatedAt: number;
 };
 
+const STORED_SESSION_ITEM_LIMIT = 72;
+const STORED_SESSION_MESSAGE_LIMIT = 240;
+
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
 const trimSessionItems = (items: AgentInputItem[], limit?: number) => {
@@ -214,8 +217,8 @@ export class D1EdgeSession implements Session {
     const timestampBase = Date.now();
     const projectedMessages = projectAgentItemsToSessionMessages(items.map(cloneItem), timestampBase);
     await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
-      items: merged,
-      messages: [...existing.messages, ...projectedMessages].slice(-240),
+      items: trimSessionItems(merged, STORED_SESSION_ITEM_LIMIT),
+      messages: [...existing.messages, ...projectedMessages].slice(-STORED_SESSION_MESSAGE_LIMIT),
       updatedAt: timestampBase,
     });
   }
@@ -228,7 +231,7 @@ export class D1EdgeSession implements Session {
     const timestampBase = Date.now();
     await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
       items: nextItems,
-      messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-240),
+      messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-STORED_SESSION_MESSAGE_LIMIT),
       updatedAt: timestampBase,
     });
     return cloneItem(removed);
@@ -272,6 +275,101 @@ export class QalamBoundedSession implements Session {
 
   clearSession(): Promise<void> {
     return this.options.underlyingSession.clearSession();
+  }
+}
+
+type QalamChatCompactionSessionOptions = {
+  underlyingSession: Session;
+  model: string;
+  apiKey: string;
+  baseUrl: string;
+  defaultHeaders?: Record<string, string>;
+  maxItems?: number;
+  threshold?: number;
+  tailItems?: number;
+};
+
+export class QalamChatCompactionSession implements Session {
+  private readonly client: OpenAI;
+  private readonly maxItems: number;
+  private readonly threshold: number;
+  private readonly tailItems: number;
+  private compacting = false;
+
+  constructor(private readonly options: QalamChatCompactionSessionOptions) {
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseUrl,
+      defaultHeaders: options.defaultHeaders,
+    });
+    this.maxItems = Math.max(6, options.maxItems ?? DEFAULT_BOUNDED_SESSION_ITEMS);
+    this.threshold = Math.max(4, options.threshold ?? DEFAULT_COMPACTION_THRESHOLD);
+    this.tailItems = Math.max(4, options.tailItems ?? DEFAULT_COMPACTION_TAIL_ITEMS);
+  }
+
+  getSessionId(): Promise<string> {
+    return this.options.underlyingSession.getSessionId();
+  }
+
+  getItems(limit?: number): Promise<AgentInputItem[]> {
+    return this.options.underlyingSession.getItems(limit ?? this.maxItems);
+  }
+
+  async addItems(items: AgentInputItem[]): Promise<void> {
+    await this.options.underlyingSession.addItems(items);
+  }
+
+  popItem(): Promise<AgentInputItem | undefined> {
+    return this.options.underlyingSession.popItem();
+  }
+
+  clearSession(): Promise<void> {
+    return this.options.underlyingSession.clearSession();
+  }
+
+  async runCompaction(args?: { force?: boolean }): Promise<void> {
+    if (this.compacting) return;
+    this.compacting = true;
+    try {
+      const sessionItems = await this.options.underlyingSession.getItems();
+      if (sessionItems.length <= this.tailItems + 1) return;
+
+      const preservedTail = sessionItems.slice(-this.tailItems).map(cloneItem);
+      const compactionSource = sessionItems.slice(0, Math.max(sessionItems.length - this.tailItems, 0));
+      const compactionCandidateItems = selectCompactionCandidateItems(compactionSource);
+      if (args?.force !== true && compactionCandidateItems.length < this.threshold) return;
+      if (!compactionSource.length) return;
+
+      const transcript = serializeItemsForCompaction(compactionSource);
+      if (!transcript.trim()) return;
+
+      const response = await this.client.chat.completions.create({
+        model: this.options.model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are compacting earlier conversation history for an agent session. Produce a concise durable summary. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and latest tool outcomes. Do not invent facts. Prefer short bullet-like lines.",
+          },
+          {
+            role: "user",
+            content: "Summarize the following earlier conversation history for future agent turns.\n\n" + transcript,
+          },
+        ],
+      });
+      const summaryText = response.choices?.[0]?.message?.content?.trim() || "";
+      if (!summaryText) return;
+
+      await this.options.underlyingSession.clearSession();
+      await this.options.underlyingSession.addItems([
+        buildCompactionSummaryItem(summaryText),
+        ...preservedTail,
+      ]);
+    } catch {
+      // Compaction must never fail the user-facing agent run.
+    } finally {
+      this.compacting = false;
+    }
   }
 }
 

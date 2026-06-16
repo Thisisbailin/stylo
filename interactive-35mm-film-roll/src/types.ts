@@ -23,6 +23,8 @@ export interface PhysicsParams {
   rotationMultiplier: number;
   filmstripHeight?: number;
   frameWidth?: number;
+  closedWidth?: number;
+  openWidth?: number;
 }
 
 export type CanisterBrand = 'retro-yellow' | 'fuji-green' | 'ilford-black' | 'agfa-red';

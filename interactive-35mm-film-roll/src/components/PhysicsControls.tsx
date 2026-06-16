@@ -8,11 +8,7 @@ interface PhysicsControlsProps {
   selectedBrand: CanisterBrand;
   onBrandChange: (brand: CanisterBrand) => void;
   brands: CanisterStyle[];
-  onSeedPhotos: () => void;
   onResetPhysics: () => void;
-  onClearAll: () => void;
-  onScanAll: () => void;
-  allScanned: boolean;
 }
 
 export const PhysicsControls: React.FC<PhysicsControlsProps> = ({
@@ -21,11 +17,7 @@ export const PhysicsControls: React.FC<PhysicsControlsProps> = ({
   selectedBrand,
   onBrandChange,
   brands,
-  onSeedPhotos,
   onResetPhysics,
-  onClearAll,
-  onScanAll,
-  allScanned,
 }) => {
   const handleSliderChange = (key: keyof PhysicsParams, val: number) => {
     setPhysics((prev) => ({
@@ -190,62 +182,66 @@ export const PhysicsControls: React.FC<PhysicsControlsProps> = ({
               </span>
             </div>
 
-            {/* Slider 5: Dynamic Frame Width */}
+            {/* Slider 5: Retracted Length (Closed) */}
             <div className="flex flex-col gap-1.5 mt-1">
               <div className="flex justify-between text-[11px] font-mono text-zinc-400">
-                <span>FRAME CELL WIDTH</span>
-                <span className="text-[#FFB800] font-bold">{physics.frameWidth ?? 208} px</span>
+                <span>RETRACTED LENGTH (CLOSED)</span>
+                <span className="text-[#FFB800] font-bold">{physics.closedWidth ?? 64} px</span>
               </div>
               <input
                 type="range"
-                min="140"
-                max="350"
-                step="4"
-                value={physics.frameWidth ?? 208}
-                onChange={(e) => handleSliderChange('frameWidth', Number(e.target.value))}
+                min="45"
+                max="120"
+                step="2"
+                value={physics.closedWidth ?? 64}
+                onChange={(e) => handleSliderChange('closedWidth', Number(e.target.value))}
                 className="w-full accent-[#FFB800] h-1 bg-[#1A1A1A] rounded cursor-pointer"
               />
               <span className="text-[8px] text-stone-500 tracking-wider">
-                Length width of individual photography exposure chambers.
+                Length of the film leader sticking out of the canister when rolled in.
+              </span>
+            </div>
+
+            {/* Slider 6: Unspooled Length (Open) */}
+            <div className="flex flex-col gap-1.5 mt-1">
+              <div className="flex justify-between text-[11px] font-mono text-zinc-400">
+                <span>UNSPOOLED LENGTH (OPEN)</span>
+                <span className="text-[#FFB800] font-bold">{physics.openWidth ?? 320} px</span>
+              </div>
+              <input
+                type="range"
+                min="150"
+                max="650"
+                step="5"
+                value={physics.openWidth ?? 320}
+                onChange={(e) => handleSliderChange('openWidth', Number(e.target.value))}
+                className="w-full accent-[#FFB800] h-1 bg-[#1A1A1A] rounded cursor-pointer"
+              />
+              <span className="text-[8px] text-stone-500 tracking-wider">
+                Maximum extension distance of the film strip when fully pulled out.
               </span>
             </div>
           </div>
         </div>
 
-        {/* Column 3: Utility quick actions */}
-        <div className="flex flex-col gap-3">
+        {/* Column 3: Project Philosophy */}
+        <div className="flex flex-col gap-4">
           <div className="text-[10px] font-mono tracking-widest text-[#6B7280] uppercase">
-            <span>LABORATORY INSTRUMENTS</span>
+            <span>PROJECT PHILOSOPHY / 胶片重塑</span>
           </div>
 
-          <div className="flex flex-col gap-2.5 mt-1">
-            <button
-              onClick={onSeedPhotos}
-              className="w-full bg-white hover:bg-[#E5E7EB] text-black text-xs font-mono font-bold py-2.5 px-4 rounded flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 uppercase tracking-wider cursor-pointer"
-            >
-              <Image className="w-4 h-4" />
-              Seed Memories
-            </button>
-
-            <button
-              onClick={onScanAll}
-              className="w-full bg-transparent hover:bg-zinc-800 text-stone-200 border border-[#333] hover:border-zinc-600 text-xs font-mono font-bold py-2.5 px-4 rounded flex items-center justify-center gap-2 transition-all active:scale-95 uppercase tracking-wider cursor-pointer"
-            >
-              <Sliders className="w-4 h-4 text-[#FFB800]" />
-              {allScanned ? 'Scan Off' : 'Scan & Develop All'}
-            </button>
-
-            <button
-              onClick={onClearAll}
-              className="w-full bg-transparent hover:bg-red-950/20 text-rose-400 border border-zinc-800/60 hover:border-rose-950/50 text-xs font-mono py-2.5 px-4 rounded flex items-center justify-center gap-2 transition-all active:scale-95 uppercase tracking-wider cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4 text-rose-500/80" />
-              Purge Filmstrip
-            </button>
+          <div className="bg-[#0A0A0B]/60 border border-[#222] p-4 rounded flex flex-col gap-3">
+            <h3 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">PROJECT #01: TACTILE COIL</h3>
+            <p className="text-[11px] text-stone-400 leading-relaxed font-sans">
+              这是我们“胶片实验室”的第一个交互实验。我们将 35-毫米 醋酸树脂胶片（Acetate Base）的物理弹性与弹簧机械模型耦合。
+            </p>
+            <p className="text-[11px] text-stone-500 leading-relaxed font-sans">
+              过光的橙红色基底在拉出时，暗盒天鹅绒防光缝（Felt Exit Slot）赋予其拉扯摩擦。每一次收缩回弹，都是一次高保真的机械回弹与阻尼振荡。
+            </p>
           </div>
 
-          <div className="text-[9px] text-[#6B7280] font-mono mt-1 pt-2 border-t border-[#222]">
-            * Simulated photochemical grain algorithms are applied natively during positive transfer output drawing.
+          <div className="text-[9px] text-[#6B7280] font-mono mt-auto pt-2 border-t border-[#222]">
+            * Analog Design Lab © 2026. All rights reserved.
           </div>
         </div>
 

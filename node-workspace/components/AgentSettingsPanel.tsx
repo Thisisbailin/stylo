@@ -2223,18 +2223,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           </label>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
-                            <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              `operate_project_resource` 只负责创建统一画布中的 script、archive、text、image、audio、video 基础节点。
-                            </div>
-                          </div>
-                          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Connection</div>
-                            <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              同一个 `operate_project_resource` 也负责连接已存在的画布节点，形成最小工作流骨架。
-                            </div>
-                          </div>
+	                          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
+	                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Single Node</div>
+	                            <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+	                              文档优先通过 `create_document` / `update_document` 写入；通用节点操作仅作为兜底路径。
+	                            </div>
+	                          </div>
+	                          <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
+	                            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Connection</div>
+	                            <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+	                              普通画布移动与连线优先使用 `move_flow_node` / `connect_flow_nodes`。
+	                            </div>
+	                          </div>
                           <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Safety</div>
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">

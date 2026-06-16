@@ -25,6 +25,99 @@ const clipText = (value: string, maxChars?: number) => {
   return `${value.slice(0, maxChars)}...`;
 };
 
+const splitLines = (value: string) => value.split(/\r\n|\n|\r/);
+
+const documentStats = (content: string) => ({
+  content_chars: content.length,
+  line_count: content ? splitLines(content).length : 0,
+});
+
+const normalizeOperation = (value: unknown) => {
+  const operation = trim(value).toLowerCase();
+  if (["replace", "append", "prepend", "replace_range"].includes(operation)) return operation;
+  return "replace";
+};
+
+const buildLineSlice = (content: string, raw: Record<string, unknown>, maxChars: number) => {
+  const lines = splitLines(content);
+  const startLine = Math.max(1, toPositiveInteger(raw.start_line ?? raw.startLine) || 1);
+  const lineCount = Math.max(1, Math.min(200, toPositiveInteger(raw.line_count ?? raw.lineCount) || 80));
+  const startIndex = Math.min(startLine - 1, lines.length);
+  const selectedLines = lines.slice(startIndex, startIndex + lineCount);
+  return {
+    content: clipText(selectedLines.join("\n"), maxChars),
+    range: {
+      start_line: startLine,
+      end_line: selectedLines.length ? startLine + selectedLines.length - 1 : startLine,
+      returned_lines: selectedLines.length,
+      total_lines: content ? lines.length : 0,
+    },
+  };
+};
+
+const mergeWithSingleNewline = (before: string, after: string) => {
+  if (!before) return after;
+  if (!after) return before;
+  if (before.endsWith("\n") || after.startsWith("\n")) return `${before}${after}`;
+  return `${before}\n${after}`;
+};
+
+const buildContentUpdate = (currentContent: string, raw: Record<string, unknown>) => {
+  if (typeof raw.content !== "string") return null;
+  const operation = normalizeOperation(raw.operation);
+  const content = raw.content;
+  if (operation === "append") {
+    const nextContent = mergeWithSingleNewline(currentContent, content);
+    return {
+      operation,
+      content: nextContent,
+      changed_lines: {
+        start_line: currentContent ? splitLines(currentContent).length + 1 : 1,
+        end_line: splitLines(nextContent).length,
+      },
+    };
+  }
+  if (operation === "prepend") {
+    const nextContent = mergeWithSingleNewline(content, currentContent);
+    return {
+      operation,
+      content: nextContent,
+      changed_lines: {
+        start_line: 1,
+        end_line: splitLines(content).length,
+      },
+    };
+  }
+  if (operation === "replace_range") {
+    const startLine = toPositiveInteger(raw.start_line ?? raw.startLine);
+    const endLine = toPositiveInteger(raw.end_line ?? raw.endLine) ?? startLine;
+    if (!startLine || !endLine || endLine < startLine) {
+      throw new Error("update_document operation=replace_range needs valid start_line and end_line.");
+    }
+    const lines = splitLines(currentContent);
+    const replacementLines = splitLines(content);
+    const startIndex = Math.min(startLine - 1, lines.length);
+    const deleteCount = Math.max(0, Math.min(endLine, lines.length) - startIndex);
+    lines.splice(startIndex, deleteCount, ...replacementLines);
+    return {
+      operation,
+      content: lines.join("\n"),
+      changed_lines: {
+        start_line: startLine,
+        end_line: startLine + replacementLines.length - 1,
+      },
+    };
+  }
+  return {
+    operation: "replace",
+    content,
+    changed_lines: {
+      start_line: 1,
+      end_line: content ? splitLines(content).length : 0,
+    },
+  };
+};
+
 const normalizeKind = (value: unknown): DocumentKind => {
   const kind = trim(value).toLowerCase();
   if ((DOCUMENT_KINDS as readonly string[]).includes(kind)) return kind as DocumentKind;
@@ -98,12 +191,20 @@ const readDocumentParameters = {
     },
     view: {
       type: "string",
-      enum: ["identity", "detail", "full"],
-      description: "Read view. Use identity before detail/full when locating targets.",
+      enum: ["identity", "detail", "slice", "full"],
+      description: "Read view. Use identity before detail/full when locating targets. Use slice for long documents.",
     },
     max_chars: {
       type: "integer",
       description: "Optional maximum characters for document content.",
+    },
+    start_line: {
+      type: "integer",
+      description: "1-based starting line for view=slice.",
+    },
+    line_count: {
+      type: "integer",
+      description: "Number of lines for view=slice. Capped by the tool.",
     },
   },
   additionalProperties: false,
@@ -167,7 +268,20 @@ const updateDocumentParameters = {
     },
     content: {
       type: "string",
-      description: "Optional replacement document content.",
+      description: "Document content used by operation. Prefer append or replace_range for long documents.",
+    },
+    operation: {
+      type: "string",
+      enum: ["replace", "append", "prepend", "replace_range"],
+      description: "Content update mode. Defaults to replace for backwards compatibility.",
+    },
+    start_line: {
+      type: "integer",
+      description: "1-based first line for operation=replace_range.",
+    },
+    end_line: {
+      type: "integer",
+      description: "1-based last line for operation=replace_range.",
     },
     patch: {
       type: "object",
@@ -265,6 +379,24 @@ export const readDocumentToolDef = {
       };
     }
     const content = typeof node.body.content === "string" ? node.body.content : "";
+    if (view === "slice") {
+      const slice = buildLineSlice(content, raw, maxChars);
+      return {
+        target: "document",
+        found: true,
+        view,
+        item: {
+          ...identity,
+          body: {
+            format: node.body.format,
+            content: slice.content,
+          },
+          ...documentStats(content),
+          range: slice.range,
+          meta: node.meta || {},
+        },
+      };
+    }
     return {
       target: "document",
       found: true,
@@ -275,6 +407,7 @@ export const readDocumentToolDef = {
           ...node.body,
           content: view === "full" ? content : clipText(content, maxChars),
         },
+        ...documentStats(content),
         meta: node.meta || {},
       },
     };
@@ -346,17 +479,18 @@ export const updateDocumentToolDef = {
     }
     const rawNodeId = getRawNodeId(node);
     if (!rawNodeId) throw new Error("update_document could not resolve the backing Flow node id.");
+    const currentContent = typeof node.body.content === "string" ? node.body.content : "";
+    const contentUpdate = buildContentUpdate(currentContent, raw);
     const patch =
       raw.patch && typeof raw.patch === "object" && !Array.isArray(raw.patch)
         ? { ...(raw.patch as Record<string, unknown>) }
         : {};
     const title = trim(raw.title);
-    const hasContent = typeof raw.content === "string";
     if (title) patch.title = title;
-    if (hasContent) {
-      patch.text = raw.content;
-      patch.content = raw.content;
-      patch.preview = String(raw.content || "").replace(/\s+/g, " ").slice(0, 180);
+    if (contentUpdate) {
+      patch.text = contentUpdate.content;
+      patch.content = contentUpdate.content;
+      patch.preview = contentUpdate.content.replace(/\s+/g, " ").slice(0, 180);
       patch.updatedAt = Date.now();
     }
     if (!Object.keys(patch).length) throw new Error("update_document needs title, content, or patch.");
@@ -374,7 +508,11 @@ export const updateDocumentToolDef = {
         raw_node_id: updated.nodeId,
         node_ref: updated.nodeRef || null,
         title: updated.title,
-        patch: updated.patch,
+        operation: contentUpdate?.operation || "patch",
+        changed_lines: contentUpdate?.changed_lines || null,
+        content_chars: contentUpdate ? contentUpdate.content.length : currentContent.length,
+        line_count: contentUpdate ? documentStats(contentUpdate.content).line_count : documentStats(currentContent).line_count,
+        patch_keys: Object.keys(updated.patch),
       },
     };
   },

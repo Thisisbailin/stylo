@@ -11,7 +11,7 @@ import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderMo
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
-import { createAgentSessionKey, D1EdgeSession, QalamBoundedSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
+import { createAgentSessionKey, D1EdgeSession, QalamChatCompactionSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
@@ -420,6 +420,7 @@ export const onRequestPost = async (context: any) => {
           })
         );
         const underlyingSession = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
+        let chatCompactionSession: QalamChatCompactionSession | null = null;
         const session =
           apiMode === "responses"
             ? new QalamResponsesCompactionSession({
@@ -428,10 +429,13 @@ export const onRequestPost = async (context: any) => {
                 apiKey: resolvedApiKey,
                 baseUrl: resolvedBaseUrl,
               })
-            : new QalamBoundedSession({
+            : (chatCompactionSession = new QalamChatCompactionSession({
                 underlyingSession,
+                model: effectiveModel,
+                apiKey: resolvedApiKey,
+                baseUrl: resolvedBaseUrl,
                 maxItems: EDGE_CHAT_SESSION_MAX_ITEMS,
-              });
+              }));
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
         emitWrapperTrace("runtime", "running", "Delegating to agent core");
@@ -491,6 +495,9 @@ export const onRequestPost = async (context: any) => {
         });
         emitWrapperTrace("result", "success", "Agent core returned", `text=${runResult.finalText.length} chars · tools=${runResult.toolCalls.length}`);
         const emitted = emitResult(controller, runResult);
+        if (chatCompactionSession) {
+          context.waitUntil?.(chatCompactionSession.runCompaction());
+        }
         debugLog(debugEnabled, traceId, "emit result packet", { emitted });
         emitWrapperTrace("result", emitted ? "success" : "error", emitted ? "Final result packet emitted" : "Final result packet dropped");
       } catch (error: any) {

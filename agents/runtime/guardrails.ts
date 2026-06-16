@@ -8,7 +8,6 @@ import {
   type ToolOutputGuardrailDefinition,
 } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import type { QalamToolBudgetPolicy } from "./toolBudget";
 
 export type QalamGuardrailContext = {
   runtimeMode: "browser" | "edge_full";
@@ -92,33 +91,10 @@ export const createQalamOutputGuardrails = (): OutputGuardrail[] => [
 
 export const createQalamToolInputGuardrails = (
   toolName: string,
-  bridge: QalamAgentBridge,
-  toolBudget?: QalamToolBudgetPolicy
+  bridge: QalamAgentBridge
 ): ToolInputGuardrailDefinition[] => {
-  const budgetGuardrail = toolBudget
-    ? defineToolInputGuardrail({
-        name: "tool_budget_guardrail",
-        run: async ({ toolCall }) => {
-          const args = parseToolArguments((toolCall as any).arguments);
-          const decision = toolBudget.reserve(toolName, args);
-          if (!decision.allowed) {
-            return ToolGuardrailFunctionOutputFactory.rejectContent(decision.reason, {
-              toolName,
-              budget: decision.snapshot,
-            });
-          }
-          return ToolGuardrailFunctionOutputFactory.allow({
-            toolName,
-            budget: decision.snapshot,
-          });
-        },
-      })
-    : null;
-  const withBudget = (guardrails: ToolInputGuardrailDefinition[]) =>
-    budgetGuardrail ? [...guardrails, budgetGuardrail] : guardrails;
-
   if (toolName === "search_project_resource") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "search_query_guardrail",
         run: async ({ toolCall }) => {
@@ -133,11 +109,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ queryLength: query.length });
         },
       }),
-    ]);
+    ];
   }
 
   if (toolName === "read_project_resource") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "read_locator_guardrail",
         run: async ({ toolCall }) => {
@@ -150,11 +126,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ layer, entity });
         },
       }),
-    ]);
+    ];
   }
 
   if (toolName === "edit_script_resource") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "edit_script_resource_guardrail",
         run: async ({ toolCall }) => {
@@ -197,11 +173,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ entity, action });
         },
       }),
-    ]);
+    ];
   }
 
   if (toolName === "operate_project_resource") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "operate_project_resource_guardrail",
         run: async ({ toolCall }) => {
@@ -298,11 +274,11 @@ export const createQalamToolInputGuardrails = (
           );
         },
       }),
-    ]);
+    ];
   }
 
   if (toolName === "move_flow_node") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "move_flow_node_guardrail",
         run: async ({ toolCall }) => {
@@ -324,11 +300,11 @@ export const createQalamToolInputGuardrails = (
           return ToolGuardrailFunctionOutputFactory.allow({ nodeId, nodeRef, x, y });
         },
       }),
-    ]);
+    ];
   }
 
   if (toolName === "connect_flow_nodes") {
-    return withBudget([
+    return [
       defineToolInputGuardrail({
         name: "connect_flow_nodes_guardrail",
         run: async ({ toolCall }) => {
@@ -375,10 +351,10 @@ export const createQalamToolInputGuardrails = (
           });
         },
       }),
-    ]);
+    ];
   }
 
-  return withBudget([]);
+  return [];
 };
 
 export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
@@ -429,6 +405,9 @@ export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGua
         run: async ({ output }) => {
           const result = output && typeof output === "object" ? (output as Record<string, unknown>) : null;
           const target = typeof result?.target === "string" ? result.target : "";
+          if (target === "tool_budget" && result?.skipped === true) {
+            return ToolGuardrailFunctionOutputFactory.allow({ target, skipped: true });
+          }
           const artifact =
             result?.artifact && typeof result.artifact === "object"
               ? (result.artifact as Record<string, unknown>)

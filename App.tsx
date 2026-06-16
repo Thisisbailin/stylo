@@ -1,14 +1,13 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser, useClerk, useAuth } from './lib/auth';
-import { ProjectData, AppConfig, Episode, SyncState, SyncStatus } from './types';
-import { INITIAL_PROJECT_DATA, INITIAL_VIDEO_CONFIG, INITIAL_TEXT_CONFIG, INITIAL_MULTIMODAL_CONFIG } from './constants';
+import { ProjectData, SyncState, SyncStatus } from './types';
+import { INITIAL_PROJECT_DATA } from './constants';
 import { normalizeProjectData } from './utils/projectData';
-import { dropFileReplacer, isProjectEmpty, backupData, FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
+import { FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
 import { getDeviceId } from './utils/device';
 import { hashToBucket, isInRollout, normalizeRolloutPercent } from './utils/rollout';
 import { buildApiUrl } from './utils/api';
-import { ensureStableId } from './utils/id';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useConfig } from './hooks/useConfig';
@@ -23,309 +22,11 @@ import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
-import * as ResponsesTextService from './services/responsesTextService';
-import {
-  buildPersonRolesFromAnalysis,
-  buildSceneRolesFromAnalysis,
-  projectRolesToCharacters,
-  projectRolesToLocations,
-  replaceRolesByKind,
-} from './utils/projectRoles';
 
 type LabModalKey = ModuleKey;
-const LEGACY_SCRIPT_IMPORT_ENABLED = false;
-
-// --- Helpers: Character stats derived from parsed episodes ---
-const buildCharacterStats = (episodes: Episode[]) => {
-  const stats = new Map<
-    string,
-    {
-      count: number;
-      episodeIds: Set<number>;
-    }
-  >();
-
-  episodes.forEach((ep) => {
-    (ep.characters || []).forEach((rawName) => {
-      const name = rawName.trim();
-      if (!name) return;
-      if (!stats.has(name)) {
-        stats.set(name, { count: 0, episodeIds: new Set<number>() });
-      }
-      const entry = stats.get(name)!;
-      entry.count += 1;
-      entry.episodeIds.add(ep.id);
-    });
-  });
-
-  return stats;
-};
-
-const formatEpisodeUsage = (episodeIds: Set<number>) => {
-  const sorted = Array.from(episodeIds).sort((a, b) => a - b);
-  if (!sorted.length) return "";
-  return sorted.map((id) => `Ep${id}`).join(", ");
-};
-const normalizeFormsWithIds = (forms: any[]) =>
-  (forms || []).map((form) => ({ ...form, id: ensureStableId(form?.id, "form") }));
-const normalizeZonesWithIds = (zones: any[]) =>
-  (zones || []).map((zone) => ({ ...zone, id: ensureStableId(zone?.id, "zone") }));
-
-const ensureCharacterDefaultForms = (
-  characterName: string,
-  forms: any[],
-  episodeUsage?: string,
-  ensureDefault: boolean = true
-) => {
-  const normalized = normalizeFormsWithIds(forms || []).map((form) => {
-    const baseName = (form.formName || "默认").trim() || "默认";
-    const prefixed = baseName.startsWith(`${characterName}-`) ? baseName : `${characterName}-${baseName}`;
-    return {
-      ...form,
-      formName: prefixed,
-      episodeRange: form.episodeRange || episodeUsage || "Whole Series",
-      description: form.description || "",
-      visualTags: form.visualTags || "",
-    };
-  });
-
-  if (normalized.length > 0) return normalized;
-
-  if (!ensureDefault) return [];
-
-  return [
-    {
-      id: ensureStableId(undefined, "form"),
-      formName: `${characterName}-默认`,
-      episodeRange: episodeUsage || "Whole Series",
-      description: "",
-      visualTags: "",
-    },
-  ];
-};
-
-const mergeCharacterFormsByName = (
-  characterName: string,
-  currentForms: any[],
-  incomingForms: any[],
-  episodeUsage?: string,
-  options?: { ensureDefault?: boolean }
-) => {
-  const ensureDefault = options?.ensureDefault ?? true;
-  const normalizeName = (name: string) => {
-    const trimmed = (name || "默认").trim() || "默认";
-    return trimmed.startsWith(`${characterName}-`) ? trimmed : `${characterName}-${trimmed}`;
-  };
-
-  const current = ensureCharacterDefaultForms(characterName, currentForms, episodeUsage, ensureDefault);
-  const incoming = ensureCharacterDefaultForms(characterName, incomingForms, episodeUsage, ensureDefault);
-
-  const map = new Map<string, any>();
-  current.forEach((form) => {
-    map.set(normalizeName(form.formName).toLowerCase(), {
-      ...form,
-      formName: normalizeName(form.formName),
-    });
-  });
-
-  incoming.forEach((form) => {
-    const key = normalizeName(form.formName).toLowerCase();
-    const prev = map.get(key);
-    map.set(key, {
-      ...(prev || {}),
-      ...form,
-      id: prev?.id || ensureStableId(form?.id, "form"),
-      formName: normalizeName(form.formName),
-      episodeRange: form.episodeRange || prev?.episodeRange || episodeUsage || "Whole Series",
-      description: form.description || prev?.description || "",
-      visualTags: form.visualTags || prev?.visualTags || "",
-    });
-  });
-
-  return Array.from(map.values());
-};
-
-const buildLocationSeedsFromScenes = (episodes: Episode[], existingLocations: any[] = []) => {
-  const existingByName = new Map<string, any>(
-    (existingLocations || []).map((loc) => [loc.name, loc])
-  );
-
-  const map = new Map<
-    string,
-    {
-      name: string;
-      episodeIds: Set<number>;
-      partitions: Map<string, Set<number>>;
-      count: number;
-    }
-  >();
-
-  episodes.forEach((ep) => {
-    (ep.scenes || []).forEach((scene) => {
-      const sceneName = (scene.title || scene.metadata?.rawTitle || "").trim();
-      if (!sceneName) return;
-      const defaultPartition = `${sceneName}-默认`;
-      const partitionName = (scene.partition || defaultPartition).trim() || defaultPartition;
-      if (!map.has(sceneName)) {
-        map.set(sceneName, {
-          name: sceneName,
-          episodeIds: new Set<number>(),
-          partitions: new Map<string, Set<number>>(),
-          count: 0,
-        });
-      }
-      const entry = map.get(sceneName)!;
-      entry.count += 1;
-      entry.episodeIds.add(ep.id);
-      if (!entry.partitions.has(partitionName)) {
-        entry.partitions.set(partitionName, new Set<number>());
-      }
-      entry.partitions.get(partitionName)!.add(ep.id);
-    });
-  });
-
-  const seeds = Array.from(map.values()).map((entry) => {
-    const episodeUsage = formatEpisodeUsage(entry.episodeIds);
-    const defaultZoneName = `${entry.name}-默认`;
-    const parsedZones = Array.from(entry.partitions.entries()).map(([name, epIds]) => ({
-      id: ensureStableId(undefined, "zone"),
-      name,
-      kind: "unspecified" as const,
-      episodeRange: formatEpisodeUsage(epIds) || episodeUsage || "Whole Series",
-      layoutNotes: "",
-      keyProps: "",
-      lightingWeather: "",
-      materialPalette: "",
-    }));
-
-    const baseZones = parsedZones.length
-      ? parsedZones
-      : [
-          {
-            id: ensureStableId(undefined, "zone"),
-            name: defaultZoneName,
-            kind: "unspecified" as const,
-            episodeRange: episodeUsage || "Whole Series",
-            layoutNotes: "",
-            keyProps: "",
-            lightingWeather: "",
-            materialPalette: "",
-          },
-        ];
-
-    const existing = existingByName.get(entry.name);
-    const existingZones = ensureLocationDefaultZones(entry.name, existing?.zones || [], existing?.episodeUsage || episodeUsage, true);
-    const zoneMap = new Map<string, any>();
-    [...existingZones, ...baseZones].forEach((zone) => {
-      const zoneName = (zone.name || defaultZoneName).trim() || defaultZoneName;
-      zoneMap.set(zoneName.toLowerCase(), { ...zone, name: zoneName });
-    });
-
-    return {
-      id: existing?.id || entry.name,
-      name: entry.name,
-      type: existing?.type || "secondary",
-      description: existing?.description || "",
-      visuals: existing?.visuals || "",
-      assetPriority: existing?.assetPriority,
-      appearanceCount: existing?.appearanceCount ?? entry.count,
-      episodeUsage: existing?.episodeUsage || episodeUsage,
-      zones: Array.from(zoneMap.values()),
-    };
-  });
-
-  // Preserve any existing locations that might not be present in parsed scenes.
-  const seedNames = new Set(seeds.map((s) => s.name));
-  const preservedExisting = (existingLocations || []).filter(
-    (loc) => loc?.name && !seedNames.has(loc.name)
-  ).map((loc) => ({
-    ...loc,
-    id: loc.id || loc.name,
-    episodeUsage: loc.episodeUsage || "Whole Series",
-    appearanceCount: loc.appearanceCount,
-    zones: ensureLocationDefaultZones(loc.name, loc.zones || [], loc.episodeUsage, true),
-  }));
-
-  return [...seeds, ...preservedExisting];
-};
-
-const ensureLocationDefaultZones = (
-  locationName: string,
-  zones: any[],
-  episodeUsage?: string,
-  ensureDefault: boolean = true
-) => {
-  const defaultZoneName = `${locationName}-默认`;
-  const normalized = normalizeZonesWithIds(zones || []).map((zone) => ({
-    ...zone,
-    name: (zone.name || defaultZoneName).trim() || defaultZoneName,
-    kind: zone.kind || "unspecified",
-    episodeRange: zone.episodeRange || episodeUsage || "Whole Series",
-    layoutNotes: zone.layoutNotes || "",
-    keyProps: zone.keyProps || "",
-    lightingWeather: zone.lightingWeather || "",
-    materialPalette: zone.materialPalette || "",
-  }));
-
-  if (normalized.length > 0) return normalized;
-  if (!ensureDefault) return [];
-
-  return [
-    {
-      id: ensureStableId(undefined, "zone"),
-      name: defaultZoneName,
-      kind: "unspecified" as const,
-      episodeRange: episodeUsage || "Whole Series",
-      layoutNotes: "",
-      keyProps: "",
-      lightingWeather: "",
-      materialPalette: "",
-    },
-  ];
-};
-
-const mergeLocationZonesByName = (
-  locationName: string,
-  currentZones: any[],
-  incomingZones: any[],
-  episodeUsage?: string,
-  options?: { ensureDefault?: boolean }
-) => {
-  const ensureDefault = options?.ensureDefault ?? true;
-  const defaultZoneName = `${locationName}-默认`;
-  const current = ensureLocationDefaultZones(locationName, currentZones, episodeUsage, ensureDefault);
-  const incoming = ensureLocationDefaultZones(locationName, incomingZones, episodeUsage, ensureDefault);
-  const map = new Map<string, any>();
-
-  current.forEach((zone) => {
-    const zoneName = (zone.name || defaultZoneName).trim() || defaultZoneName;
-    map.set(zoneName.toLowerCase(), { ...zone, name: zoneName });
-  });
-
-  incoming.forEach((zone) => {
-    const zoneName = (zone.name || defaultZoneName).trim() || defaultZoneName;
-    const key = zoneName.toLowerCase();
-    const prev = map.get(key);
-    map.set(key, {
-      ...(prev || {}),
-      ...zone,
-      id: prev?.id || ensureStableId(zone?.id, "zone"),
-      name: zoneName,
-      kind: zone.kind || prev?.kind || "unspecified",
-      episodeRange: zone.episodeRange || prev?.episodeRange || episodeUsage || "Whole Series",
-      layoutNotes: zone.layoutNotes || prev?.layoutNotes || "",
-      keyProps: zone.keyProps || prev?.keyProps || "",
-      lightingWeather: zone.lightingWeather || prev?.lightingWeather || "",
-      materialPalette: zone.materialPalette || prev?.materialPalette || "",
-    });
-  });
-
-  return Array.from(map.values());
-};
 
 const PROJECT_STORAGE_KEY = 'qalam_project_v1';
 const CONFIG_STORAGE_KEY = 'qalam_config_v1';
-const UI_STATE_STORAGE_KEY = 'qalam_ui_state_v1';
 const THEME_STORAGE_KEY = 'qalam_theme_v1';
 const LOCAL_BACKUP_KEY = 'qalam_local_backup';
 const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
@@ -391,14 +92,6 @@ const App: React.FC = () => {
   );
 
   const { config, setConfig } = useConfig(CONFIG_STORAGE_KEY);
-  const projectCharacters = useMemo(
-    () => projectRolesToCharacters(projectData.roles || []),
-    [projectData.roles]
-  );
-  const projectLocations = useMemo(
-    () => projectRolesToLocations(projectData.roles || []),
-    [projectData.roles]
-  );
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
 
@@ -422,38 +115,7 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  const [uiState, setUiState] = usePersistedState<{
-    currentEpIndex: number;
-  }>({
-    key: UI_STATE_STORAGE_KEY,
-    initialValue: { currentEpIndex: 0 },
-    deserialize: (value) => {
-      const parsed = JSON.parse(value);
-      return {
-        currentEpIndex: parsed.currentEpIndex ?? 0,
-      };
-    },
-    serialize: (value) => JSON.stringify(value)
-  });
-
-  const [currentEpIndex, setCurrentEpIndex] = useState(uiState.currentEpIndex);
-  const [processingState, setProcessingState] = useState<{ active: boolean; status: string }>({ active: false, status: "" });
-  const isProcessing = processingState.active;
-  const processingStatus = processingState.status;
-  const setProcessing = useCallback((active: boolean, status = "") => {
-    setProcessingState({ active, status });
-  }, []);
-
-  // Keep persisted uiState in sync with reducer core fields
-  useEffect(() => {
-    setUiState(prev => ({
-      ...prev,
-      currentEpIndex,
-    }));
-  }, [currentEpIndex, setUiState]);
-
   const [appView, setAppView] = useState<"main" | "landing">(() => readAppViewFromLocation());
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [hasLoadedRemote, setHasLoadedRemote] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>({
     project: { status: 'idle' },
@@ -689,36 +351,13 @@ const App: React.FC = () => {
     fetchProfile();
   }, [authSignedIn, isAuthLoaded, getAuthToken, setAvatarUrl]);
 
-  // Legacy episode index is retained for old UI state only; the current project flow is document-centered.
-  useEffect(() => {
-    setCurrentEpIndex(0);
-  }, []);
-
-  // --- Helper: Stats Updater ---
-  const updateStats = (phase: 'context', success: boolean) => {
-    setProjectData(prev => {
-      const stats = { ...prev.stats };
-      const current = stats[phase] || { total: 0, success: 0, error: 0 };
-      const next = {
-        total: current.total + 1,
-        success: current.success + (success ? 1 : 0),
-        error: current.error + (success ? 0 : 1)
-      };
-      stats[phase] = next;
-      return { ...prev, stats };
-    });
-  };
-
-
   // --- Handlers ---
 
   const handleResetProject = () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
       localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
       setProjectData(INITIAL_PROJECT_DATA);
-      setCurrentEpIndex(0);
       localStorage.removeItem(PROJECT_STORAGE_KEY);
-      localStorage.removeItem(UI_STATE_STORAGE_KEY);
       localStorage.removeItem(LOCAL_BACKUP_KEY);
       localStorage.removeItem(REMOTE_BACKUP_KEY);
       setAvatarUrl('');
@@ -791,59 +430,6 @@ const App: React.FC = () => {
     if (!file) return;
     uploadAvatarToSupabase(file);
     e.target.value = '';
-  };
-
-  const handleAssetLoad = (
-    type:
-      | 'script',
-    content: string,
-    fileName?: string
-  ) => {
-    if (!LEGACY_SCRIPT_IMPORT_ENABLED) {
-      void type;
-      void content;
-      void fileName;
-      return;
-    }
-    if (type === 'script') {
-      setProjectData(prev => {
-        const now = Date.now();
-        const baseName = (fileName || "script.fountain").replace(/\.[^.]+$/, "").trim() || "Script";
-        const documentId = `script-${now.toString(36)}`;
-        const nodeId = `script-${documentId}`;
-        const currentFlow = prev.flow || { pages: [], images: [], links: [] };
-        const existingFlowNodes = Array.isArray(currentFlow.flowNodes) ? currentFlow.flowNodes : [];
-
-        return {
-          ...prev,
-          fileName: fileName || 'script.fountain',
-          rawScript: "",
-          episodes: [],
-          flow: {
-            ...currentFlow,
-            pages: [],
-            textNodes: [],
-            flowNodes: [
-              ...existingFlowNodes,
-              {
-                id: nodeId,
-                type: "scriptPage",
-                position: { x: 120 + existingFlowNodes.length * 36, y: 120 + existingFlowNodes.length * 24 },
-                style: { width: 320, height: 249 },
-                data: {
-                  title: baseName,
-                  text: content,
-                  documentId,
-                  documentKind: "script",
-                  format: "fountain",
-                  preview: content.replace(/\s+/g, " ").slice(0, 180),
-                },
-              },
-            ],
-          },
-        };
-      });
-    }
   };
 
   // --- Render Helpers ---
@@ -963,7 +549,6 @@ const App: React.FC = () => {
         onForceSync={forceCloudPull}
         onOpenLanding={openLandingPage}
         externalAgentSettingsRequest={agentSettingsRequest}
-        onAssetLoad={handleAssetLoad}
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
         onResetProject={handleResetProject}

@@ -22,13 +22,13 @@ const BASE_INSTRUCTION = [
   "The internal tool layer key nodeflow means the visible Flow graph runtime. Treat it as an implementation key, not as a separate product mode.",
   "Do not treat old understanding-style assumptions as the primary memory model.",
   "When script facts, document facts, or exact wording matters, start from Flow document/archive resources instead of guessing from memory.",
-  "Prefer find_documents, read_document, create_document, and update_document for ordinary document work. Use generic project resource tools only when you need maps, links, approvals, or visible graph internals.",
+  "Prefer find_documents, read_document, create_document, and update_document for ordinary document work. Use read_document view=slice and update_document operation=append or replace_range for long documents.",
   "Use script-keyed resources only as a read access path for Flow document nodes and archive nodes. They are backed by the current NodeFlow snapshot, not by legacy episode/scene records.",
   "Use nodeflow-keyed resources when the question is about current Flow graph structure, current node state, current links, current approvals, or how the user-facing canvas is organized right now.",
   "Do not split the app into Script and NodeFlow product modes. script-keyed archive resources and nodeflow-keyed graph resources are two access paths into one Flow.",
-  "If a task spans document facts and graph operations, prefer this order: script-keyed reads for document/archive substance, nodeflow-keyed reads for current canvas structure, then operate_project_resource for durable changes.",
+  "If a task spans document facts and graph operations, prefer this order: document tools for document/archive substance, nodeflow-keyed reads for current canvas structure, then narrow canvas tools for movement or links.",
   "Read is the unified project-reading action across Flow document/archive and graph resources.",
-  "operate_project_resource is the only durable write action for agent-operated Flow nodes and links.",
+  "create_document and update_document are the primary durable write actions for Flow documents. move_flow_node and connect_flow_nodes are the primary durable write actions for ordinary canvas operations.",
   "For agent-operated node cards, only create or modify basic script, archive, text, image, audio, and video nodes. Do not create generation, identity, annotation, or other advanced node cards unless they are explicitly opened later.",
   "When a task depends on durable project documents or archives, prefer listing or searching script-keyed Flow resources before guessing from memory.",
   "Use operate_project_resource only as the generic fallback for Flow node or link operations that are not covered by narrower document and canvas tools.",
@@ -84,7 +84,7 @@ const uiContextInstruction = (uiContext?: AgentUiContext) => {
 
 const toJsonBlock = (label: string, value: unknown) => {
   if (!value) return "";
-  return `[${label}]\n${JSON.stringify(value, null, 2)}`;
+  return `[${label}]\n${JSON.stringify(value)}`;
 };
 
 const formatEnvironmentInstruction = (environment?: QalamAgentEnvironment) =>

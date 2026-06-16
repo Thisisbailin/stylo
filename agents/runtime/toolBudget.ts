@@ -43,20 +43,20 @@ type ToolBudgetDecision =
     };
 
 const DEFAULT_LIMITS = {
-  totalCalls: 18,
-  lookupCalls: 12,
-  mutationCalls: 4,
-  fullReadCalls: 2,
+  totalCalls: 32,
+  lookupCalls: 22,
+  mutationCalls: 8,
+  fullReadCalls: 3,
   perTool: {
-    find_documents: 5,
-    read_document: 8,
-    create_document: 3,
-    update_document: 4,
+    find_documents: 8,
+    read_document: 14,
+    create_document: 5,
+    update_document: 8,
     connect_flow_nodes: 6,
     move_flow_node: 6,
     list_project_resources: 4,
-    search_project_resource: 5,
-    read_project_resource: 8,
+    search_project_resource: 8,
+    read_project_resource: 10,
     operate_project_resource: 4,
     prepare_generation_execution: 2,
     cancel_generation_execution: 2,
@@ -76,7 +76,7 @@ const normalizeView = (args: Record<string, unknown>) =>
 
 const isFullRead = (toolName: string, args: Record<string, unknown>) =>
   (toolName === "read_project_resource" || toolName === "read_document") &&
-  ["full", "detail"].includes(normalizeView(args));
+  normalizeView(args) === "full";
 
 const isLookupTool = (toolName: string) => LOOKUP_TOOLS.has(toolName);
 const isMutationTool = (toolName: string) => MUTATION_TOOLS.has(toolName);

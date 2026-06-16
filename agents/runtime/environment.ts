@@ -45,7 +45,7 @@ const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
     scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS],
   },
   edit: {
-    tools: ["create_document", "update_document", "operate_project_resource"],
+    tools: ["create_document", "update_document"],
     resources: [...OPERATE_NODEFLOW_TARGETS],
   },
   operate: {
