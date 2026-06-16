@@ -45,6 +45,8 @@ export const READ_PROJECT_RESOURCE_TARGETS = [
 type ResourceLayer = (typeof READ_PROJECT_RESOURCE_LAYERS)[number];
 type ResourceEntity = (typeof READ_PROJECT_RESOURCE_ENTITIES)[number];
 type ResourceView = (typeof READ_PROJECT_RESOURCE_VIEWS)[number];
+const DEFAULT_READ_MAX_CHARS = 2400;
+const DEFAULT_MAP_MAX_ITEMS = 80;
 
 const readProjectResourceParameters = {
   type: "object",
@@ -156,7 +158,7 @@ const parseArgs = (input: unknown) => {
   const lensKind = trim(raw.lens_kind ?? raw.lensKind) || undefined;
   const anchorRef = trim(raw.anchor_ref ?? raw.anchorRef) || undefined;
   const nodeKind = trim(raw.node_kind ?? raw.nodeKind) || undefined;
-  const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars);
+  const maxChars = toPositiveInteger(raw.max_chars ?? raw.maxChars) || DEFAULT_READ_MAX_CHARS;
 
   if (!(READ_PROJECT_RESOURCE_LAYERS as readonly string[]).includes(layer)) {
     throw new Error(`read_project_resource 不支持 layer=${trim(raw.layer)}`);
@@ -213,7 +215,7 @@ export const readProjectResourceToolDef = {
 
     if (args.layer === "script") {
       if (args.entity === "node") {
-        const item = findScriptResourceNode(projectData, { nodeId: args.nodeId, nodeRef: args.nodeRef });
+        const item = findScriptResourceNode(projectData, { nodeId: args.nodeId, nodeRef: args.nodeRef }, workflow);
         if (!item) {
           return {
             layer: "script",
@@ -262,7 +264,7 @@ export const readProjectResourceToolDef = {
       }
 
       if (args.entity === "link") {
-        const link = args.linkId ? findScriptResourceLink(projectData, args.linkId) : null;
+        const link = args.linkId ? findScriptResourceLink(projectData, args.linkId, workflow) : null;
         return link
           ? {
               layer: "script",
@@ -301,10 +303,10 @@ export const readProjectResourceToolDef = {
             };
       }
 
-      const map = findScriptResourceMap(projectData, { mapId: args.mapId, name: args.name });
-      const maps = buildScriptResourceMaps(projectData);
-      const nodes = buildScriptResourceNodes(projectData);
-      const links = buildScriptResourceLinks(projectData);
+      const map = findScriptResourceMap(projectData, { mapId: args.mapId, name: args.name }, workflow);
+      const maps = buildScriptResourceMaps(projectData, workflow);
+      const nodes = buildScriptResourceNodes(projectData, workflow);
+      const links = buildScriptResourceLinks(projectData, workflow);
       const effectiveMap = map || maps[0] || null;
       const visibleNodes =
         effectiveMap?.view === "source"
@@ -331,14 +333,14 @@ export const readProjectResourceToolDef = {
         item: effectiveMap
           ? {
               ...effectiveMap,
-              nodes: visibleNodes.map((node) => ({
+              nodes: visibleNodes.slice(0, DEFAULT_MAP_MAX_ITEMS).map((node) => ({
                 node_id: node.nodeId,
                 node_ref: node.ref,
                 kind: node.type,
                 title: node.title,
                 resource_type: node.resourceType,
               })),
-              links: links.map((link) => ({
+              links: links.slice(0, DEFAULT_MAP_MAX_ITEMS).map((link) => ({
                 link_id: link.id,
                 from_node_ref: link.fromRef,
                 to_node_ref: link.toRef,

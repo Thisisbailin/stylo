@@ -325,7 +325,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [editingScriptEpisodeId, setEditingScriptEpisodeId] = useState<number | null>(null);
+  const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
   const [agentSettingsPanel, setAgentSettingsPanel] = useState<AgentSettingsPanelKey>("provider");
@@ -674,11 +674,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const flowSurface = useFlowSurface({
     projectData,
     setProjectData,
-    onOpenEpisode: (episodeId) => setEditingScriptEpisodeId(episodeId),
+    onOpenScriptDocument: (nodeId) => setEditingScriptNodeId(nodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
     isActive: true,
-    isWritingEditorOpen: editingScriptEpisodeId !== null,
+    isWritingEditorOpen: editingScriptNodeId !== null,
     onCollapseCanvasCards: handleCollapseCanvasCards,
     onRestoreCanvasCards: handleRestoreCanvasCards,
     onOpenAgent: () => setQalamOpenRequest((count) => count + 1),
@@ -1100,16 +1100,16 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         requestedAssetsSection={agentSettingsAssetsSection}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
-      {editingScriptEpisodeId !== null ? (
+      {editingScriptNodeId !== null ? (
         <WritingPanel
           projectData={projectData}
           setProjectData={setProjectData}
           getAuthToken={getAuthToken}
-          initialEpisodeId={editingScriptEpisodeId}
+          initialScriptNodeId={editingScriptNodeId}
           isQalamOpen={!isQalamCollapsed}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
           onSubmitToQalam={(text) => setQalamSubmitRequest({ id: Date.now(), text })}
-          onClose={() => setEditingScriptEpisodeId(null)}
+          onClose={() => setEditingScriptNodeId(null)}
         />
       ) : null}
       <div

@@ -240,6 +240,41 @@ export class D1EdgeSession implements Session {
   }
 }
 
+type QalamBoundedSessionOptions = {
+  underlyingSession: Session;
+  maxItems?: number;
+};
+
+const DEFAULT_BOUNDED_SESSION_ITEMS = 18;
+
+export class QalamBoundedSession implements Session {
+  private readonly maxItems: number;
+
+  constructor(private readonly options: QalamBoundedSessionOptions) {
+    this.maxItems = Math.max(6, options.maxItems ?? DEFAULT_BOUNDED_SESSION_ITEMS);
+  }
+
+  getSessionId(): Promise<string> {
+    return this.options.underlyingSession.getSessionId();
+  }
+
+  getItems(limit?: number): Promise<AgentInputItem[]> {
+    return this.options.underlyingSession.getItems(limit ?? this.maxItems);
+  }
+
+  addItems(items: AgentInputItem[]): Promise<void> {
+    return this.options.underlyingSession.addItems(items);
+  }
+
+  popItem(): Promise<AgentInputItem | undefined> {
+    return this.options.underlyingSession.popItem();
+  }
+
+  clearSession(): Promise<void> {
+    return this.options.underlyingSession.clearSession();
+  }
+}
+
 export const readD1SessionMessages = async (env: EnvWithDb, sessionKey: string) => {
   const record = await readAgentSessionRecord(env, sessionKey);
   return record.messages;

@@ -87,11 +87,15 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [ioPane, setIoPane] = useState<"project" | "export">("project");
   const [nodePaletteMode, setNodePaletteMode] = useState<"panels" | "workflow">("workflow");
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
+  const [fileMenuWidth, setFileMenuWidth] = useState(420);
+  const [isResizingFileMenu, setIsResizingFileMenu] = useState(false);
   const scriptInputRef = useRef<HTMLInputElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const nodesButtonRef = useRef<HTMLButtonElement>(null);
   const fileMenuPanelRef = useRef<HTMLDivElement>(null);
   const palettePanelRef = useRef<HTMLDivElement>(null);
+  const fileMenuResizeRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null);
   const [accountAnchorRect, setAccountAnchorRect] = useState<DOMRect | null>(null);
   const [nodesAnchorRect, setNodesAnchorRect] = useState<DOMRect | null>(null);
   const legacyScriptImportDisabled = true;
@@ -159,7 +163,65 @@ export const FloatingActionBar: React.FC<Props> = ({
     };
   };
   const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 580), [nodesAnchorRect]);
-  const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, 420), [accountAnchorRect]);
+  const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, fileMenuWidth), [accountAnchorRect, fileMenuWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncViewportWidth = () => setViewportWidth(window.innerWidth);
+    syncViewportWidth();
+    window.addEventListener("resize", syncViewportWidth);
+    return () => {
+      window.removeEventListener("resize", syncViewportWidth);
+    };
+  }, []);
+
+  useEffect(() => {
+    const maxWidth = Math.max(320, viewportWidth - 24);
+    setFileMenuWidth((current) => Math.min(maxWidth, Math.max(320, current)));
+  }, [viewportWidth]);
+
+  useEffect(() => {
+    const activeResize = fileMenuResizeRef.current;
+    if (!isResizingFileMenu || !activeResize || typeof window === "undefined") return;
+
+    const maxWidth = Math.max(320, viewportWidth - 24);
+
+    const stopResizing = (event?: PointerEvent) => {
+      if (event && event.pointerId !== activeResize.pointerId) return;
+      fileMenuResizeRef.current = null;
+      setIsResizingFileMenu(false);
+      document.body.classList.remove("qalam-resizing");
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== activeResize.pointerId) return;
+      const nextWidth = activeResize.startWidth + (activeResize.startX - event.clientX);
+      setFileMenuWidth(Math.min(maxWidth, Math.max(320, nextWidth)));
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+    document.body.classList.add("qalam-resizing");
+
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+      document.body.classList.remove("qalam-resizing");
+    };
+  }, [isResizingFileMenu, viewportWidth]);
+
+  useEffect(
+    () => () => {
+      fileMenuResizeRef.current = null;
+      document.body.classList.remove("qalam-resizing");
+    },
+    []
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -235,6 +297,20 @@ export const FloatingActionBar: React.FC<Props> = ({
   const closeMenus = () => {
     setShowPalette(false);
     setShowFileMenu(false);
+  };
+
+  const handleFileMenuResizePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    fileMenuResizeRef.current = {
+      startX: event.clientX,
+      startWidth: fileMenuWidth,
+      pointerId: event.pointerId,
+    };
+    setIsResizingFileMenu(true);
+    document.body.classList.add("qalam-resizing");
   };
 
   const handleAssetFileChange = (
@@ -550,9 +626,18 @@ export const FloatingActionBar: React.FC<Props> = ({
           createPortal(
             <div
             ref={fileMenuPanelRef}
-            className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden ${panelClass}`}
+            className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden relative ${panelClass}`}
             style={{ ...panelStyle, ...fileMenuPopoverStyle }}
           >
+            <button
+              type="button"
+              aria-label="Resize account panel"
+              title="Drag to resize"
+              onPointerDown={handleFileMenuResizePointerDown}
+              className="absolute left-0 top-0 z-10 h-full w-3 cursor-col-resize border-r border-[var(--app-border)] bg-transparent transition hover:bg-[var(--app-panel-soft)] touch-none"
+            >
+              <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--app-border-strong)] opacity-60" />
+            </button>
             <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
               <div className="space-y-3">
                 {!accountLoaded ? (

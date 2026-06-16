@@ -5,7 +5,8 @@ import type {
   FlowSpatialBlock,
   FlowTimelineBlock,
 } from "../../types";
-import type { NodeFlowNode } from "../../node-workspace/types";
+import type { NodeFlowFile, NodeFlowNode } from "../../node-workspace/types";
+import { getNodeFlowNodeRef } from "../../node-workspace/nodeflow/model";
 
 export type ScriptResourceNode = {
   resourceType: "document_node" | "archive_node" | "space_block" | "timeline_block" | "script_index";
@@ -134,6 +135,48 @@ const documentFlowNodeToScriptNode = (node: NodeFlowNode): ScriptResourceNode | 
   };
 };
 
+const documentNodeFlowNodeToScriptNode = (node: NodeFlowNode): ScriptResourceNode | null => {
+  if (node.type !== "scriptPage" && node.type !== "text" && node.type !== "mdText") return null;
+  const data = node.data as {
+    documentId?: string;
+    title?: string;
+    text?: string;
+    content?: string;
+    preview?: string;
+    createdAt?: number;
+    updatedAt?: number;
+    documentKind?: string;
+    format?: string;
+  };
+  const documentId = trim(data.documentId) || node.id;
+  const isScript = node.type === "scriptPage";
+  const isArchive = node.type === "mdText" || data.documentKind === "archive";
+  return {
+    resourceType: isArchive ? "archive_node" : "document_node",
+    nodeId: `${isArchive ? "archive" : "document"}:${documentId}`,
+    ref: `script:${isArchive ? "archive" : "document"}:${documentId}`,
+    type: isScript ? "script.document" : isArchive ? "script.archive" : "script.note",
+    title: trim(data.title) || (isScript ? "剧本文档" : isArchive ? "档案文档" : "文本节点"),
+    body: {
+      content: typeof data.content === "string" ? data.content : data.text || "",
+      format: isScript ? "fountain" : isArchive ? "markdown" : trim(data.format) || "markdown",
+      documentKind: isScript ? "script" : isArchive ? "archive" : trim(data.documentKind) || "note",
+    },
+    locked: false,
+    x: node.position?.x,
+    y: node.position?.y,
+    meta: {
+      documentId,
+      nodeId: node.id,
+      nodeRef: getNodeFlowNodeRef(node),
+      nodeType: node.type,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
+      preview: data.preview || "",
+    },
+  };
+};
+
 const spaceBlockToScriptNode = (block: FlowSpatialBlock): ScriptResourceNode => ({
   resourceType: "space_block",
   nodeId: `space:${block.id}`,
@@ -173,7 +216,13 @@ const timelineBlockToScriptNode = (block: FlowTimelineBlock): ScriptResourceNode
   },
 });
 
-export const buildScriptResourceNodes = (projectData: ProjectData): ScriptResourceNode[] => {
+const buildScriptResourceNodesFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptResourceNode[] =>
+  nodeFlow.nodes
+    .map(documentNodeFlowNodeToScriptNode)
+    .filter((node): node is ScriptResourceNode => Boolean(node));
+
+export const buildScriptResourceNodes = (projectData: ProjectData, nodeFlow?: NodeFlowFile): ScriptResourceNode[] => {
+  if (nodeFlow) return buildScriptResourceNodesFromNodeFlow(nodeFlow);
   const canvas = ensureFlow(projectData.flow);
   const nodes: ScriptResourceNode[] = [];
   const timeline = canvas.timeline;
@@ -219,7 +268,51 @@ const resolveLinkedRef = (nodeId: string) => {
   return nodeId;
 };
 
-export const buildScriptResourceLinks = (projectData: ProjectData): ScriptResourceLink[] => {
+const buildScriptResourceLinksFromNodeFlow = (nodeFlow: NodeFlowFile): ScriptResourceLink[] => {
+  const nodes = buildScriptResourceNodesFromNodeFlow(nodeFlow);
+  const refByRawNodeId = new Map(
+    nodes
+      .map((node) => {
+        const rawNodeId = typeof node.meta?.nodeId === "string" ? node.meta.nodeId : "";
+        return rawNodeId ? ([rawNodeId, node.ref] as const) : null;
+      })
+      .filter((item): item is readonly [string, string] => Boolean(item))
+  );
+  const refByNodeFlowRef = new Map(
+    nodes
+      .map((node) => {
+        const rawRef = typeof node.meta?.nodeRef === "string" ? node.meta.nodeRef : "";
+        return rawRef ? ([rawRef, node.ref] as const) : null;
+      })
+      .filter((item): item is readonly [string, string] => Boolean(item))
+  );
+  const byRef = new Map(nodes.map((node) => [node.ref, node]));
+  const links: ScriptResourceLink[] = [];
+  const pushLink = (fromRef: string | undefined, toRef: string | undefined, type: ScriptResourceLink["type"]) => {
+    if (!fromRef || !toRef || fromRef === toRef) return;
+    if (!byRef.has(fromRef) || !byRef.has(toRef)) return;
+    links.push({
+      id: `script-link:${fromRef}->${toRef}`,
+      fromRef,
+      toRef,
+      type,
+      fromTitle: byRef.get(fromRef)?.title,
+      toTitle: byRef.get(toRef)?.title,
+    });
+  };
+
+  nodeFlow.links.forEach((link) => {
+    pushLink(refByRawNodeId.get(link.source), refByRawNodeId.get(link.target), "links_to");
+  });
+  (nodeFlow.graphLinks || []).forEach((link) => {
+    pushLink(refByNodeFlowRef.get(link.sourceRef), refByNodeFlowRef.get(link.targetRef), "links_to");
+  });
+
+  return links;
+};
+
+export const buildScriptResourceLinks = (projectData: ProjectData, nodeFlow?: NodeFlowFile): ScriptResourceLink[] => {
+  if (nodeFlow) return buildScriptResourceLinksFromNodeFlow(nodeFlow);
   const nodes = buildScriptResourceNodes(projectData);
   const byRef = new Map(nodes.map((node) => [node.ref, node]));
   const refByRawNodeId = new Map(
@@ -261,9 +354,9 @@ export const buildScriptResourceLinks = (projectData: ProjectData): ScriptResour
   return links;
 };
 
-export const buildScriptResourceMaps = (projectData: ProjectData): ScriptResourceMap[] => {
-  const nodes = buildScriptResourceNodes(projectData);
-  const links = buildScriptResourceLinks(projectData);
+export const buildScriptResourceMaps = (projectData: ProjectData, nodeFlow?: NodeFlowFile): ScriptResourceMap[] => {
+  const nodes = buildScriptResourceNodes(projectData, nodeFlow);
+  const links = buildScriptResourceLinks(projectData, nodeFlow);
   const count = (predicate: (node: ScriptResourceNode) => boolean) => nodes.filter(predicate).length;
   return [
     {
@@ -299,11 +392,12 @@ export const buildScriptResourceMaps = (projectData: ProjectData): ScriptResourc
 
 export const findScriptResourceNode = (
   projectData: ProjectData,
-  locator: { nodeId?: string; nodeRef?: string }
+  locator: { nodeId?: string; nodeRef?: string },
+  nodeFlow?: NodeFlowFile
 ) => {
   const nodeId = trim(locator.nodeId);
   const nodeRef = trim(locator.nodeRef);
-  return buildScriptResourceNodes(projectData).find((node) => {
+  return buildScriptResourceNodes(projectData, nodeFlow).find((node) => {
     if (nodeId && node.nodeId === nodeId) return true;
     if (nodeId && node.ref === nodeId) return true;
     if (nodeRef && node.ref === nodeRef) return true;
@@ -312,13 +406,13 @@ export const findScriptResourceNode = (
   }) || null;
 };
 
-export const findScriptResourceLink = (projectData: ProjectData, linkId: string) =>
-  buildScriptResourceLinks(projectData).find((link) => link.id === linkId) || null;
+export const findScriptResourceLink = (projectData: ProjectData, linkId: string, nodeFlow?: NodeFlowFile) =>
+  buildScriptResourceLinks(projectData, nodeFlow).find((link) => link.id === linkId) || null;
 
-export const findScriptResourceMap = (projectData: ProjectData, locator: { mapId?: string; name?: string }) => {
+export const findScriptResourceMap = (projectData: ProjectData, locator: { mapId?: string; name?: string }, nodeFlow?: NodeFlowFile) => {
   const mapId = trim(locator.mapId);
   const name = trim(locator.name).toLowerCase();
-  return buildScriptResourceMaps(projectData).find((map) => {
+  return buildScriptResourceMaps(projectData, nodeFlow).find((map) => {
     if (mapId && map.mapId === mapId) return true;
     if (name && map.name.toLowerCase() === name) return true;
     return false;

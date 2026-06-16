@@ -10,7 +10,6 @@ import type {
 import { LIST_PROJECT_RESOURCE_TARGETS } from "../tools/listProjectResources";
 import { READ_PROJECT_RESOURCE_TARGETS } from "../tools/readProjectResource";
 import { SEARCH_PROJECT_RESOURCE_FACETS, SEARCH_PROJECT_RESOURCE_LAYERS } from "../tools/searchProjectResource";
-import { EDIT_SCRIPT_TARGETS } from "../tools/editScriptResource";
 import { OPERATE_NODEFLOW_TARGETS, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
 import { buildScriptResourceLinks, buildScriptResourceNodes } from "../tools/scriptResources";
 
@@ -46,8 +45,8 @@ const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
     scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS],
   },
   edit: {
-    tools: ["edit_script_resource"],
-    resources: [...EDIT_SCRIPT_TARGETS],
+    tools: ["operate_project_resource"],
+    resources: [...OPERATE_NODEFLOW_TARGETS],
   },
   operate: {
     tools: ["operate_project_resource"],
@@ -95,8 +94,8 @@ export const buildAgentEnvironment = ({
     .slice(0, MAX_SCENE_ROLES)
     .map(summarizeRole);
 
-  const scriptNodes = buildScriptResourceNodes(projectData);
-  const scriptLinks = buildScriptResourceLinks(projectData);
+  const scriptNodes = buildScriptResourceNodes(projectData, nodeFlowSnapshot);
+  const scriptLinks = buildScriptResourceLinks(projectData, nodeFlowSnapshot);
   const documentNodeCount = scriptNodes.filter((node) => node.resourceType === "document_node").length;
   const archiveNodeCount = scriptNodes.filter((node) => node.resourceType === "archive_node").length;
   const spaceBlockCount = scriptNodes.filter((node) => node.resourceType === "space_block").length;

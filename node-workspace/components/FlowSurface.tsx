@@ -150,7 +150,7 @@ type ScriptFoundationTargetPosition = {
 type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
-  onOpenEpisode: (episodeId: number) => void;
+  onOpenScriptDocument: (nodeId: string) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
   isActive?: boolean;
@@ -919,7 +919,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".script-foundation-md-card, .script-foundation-gateway")) return;
+      if (target?.closest(".script-foundation-md-card, .script-foundation-gateway-card")) return;
       closeMarkdownCard();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1087,20 +1087,30 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     onSpaceResizeStart(blockId, edge, event.clientX, trackWidth);
   };
 
+  const openFoundationGateway = () => {
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    onOpenMarkdownCard?.();
+    setMenuState(null);
+    setNodeCreateMenu(null);
+    setEditingTarget(null);
+    setIsAgentTailOpen(false);
+    setIsFoundationGatewayOpen(true);
+  };
+
   const handleHeadClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
     event.preventDefault();
+    if (event.detail > 1) {
+      openFoundationGateway();
+      return;
+    }
     clickTimerRef.current = window.setTimeout(() => {
       switchAxisWithFilmMotion();
     }, 170);
   };
 
   const handleHeadDoubleClick = () => {
-    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
-    onOpenMarkdownCard?.();
-    setMenuState(null);
-    setEditingTarget(null);
-    setIsFoundationGatewayOpen(true);
+    openFoundationGateway();
   };
 
   const openGatewaySettingsPanel = (
@@ -1173,6 +1183,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
   return (
     <>
+      {!isFoundationGatewayOpen ? (
       <div className="script-foundation-dock">
       <div
         className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
@@ -1372,6 +1383,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         </div>
 
       </div>
+      </div>
+      ) : null}
 
       {nodeCreateMenu ? (
         <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 620)}>
@@ -1478,17 +1491,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       ) : null}
 
       {isFoundationGatewayOpen ? (
-        <section className="script-foundation-gateway" role="dialog" aria-label="Foundation 模块入口">
-          <header className="script-foundation-gateway__head">
-            <div>
-              <span>Foundation</span>
-              <h3>项目模块入口</h3>
-            </div>
-            <button type="button" onClick={closeMarkdownCard} aria-label="关闭 Foundation 模块入口">
-              ×
-            </button>
-          </header>
-
+        <section className="script-foundation-gateway" role="dialog" aria-label="Foundation 卡牌组">
           <div className="script-foundation-gateway__grid">
             <article className="script-foundation-gateway-card script-foundation-gateway-card--index">
               <div className="script-foundation-gateway-card__title">
@@ -1609,7 +1612,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           </div>
         </section>
       ) : null}
-      </div>
     </>
   );
 };
@@ -1617,7 +1619,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 export const useFlowSurface = ({
   projectData,
   setProjectData,
-  onOpenEpisode,
+  onOpenScriptDocument,
   canvasControls,
   screenToFlowPosition,
   isActive = false,
@@ -1744,7 +1746,7 @@ export const useFlowSurface = ({
             : node.type === "mdText"
               ? ((node.data as MarkdownTextData).title || "档案文档")
             : node.type === "scriptPage"
-              ? ((node.data as ScriptPageData).title || `第${(node.data as ScriptPageData).episodeId}集`)
+              ? ((node.data as ScriptPageData).title || "剧本文档")
               : ((node.data as { title?: string; label?: string }).title || (node.data as { label?: string }).label || node.type),
         kind:
           node.type === "imageInput"
@@ -2952,11 +2954,11 @@ export const useFlowSurface = ({
     (node: FlowRenderNode) => {
       const linkedBlock = timeline.blocks.find((block) => block.linkedNodeIds.includes(node.id));
       if (linkedBlock) setActiveTimelineBlockId(linkedBlock.id);
-      if (node.type === "scriptPage" && typeof (node.data as ScriptPageData).episodeId === "number") {
-        onOpenEpisode((node.data as ScriptPageData).episodeId as number);
+      if (node.type === "scriptPage") {
+        onOpenScriptDocument(node.id);
       }
     },
-    [onOpenEpisode, timeline.blocks]
+    [onOpenScriptDocument, timeline.blocks]
   );
 
   const foundationUnderlay = foundationGuideLines.length ? (

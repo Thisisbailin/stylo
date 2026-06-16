@@ -163,7 +163,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "script-archive" | "workflow-builder";
+type ToolKey = "project-data" | "workflow-builder";
 
 type ToolItem = {
   key: ToolKey;
@@ -185,25 +185,13 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "project-data",
     capability: "read",
     title: "read",
-    description: "Agent 通过统一的读接口查阅项目结构：Script 剧本、空间轴、档案资源，以及同一画布上的节点关系。",
+    description: "Agent 通过统一的读接口查阅当前 Flow 文档节点、档案节点和同一画布上的节点关系。",
     tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    surfaces: ["script source", "script archive", "script map", "canvas node", "canvas link", "canvas map"],
+    surfaces: ["script document", "archive document", "script map", "canvas node", "canvas link", "canvas map"],
     boundary: "只读，不允许直接修改项目状态。",
-    artifact: "返回 Script source / archive / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
+    artifact: "返回 Flow 文档 / 档案 / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
     note: "负责统一读取 Flow Workspace 内的项目事实。",
     Icon: Eye,
-  },
-  {
-    key: "script-archive",
-    capability: "edit",
-    title: "edit",
-    description: "Agent 通过命令式写入口编辑 Script 档案层：创建 / 更新档案文档，并更新已有空间轴区块。",
-    tools: ["edit_script_resource"],
-    surfaces: ["script archive", "script space block"],
-    boundary: "只写入 Script foundation 的档案文档和既有空间轴区块；不直接覆写锁定的剧本源文本。",
-    artifact: "输出新的 Script 档案或更新后的空间轴区块，作为项目长期档案的正式写入结果。",
-    note: "负责项目档案的沉淀与修正，不越过 Flow Workspace 的写入边界。",
-    Icon: Sparkles,
   },
   {
     key: "workflow-builder",
@@ -643,6 +631,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     setTraceSpanFilter("all");
     setTraceSearch("");
   }, [activeConversation?.id]);
+
   const updateProjectToolSettings = (patch: Partial<typeof qalamToolSettings.projectData>) => {
     setConfig((prev) => {
       const existing = prev.textConfig.qalamTools?.projectData || {};

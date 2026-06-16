@@ -33,7 +33,6 @@ import type {
 } from "./types";
 
 const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
-  "edit_script_resource",
   "operate_project_resource",
 ]);
 

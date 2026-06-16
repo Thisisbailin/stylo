@@ -499,7 +499,6 @@ export const QalamAgent: React.FC<Props> = ({
           baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
           qalamTools: config.textConfig?.qalamTools,
         }),
-        getProjectDataSnapshot: () => projectData,
         getAuthToken,
         getNodeFlowSnapshot: () =>
           ({
@@ -533,7 +532,7 @@ export const QalamAgent: React.FC<Props> = ({
       globalAssetHistory,
       nodeFlowContext,
       nodes,
-      projectData,
+      projectData.fileName,
       viewport,
     ]
   );

@@ -133,7 +133,7 @@ export const searchProjectResourceToolDef = {
 
     if (args.layers.includes("script")) {
       if (args.facets.includes("identity") || args.facets.includes("content") || args.facets.includes("detail")) {
-        for (const node of buildScriptResourceNodes(projectData)) {
+        for (const node of buildScriptResourceNodes(projectData, workflow)) {
           if (matches.length >= args.maxMatches) break;
           const haystack = buildScriptResourceSearchText(node);
           if (!haystack || !includesQuery(haystack, args.query)) continue;
@@ -161,7 +161,7 @@ export const searchProjectResourceToolDef = {
       }
 
       if (args.facets.includes("links")) {
-        for (const link of buildScriptResourceLinks(projectData)) {
+        for (const link of buildScriptResourceLinks(projectData, workflow)) {
           if (matches.length >= args.maxMatches) break;
           const haystack = [link.id, link.fromRef, link.toRef, link.type, link.fromTitle, link.toTitle].filter(Boolean).join(" ");
           if (!haystack || !includesQuery(haystack, args.query)) continue;
@@ -184,7 +184,7 @@ export const searchProjectResourceToolDef = {
       }
 
       if (args.facets.includes("maps")) {
-        for (const map of buildScriptResourceMaps(projectData)) {
+        for (const map of buildScriptResourceMaps(projectData, workflow)) {
           if (matches.length >= args.maxMatches) break;
           const haystack = [map.mapId, map.name, map.view].join(" ");
           if (!includesQuery(haystack, args.query)) continue;

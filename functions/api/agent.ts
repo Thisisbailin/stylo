@@ -11,7 +11,7 @@ import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderMo
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
-import { createAgentSessionKey, D1EdgeSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
+import { createAgentSessionKey, D1EdgeSession, QalamBoundedSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
@@ -35,6 +35,7 @@ const CORS_HEADERS = {
 };
 
 const EDGE_AGENT_MAX_TURNS = 50;
+const EDGE_CHAT_SESSION_MAX_ITEMS = 18;
 
 const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark" | "deepseek") => {
   const value =
@@ -55,6 +56,24 @@ const isDebugEnabled = (env: Record<string, unknown>) => {
   const value = env.AGENT_DEBUG_LOGS;
   return value === "1" || value === "true";
 };
+
+const createAgentProjectData = (projectData: ProjectData | undefined, nodeFlow?: NodeFlowFile): ProjectData => ({
+  fileName: projectData?.fileName?.trim() || nodeFlow?.name || "",
+  rawScript: "",
+  episodes: [],
+  roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
+  designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
+  canvas: projectData?.canvas || { viewport: null },
+  flow: {
+    pages: [],
+    images: [],
+    textNodes: [],
+    flowNodes: [],
+    links: [],
+  },
+  phase5Usage: projectData?.phase5Usage,
+  stats: projectData?.stats || { context: { total: 0, success: 0, error: 0 } },
+});
 
 const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
   if (!enabled || typeof console === "undefined") return;
@@ -312,8 +331,8 @@ export const onRequestOptions = async () =>
 
 export const onRequestPost = async (context: any) => {
   const body = (await context.request.json().catch(() => null)) as AgentHttpRunRequest | null;
-  if (!body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.projectData) {
-    return new Response(JSON.stringify({ error: "请求缺少 run.sessionId、run.userText、runtime.model 或 projectData。" }), {
+  if (!body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.nodeFlow) {
+    return new Response(JSON.stringify({ error: "请求缺少 run.sessionId、run.userText、runtime.model 或 nodeFlow。" }), {
       status: 400,
       headers: {
         ...CORS_HEADERS,
@@ -341,7 +360,8 @@ export const onRequestPost = async (context: any) => {
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Qalam Edge Agent";
       const groupId = sessionKey;
-      const bridgeState = createNodeFlowBridgeState(body.projectData, body.nodeFlow);
+      const agentProjectData = createAgentProjectData(body.projectData, body.nodeFlow);
+      const bridgeState = createNodeFlowBridgeState(agentProjectData, body.nodeFlow);
       const skillLoader = new StaticSkillLoader();
       const requestAbortSignal = context.request.signal;
       const emitWrapperTrace = (
@@ -408,7 +428,10 @@ export const onRequestPost = async (context: any) => {
                 apiKey: resolvedApiKey,
                 baseUrl: resolvedBaseUrl,
               })
-            : underlyingSession;
+            : new QalamBoundedSession({
+                underlyingSession,
+                maxItems: EDGE_CHAT_SESSION_MAX_ITEMS,
+              });
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
         emitWrapperTrace("runtime", "running", "Delegating to agent core");

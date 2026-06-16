@@ -107,7 +107,7 @@ export const listProjectResourcesToolDef = {
 
     if (args.layer === "script") {
       if (args.entity === "node") {
-        const nodes = buildScriptResourceNodes(projectData);
+        const nodes = buildScriptResourceNodes(projectData, workflow);
         const items = nodes.slice(0, args.maxItems).map((item) => ({
           node_id: item.nodeId,
           node_ref: item.ref,
@@ -136,7 +136,7 @@ export const listProjectResourcesToolDef = {
       }
 
       if (args.entity === "link") {
-        const links = buildScriptResourceLinks(projectData);
+        const links = buildScriptResourceLinks(projectData, workflow);
         const items = links.slice(0, args.maxItems).map((link) => ({
           link_id: link.id,
           from_node_ref: link.fromRef,
@@ -168,7 +168,7 @@ export const listProjectResourcesToolDef = {
         };
       }
 
-      const maps = buildScriptResourceMaps(projectData);
+      const maps = buildScriptResourceMaps(projectData, workflow);
       const items = maps.slice(0, args.maxItems).map((item) => ({
         ...item,
         artifact: {

@@ -90,91 +90,172 @@
       position: fixed;
       inset: 0;
       z-index: 9999;
+      overflow: hidden;
       display: grid;
       place-items: center;
-      background:
-        radial-gradient(circle at 50% 32%, rgba(16, 185, 129, 0.12), transparent 30%),
-        #0f0f0f;
-      color: #f8fafc;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg-panel);
+      color: var(--text-primary);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      isolation: isolate;
+    }
+
+    .qalam-entry::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      opacity: 1;
+      background-image:
+        radial-gradient(circle at 1px 1px, var(--dot-strong) 1px, transparent 0),
+        radial-gradient(circle at 1px 1px, var(--dot-weak) 1px, transparent 0);
+      background-size: 28px 28px;
+      background-position: 0 0, 14px 14px;
     }
 
     .qalam-entry__panel {
-      width: min(360px, calc(100vw - 48px));
+      width: min(280px, calc(100vw - 48px));
       display: grid;
-      gap: 22px;
       justify-items: center;
-      text-align: center;
+      gap: 10px;
+      transform: translateY(-2vh);
     }
 
-    .qalam-entry__loader {
-      width: 34px;
-      height: 34px;
-      border: 1px solid rgba(248, 250, 252, 0.18);
-      border-top-color: #10b981;
-      border-radius: 999px;
-      animation: qalam-entry-spin 0.9s linear infinite;
+    .qalam-entry__art {
+      display: grid;
+      place-items: center;
+      width: 150px;
+      height: 86px;
+      opacity: 0.86;
+      pointer-events: none;
+    }
+
+    .qalam-entry__illustration {
+      width: 152px;
+      aspect-ratio: 1.25;
+      overflow: visible;
+      filter: none;
+    }
+
+    .qalam-entry__paper-line {
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .qalam-entry__grass-stroke {
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .qalam-entry__paint-layer {
+      mix-blend-mode: multiply;
+    }
+
+    .qalam-entry__caption {
+      display: none;
+    }
+
+    .qalam-entry__copy {
+      display: grid;
+      gap: 14px;
+      justify-items: center;
+      width: 100%;
+    }
+
+    .qalam-entry__copy::before {
+      content: none;
+    }
+
+    .qalam-entry__eyebrow {
+      display: none;
     }
 
     .qalam-entry__title {
       margin: 0;
-      font-size: 28px;
-      font-weight: 650;
-      line-height: 1;
+      color: var(--text-primary);
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+      font-size: 46px;
+      font-weight: 400;
+      line-height: 0.92;
       letter-spacing: 0;
+    }
+
+    .qalam-entry__note {
+      display: none;
     }
 
     .qalam-entry__form {
-      width: 100%;
+      width: min(138px, 100%);
       display: grid;
-      gap: 10px;
+      gap: 6px;
+      margin-top: 0;
+    }
+
+    .qalam-entry__label {
+      display: none;
+    }
+
+    .qalam-entry__field {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: center;
+      border: 1px solid color-mix(in srgb, var(--text-secondary) 13%, transparent);
+      border-radius: 999px;
+      padding: 0 12px;
+      background: color-mix(in srgb, var(--text-secondary) 7%, transparent);
+      box-shadow: none;
+      transition: border-color 160ms ease, transform 160ms ease, background 160ms ease, opacity 160ms ease;
+    }
+
+    .qalam-entry__field:focus-within {
+      border-color: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+      background: color-mix(in srgb, var(--text-secondary) 9%, transparent);
     }
 
     .qalam-entry__input {
-      height: 44px;
       width: 100%;
+      min-width: 0;
       box-sizing: border-box;
-      border: 1px solid rgba(248, 250, 252, 0.14);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.05);
-      color: #f8fafc;
+      border: 0;
+      background: transparent;
+      color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
       outline: none;
-      padding: 0 14px;
+      padding: 7px 0 8px;
       text-align: center;
-      font-size: 15px;
-      letter-spacing: 0;
+      font-size: 12px;
+      letter-spacing: 0.14em;
     }
 
-    .qalam-entry__input:focus {
-      border-color: rgba(16, 185, 129, 0.7);
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+    .qalam-entry__input::placeholder {
+      color: transparent;
     }
 
     .qalam-entry__button {
-      height: 40px;
-      border: 0;
-      border-radius: 8px;
-      background: #f8fafc;
-      color: #0f172a;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 650;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
 
     .qalam-entry__message {
-      min-height: 18px;
-      margin: 0;
-      color: #94a3b8;
-      font-size: 12px;
-      line-height: 18px;
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
 
-    .qalam-entry[data-state="error"] .qalam-entry__message {
-      color: #f87171;
+    .qalam-entry[data-state="error"] .qalam-entry__field {
+      border-color: color-mix(in srgb, #b76b58 34%, transparent);
+      background: color-mix(in srgb, #b76b58 8%, transparent);
+      transform: translateY(1px);
     }
 
-    .qalam-entry[data-state="loading"] .qalam-entry__form {
-      opacity: 0.48;
+    .qalam-entry[data-state="loading"] .qalam-entry__field {
+      opacity: 0.52;
       pointer-events: none;
     }
 
@@ -183,9 +264,15 @@
       transition: opacity 180ms ease;
     }
 
-    @keyframes qalam-entry-spin {
-      to {
-        transform: rotate(360deg);
+    @media (max-width: 720px) {
+      .qalam-entry__panel {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .qalam-entry__art {
+        width: 132px;
+        height: 76px;
       }
     }
 
@@ -245,24 +332,68 @@
 <body class="font-sans antialiased overflow-hidden qalam-invite-gated">
   <div id="qalam-entry" class="qalam-entry" data-state="idle" role="dialog" aria-modal="true" aria-labelledby="qalam-entry-title">
     <div class="qalam-entry__panel">
-      <div class="qalam-entry__loader" aria-hidden="true"></div>
-      <h1 id="qalam-entry-title" class="qalam-entry__title">Qalam</h1>
-      <form id="qalam-entry-form" class="qalam-entry__form" autocomplete="off">
-        <input
-          id="qalam-entry-input"
-          class="qalam-entry__input"
-          name="qalam-entry-token"
-          type="password"
-          inputmode="text"
-          autocomplete="new-password"
-          autocapitalize="off"
-          spellcheck="false"
-          placeholder="邀请码"
-          aria-label="邀请码"
-        />
-        <button class="qalam-entry__button" type="submit">Enter</button>
-        <p id="qalam-entry-message" class="qalam-entry__message">Enter invite code to continue.</p>
-      </form>
+      <div class="qalam-entry__copy">
+        <div class="qalam-entry__art" aria-hidden="true">
+          <svg class="qalam-entry__illustration" viewBox="0 0 420 336" focusable="false">
+            <defs>
+              <filter id="qalam-watercolor-filter" x="-20%" y="-20%" width="140%" height="140%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.016 0.038" numOctaves="3" seed="24" result="grain" />
+                <feDisplacementMap in="SourceGraphic" in2="grain" scale="7" xChannelSelector="R" yChannelSelector="G" />
+              </filter>
+              <filter id="qalam-ink-soften" x="-12%" y="-12%" width="124%" height="124%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="2" seed="9" result="inkGrain" />
+                <feDisplacementMap in="SourceGraphic" in2="inkGrain" scale="2.8" />
+              </filter>
+              <linearGradient id="qalam-sky-wash" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="#dce9df" stop-opacity="0.72" />
+                <stop offset="1" stop-color="#f4f1e8" stop-opacity="0.08" />
+              </linearGradient>
+            </defs>
+            <rect x="38" y="36" width="344" height="232" rx="2" fill="url(#qalam-sky-wash)" opacity="0.34" filter="url(#qalam-watercolor-filter)" />
+            <g class="qalam-entry__paint-layer" filter="url(#qalam-watercolor-filter)">
+              <path d="M52 188c54-48 112-62 173-42 47 15 92 11 145-24 18 37 17 79-4 116-37 22-88 34-153 35-63 0-115-10-159-31-13-21-15-38-2-54Z" fill="#b8cfbc" opacity="0.42" />
+              <path d="M36 230c47-31 96-44 149-39 38 4 70 1 99-9 39-14 71-14 101 1-5 42-23 72-55 92-49 16-107 21-174 15-51-5-90-16-118-33-6-10-7-19-2-27Z" fill="#719b79" opacity="0.34" />
+              <path d="M43 251c54-21 114-28 179-20 57 7 105 3 146-13-4 26-18 48-43 67-42 20-91 29-148 27-60-2-108-14-144-35-1-10 2-19 10-26Z" fill="#3f6f58" opacity="0.28" />
+              <path d="M70 151c39-29 84-39 135-31 31 5 63 0 96-15 13 18 17 36 13 55-32 16-67 22-106 18-55-6-100 4-135 31-12-17-13-36-3-58Z" fill="#e5c9a9" opacity="0.18" />
+            </g>
+            <g filter="url(#qalam-ink-soften)" opacity="0.58">
+              <path class="qalam-entry__paper-line" d="M45 218c56-28 113-39 172-31 61 8 115-1 162-28" fill="none" stroke="#7fb098" stroke-width="1.6" opacity="0.42" />
+              <path class="qalam-entry__paper-line" d="M52 249c58-18 116-23 174-14 57 9 105 3 145-18" fill="none" stroke="#7fb098" stroke-width="1.25" opacity="0.32" />
+              <path class="qalam-entry__paper-line" d="M61 281c48 14 103 20 166 18 55-2 95-12 120-29" fill="none" stroke="#7fb098" stroke-width="1.15" opacity="0.26" />
+            </g>
+            <g opacity="0.62" filter="url(#qalam-ink-soften)">
+              <path class="qalam-entry__grass-stroke" d="M76 250c7-19 8-34 3-46" fill="none" stroke="#78a68c" stroke-width="1.6" />
+              <path class="qalam-entry__grass-stroke" d="M111 245c-4-19-1-35 10-47" fill="none" stroke="#78a68c" stroke-width="1.45" />
+              <path class="qalam-entry__grass-stroke" d="M166 252c8-18 11-35 8-51" fill="none" stroke="#78a68c" stroke-width="1.55" />
+              <path class="qalam-entry__grass-stroke" d="M226 260c9-22 11-40 4-54" fill="none" stroke="#78a68c" stroke-width="1.35" />
+              <path class="qalam-entry__grass-stroke" d="M292 263c-3-24 1-43 13-58" fill="none" stroke="#78a68c" stroke-width="1.35" />
+              <path class="qalam-entry__grass-stroke" d="M330 249c6-20 5-37-3-50" fill="none" stroke="#78a68c" stroke-width="1.4" />
+            </g>
+            <g opacity="0.54" filter="url(#qalam-ink-soften)">
+              <circle cx="154" cy="230" r="2.5" fill="#d18f7d" />
+              <circle cx="318" cy="236" r="2.2" fill="#d18f7d" />
+              <path d="M235 244c4-5 10-6 16-2-4 5-10 6-16 2Z" fill="#e7c48f" />
+            </g>
+          </svg>
+        </div>
+        <h1 id="qalam-entry-title" class="qalam-entry__title">Qalam</h1>
+        <form id="qalam-entry-form" class="qalam-entry__form" autocomplete="off">
+          <div class="qalam-entry__field">
+            <input
+              id="qalam-entry-input"
+              class="qalam-entry__input"
+              name="qalam-entry-token"
+              type="password"
+              inputmode="text"
+              autocomplete="new-password"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-label="Invitation code"
+            />
+          </div>
+          <p id="qalam-entry-message" class="qalam-entry__message" aria-live="polite"></p>
+        </form>
+      </div>
     </div>
   </div>
   <div id="root"></div>
@@ -289,7 +420,7 @@
             return;
           }
           if (Date.now() - startedAt > 120000) {
-            message.textContent = "Still loading...";
+            message.textContent = "Still preparing the workspace...";
           }
           window.requestAnimationFrame(tick);
         };
@@ -300,7 +431,7 @@
         event.preventDefault();
         if (input.value.trim() !== inviteCode) {
           entry.dataset.state = "error";
-          message.textContent = "Invalid invite code.";
+          message.textContent = "Invitation code not recognized.";
           input.value = "";
           input.focus();
           return;
@@ -308,7 +439,7 @@
         entry.dataset.state = "loading";
         input.value = "";
         input.blur();
-        message.textContent = "Loading workspace...";
+        message.textContent = "Opening the workspace...";
         waitForApp();
       });
 
