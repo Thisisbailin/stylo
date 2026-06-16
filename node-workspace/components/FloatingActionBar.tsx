@@ -94,6 +94,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const palettePanelRef = useRef<HTMLDivElement>(null);
   const [accountAnchorRect, setAccountAnchorRect] = useState<DOMRect | null>(null);
   const [nodesAnchorRect, setNodesAnchorRect] = useState<DOMRect | null>(null);
+  const legacyScriptImportDisabled = true;
   const rootClass = !showToolbar
     ? "contents"
     : isEmbedded
@@ -240,6 +241,10 @@ export const FloatingActionBar: React.FC<Props> = ({
     event: React.ChangeEvent<HTMLInputElement>,
     type: "script"
   ) => {
+    if (legacyScriptImportDisabled) {
+      event.target.value = "";
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file || !onAssetLoad) return;
     const reader = new FileReader();
@@ -334,14 +339,22 @@ export const FloatingActionBar: React.FC<Props> = ({
             className="hidden"
             onChange={(e) => handleAssetFileChange(e, "script")}
           />
-          <button type="button" onClick={() => scriptInputRef.current?.click()} disabled={!onAssetLoad} className={docButtonClass}>
+          <button
+            type="button"
+            onClick={() => {
+              if (!legacyScriptImportDisabled) scriptInputRef.current?.click();
+            }}
+            disabled={legacyScriptImportDisabled || !onAssetLoad}
+            className={docButtonClass}
+            title="Script import is disabled"
+          >
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-blue-500/10 text-blue-300">
+              <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-muted)]">
                 <FileText size={16} />
               </span>
               <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">剧本</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">文本脚本</span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-muted)]">Script</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">Import disabled</span>
               </span>
             </div>
           </button>
@@ -668,7 +681,7 @@ export const FloatingActionBar: React.FC<Props> = ({
                     Project Files
                   </div>
                   <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
-                    导入或导出 Flow 项目快照与剧本文本。
+                    Import or export Flow snapshots.
                   </div>
                 </div>
                 {renderIoPanel()}

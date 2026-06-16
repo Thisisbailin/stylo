@@ -41,6 +41,7 @@ export type ProjectGraphLinkRecord = {
 };
 
 const trimText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+const LEGACY_PROJECTED_SOURCE_ENABLED = false;
 
 const createSourceNode = (
   ref: string,
@@ -60,6 +61,10 @@ const createSourceNode = (
 });
 
 export const buildProjectedSourceNodes = (projectData: ProjectData): ProjectGraphNodeRecord[] => {
+  if (!LEGACY_PROJECTED_SOURCE_ENABLED) {
+    void projectData;
+    return [];
+  }
   const nodes: ProjectGraphNodeRecord[] = [];
   const rawScript = trimText(projectData.rawScript);
   if (rawScript) {
@@ -150,6 +155,10 @@ export const findProjectGraphNodeByRef = (
 ) => {
   const resolvedRef = trimText(ref);
   if (!resolvedRef) return null;
+  if (!LEGACY_PROJECTED_SOURCE_ENABLED) {
+    void projectData;
+    return findGraphNode(workflow, { nodeRef: resolvedRef });
+  }
   const projectedSource = findProjectedSourceNode(projectData, { ref: resolvedRef });
   if (projectedSource) return projectedSource;
   return findGraphNode(workflow, { nodeRef: resolvedRef });

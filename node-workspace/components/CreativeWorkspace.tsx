@@ -15,6 +15,7 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
+import type { MaterialsSectionKey } from "./MaterialsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useFlowSurface } from "./FlowSurface";
 import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./CanvasBackgroundField";
@@ -328,6 +329,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showAgentSettings, setShowAgentSettings] = useState(false);
   const [agentSettingsPanel, setAgentSettingsPanel] = useState<AgentSettingsPanelKey>("provider");
+  const [agentSettingsAssetsSection, setAgentSettingsAssetsSection] = useState<MaterialsSectionKey | undefined>();
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [isQalamSending, setIsQalamSending] = useState(false);
@@ -343,8 +345,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const isAutoQalamFirst = windowWidth <= qalamFirstBreakpoint;
   const isQalamFirstMode = isAutoQalamFirst ? !dismissedAutoQalamFirst : isQalamFirstManual;
   const openAgentSettingsPanel = useCallback(
-    (panel: AgentSettingsPanelKey = "provider") => {
+    (panel: AgentSettingsPanelKey = "provider", assetsSection?: MaterialsSectionKey) => {
       setAgentSettingsPanel(panel);
+      setAgentSettingsAssetsSection(panel === "assets" ? assetsSection : undefined);
       setShowAgentSettings(true);
     },
     []
@@ -432,13 +435,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   }, [isAutoQalamFirst]);
 
   useEffect(() => {
-  setNodeFlowContext({
-      rawScript: projectData.rawScript || "",
-      episodes: projectData.episodes || [],
+    setNodeFlowContext({
+      rawScript: "",
+      episodes: [],
       designAssets: projectData.designAssets || [],
       roles: projectData.roles || [],
     });
-  }, [projectData, setNodeFlowContext]);
+  }, [projectData.designAssets, projectData.roles, setNodeFlowContext]);
 
   useEffect(() => {
     setProjectRoleUpdater((roleId, updater) => {
@@ -685,6 +688,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     onAgentComposerAction: handleQalamComposerAction,
     isAgentSending: isQalamSending,
     isAgentFirstMode: isQalamFirstMode,
+    onOpenAgentSettingsPanel: (panel, assetsSection) => openAgentSettingsPanel(panel, assetsSection),
+    onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
   });
 
   const getToolbarNodePosition = useCallback(
@@ -1092,6 +1097,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onOpenLanding={onOpenLanding}
         onResetProject={onResetProject}
         requestedPanel={agentSettingsPanel}
+        requestedAssetsSection={agentSettingsAssetsSection}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
       {editingScriptEpisodeId !== null ? (

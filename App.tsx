@@ -33,6 +33,7 @@ import {
 } from './utils/projectRoles';
 
 type LabModalKey = ModuleKey;
+const LEGACY_SCRIPT_IMPORT_ENABLED = false;
 
 // --- Helpers: Character stats derived from parsed episodes ---
 const buildCharacterStats = (episodes: Episode[]) => {
@@ -688,14 +689,10 @@ const App: React.FC = () => {
     fetchProfile();
   }, [authSignedIn, isAuthLoaded, getAuthToken, setAvatarUrl]);
 
-  // Clamp current episode index when episodes change (e.g., after remote sync)
+  // Legacy episode index is retained for old UI state only; the current project flow is document-centered.
   useEffect(() => {
-    if (projectData.episodes.length === 0) {
-      setCurrentEpIndex(0);
-    } else if (currentEpIndex >= projectData.episodes.length) {
-      setCurrentEpIndex(0);
-    }
-  }, [projectData.episodes.length]);
+    setCurrentEpIndex(0);
+  }, []);
 
   // --- Helper: Stats Updater ---
   const updateStats = (phase: 'context', success: boolean) => {
@@ -802,6 +799,12 @@ const App: React.FC = () => {
     content: string,
     fileName?: string
   ) => {
+    if (!LEGACY_SCRIPT_IMPORT_ENABLED) {
+      void type;
+      void content;
+      void fileName;
+      return;
+    }
     if (type === 'script') {
       setProjectData(prev => {
         const now = Date.now();

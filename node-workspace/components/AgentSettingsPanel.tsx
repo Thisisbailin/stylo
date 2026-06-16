@@ -74,6 +74,7 @@ type Props = {
   onResetProject?: () => void;
   onOpenLanding?: () => void;
   requestedPanel?: AgentSettingsPanelKey;
+  requestedAssetsSection?: MaterialsSectionKey;
   onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab">) => void;
 };
 
@@ -415,6 +416,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   projectData,
   setProjectData,
   requestedPanel = "provider",
+  requestedAssetsSection,
   onOpenVisualLab,
 }) => {
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
@@ -754,6 +756,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     if (!isOpen) return;
     setSelectedPanel(requestedPanel);
   }, [isOpen, requestedPanel]);
+
+  useEffect(() => {
+    if (!isOpen || requestedPanel !== "assets" || !requestedAssetsSection) return;
+    setAssetsSection(requestedAssetsSection);
+  }, [isOpen, requestedAssetsSection, requestedPanel]);
 
   const setProvider = (p: AgentTextProvider) => {
     setConfig((prev) => {

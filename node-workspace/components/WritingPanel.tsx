@@ -39,6 +39,7 @@ type AgentLineState = {
 
 const SCENE_BOUNDARY_OPTIONS = ["INT.", "EXT.", "INT./EXT.", "I/E"];
 const SCENE_TIME_OPTIONS = ["DAY", "NIGHT", "DAWN", "DUSK", "MORNING", "AFTERNOON", "EVENING", "LATER"];
+const LEGACY_EPISODE_BOOTSTRAP_ENABLED = false;
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -111,6 +112,11 @@ const sceneContentToDraftBody = (content: string) => {
 };
 
 const buildDraftFromEpisodes = (episodes: Episode[], rawScript: string): WritingEpisode[] => {
+  if (!LEGACY_EPISODE_BOOTSTRAP_ENABLED) {
+    void episodes;
+    void rawScript;
+    return [createEmptyEpisode(1)];
+  }
   if (!episodes.length && !rawScript.trim()) return [createEmptyEpisode(1)];
   if (!episodes.length && rawScript.trim()) {
     return buildDraftFromEpisodes(parseScriptToEpisodes(rawScript), "");
@@ -646,16 +652,15 @@ const buildScenePreview = (scene: WritingScene) => {
 
 export const WritingPanel: React.FC<Props> = ({
   projectData,
-  setProjectData,
+  setProjectData: _setProjectData,
   onClose,
   initialEpisodeId,
   isQalamOpen = false,
   onOpenQalam,
   onSubmitToQalam,
 }) => {
-  const [draft, setDraft] = useState<WritingEpisode[]>(() =>
-    buildDraftFromEpisodes(projectData.episodes, projectData.rawScript)
-  );
+  void _setProjectData;
+  const [draft, setDraft] = useState<WritingEpisode[]>(() => [createEmptyEpisode(1)]);
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>(() => initialEpisodeId || draft[0]?.id || 1);
   const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
     const initialEpisode = draft.find((episode) => episode.id === initialEpisodeId) || draft[0];
@@ -698,8 +703,8 @@ export const WritingPanel: React.FC<Props> = ({
   const characterMatcher = useMemo(() => buildCharacterMatcher(knownCharacters), [knownCharacters]);
 
   useEffect(() => {
-    setDraft((current) => (current.length ? current : buildDraftFromEpisodes(projectData.episodes, projectData.rawScript)));
-  }, [projectData.episodes, projectData.rawScript]);
+    setDraft((current) => (current.length ? current : [createEmptyEpisode(1)]));
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1343,13 +1348,9 @@ export const WritingPanel: React.FC<Props> = ({
   };
 
   const applyToProject = useCallback(() => {
-    const parsedEpisodes = draftToProjectEpisodes(draft);
-    setProjectData((prev) => ({
-      ...prev,
-      rawScript: fountainScript,
-      episodes: mergeEpisodes(prev.episodes, parsedEpisodes),
-    }));
-  }, [draft, fountainScript, setProjectData]);
+    void draft;
+    void fountainScript;
+  }, [draft, fountainScript]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

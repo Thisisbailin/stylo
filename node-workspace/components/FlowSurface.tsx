@@ -15,12 +15,15 @@ import {
 } from "@xyflow/react";
 import {
   AudioLines,
+  Boxes,
   Bot,
+  FileText,
   GripVertical,
   Image as ImageIcon,
   Layers,
   Network,
   Plus,
+  ScanSearch,
   Scissors,
   Sparkles,
   Trash2,
@@ -87,6 +90,8 @@ type FlowRenderNode = Node<NodeFlowNodeData, NodeType>;
 type FlowRenderEdge = Edge<Record<string, never>>;
 type FlowCreateType = "scriptPage" | "mdText" | NodeType;
 type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
+type FoundationGatewaySettingsPanel = "assets" | "identity" | "skills";
+type FoundationGatewayAssetsSection = "images" | "videos" | "prompts";
 
 const FOUNDATION_FILM_PHYSICS: PhysicsParams = {
   stiffness: 140,
@@ -159,6 +164,8 @@ type Props = {
   onAgentComposerAction?: () => void;
   isAgentSending?: boolean;
   isAgentFirstMode?: boolean;
+  onOpenAgentSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
+  onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
 };
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
@@ -553,8 +560,8 @@ const getDefaultFlowNodePosition = (index: number) => ({
 const createScriptFlowNodeId = (type: NodeType) => `script-flow-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextSnapshot => ({
-  rawScript: projectData.rawScript || "",
-  episodes: projectData.episodes || [],
+  rawScript: "",
+  episodes: [],
   designAssets: projectData.designAssets || [],
   roles: projectData.roles || [],
 });
@@ -718,6 +725,8 @@ type ScriptFoundationProps = {
   onAgentComposerAction?: () => void;
   isAgentSending?: boolean;
   isAgentFirstMode?: boolean;
+  onOpenAgentSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
+  onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
   onOpenMarkdownCard?: () => void;
   onCloseMarkdownCard?: () => void;
   onFoundationGuideLinesChange?: (lines: ScriptFoundationGuideLine[]) => void;
@@ -804,6 +813,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onAgentComposerAction,
   isAgentSending = false,
   isAgentFirstMode = false,
+  onOpenAgentSettingsPanel,
+  onOpenVisualLab,
   onOpenMarkdownCard,
   onCloseMarkdownCard,
   onFoundationGuideLinesChange,
@@ -819,7 +830,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isAxisSwitching, setIsAxisSwitching] = useState(false);
   const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
   const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
-  const [isTimelineDocumentOpen, setIsTimelineDocumentOpen] = useState(false);
+  const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
   const [liveViewport, setLiveViewport] = useState(viewport);
   const [targetPositions, setTargetPositions] = useState<Record<string, ScriptFoundationTargetPosition>>({});
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
@@ -843,7 +854,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
   const closeMarkdownCard = useCallback(() => {
     setEditingTarget(null);
-    setIsTimelineDocumentOpen(false);
+    setIsFoundationGatewayOpen(false);
     onCloseMarkdownCard?.();
   }, [onCloseMarkdownCard]);
 
@@ -869,7 +880,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setIsAxisSwitching(true);
     setMenuState(null);
     setEditingTarget(null);
-    setIsTimelineDocumentOpen(false);
+    setIsFoundationGatewayOpen(false);
     const nextAxis = activeAxis === "time" ? "space" : "time";
     axisSwitchTimerRef.current = window.setTimeout(() => {
       setActiveAxis(nextAxis);
@@ -904,11 +915,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   }, [menuState, nodeCreateMenu]);
 
   useEffect(() => {
-    if (!editingBlock && !isTimelineDocumentOpen) return;
+    if (!editingBlock && !isFoundationGatewayOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".script-foundation-md-card")) return;
+      if (target?.closest(".script-foundation-md-card, .script-foundation-gateway")) return;
       closeMarkdownCard();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -921,7 +932,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [closeMarkdownCard, editingBlock, isTimelineDocumentOpen]);
+  }, [closeMarkdownCard, editingBlock, isFoundationGatewayOpen]);
 
   useEffect(() => setLiveViewport(viewport), [viewport]);
 
@@ -1089,7 +1100,22 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     onOpenMarkdownCard?.();
     setMenuState(null);
     setEditingTarget(null);
-    setIsTimelineDocumentOpen(true);
+    setIsFoundationGatewayOpen(true);
+  };
+
+  const openGatewaySettingsPanel = (
+    panel: FoundationGatewaySettingsPanel,
+    assetsSection?: FoundationGatewayAssetsSection
+  ) => {
+    onOpenAgentSettingsPanel?.(panel, assetsSection);
+    setIsFoundationGatewayOpen(false);
+    onCloseMarkdownCard?.();
+  };
+
+  const openGatewayVisualLab = (key: "glassLab" | "filmRollLab") => {
+    onOpenVisualLab?.(key);
+    setIsFoundationGatewayOpen(false);
+    onCloseMarkdownCard?.();
   };
 
   const handleBlockClick = (event: React.MouseEvent<HTMLDivElement>, blockId: string) => {
@@ -1109,7 +1135,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     onOpenMarkdownCard?.();
     if (activeAxis === "time") onActiveBlockChange(blockId);
     setMenuState(null);
-    setIsTimelineDocumentOpen(false);
+    setIsFoundationGatewayOpen(false);
     setEditingTarget({ type: activeAxis, id: blockId });
   };
 
@@ -1119,7 +1145,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     );
     setMenuState(null);
     setEditingTarget(null);
-    setIsTimelineDocumentOpen(false);
+    setIsFoundationGatewayOpen(false);
   };
 
   const runNodeCreateAction = (action: () => void) => {
@@ -1334,7 +1360,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                   setMenuState(null);
                   setNodeCreateMenu(null);
                   setEditingTarget(null);
-                  setIsTimelineDocumentOpen(false);
+                  setIsFoundationGatewayOpen(false);
                 }}
                 title="打开轴尾 Agent"
                 aria-label="打开轴尾 Agent"
@@ -1451,11 +1477,110 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         </div>
       ) : null}
 
-      {isTimelineDocumentOpen ? (
-        <section className="script-foundation-md-card script-foundation-md-card--readonly" role="dialog" aria-label="时间轴原始文档">
-          <input className="script-foundation-md-title" value={head.title} readOnly />
-          <div className="script-foundation-md-body">
-            <textarea value={timelineMarkdown} readOnly />
+      {isFoundationGatewayOpen ? (
+        <section className="script-foundation-gateway" role="dialog" aria-label="Foundation 模块入口">
+          <header className="script-foundation-gateway__head">
+            <div>
+              <span>Foundation</span>
+              <h3>项目模块入口</h3>
+            </div>
+            <button type="button" onClick={closeMarkdownCard} aria-label="关闭 Foundation 模块入口">
+              ×
+            </button>
+          </header>
+
+          <div className="script-foundation-gateway__grid">
+            <article className="script-foundation-gateway-card script-foundation-gateway-card--index">
+              <div className="script-foundation-gateway-card__title">
+                <span className="script-foundation-gateway-card__icon">
+                  <FileText size={18} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <span>Index Card</span>
+                  <strong>{head.title || "项目索引"}</strong>
+                </div>
+              </div>
+              <textarea value={timelineMarkdown} readOnly />
+            </article>
+
+            <article className="script-foundation-gateway-card">
+              <div className="script-foundation-gateway-card__title">
+                <span className="script-foundation-gateway-card__icon">
+                  <Boxes size={18} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <span>Qalam Setting</span>
+                  <strong>Assets</strong>
+                </div>
+              </div>
+              <p>项目素材组，按图片、视频和提示词进入对应资产视图。</p>
+              <div className="script-foundation-gateway-card__chips">
+                {[
+                  { key: "images" as const, label: "Images" },
+                  { key: "videos" as const, label: "Videos" },
+                  { key: "prompts" as const, label: "Prompts" },
+                ].map((item) => (
+                  <button key={item.key} type="button" onClick={() => openGatewaySettingsPanel("assets", item.key)}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </article>
+
+            <button
+              type="button"
+              className="script-foundation-gateway-card"
+              onClick={() => openGatewaySettingsPanel("identity")}
+            >
+              <span className="script-foundation-gateway-card__title">
+                <span className="script-foundation-gateway-card__icon">
+                  <Layers size={18} strokeWidth={1.9} />
+                </span>
+                <span>
+                  <span>Project</span>
+                  <strong>Identity System</strong>
+                </span>
+              </span>
+              <span className="script-foundation-gateway-card__copy">角色、场景与身份系统入口。</span>
+            </button>
+
+            <button
+              type="button"
+              className="script-foundation-gateway-card"
+              onClick={() => openGatewaySettingsPanel("skills")}
+            >
+              <span className="script-foundation-gateway-card__title">
+                <span className="script-foundation-gateway-card__icon">
+                  <Sparkles size={18} strokeWidth={1.9} />
+                </span>
+                <span>
+                  <span>Qalam Setting</span>
+                  <strong>Skills</strong>
+                </span>
+              </span>
+              <span className="script-foundation-gateway-card__copy">内建工作方法和能力模块。</span>
+            </button>
+
+            <article className="script-foundation-gateway-card">
+              <div className="script-foundation-gateway-card__title">
+                <span className="script-foundation-gateway-card__icon">
+                  <ScanSearch size={18} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <span>Project</span>
+                  <strong>Visual Lab</strong>
+                </div>
+              </div>
+              <p>进入 Project 中的视觉实验模块。</p>
+              <div className="script-foundation-gateway-card__chips">
+                <button type="button" onClick={() => openGatewayVisualLab("glassLab")}>
+                  Glass
+                </button>
+                <button type="button" onClick={() => openGatewayVisualLab("filmRollLab")}>
+                  Film
+                </button>
+              </div>
+            </article>
           </div>
         </section>
       ) : null}
@@ -1506,6 +1631,8 @@ export const useFlowSurface = ({
   onAgentComposerAction,
   isAgentSending,
   isAgentFirstMode,
+  onOpenAgentSettingsPanel,
+  onOpenVisualLab,
 }: Props): CanvasSurfaceConfig => {
   const {
     isLocked,
@@ -2505,11 +2632,6 @@ export const useFlowSurface = ({
           return next;
         });
       }
-      const removedEpisodeIds = changes
-        .filter((change): change is Extract<NodeChange<FlowRenderNode>, { type: "remove" }> => change.type === "remove")
-        .filter((change) => change.id.startsWith("script-"))
-        .map((change) => Number(change.id.replace(/^script-/, "")))
-        .filter((id) => Number.isFinite(id));
       const removedImageIds = changes
         .filter((change): change is Extract<NodeChange<FlowRenderNode>, { type: "remove" }> => change.type === "remove")
         .filter((change) => change.id.startsWith("image-"))
@@ -2588,16 +2710,6 @@ export const useFlowSurface = ({
             : currentFlow.timeline,
         };
       });
-
-      if (removedEpisodeIds.length) {
-        setProjectData((previous) => {
-          const removedEpisodeSet = new Set(removedEpisodeIds);
-          return {
-            ...previous,
-            episodes: previous.episodes.filter((episode) => !removedEpisodeSet.has(episode.id)),
-          };
-        });
-      }
     },
     [isLocked, nodes, onAlignmentGuideChange, persistFlow, setProjectData, snapToGrid]
   );
@@ -2922,6 +3034,8 @@ export const useFlowSurface = ({
           onAgentComposerAction={onAgentComposerAction}
           isAgentSending={isAgentSending}
           isAgentFirstMode={isAgentFirstMode}
+          onOpenAgentSettingsPanel={onOpenAgentSettingsPanel}
+          onOpenVisualLab={onOpenVisualLab}
           onOpenMarkdownCard={onCollapseCanvasCards}
           onCloseMarkdownCard={onRestoreCanvasCards}
           onFoundationGuideLinesChange={setFoundationGuideLines}
