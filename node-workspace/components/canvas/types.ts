@@ -71,5 +71,8 @@ export type CanvasSurfaceConfig = {
     importNodeFlow?: (nodeFlow: NodeFlowFile) => void;
     exportNodeFlow?: () => void;
     runAll?: () => void | Promise<void>;
+    organizeFoundationScaffold?: () => void;
+    setFoundationNodeView?: (visible: boolean) => void;
+    foundationNodeView?: boolean;
   };
 };

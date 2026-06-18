@@ -2,6 +2,7 @@ export { ImageInputNode } from "./ImageInputNode";
 export { AudioInputNode } from "./AudioInputNode";
 export { VideoInputNode } from "./VideoInputNode";
 export { AnnotationNode } from "./AnnotationNode";
+export { FolderNode } from "./FolderNode";
 export * from "./TextNode";
 export * from "./ScriptBoardNode";
 export * from "./IdentityCardNode";

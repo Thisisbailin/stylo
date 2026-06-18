@@ -75,6 +75,9 @@ type Props = {
   onOpenLanding?: () => void;
   requestedPanel?: AgentSettingsPanelKey;
   requestedAssetsSection?: MaterialsSectionKey;
+  onOrganizeFoundationScaffold?: () => void;
+  onSetFoundationNodeView?: (visible: boolean) => void;
+  foundationNodeView?: boolean;
   onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab">) => void;
 };
 
@@ -163,7 +166,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "workflow-builder";
+type ToolKey = "project-data" | "workflow-builder" | "asset-library";
 
 type ToolItem = {
   key: ToolKey;
@@ -405,6 +408,9 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   setProjectData,
   requestedPanel = "provider",
   requestedAssetsSection,
+  onOrganizeFoundationScaffold,
+  onSetFoundationNodeView,
+  foundationNodeView = false,
   onOpenVisualLab,
 }) => {
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
@@ -1243,9 +1249,19 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                   </span>
                 </button>
                 <div
+                  role="button"
+                  tabIndex={onOpenVisualLab ? 0 : -1}
+                  onClick={() => onOpenVisualLab?.("filmRollLab")}
+                  onKeyDown={(event) => {
+                    if (!onOpenVisualLab) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onOpenVisualLab("filmRollLab");
+                    }
+                  }}
                   className={`grid gap-2 rounded-xl border px-3 py-2 text-[12px] transition ${
                     onOpenVisualLab
-                      ? "border-[var(--app-border)] text-[var(--app-text-secondary)]"
+                      ? "cursor-pointer border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)]"
                       : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50"
                   }`}
                 >
@@ -1260,7 +1276,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => onOpenVisualLab?.("glassLab")}
+                      onClick={(event) => { event.stopPropagation(); onOpenVisualLab?.("glassLab"); }}
                       disabled={!onOpenVisualLab}
                       className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
                     >
@@ -1268,7 +1284,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onOpenVisualLab?.("filmRollLab")}
+                      onClick={(event) => { event.stopPropagation(); onOpenVisualLab?.("filmRollLab"); }}
                       disabled={!onOpenVisualLab}
                       className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
                     >
@@ -2202,6 +2218,32 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                             </div>
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onSetFoundationNodeView) {
+                              onSetFoundationNodeView(!foundationNodeView);
+                              return;
+                            }
+                            onOrganizeFoundationScaffold?.();
+                          }}
+                          disabled={!onSetFoundationNodeView && !onOrganizeFoundationScaffold}
+                          className="inline-flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-4 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span>
+                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">
+                              {foundationNodeView ? "关闭 foundation 文件夹节点模式" : "将 foundation 加载为文件夹节点模式"}
+                            </span>
+                            <span className="mt-1 block text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+                              {foundationNodeView
+                                ? "回到胶卷控件模式，并隐藏项目、轴、块三层系统文件夹节点。"
+                                : "以普通文件夹节点和普通连线查看项目、轴、块三层 foundation 根部结构。"}
+                            </span>
+                          </span>
+                          <span className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--app-text-secondary)]">
+                            {foundationNodeView ? "Hide" : "Show"}
+                          </span>
+                        </button>
                       </div>
                     ) : activeTool === "workflow-builder" ? (
                       <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-4 space-y-3">

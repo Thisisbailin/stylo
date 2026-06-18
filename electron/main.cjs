@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell } = require("electron");
+const { app, BrowserWindow, Menu, shell, ipcMain } = require("electron");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const desktopConfig = require("./desktop.config.cjs");
@@ -6,12 +6,22 @@ const desktopConfig = require("./desktop.config.cjs");
 const DEFAULT_DEV_URL = "http://127.0.0.1:5173";
 const DESKTOP_CHROME_CSS = `
   html.qalam-desktop {
-    --qalam-window-control-mac-left: 84px;
-    --qalam-window-control-win-right: 150px;
+    --qalam-window-control-width: 138px;
+    --qalam-window-drag-height: 36px;
   }
 
   html.qalam-desktop body {
     -webkit-app-region: no-drag;
+  }
+
+  html.qalam-desktop #qalam-desktop-window-drag-region {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: var(--qalam-window-control-width);
+    height: var(--qalam-window-drag-height);
+    z-index: 2147483000;
+    -webkit-app-region: drag;
   }
 
   html.qalam-desktop header.fixed.top-0,
@@ -21,10 +31,6 @@ const DESKTOP_CHROME_CSS = `
     -webkit-app-region: drag;
   }
 
-  html.qalam-desktop header.fixed.top-0 *,
-  html.qalam-desktop .qalam-header-shell *,
-  html.qalam-desktop .writing-floating-header *,
-  html.qalam-desktop .writing-info-header *,
   html.qalam-desktop button,
   html.qalam-desktop input,
   html.qalam-desktop textarea,
@@ -37,20 +43,150 @@ const DESKTOP_CHROME_CSS = `
     -webkit-app-region: no-drag;
   }
 
-  html.qalam-desktop-darwin .qalam-header-shell {
-    box-sizing: border-box;
-    padding-left: var(--qalam-window-control-mac-left);
+  html.qalam-desktop #qalam-desktop-window-controls,
+  html.qalam-desktop #qalam-desktop-window-controls * {
+    -webkit-app-region: no-drag;
   }
 
-  html.qalam-desktop-win32 header.fixed.top-0 {
-    box-sizing: border-box;
-    padding-right: calc(var(--qalam-window-control-win-right) + 1rem) !important;
+  html.qalam-desktop #qalam-desktop-window-controls {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 2147483647;
+    display: flex;
+    width: var(--qalam-window-control-width);
+    height: var(--qalam-window-drag-height);
+    pointer-events: auto;
+    color: rgba(244, 247, 242, 0.72);
   }
 
-  html.qalam-desktop-win32 .qalam-header-shell {
-    box-sizing: border-box;
-    padding-right: var(--qalam-window-control-win-right);
+  html.qalam-desktop .qalam-window-control {
+    position: relative;
+    display: grid;
+    width: 46px;
+    height: var(--qalam-window-drag-height);
+    place-items: center;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    cursor: default;
+    transition: background-color 140ms ease, color 140ms ease;
   }
+
+  html.qalam-desktop .qalam-window-control:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: rgba(255, 255, 255, 0.94);
+  }
+
+  html.qalam-desktop .qalam-window-control[data-window-action="close"]:hover {
+    background: #c42b1c;
+    color: #fff;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark {
+    position: relative;
+    display: block;
+    width: 13px;
+    height: 13px;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--minimize::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    bottom: 3px;
+    height: 1px;
+    background: currentColor;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--maximize::before,
+  html.qalam-desktop .qalam-window-control__mark--restore::before,
+  html.qalam-desktop .qalam-window-control__mark--restore::after {
+    content: "";
+    position: absolute;
+    border: 1px solid currentColor;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--maximize::before {
+    inset: 1px;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--restore::before {
+    inset: 3px 1px 1px 3px;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--restore::after {
+    inset: 1px 3px 3px 1px;
+    background: transparent;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--close::before,
+  html.qalam-desktop .qalam-window-control__mark--close::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 1px;
+    width: 12px;
+    height: 1px;
+    background: currentColor;
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--close::before {
+    transform: rotate(45deg);
+  }
+
+  html.qalam-desktop .qalam-window-control__mark--close::after {
+    transform: rotate(-45deg);
+  }
+`;
+
+const DESKTOP_WINDOW_CONTROLS_JS = `
+  (() => {
+    if (document.getElementById("qalam-desktop-window-controls")) return;
+
+    const api = window.qalamDesktop;
+    if (!api || typeof api.windowControl !== "function") return;
+
+    const dragRegion = document.createElement("div");
+    dragRegion.id = "qalam-desktop-window-drag-region";
+    dragRegion.setAttribute("aria-hidden", "true");
+
+    const controls = document.createElement("div");
+    controls.id = "qalam-desktop-window-controls";
+    controls.setAttribute("aria-label", "Window controls");
+    controls.innerHTML = [
+      '<button class="qalam-window-control" type="button" data-window-action="minimize" aria-label="Minimize" title="Minimize"><span class="qalam-window-control__mark qalam-window-control__mark--minimize" aria-hidden="true"></span></button>',
+      '<button class="qalam-window-control" type="button" data-window-action="toggle-maximize" aria-label="Maximize" title="Maximize"><span class="qalam-window-control__mark qalam-window-control__mark--maximize" aria-hidden="true"></span></button>',
+      '<button class="qalam-window-control" type="button" data-window-action="close" aria-label="Close" title="Close"><span class="qalam-window-control__mark qalam-window-control__mark--close" aria-hidden="true"></span></button>'
+    ].join("");
+
+    const syncWindowState = (state) => {
+      const isMaximized = Boolean(state && state.isMaximized);
+      const maximizeButton = controls.querySelector('[data-window-action="toggle-maximize"]');
+      const maximizeMark = maximizeButton && maximizeButton.querySelector(".qalam-window-control__mark");
+      document.documentElement.dataset.qalamWindowMaximized = isMaximized ? "true" : "false";
+      if (!maximizeButton || !maximizeMark) return;
+      maximizeButton.setAttribute("aria-label", isMaximized ? "Restore" : "Maximize");
+      maximizeButton.setAttribute("title", isMaximized ? "Restore" : "Maximize");
+      maximizeMark.classList.toggle("qalam-window-control__mark--maximize", !isMaximized);
+      maximizeMark.classList.toggle("qalam-window-control__mark--restore", isMaximized);
+    };
+
+    controls.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-window-action]");
+      if (!button) return;
+      api.windowControl(button.dataset.windowAction).then(syncWindowState).catch(() => {});
+    });
+
+    document.body.appendChild(dragRegion);
+    document.body.appendChild(controls);
+    api.windowControl("get-state").then(syncWindowState).catch(() => {});
+    if (typeof api.onWindowStateChange === "function") {
+      api.onWindowStateChange(syncWindowState);
+    }
+  })();
 `;
 
 const normalizeStartUrl = (value) => {
@@ -90,6 +226,33 @@ const shouldOpenExternally = (targetUrl, appUrl) => {
   }
 };
 
+ipcMain.handle("qalam-window-control", (event, action) => {
+  const targetWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!targetWindow) return { isMaximized: false };
+
+  switch (action) {
+    case "minimize":
+      targetWindow.minimize();
+      break;
+    case "toggle-maximize":
+      if (targetWindow.isMaximized()) {
+        targetWindow.unmaximize();
+      } else {
+        targetWindow.maximize();
+      }
+      break;
+    case "close":
+      targetWindow.close();
+      break;
+    case "get-state":
+      break;
+    default:
+      break;
+  }
+
+  return { isMaximized: targetWindow.isMaximized() };
+});
+
 const createMainWindow = () => {
   const startUrl = getStartUrl();
   const mainWindow = new BrowserWindow({
@@ -97,25 +260,10 @@ const createMainWindow = () => {
     height: 920,
     minWidth: 1100,
     minHeight: 720,
-    title: "Qalam",
+    title: "Qalam · Flow Workspace",
     backgroundColor: "#0f1115",
     show: false,
-    ...(process.platform === "darwin"
-      ? {
-          titleBarStyle: "hiddenInset",
-          trafficLightPosition: { x: 14, y: 14 }
-        }
-      : {}),
-    ...(process.platform === "win32"
-      ? {
-          titleBarStyle: "hidden",
-          titleBarOverlay: {
-            color: "#0f1115",
-            symbolColor: "#f8fafc",
-            height: 42
-          }
-        }
-      : {}),
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -124,9 +272,21 @@ const createMainWindow = () => {
     }
   });
 
+  const sendWindowState = () => {
+    if (mainWindow.webContents.isDestroyed()) return;
+    mainWindow.webContents.send("qalam-window-state", {
+      isMaximized: mainWindow.isMaximized()
+    });
+  };
+
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
+    sendWindowState();
   });
+
+  mainWindow.on("maximize", sendWindowState);
+  mainWindow.on("unmaximize", sendWindowState);
+  mainWindow.on("restore", sendWindowState);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldOpenExternally(url, startUrl)) {
@@ -144,6 +304,8 @@ const createMainWindow = () => {
       )
       .catch(() => {});
     mainWindow.webContents.insertCSS(DESKTOP_CHROME_CSS).catch(() => {});
+    mainWindow.webContents.executeJavaScript(DESKTOP_WINDOW_CONTROLS_JS, true).catch(() => {});
+    sendWindowState();
   });
 
   mainWindow.loadURL(startUrl);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ChatMessage, Message, StatusMessage } from "../../node-workspace/components/qalam/types";
+import type { ChatMessage, Message, StatusMessage, ToolMessage } from "../../node-workspace/components/qalam/types";
+import { isToolMessage } from "../../node-workspace/components/qalam/types";
 import { buildAssistantChatMessage } from "../adapters/qalamMessageAdapter";
 import {
   recordAgentToolCalled,
@@ -23,6 +24,9 @@ type Options = {
 type DisplayAwareError = Error & {
   qalamAlreadyDisplayed?: boolean;
 };
+
+const isChatMessage = (message: Message): message is ChatMessage =>
+  message.kind === "chat" || message.kind == null;
 
 const summarizeEventForDebug = (event: AgentRuntimeEvent) => {
   if (event.type === "reasoning_delta" || event.type === "message_delta") {
@@ -100,7 +104,7 @@ const upsertStreamingAssistantMessage = (
   updater: (current: ChatMessage | null) => ChatMessage
 ) => {
   const index = messages.findIndex(
-    (message) => message.role === "assistant" && (message.kind === "chat" || message.kind == null) && message.meta?.runId === runId
+    (message) => message.role === "assistant" && isChatMessage(message) && message.meta?.runId === runId
   );
   const current = index >= 0 ? (messages[index] as ChatMessage) : null;
   const next = updater(current);
@@ -223,28 +227,32 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
   const finalizeDanglingToolCalls = useCallback((messages: Message[], runId: string, error: string) => {
     const existingResults = new Set(
       messages
-        .filter((message) => message.kind === "tool_result" && message.tool.runId === runId)
+        .filter(
+          (message): message is ToolMessage =>
+            isToolMessage(message) && message.kind === "tool_result" && message.tool.runId === runId
+        )
         .map((message) => message.tool.callId)
         .filter(Boolean)
     );
 
     const pendingTools = messages.filter(
-      (message) =>
+      (message): message is ToolMessage =>
+        isToolMessage(message) &&
         message.kind === "tool" &&
         message.tool.runId === runId &&
         message.tool.status === "running" &&
-        message.tool.callId
+        Boolean(message.tool.callId)
     );
 
     if (!pendingTools.length) return messages;
 
     const next = messages.map((message) => {
-      if (message.kind !== "tool" || message.tool.runId !== runId || message.tool.status !== "running") return message;
+      if (!isToolMessage(message) || message.kind !== "tool" || message.tool.runId !== runId || message.tool.status !== "running") return message;
       return {
         ...message,
         tool: {
           ...message.tool,
-          status: "error",
+          status: "error" as const,
           summary: error,
         },
       };

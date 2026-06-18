@@ -11,11 +11,11 @@ export const INITIAL_PROJECT_DATA: ProjectData = {
     viewport: null,
   },
   flow: {
-    pages: [],
-    images: [],
-    textNodes: [],
+    flowNodes: [],
     links: [],
   },
+  activeFlowProjectId: "flow-project-main",
+  flowProjects: [],
   phase5Usage: { promptTokens: 0, responseTokens: 0, totalTokens: 0 },
 
   stats: {

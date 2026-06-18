@@ -65,50 +65,53 @@ const writeActivityMap = (storageKey: string, map: Record<string, AgentToolActiv
 const summarizeArtifact = (call: AgentExecutedToolCall) => {
   const output = call.output as any;
   if (!output || typeof output !== "object") return undefined;
+  if (output.target === "tool_error" && typeof output.error === "string") {
+    return `Tool error: ${output.error}`;
+  }
   const artifact = output.artifact && typeof output.artifact === "object" ? output.artifact : null;
   if (artifact?.target === "script:archive" && typeof artifact.title === "string") {
-    return `Script archive · ${artifact.title}`;
+    return `Script archive - ${artifact.title}`;
   }
-  if (artifact?.target === "script:space_block" && typeof artifact.title === "string") {
-    return `Script space · ${artifact.title}`;
+  if (artifact?.target === "script:folder" && typeof artifact.title === "string") {
+    return `Script folder - ${artifact.title}`;
   }
   if (artifact?.target === "script:node" && typeof artifact.title === "string") {
-    return `Script node · ${artifact.title}`;
+    return `Script node - ${artifact.title}`;
   }
   if (artifact?.target === "script:link") {
-    return `Script link · ${artifact.title || "link"}`;
+    return `Script link - ${artifact.title || "link"}`;
   }
   if (artifact?.target === "script:map" && typeof artifact.title === "string") {
-    return `Script map · ${artifact.title}`;
+    return `Script map - ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:node" && typeof artifact.title === "string") {
-    return `Flow node · ${artifact.title}`;
+    return `Flow node - ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:link") {
     const source = artifact.source?.node_ref || artifact.source?.node_id || "source";
     const destination = artifact.destination?.node_ref || artifact.destination?.node_id || "target";
-    return `Flow link · ${source} -> ${destination}`;
+    return `Flow link - ${source} -> ${destination}`;
   }
   if (artifact?.target === "nodeflow:map" && typeof artifact.title === "string") {
-    return `Flow map · ${artifact.title}`;
+    return `Flow map - ${artifact.title}`;
   }
   if (artifact?.target === "nodeflow:approval" && typeof artifact.title === "string") {
-    return `Flow approval · ${artifact.title}`;
+    return `Flow approval - ${artifact.title}`;
   }
   if (output.target === "nodeflow:node" && typeof output.item?.title === "string") {
-    return `Flow node · ${output.item.title}`;
+    return `Flow node - ${output.item.title}`;
   }
   if (output.target === "nodeflow:link" && output.role === "connection") {
-    return `Flow link · ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
+    return `Flow link - ${output.item?.source_ref || output.item?.source_node_id || "source"} -> ${output.item?.target_ref || output.item?.target_node_id || "target"}`;
   }
   if (output.target === "nodeflow:link" && output.role === "reference") {
-    return `Flow reference · ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
+    return `Flow reference - ${output.item?.source_ref || "source"} -> ${output.item?.target_ref || "target"}`;
   }
   if (output.target === "script:archive" && typeof output.item?.title === "string") {
-    return `Script archive · ${output.item.title}`;
+    return `Script archive - ${output.item.title}`;
   }
-  if (output.target === "script:space_block" && typeof output.item?.title === "string") {
-    return `Script space · ${output.item.title}`;
+  if (output.target === "script:folder" && typeof output.item?.title === "string") {
+    return `Script folder - ${output.item.title}`;
   }
   return undefined;
 };

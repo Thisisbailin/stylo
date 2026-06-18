@@ -1,6 +1,7 @@
-import type {
+﻿import type {
   AnnotationNodeData,
   AudioInputNodeData,
+  FolderNodeData,
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
@@ -18,9 +19,13 @@ import type {
 
 export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData => {
   switch (type) {
+    case "folder":
+      return {
+        title: "文件夹",
+      } as FolderNodeData;
     case "scriptPage":
       return {
-        title: "剧本文档",
+        title: "鍓ф湰鏂囨。",
         text: "",
         documentId: undefined,
         documentKind: "script",
@@ -30,7 +35,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as ScriptPageNodeData;
     case "mdText":
       return {
-        title: "档案文档",
+        title: "妗ｆ鏂囨。",
         text: "",
         content: "",
         documentId: undefined,
@@ -88,11 +93,11 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as TextNodeData;
     case "scriptBoard":
       return {
-        title: "剧本面板",
+        title: "鍓ф湰闈㈡澘",
       } as ScriptBoardNodeData;
     case "identityCard":
       return {
-        title: "角色 / 场景身份卡片",
+        title: "瑙掕壊 / 鍦烘櫙韬唤鍗＄墖",
         avatarOverrides: {},
       } as IdentityCardNodeData;
     case "imageGen":

@@ -13,6 +13,8 @@ const PROJECT_PATCH_KEYS = [
   "designAssets",
   "canvas",
   "flow",
+  "activeFlowProjectId",
+  "flowProjects",
   "phase5Usage",
   "stats"
 ] as const;

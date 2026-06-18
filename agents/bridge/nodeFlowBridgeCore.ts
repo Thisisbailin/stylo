@@ -60,6 +60,7 @@ type NodeFlowBridgeDeps = {
 const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
   "scriptPage",
   "mdText",
+  "folder",
   "text",
   "imageInput",
   "audioInput",
@@ -124,6 +125,11 @@ const buildNodeExtraData = (
       documentId: (documentId || "").trim() || undefined,
       preview,
       createdAt: Date.now(),
+    } as Partial<NodeFlowNodeData>;
+  }
+  if (type === "folder") {
+    return {
+      title: resolvedTitle,
     } as Partial<NodeFlowNodeData>;
   }
   if (type === "text") {
@@ -222,7 +228,7 @@ const createNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
-    throw new Error("createNodeFlowNode 当前仅支持 scriptPage、mdText、text、imageInput、audioInput、videoInput。");
+    throw new Error("createNodeFlowNode currently supports scriptPage, mdText, folder, text, imageInput, audioInput, and videoInput.");
   }
   const position = getNodeFlowPlacement(snapshot, input.x, input.y);
   const resolvedTitle = resolveNodeTitle(input.type, input.title);

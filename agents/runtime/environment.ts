@@ -98,7 +98,7 @@ export const buildAgentEnvironment = ({
   const scriptLinks = buildScriptResourceLinks(projectData, nodeFlowSnapshot);
   const documentNodeCount = scriptNodes.filter((node) => node.resourceType === "document_node").length;
   const archiveNodeCount = scriptNodes.filter((node) => node.resourceType === "archive_node").length;
-  const spaceBlockCount = scriptNodes.filter((node) => node.resourceType === "space_block").length;
+  const folderNodeCount = scriptNodes.filter((node) => node.resourceType === "folder_node").length;
 
   const capabilityManifest = buildCapabilityManifest();
   const enabledToolSet = new Set(enabledTools);
@@ -114,16 +114,15 @@ export const buildAgentEnvironment = ({
         primaryRoleCount: roles.filter((role) => role.kind === "person").length,
         sceneRoleCount: roles.filter((role) => role.kind === "scene").length,
         archiveCount: archiveNodeCount,
-        spaceBlockCount,
+        folderNodeCount,
       },
       readingLayers: {
         script: {
           nodeCount: scriptNodes.length,
           linkCount: scriptLinks.length,
-          sourceNodeCount: documentNodeCount,
           documentNodeCount,
           archiveNodeCount,
-          spaceBlockCount,
+          folderNodeCount,
         },
         nodeflow: {
           nodeCount: nodeFlowSnapshot.nodes.length,

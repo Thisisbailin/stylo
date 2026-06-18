@@ -32,7 +32,7 @@ const listProjectResourcesParameters = {
     layer: {
       type: "string",
       enum: [...LIST_PROJECT_RESOURCE_LAYERS],
-      description: "Which Flow access path to inspect: script for foundation/document resources or nodeflow for the visible graph runtime.",
+      description: "Which access path over the same Flow node graph to inspect: script for document/archive/folder projections or nodeflow for raw graph runtime.",
     },
     entity: {
       type: "string",
@@ -98,7 +98,7 @@ const parseArgs = (input: unknown) => {
 export const listProjectResourcesToolDef = {
   name: "list_project_resources",
   description:
-    "List project entities before reading them. Flow exposes foundation/document resources through script and visible graph runtime resources through the internal nodeflow key.",
+    "List project entities before reading them. Both script and nodeflow are access paths over the same Flow nodes and links.",
   parameters: listProjectResourcesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);

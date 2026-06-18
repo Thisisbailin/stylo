@@ -106,7 +106,11 @@ const compactToolOutputForEvents = (output: unknown) => {
       target: record.target,
       action: record.action,
       skipped: record.skipped,
+      recoverable: record.recoverable,
       reason: record.reason,
+      error: record.error,
+      error_type: record.error_type,
+      guidance: record.guidance,
       tool_name: record.tool_name,
       updated: record.updated,
       item: record.item,
@@ -120,6 +124,43 @@ const compactToolOutputForEvents = (output: unknown) => {
     target: typeof record.target === "string" ? record.target : "tool",
     truncated: true,
     summary: clipToolOutputText(json, 1600),
+  };
+};
+
+const getToolErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && typeof (error as any).message === "string") {
+    return (error as any).message;
+  }
+  return String(error || "Tool execution failed");
+};
+
+const getToolErrorType = (error: unknown) => {
+  if (error instanceof Error && error.name) return error.name;
+  if (error && typeof error === "object" && typeof (error as any).name === "string") {
+    return (error as any).name;
+  }
+  return "ToolExecutionError";
+};
+
+const isAbortLikeToolError = (error: unknown) => {
+  const name = getToolErrorType(error);
+  const message = getToolErrorMessage(error);
+  return name === "AbortError" || /\b(abort|aborted|cancelled|canceled)\b/i.test(message);
+};
+
+const createRecoverableToolErrorOutput = (toolName: string, error: unknown) => {
+  const errorMessage = getToolErrorMessage(error);
+  return {
+    target: "tool_error",
+    action: "recoverable_error",
+    recoverable: true,
+    tool_name: toolName,
+    error: errorMessage,
+    error_type: getToolErrorType(error),
+    guidance:
+      "The tool failed without a durable project change. Re-read state, adjust arguments, or explain the blocker instead of repeating the same call.",
+    summary: `Tool failed: ${clipToolOutputText(errorMessage, 500)}`,
   };
 };
 
@@ -144,6 +185,10 @@ export const createQalamTools = ({
       parameters: toolDef.parameters as any,
       inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge),
       outputGuardrails: createQalamToolOutputGuardrails(toolDef.name),
+      errorFunction: (_context, error) => {
+        if (isAbortLikeToolError(error)) throw error;
+        return JSON.stringify(createRecoverableToolErrorOutput(toolDef.name, error));
+      },
       execute: async (input) => {
         const callId = `${toolDef.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const runningCall: AgentExecutedToolCall = {
@@ -155,7 +200,7 @@ export const createQalamTools = ({
         emitEvent?.({ type: "tool_called", call: runningCall });
         try {
           const budgetDecision = toolBudget?.reserve(toolDef.name, toToolArgs(input));
-          if (budgetDecision && !budgetDecision.allowed) {
+          if (budgetDecision?.allowed === false) {
             const output = {
               target: "tool_budget",
               action: "skip",
@@ -206,17 +251,22 @@ export const createQalamTools = ({
           emitEvent?.({ type: "tool_completed", call: completedCall });
           return output;
         } catch (error: any) {
+          if (isAbortLikeToolError(error)) throw error;
+          const output = createRecoverableToolErrorOutput(toolDef.name, error);
           const failedCall: AgentExecutedToolCall = {
             ...runningCall,
             status: "error",
             error: error?.message || "工具执行失败",
           };
+          failedCall.error = output.error;
+          failedCall.output = compactToolOutputForEvents(output);
+          failedCall.summary = output.summary;
           emitEvent?.({
             type: "tool_failed",
             call: failedCall,
             error: failedCall.error || "工具执行失败",
           });
-          throw error;
+          return output;
         }
       },
     })

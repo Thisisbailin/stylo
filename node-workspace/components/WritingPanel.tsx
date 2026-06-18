@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, ChevronLeft, ChevronRight, Download, Focus, Minimize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
-import type { Character, ProjectData } from "../../types";
+import type { ProjectData } from "../../types";
 import type { NodeFlowNode } from "../types";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
+
+type Character = ReturnType<typeof projectRolesToCharacters>[number];
 
 type Props = {
   projectData: ProjectData;
@@ -527,16 +529,12 @@ const displayFountainLine = (line: string, kind: FountainLineKind) => {
 };
 
 const ensureFlow = (flow: ProjectData["flow"]): NonNullable<ProjectData["flow"]> => ({
-  pages: Array.isArray(flow?.pages) ? flow.pages : [],
-  images: Array.isArray(flow?.images) ? flow.images : [],
-  textNodes: Array.isArray(flow?.textNodes) ? flow.textNodes : [],
   flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
   links: Array.isArray(flow?.links) ? flow.links : [],
   graphLinks: Array.isArray(flow?.graphLinks) ? flow.graphLinks : [],
   globalAssetHistory: Array.isArray(flow?.globalAssetHistory) ? flow.globalAssetHistory : [],
   linkStyle: flow?.linkStyle,
   activeView: flow?.activeView,
-  timeline: flow?.timeline,
 });
 
 const findScriptNode = (projectData: ProjectData, nodeId?: string | null): NodeFlowNode | null => {
@@ -1258,7 +1256,6 @@ export const WritingPanel: React.FC<Props> = ({
         episodes: [],
         flow: {
           ...flow,
-          pages: [],
           flowNodes,
         },
       };

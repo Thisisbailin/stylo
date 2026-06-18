@@ -91,30 +91,6 @@ export interface CanvasState {
   viewport?: CanvasViewport | null;
 }
 
-export interface FlowPageNode {
-  episodeId: number;
-  position: CanvasPosition;
-  measured?: CanvasMeasuredSize;
-}
-
-export interface FlowImageNode {
-  id: string;
-  imageUrl: string;
-  filename?: string;
-  position: CanvasPosition;
-  measured?: CanvasMeasuredSize;
-  createdAt: number;
-}
-
-export interface FlowTextNode {
-  id: string;
-  title: string;
-  content: string;
-  position: CanvasPosition;
-  measured?: CanvasMeasuredSize;
-  createdAt: number;
-}
-
 export interface FlowLink {
   id: string;
   source: string;
@@ -123,54 +99,25 @@ export interface FlowLink {
   targetHandle?: HandleType;
 }
 
-export interface FlowTimelineBlock {
-  id: string;
-  title: string;
-  content: string;
-  startMin: number;
-  durationMin: number;
-  color: string;
-  order: number;
-  linkedNodeIds: string[];
-}
-
-export interface FlowFoundationHead {
-  title: string;
-  content: string;
-  linkedNodeIds: string[];
-}
-
-export interface FlowSpatialBlock {
-  id: string;
-  title: string;
-  content: string;
-  color: string;
-  order: number;
-  width: number;
-  linkedNodeIds: string[];
-}
-
-export interface FlowFoundationState {
-  id: string;
-  title: string;
-  durationMin: number;
-  head?: FlowFoundationHead;
-  spaceBlocks?: FlowSpatialBlock[];
-  blocks: FlowTimelineBlock[];
-}
-
 export interface FlowState {
   revision?: number;
-  pages: FlowPageNode[];
-  images: FlowImageNode[];
-  textNodes?: FlowTextNode[];
   flowNodes?: NodeFlowNode[];
   graphLinks?: NodeFlowGraphLink[];
   globalAssetHistory?: GlobalAssetHistoryItem[];
   linkStyle?: "angular" | "curved";
   activeView?: string | null;
   links: FlowLink[];
-  timeline?: FlowFoundationState;
+}
+
+export interface FlowProject {
+  id: string;
+  title: string;
+  color: string;
+  durationMin: number;
+  rootNodeId: string;
+  createdAt: number;
+  updatedAt: number;
+  flow: FlowState;
 }
 
 // --- Unified Role Identity Types ---
@@ -261,6 +208,8 @@ export interface ProjectData {
   designAssets: DesignAssetItem[];
   canvas: CanvasState;
   flow?: FlowState;
+  activeFlowProjectId?: string;
+  flowProjects?: FlowProject[];
 
   phase5Usage?: TokenUsage; // Video Studio (Reserved for Prompt Refinement or API cost mapping)
 

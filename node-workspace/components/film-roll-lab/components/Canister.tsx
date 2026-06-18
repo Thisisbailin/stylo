@@ -35,6 +35,8 @@ export const Canister: React.FC<CanisterProps> = ({
     mass: physics.mass,
   };
 
+  const scaleFactor = (physics.filmstripHeight ?? 114) / 152;
+
   return (
     <motion.div 
       id={`canister-wrapper-${id}`} 
@@ -45,13 +47,13 @@ export const Canister: React.FC<CanisterProps> = ({
         rotateY: isOpen ? -15 : 0,
         // Subtle tilt/wobble on the Z-axis for physical overshoot rebound
         rotateZ: isOpen ? -3.5 : 0,
-        scale: isOpen ? 1.025 : 1,
-        x: isOpen ? 6 : 0, // slight stretch shift to the right, simulating tension towards the film strip
+        scale: isOpen ? 1.025 * scaleFactor : 1 * scaleFactor,
+        x: isOpen ? 6 * scaleFactor : 0, // slight stretch shift to the right, simulating tension towards the film strip
       }}
       transition={springTransition}
       style={{ transformStyle: 'preserve-3d', perspective: 1000 }}
-      whileHover={{ scale: 1.03 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={{ scale: 1.03 * scaleFactor }}
+      whileTap={{ scale: 0.97 * scaleFactor }}
     >
 
 

@@ -38,16 +38,15 @@ export type AgentEnvironmentProjectDigest = {
     primaryRoleCount: number;
     sceneRoleCount: number;
     archiveCount: number;
-    spaceBlockCount: number;
+    folderNodeCount: number;
   };
   readingLayers: {
     script: {
       nodeCount: number;
       linkCount: number;
-      sourceNodeCount: number;
       documentNodeCount: number;
       archiveNodeCount: number;
-      spaceBlockCount: number;
+      folderNodeCount: number;
     };
     nodeflow: {
       nodeCount: number;

@@ -11,6 +11,8 @@ export type ConnectionDropMenuOption<T extends string = NodeType> = {
   meta?: string;
   tone?: string;
   surface?: string;
+  disabled?: boolean;
+  disabledHint?: string;
 };
 
 type Props<T extends string = NodeType> = {
@@ -95,8 +97,10 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
               {group.options.map((opt) => (
                 <button
                   key={opt.type}
-                  className="connection-menu-item"
+                  className={`connection-menu-item ${opt.disabled ? "is-disabled" : ""}`}
+                  disabled={opt.disabled}
                   onClick={() => {
+                    if (opt.disabled) return;
                     onCreate(opt.type);
                     onClose();
                   }}
@@ -106,7 +110,7 @@ export const ConnectionDropMenu = <T extends string = NodeType>({
                   </span>
                   <span className="connection-menu-text">
                     <span className="connection-menu-label">{opt.label}</span>
-                    <span className="connection-menu-hint">{opt.meta || opt.hint}</span>
+                    <span className="connection-menu-hint">{opt.disabledHint || opt.meta || opt.hint}</span>
                   </span>
                 </button>
               ))}

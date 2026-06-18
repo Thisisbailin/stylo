@@ -1,9 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { FilmFrame, FilmFilter, PhysicsParams, CanisterBrand, CanisterStyle } from './film-roll-lab/types';
+import React, { useEffect, useRef, useState } from 'react';
+import { PhysicsParams, CanisterBrand, CanisterStyle } from './film-roll-lab/types';
 import { Canister } from './film-roll-lab/components/Canister';
 import { Filmstrip } from './film-roll-lab/components/Filmstrip';
+import { 
+  DevelopedRollRibbon, 
+  DevelopedRollWorkbench, 
+  INITIAL_BLANK_FRAMES, 
+  SAMPLE_PHOTO_STOCK, 
+  PhotoFrame, 
+  EmulsionType,
+  RibbonParams,
+  RIBBON_PRESETS
+} from './film-roll-lab/components/DevelopedRoll';
+import { SlideMount } from './film-roll-lab/components/SlideMount';
 import { PhysicsControls } from './film-roll-lab/components/PhysicsControls';
-import { Lighttable } from './film-roll-lab/components/Lighttable';
 import { AlertCircle, X } from 'lucide-react';
 
 type Props = {
@@ -20,7 +30,7 @@ const CANISTER_BRANDS: CanisterStyle[] = [
     backgroundColor: '#eab308', // yellow-500
     textColor: '#18181b', // dark gray
     brandText: 'GOLD 200',
-    iso: 120,
+    iso: 200,
     exp: 36,
   },
   {
@@ -58,15 +68,6 @@ const CANISTER_BRANDS: CanisterStyle[] = [
   },
 ];
 
-const SEED_PICTURES = [
-  'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=600&q=80', // Classic sports car
-  'https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?auto=format&fit=crop&w=600&q=80', // Pines cabin
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80', // Retro diner
-  'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=600&q=80', // Neon streets
-  'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=600&q=80', // Vintage camera
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80', // Sunset beaches
-];
-
 const DEFAULT_PHYSICS: PhysicsParams = {
   stiffness: 140,
   damping: 18,
@@ -74,22 +75,30 @@ const DEFAULT_PHYSICS: PhysicsParams = {
   rotationMultiplier: 2.5,
   filmstripHeight: 114,
   frameWidth: 156,
+  closedWidth: 50,
+  openWidth: 500,
 };
 
 export const FilmRollLab: React.FC<Props> = ({ isOpen: labOpen, onClose }) => {
+  // Unit 1: Tactile Cylinder States
   const [isOpen, setIsOpen] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState<CanisterBrand>('retro-yellow');
   const [physics, setPhysics] = useState<PhysicsParams>(DEFAULT_PHYSICS);
+  const [activeUnit, setActiveUnit] = useState<1 | 2>(1);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
-  // Initial film roll setup: 3 unexposed empty frames
-  const [frames, setFrames] = useState<FilmFrame[]>([
-    { id: 'f-1', index: 1, imageUrl: null, filter: 'negative', isScanned: false },
-    { id: 'f-2', index: 2, imageUrl: null, filter: 'negative', isScanned: false },
-    { id: 'f-3', index: 3, imageUrl: null, filter: 'negative', isScanned: false },
-  ]);
+  // Unit 2: Developed Roll States
+  const [frames, setFrames] = useState<PhotoFrame[]>(INITIAL_BLANK_FRAMES);
+  const [emulsion, setEmulsion] = useState<EmulsionType>('vintage-c41');
+  const [ribbonParams, setRibbonParams] = useState<RibbonParams>(RIBBON_PRESETS['vintage-c41']);
+  const [dragOverFrameId, setDragOverFrameId] = useState<number | null>(null);
 
-  // Slides cut/split onto the lighttable
-  const [splitSlides, setSplitSlides] = useState<FilmFrame[]>([]);
+  const handleSetEmulsion = (newEmulsion: EmulsionType) => {
+    setEmulsion(newEmulsion);
+    setRibbonParams(RIBBON_PRESETS[newEmulsion]);
+  };
+
+  const fileInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
   const activeStyle = CANISTER_BRANDS.find((b) => b.id === selectedBrand) || CANISTER_BRANDS[0];
 
@@ -104,446 +113,392 @@ export const FilmRollLab: React.FC<Props> = ({ isOpen: labOpen, onClose }) => {
 
   if (!labOpen) return null;
 
-  // Toggle canister state - winds/unspools film
   const handleToggleCanister = () => {
     setIsOpen(!isOpen);
   };
 
-  // Upload photo into precise frame target
-  const handleUploadImage = (frameId: string, url: string) => {
-    setFrames((prev) =>
-      prev.map((frame) =>
-        frame.id === frameId ? { ...frame, imageUrl: url, isScanned: false } : frame
-      )
-    );
-  };
-
-  // Update discrete photographic filter
-  const handleUpdateFilter = (frameId: string, filter: FilmFilter) => {
-    setFrames((prev) =>
-      prev.map((frame) =>
-        frame.id === frameId ? { ...frame, filter } : frame
-      )
-    );
-  };
-
-  // Split/Cut action: clones the frame at split point and places it in lightbox
-  const handleCutFrame = (frameId: string) => {
-    const frameToCut = frames.find((f) => f.id === frameId);
-    if (frameToCut && frameToCut.imageUrl) {
-      // Add a clone onto slide lightbox tray
-      const uniqueId = `slide-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
-      setSplitSlides((prev) => [
-        ...prev,
-        { ...frameToCut, id: uniqueId }, // Keep index & image details
-      ]);
-
-      // Highlight feedback
-      const targetElement = document.getElementById(`film-frame-${frameId}`);
-      if (targetElement) {
-        targetElement.classList.add('ring-4', 'ring-amber-500', 'scale-95');
-        setTimeout(() => {
-          targetElement.classList.remove('ring-4', 'ring-amber-500', 'scale-95');
-        }, 350);
-      }
-    } else {
-      alert("请先为此格胶片上传或选择一张图片，再进行拆分切割！\nPlease load an image on this frame before cutting!");
-    }
-  };
-
-  // Delete/Clear single frame back to unexposed
-  const handleDeleteFrame = (frameId: string) => {
-    setFrames((prev) =>
-      prev.map((frame) =>
-        frame.id === frameId ? { ...frame, imageUrl: null, filter: 'negative', isScanned: false } : frame
-      )
-    );
-  };
-
-  // Add 1 more blank frame to filmstrip
-  const handleAddFrame = () => {
-    const maxIndex = frames.length > 0 ? Math.max(...frames.map((f) => f.index)) : 0;
-    const newId = `f-${Date.now()}`;
-    setFrames((prev) => [
-      ...prev,
-      {
-        id: newId,
-        index: maxIndex + 1,
-        imageUrl: null,
-        filter: 'negative',
-        isScanned: false,
-      },
-    ]);
-  };
-
-  // Single develop scan beam toggle
-  const handleDevelopScan = (frameId: string) => {
-    setFrames((prev) =>
-      prev.map((frame) =>
-        frame.id === frameId ? { ...frame, isScanned: !frame.isScanned } : frame
-      )
-    );
-  };
-
-  // Populate multiple frames with beautiful, nostalgic seed urls
-  const handleSeedPhotos = () => {
-    setFrames((prev) => {
-      // Loop through and seed urls sequentially
-      return prev.map((frame, idx) => {
-        const seedUrl = SEED_PICTURES[idx % SEED_PICTURES.length];
-        return {
-          ...frame,
-          imageUrl: seedUrl,
-          filter: 'negative', // start off as cool authentic unexposed negatives
-          isScanned: false,
-        };
-      });
-    });
-  };
-
-  // Quick reset for physical properties
   const handleResetPhysics = () => {
     setPhysics(DEFAULT_PHYSICS);
   };
 
-  // Clear entire roll
-  const handleClearAll = () => {
-    setFrames([
-      { id: 'f-1', index: 1, imageUrl: null, filter: 'negative', isScanned: false },
-      { id: 'f-2', index: 2, imageUrl: null, filter: 'negative', isScanned: false },
-      { id: 'f-3', index: 3, imageUrl: null, filter: 'negative', isScanned: false },
-    ]);
-  };
-
-  // Scan or develop all slides in bulk
-  const handleScanAll = () => {
-    const hasUnscanned = frames.some((f) => f.imageUrl && !f.isScanned);
-    setFrames((prev) =>
-      prev.map((f) => (f.imageUrl ? { ...f, isScanned: hasUnscanned } : f))
-    );
-  };
-
-  const allScanned = frames.every((f) => !f.imageUrl || f.isScanned);
-
-  // Lighttable slide actions
-  const handleDeleteSlide = (id: string) => {
-    setSplitSlides((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  const handleClearSlides = () => {
-    setSplitSlides([]);
-  };
-
-  // High fidelity canvas drawing exporter to stitch and download the entire active filmstrip!
-  const handleExportFilmstripPNG = () => {
-    // Collect all valid photos
-    const validFrames = frames.filter((f) => f.imageUrl);
-    if (validFrames.length === 0) {
-      alert('请确保在当前胶片上有至少一张已上传的图片才可以导出！\nPlease upload at least one image keyframe onto the roll to export.');
-      return;
+  // Unit 2 File Upload & Management Logic
+  const handleFileChange = (frameId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      processFile(frameId, files[0]);
     }
+  };
 
-    // Canvas construction parameters
-    const frameW = 340;
-    const frameH = 220;
-    const verticalPad = 45; // space for sprocket holes at top/bottom
-    const stripH = frameH + (verticalPad * 2); // 310 px
-
-    const sidePadding = 120; // safe space for leader curves
-    const cellGap = 35;
-    const totalW = (validFrames.length * frameW) + ((validFrames.length - 1) * cellGap) + (sidePadding * 2);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = totalW;
-    canvas.height = stripH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Draw dark amber film strip body texture
-    ctx.fillStyle = '#1c0a03'; // deep acetate brown
-    ctx.fillRect(0, 0, totalW, stripH);
-
-    // Give subtle gradient shine on margins
-    const backGradient = ctx.createLinearGradient(0, 0, 0, stripH);
-    backGradient.addColorStop(0, '#100602');
-    backGradient.addColorStop(0.12, '#2d1406');
-    backGradient.addColorStop(0.88, '#240e03');
-    backGradient.addColorStop(1, '#0e0401');
-    ctx.fillStyle = backGradient;
-    ctx.fillRect(0, 0, totalW, stripH);
-
-    // Draw top and bottom sprocket perforation tracks
-    const sprocketCount = Math.floor(totalW / 24);
-    ctx.fillStyle = '#0f0f11'; // hollow hole fill representation
-    for (let i = 0; i < sprocketCount; i++) {
-      const sx = i * 24 + 10;
-      // top holes
-      ctx.beginPath();
-      ctx.roundRect(sx, 12, 14, 10, 3);
-      ctx.fill();
-
-      // bottom holes
-      ctx.beginPath();
-      ctx.roundRect(sx, stripH - 22, 14, 10, 3);
-      ctx.fill();
-    }
-
-    // Draw professional border filmtext markings
-    ctx.fillStyle = '#f59e0b'; // authentic amber-yellow Kodak text paint
-    ctx.font = 'bold 10px monospace';
-    
-    // Top codes
-    ctx.fillText('KODAK SAFETY FILM 5062 • CHROMATIC 200 • EXP PANORAMA • PROCESS C-41', 120, 30);
-    
-    // Sequential image painter
-    let loadedCount = 0;
-    validFrames.forEach((frame, i) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous'; // critical for CORS Unsplash safe saving
-
-      img.onload = () => {
-        const cx = sidePadding + i * (frameW + cellGap);
-        const cy = verticalPad;
-
-        // Draw inner frame shadow slot
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(cx - 3, cy - 3, frameW + 6, frameH + 6);
-
-        // Apply photographic image styling attributes
-        ctx.save();
-        
-        // Match CSS filters natively on context
-        const filter = frame.filter;
-        const isScanned = frame.isScanned;
-        
-        if (filter === 'negative' && !isScanned) {
-          ctx.filter = 'invert(1) sepia(0.65) saturate(1.8) hue-rotate(170deg) contrast(1.15) brightness(0.9)';
-        } else if (filter === 'negative' && isScanned) {
-          ctx.filter = 'contrast(1.05) brightness(1.02) saturate(1.1) sepia(0.15)';
-        } else {
-          switch (filter) {
-            case 'grayscale':
-              ctx.filter = 'grayscale(100%) contrast(120%)';
-              break;
-            case 'vintage':
-              ctx.filter = 'sepia(65%) contrast(95%) saturate(130%) brightness(102%)';
-              break;
-            case 'cyanotype':
-              ctx.filter = 'grayscale(100%) sepia(100%) hue-rotate(190deg) saturate(300%) contrast(110%) brightness(95%)';
-              break;
-            case 'sunset':
-              ctx.filter = 'saturate(200%) contrast(115%) brightness(105%) sepia(35%) hue-rotate(-15deg)';
-              break;
-            case 'positive':
-            default:
-              ctx.filter = 'contrast(105%) saturate(105%)';
-              break;
+  const processFile = (frameId: number, file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setFrames(prev => prev.map(f => {
+          if (f.id === frameId) {
+            return {
+              ...f,
+              url: event.target!.result as string,
+              title: file.name.substring(0, 16).toUpperCase().replace(/\.[^/.]+$/, "") || 'EXPOSURE',
+            };
           }
-        }
+          return f;
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
-        // Draw clipped image onto canvas frame
-        ctx.drawImage(img, cx, cy, frameW, frameH);
-        ctx.restore();
+  const triggerUpload = (frameId: number) => {
+    fileInputRefs.current[frameId]?.click();
+  };
 
-        // Draw frame indexing numbers at the bottom margin
-        ctx.fillStyle = '#f59e0b';
-        ctx.font = 'bold 11px monospace';
-        ctx.fillText(`▶ ${frame.index} — ${frame.index}A`, cx + 10, stripH - 30);
+  const removePhoto = (frameId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setFrames(prev => prev.map(f => {
+      if (f.id === frameId) {
+        return { ...f, url: '' };
+      }
+      return f;
+    }));
+  };
 
-        loadedCount++;
-        // Trigger save download when all frames are rendered
-        if (loadedCount === validFrames.length) {
-          const downloadLink = document.createElement('a');
-          downloadLink.download = `vintage-35mm-filmstrip-${Date.now()}.png`;
-          downloadLink.href = canvas.toDataURL('image/png');
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-        }
-      };
+  const clearAll = () => {
+    setFrames(INITIAL_BLANK_FRAMES);
+  };
 
-      img.onerror = () => {
-        alert('加载种子图片时，图片服务器出现安全策略限制，请尝试使用您的本地照片上传导出！');
-      };
+  const loadPresetSamples = () => {
+    setFrames(prev => prev.map((f, idx) => ({
+      ...f,
+      url: SAMPLE_PHOTO_STOCK[idx] || '',
+    })));
+  };
 
-      img.src = frame.imageUrl || '';
-    });
+  // Drag and Drop Logic
+  const handleDragOver = (frameId: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFrameId(frameId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverFrameId(null);
+  };
+
+  const handleDrop = (frameId: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFrameId(null);
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      processFile(frameId, files[0]);
+    }
   };
 
   return (
-    <div className="film-roll-prototype pointer-events-auto fixed inset-0 z-[85] min-h-screen overflow-auto bg-[#0A0A0B] text-zinc-100 flex flex-col font-sans selection:bg-[#FFB800] selection:text-zinc-950">
+    <div className={`film-roll-prototype pointer-events-auto fixed inset-0 z-[85] min-h-screen overflow-auto flex flex-col font-sans transition-all duration-300 overflow-x-hidden ${
+      theme === 'light' 
+        ? 'bg-[#F2F1EC] text-zinc-800 selection:bg-amber-100 selection:text-amber-900' 
+        : 'bg-[#0A0A0B] text-zinc-100 selection:bg-[#FFB800] selection:text-zinc-950'
+    }`}>
       <button
         type="button"
         onClick={onClose}
         aria-label="Close visual lab"
-        className="fixed right-4 top-4 z-[90] flex h-9 w-9 items-center justify-center rounded-full border border-[#333] bg-[#111112]/90 text-stone-300 shadow-2xl backdrop-blur transition hover:border-[#FFB800] hover:text-[#FFB800] active:scale-95"
+        className={`fixed right-4 top-4 z-[90] flex h-9 w-9 items-center justify-center rounded-full border shadow-2xl backdrop-blur transition active:scale-95 ${
+          theme === 'light'
+            ? 'border-zinc-300 bg-white/90 text-zinc-700 hover:border-amber-500 hover:text-amber-700'
+            : 'border-[#333] bg-[#111112]/90 text-stone-300 hover:border-[#FFB800] hover:text-[#FFB800]'
+        }`}
       >
         <X className="h-4 w-4" />
       </button>
       
       {/* Immersive Background Lighting Glow */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-[#FFB800]/5 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[160px] pointer-events-none" />
+      <div className={`absolute top-0 left-1/4 w-[500px] h-[500px] rounded-full blur-[140px] pointer-events-none transition-opacity duration-500 ${
+        theme === 'light' ? 'bg-amber-400/5' : 'bg-[#FFB800]/5'
+      }`} />
+      <div className={`absolute bottom-0 right-1/4 w-[600px] h-[600px] rounded-full blur-[160px] pointer-events-none transition-opacity duration-500 ${
+        theme === 'light' ? 'bg-amber-300/5' : 'bg-amber-500/5'
+      }`} />
 
       {/* Main Container */}
-      <div className="max-w-7xl mx-auto w-full px-4 md:px-8 py-10 flex flex-col gap-10 relative z-10 flex-grow">
+      <div className="max-w-7xl mx-auto w-full px-4 md:px-8 py-10 flex flex-col gap-8 relative z-10 flex-grow">
         
         {/* Editorial UI Header */}
-        <header id="main-header" className="flex flex-col md:flex-row md:items-end justify-between border-b border-[#222] pb-6 gap-6">
+        <header id="main-header" className={`flex flex-col md:flex-row md:items-end justify-between border-b pb-6 gap-6 relative transition-colors duration-300 ${
+          theme === 'light' ? 'border-zinc-300/80' : 'border-[#222]'
+        }`}>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <span className="bg-[#1A1A1A] border border-[#333] px-3 py-1 rounded-full text-xs font-mono tracking-widest text-[#FFB800] font-semibold uppercase">
-                Analog Emulation v1.2
+              <span className={`border px-3 py-1 rounded-full text-xs font-mono tracking-widest font-semibold uppercase transition-colors duration-300 ${
+                theme === 'light'
+                  ? 'bg-white border-zinc-300 text-zinc-700 shadow-sm'
+                  : 'bg-[#1A1A1A] border-[#333] text-[#FFB800]'
+              }`}>
+                胶片实验室 / FILM LAB
               </span>
-              <span className="text-[10px] font-mono font-bold bg-[#EF4444] text-white px-2 py-0.5 rounded uppercase tracking-wider select-none animate-pulse">
-                Classic C-41
+              <span className="text-[10px] font-mono font-bold bg-amber-600/20 text-[#FFB800] border border-amber-500/30 px-2 py-0.5 rounded uppercase tracking-wider select-none animate-pulse">
+                Project 01
               </span>
+              
+              {/* Theme light/dark safe-light switch */}
+              <button
+                onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+                className={`ml-2 flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[10px] font-mono tracking-wider transition-all duration-200 uppercase font-bold cursor-pointer ${
+                  theme === 'light'
+                    ? 'bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200 shadow-sm'
+                    : 'bg-[#111112] hover:bg-zinc-800 text-[#FFB800] border-zinc-800'
+                }`}
+                title="切换看片台背底环度 (Light/Dark Mode)"
+              >
+                {theme === 'light' ? '☀️ Alabaster Desk / 白光看片台' : '🌙 Safelight Darkroom / 三级红黑暗房'}
+              </button>
             </div>
-            <h1 className="text-4xl md:text-6xl font-light tracking-[-0.04em] uppercase text-stone-100">
-              Phantom Chrome
+            <h1 className={`text-4xl md:text-6xl font-light tracking-[-0.04em] uppercase mt-2 transition-colors duration-350 ${
+              theme === 'light' ? 'text-zinc-900 font-semibold' : 'text-stone-100'
+            }`}>
+              PHYSICAL SILENT COIL
             </h1>
-            <p className="text-xs text-[#6B7280] font-sans">
-              High-end 35mm photograph simulator mimicking chemical negative base resistance and mechanical spring-back.
+            <p className={`text-xs font-sans transition-colors duration-300 ${theme === 'light' ? 'text-zinc-600' : 'text-[#6B7280]'}`}>
+              探索物理阻尼振动、偏置拉力重塑与无声醋酸橙红乳剂在拟物化微观构造下的美学实践。
             </p>
           </div>
 
-          {/* Editorial right side metadata */}
           <div className="flex items-end gap-6 text-right">
             <div className="hidden sm:flex flex-col">
-              <span className="text-[10px] text-[#6B7280] font-mono tracking-widest">ROLL IDENTIFIER</span>
-              <span className="text-zinc-300 font-bold font-mono text-xs uppercase">ROLL_35_104_99A</span>
+              <span className={`text-[10px] font-mono tracking-widest ${theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}`}>PROJECT CODE</span>
+              <span className={`font-bold font-mono text-xs uppercase ${theme === 'light' ? 'text-zinc-800' : 'text-zinc-300'}`}>LAB_35_COIL</span>
             </div>
-            <div className="h-8 w-[1px] bg-[#222] hidden sm:block"></div>
+            <div className={`h-8 w-[1px] hidden sm:block ${theme === 'light' ? 'bg-zinc-300' : 'bg-[#222]'}`}></div>
             <div className="flex flex-col justify-end">
-              <span className="text-[10px] text-[#6B7280] font-mono tracking-widest">SENSITIVITY</span>
-              <span className="text-xl font-bold font-mono text-[#FFB800] leading-none mt-1">ISO {activeStyle.iso}</span>
+              <span className={`text-[10px] font-mono tracking-widest ${theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}`}>EMULSION LATITUDE</span>
+              <span className="text-xl font-bold font-mono text-[#FFB800] leading-none mt-1">
+                {activeUnit === 1 ? `ISO ${activeStyle.iso}` : 'ISO 100'}
+              </span>
             </div>
           </div>
         </header>
 
-        {/* Operating Environment with Side-info element from instruction */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
-          
-          {/* Main Stage Cylinder container */}
-          <section id="laboratory-stage" className="lg:col-span-3 bg-[#111112] border border-[#222] rounded-xl p-6 md:p-8 shadow-2xl relative overflow-visible flex flex-col justify-between min-h-[360px]">
-            
-            {/* Unified Mechanical Assembly: Canister + Filmstrip fully connected */}
-            <div className="flex flex-row items-center justify-start select-none relative overflow-visible mt-4 w-full">
-              
-              {/* Skeuomorphic 3D Canister (Left) - overlapping right margin to tuck filmstrip behind the exit felt slot */}
-              <div className="flex-shrink-0 z-30 relative mr-[-14px]">
-                <Canister
-                  styleConfig={activeStyle}
-                  isOpen={isOpen}
-                  onToggle={handleToggleCanister}
-                  physics={physics}
-                />
-              </div>
-
-              {/* Elastic Sliding Filmstrip Tape (Right) - starts directly flush underneath the felt slot of the canister */}
-              <div className="flex-grow relative overflow-visible z-20">
-                <Filmstrip
-                  frames={frames}
-                  isOpen={isOpen}
-                  onUploadImage={handleUploadImage}
-                  onUpdateFilter={handleUpdateFilter}
-                  onCutFrame={handleCutFrame}
-                  onDeleteFrame={handleDeleteFrame}
-                  onAddFrame={handleAddFrame}
-                  onDevelopScan={handleDevelopScan}
-                  physics={physics}
-                  onToggleCanister={handleToggleCanister}
-                />
-              </div>
-
-            </div>
-
-            {/* Background Stage Hints */}
-            {!isOpen && (
-              <div className="mt-8 text-[11px] text-[#6B7280] font-mono flex items-center justify-end gap-1.5 pointer-events-none uppercase tracking-wider">
-                <span className="inline-block w-2 h-2 rounded-full bg-[#FFB800] animate-pulse"></span>
-                <span>Click the canister to unspool the negative with tactile spring dynamics</span>
-              </div>
-            )}
-
-          </section>
-
-          {/* Sidebar Info - Specified precisely by the Editorial Design Template */}
-          <aside className="bg-[#111112] border border-[#222] rounded-xl p-5 text-xs text-stone-400 font-mono tracking-wider flex flex-col gap-4">
-            <div className="text-[11px] font-bold text-[#FFB800] tracking-widest uppercase border-b border-[#222] pb-2">
-              System Specification
-            </div>
-            <div className="flex justify-between items-center py-1 border-b border-[#222]/50">
-              <span className="text-[#6B7280]">PROCESS</span>
-              <span className="text-zinc-200">C-41 DEVELOP</span>
-            </div>
-            <div className="flex justify-between items-center py-1 border-b border-[#222]/50">
-              <span className="text-[#6B7280]">BASE EMULSION</span>
-              <span className="text-zinc-200 uppercase">{activeStyle.brandText}</span>
-            </div>
-            <div className="flex justify-between items-center py-1 border-b border-[#222]/50">
-              <span className="text-[#6B7280]">GRAIN RATIO</span>
-              <span className="text-zinc-200">ULTRA-FINE 0.14</span>
-            </div>
-            <div className="flex justify-between items-center py-1 border-b border-[#222]/50">
-              <span className="text-[#6B7280]">SATURATION</span>
-              <span className="text-zinc-200">HIGH CONTRAST</span>
-            </div>
-            <div className="flex justify-between items-center py-1 border-b border-[#222]/50">
-              <span className="text-[#6B7280]">TENSION MECHANIC</span>
-              <span className="text-[#FFB800] font-bold">REBOUND ACTIVE</span>
-            </div>
-
-            <div className="mt-2 text-[11px] text-[#6B7280] leading-relaxed tracking-normal font-sans border-t border-[#222] pt-3">
-              This emulator recreates the physical, mechanical resistance of 35mm acetate film base. Observe rotational wobbles and recoil damping when fully unspooled.
-            </div>
-          </aside>
-          
+        {/* Lab Unit Segment Selector / 单元控制切换 */}
+        <div className={`flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between border p-2 rounded-xl transition-all duration-300 ${
+          theme === 'light' ? 'bg-[#ECEAE4] border-zinc-300/80 shadow-sm' : 'bg-[#111112]/90 border-[#222]'
+        }`}>
+          <div className="flex items-center gap-3 pl-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-pulse" />
+            <span className={`text-[11px] font-mono tracking-widest uppercase ${theme === 'light' ? 'text-zinc-700' : 'text-[#6B7280]'}`}>
+              SELECT MODULE WORKSPACE / 切换暗房实验单元
+            </span>
+          </div>
+          <div className={`flex gap-1.5 p-1 rounded-lg border transition-colors duration-200 ${
+            theme === 'light' ? 'bg-[#DFDDD7] border-zinc-300' : 'bg-[#0A0A0B] border-[#222]'
+          }`}>
+            <button
+              onClick={() => setActiveUnit(1)}
+              className={`px-4 py-1.5 rounded-md text-[11px] font-mono tracking-wider transition-all duration-200 uppercase flex items-center gap-2 ${
+                activeUnit === 1
+                  ? 'bg-[#FFB800] text-[#0A0A0B] font-bold shadow-md'
+                  : theme === 'light'
+                    ? 'text-zinc-700 hover:text-zinc-950 hover:bg-[#D4D1CA]'
+                    : 'text-stone-400 hover:text-zinc-100 hover:bg-zinc-800/40'
+              }`}
+            >
+              <span>U01</span>
+              <span>•</span>
+              <span>Tactile Cylinder (暗盒拉曳)</span>
+            </button>
+            <button
+              onClick={() => setActiveUnit(2)}
+              className={`px-4 py-1.5 rounded-md text-[11px] font-mono tracking-wider transition-all duration-200 uppercase flex items-center gap-2 ${
+                activeUnit === 2
+                  ? 'bg-[#FFB800] text-[#0A0A0B] font-bold shadow-md'
+                  : theme === 'light'
+                    ? 'text-zinc-700 hover:text-zinc-950 hover:bg-[#D4D1CA]'
+                    : 'text-stone-400 hover:text-zinc-100 hover:bg-zinc-800/40'
+              }`}
+            >
+              <span>U02</span>
+              <span>•</span>
+              <span>Slide Mount (幻灯胶片匣)</span>
+            </button>
+          </div>
         </div>
 
-        {/* Dynamic Multi-column Controls (Physics + Laboratory presets) */}
-        <section id="laboratory-dashboard">
-          <PhysicsControls
-            physics={physics}
-            setPhysics={setPhysics}
-            selectedBrand={selectedBrand}
-            onBrandChange={setSelectedBrand}
-            brands={CANISTER_BRANDS}
-            onSeedPhotos={handleSeedPhotos}
-            onResetPhysics={handleResetPhysics}
-            onClearAll={handleClearAll}
-            onScanAll={handleScanAll}
-            allScanned={allScanned}
-          />
-        </section>
+        {/* ======================================================= */}
+        {/* MAIN MODULE STAGE / WORKSPACE AREA                      */}
+        {/* ======================================================= */}
+            <section 
+              id="laboratory-stage" 
+              className={`w-full rounded-xl px-4 py-8 shadow-2xl relative overflow-visible flex flex-col justify-center items-center min-h-[160px] transition-all duration-300 border ${
+                theme === 'light'
+                  ? 'bg-white border-zinc-200/80 shadow-[0_12px_40px_rgba(0,0,0,0.04)]'
+                  : 'bg-[#111112] border-[#222]'
+              }`}
+            >
+              {activeUnit === 1 ? (
+                /* Unit 1 Visualizer: Canister + Filmstrip Tape sliding */
+                <div className="flex flex-row items-center justify-center select-none relative overflow-visible w-full max-w-4xl mx-auto">
+                  {/* Skeuomorphic 3D Canister (Left) */}
+                  <div className="flex-shrink-0 z-30 relative mr-[-14px]">
+                    <Canister
+                      styleConfig={activeStyle}
+                      isOpen={isOpen}
+                      onToggle={handleToggleCanister}
+                      physics={physics}
+                    />
+                  </div>
 
-        {/* Photographers Lighttable / Lightbox Box */}
-        <section id="laboratory-lighttable">
-          <Lighttable
-            splitSlides={splitSlides}
-            onDeleteSlide={handleDeleteSlide}
-            onClearSlides={handleClearSlides}
-            onExportFilmstripPNG={handleExportFilmstripPNG}
-          />
-        </section>
+                  {/* Elastic Sliding Filmstrip Tape (Right) */}
+                  <div className="flex-grow relative overflow-visible z-20">
+                    <Filmstrip
+                      isOpen={isOpen}
+                      physics={physics}
+                      onToggleCanister={handleToggleCanister}
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Unit 2 visualizer: Slide Mount Holder step */
+                <div className="w-full flex justify-center items-center overflow-visible">
+                  <SlideMount
+                    frames={frames}
+                    emulsion={emulsion}
+                    ribbonParams={ribbonParams}
+                  />
+                </div>
+              )}
+
+              {/* Interactive hints */}
+              <div className="mt-4 text-[10px] text-[#6B7280] font-mono flex items-center justify-center gap-1.5 pointer-events-none uppercase tracking-wider select-none text-center">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#FFB800] animate-pulse"></span>
+                <span>
+                  {activeUnit === 1 
+                    ? 'Click canister to pull out or rewind the film ribbon with dynamic elastic spring mechanics' 
+                    : 'Load exposures, adjust emulsion chemistries, and preview positive slides inside the mounted cardboard frames'}
+                </span>
+              </div>
+            </section>
+
+            {/* ======================================================= */}
+            {/* LOWER SECTION: WORKBENCH (LEFT) & TECH SPECS (RIGHT)    */}
+            {/* ======================================================= */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+              
+              {/* Main Laboratory Workbench (Col Span 3) */}
+              <div className="lg:col-span-3">
+                {activeUnit === 1 ? (
+                  <section id="laboratory-dashboard">
+                    <PhysicsControls
+                      physics={physics}
+                      setPhysics={setPhysics}
+                      selectedBrand={selectedBrand}
+                      onBrandChange={setSelectedBrand}
+                      brands={CANISTER_BRANDS}
+                      onResetPhysics={handleResetPhysics}
+                    />
+                  </section>
+                ) : (
+                  <section id="developed-workbench-dashboard">
+                    <DevelopedRollWorkbench
+                      frames={frames}
+                      emulsion={emulsion}
+                      setEmulsion={handleSetEmulsion}
+                      loadPresetSamples={loadPresetSamples}
+                      clearAll={clearAll}
+                      triggerUpload={triggerUpload}
+                      removePhoto={removePhoto}
+                      ribbonParams={ribbonParams}
+                      onChangeRibbonParams={setRibbonParams}
+                    />
+                  </section>
+                )}
+              </div>
+
+              {/* Technical Specs Sidebar Display (Col Span 1) */}
+              <aside className={`border rounded-xl p-5 text-xs font-mono tracking-wider flex flex-col gap-4 transition-all duration-300 ${
+                theme === 'light'
+                  ? 'bg-white border-zinc-200 text-zinc-650 shadow-[0_8px_30px_rgba(0,0,0,0.02)]'
+                  : 'bg-[#111112] border-[#222] text-stone-400'
+              }`}>
+                <div className="text-[11px] font-bold text-[#FFB800] tracking-widest uppercase border-b pb-2" style={{ borderColor: theme === 'light' ? '#E4E4E7' : '#222' }}>
+                  EMULATION META / 技术规格
+                </div>
+                <div className="flex justify-between items-center py-1 border-b" style={{ borderColor: theme === 'light' ? 'rgba(228,228,231,0.5)' : 'rgba(34,34,34,0.5)' }}>
+                  <span className={theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}>MEDIA BASE</span>
+                  <span className={theme === 'light' ? 'text-zinc-800 font-bold' : 'text-zinc-200'}>
+                    {activeUnit === 1 ? 'ACETATE 35MM' : 'CARDBOARD SLIDE'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b" style={{ borderColor: theme === 'light' ? 'rgba(228,228,231,0.5)' : 'rgba(34,34,34,0.5)' }}>
+                  <span className={theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}>DEVELOPING</span>
+                  <span className={theme === 'light' ? 'text-zinc-800 font-bold' : 'text-zinc-200'}>
+                    {activeUnit === 1 ? 'RAW EXP TAPE' : 'POSITIVE SEPARATION'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b" style={{ borderColor: theme === 'light' ? 'rgba(228,228,231,0.5)' : 'rgba(34,34,34,0.5)' }}>
+                  <span className={theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}>RECOIL ENGINE</span>
+                  <span className={theme === 'light' ? 'text-zinc-800 font-bold' : 'text-zinc-200'}>
+                    {activeUnit === 1 ? 'ACTIVE DAMPING' : 'MANUAL SLOT'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b" style={{ borderColor: theme === 'light' ? 'rgba(228,228,231,0.5)' : 'rgba(34,34,34,0.5)' }}>
+                  <span className={theme === 'light' ? 'text-zinc-500' : 'text-[#6B7280]'}>EMULSION TINT</span>
+                  <span className="text-[#FFB800] font-bold">
+                    {activeUnit === 1 
+                      ? 'ORANGE HALIDE GELS' 
+                      : emulsion === 'vintage-c41' 
+                        ? 'AMBER PORTRA C-41' 
+                        : emulsion === 'tungsten-slide' 
+                          ? 'CYAN TUNGSTEN' 
+                          : 'SILVER HALIDE NOIR'}
+                  </span>
+                </div>
+
+                <div className="mt-2 text-[10.5px] leading-relaxed tracking-normal font-sans border-t pt-3" style={{ borderColor: theme === 'light' ? '#E4E4E7' : '#222', color: theme === 'light' ? '#71717A' : '#6B7280' }}>
+                  {activeUnit === 1 
+                    ? '第1单元：搭载物理暗盒齿孔，模拟手部拉条时的强力防光槽摩擦力与高精度阻尼回弹。'
+                    : '第2单元：精工35mm反转片硬纸切片盒。内置8组化学冲印工作台，将洗印后的显影框组合，套用复古精绘纸框，在拟真3D光源盘片上实时展示。'
+                  }
+                </div>
+              </aside>
+              
+            </div>
+
+        {/* Hidden File Upload Element Tree (One input per frame node) */}
+        <div className="hidden">
+          {frames.map((frame) => (
+            <input
+              key={frame.id}
+              type="file"
+              ref={(el) => { fileInputRefs.current[frame.id] = el; }}
+              onChange={(e) => handleFileChange(frame.id, e)}
+              accept="image/*"
+            />
+          ))}
+        </div>
 
         {/* Helpful Tips Legend */}
-        <section id="help-legend" className="bg-[#111112] border border-[#222] rounded-xl p-5 flex gap-4 text-xs leading-normal text-zinc-400">
+        <section id="help-legend" className={`border rounded-xl p-5 flex gap-4 text-xs leading-normal transition-colors duration-300 ${
+          theme === 'light'
+            ? 'bg-white border-zinc-200 text-zinc-700 shadow-[0_8px_30px_rgba(0,0,0,0.02)]'
+            : 'bg-[#111112] border-[#222] text-zinc-400'
+        }`}>
           <AlertCircle className="w-5 h-5 text-[#FFB800] flex-shrink-0 mt-0.5" />
           <div className="flex flex-col gap-1.5">
-            <h4 className="font-semibold text-zinc-200 uppercase tracking-widest font-mono text-[11px]">User Manual / 冲洗指南</h4>
-            <ul className="list-disc pl-4 space-y-1.5 text-stone-400 text-[11px] font-mono tracking-wider">
+            <h4 className={`font-semibold uppercase tracking-widest font-mono text-[11px] ${theme === 'light' ? 'text-[#C23C27]' : 'text-zinc-200'}`}>
+              PROJECT MANIFESTO / 实验室宣言
+            </h4>
+            <ul className={`list-disc pl-4 space-y-1.5 text-[11px] font-mono tracking-wider ${
+              theme === 'light' ? 'text-zinc-650' : 'text-stone-400'
+            }`}>
               <li>
-                <strong>物理回弹旋转 (Canister Spun Damping):</strong> 点击胶卷盒展开或收起时，胶卷盒会根据所调参数旋转并产生<strong>物理机械回弹</strong>。在参数面板中调节不同的 <strong>Damping(阻尼)</strong> 可以改变物理拉扯的阻力感！
+                <strong>醋酸片基弹性 (Acetate Poly-resonance):</strong> 经典的 35 毫米胶片片基自带反向张力，当被拉出暗盒时会自然卷屈，收纳时又会完美归位。
               </li>
               <li>
-                <strong>模拟胶片开发 (C-41 Negative Processing):</strong> 刚上传好的图片默认带有胶片原始的 <strong>Negative (负片橙红基底)</strong> 效果，点击每格胶片上的 <strong>“Developer Scan (显影扫描)”</strong> 来模拟扫描仪透过灯箱，让负片冲洗显影，转换成明亮正片！
+                <strong>物理回弹旋转 (Oscillation & Bounce):</strong> 点击暗盒即可启动物理 unspool，你可以自由测试不同 <strong>Damping(阻尼)</strong> 与 <strong>Stiffness(刚度)</strong> 组合，观察微妙的回弹过冲与阻尼回摆！
               </li>
               <li>
-                <strong>拆分胶片条 (Split Film Slides):</strong> 选中某格含有图片的胶片，点击 <strong>“Split Frame (拆分切片)”</strong> 可以把这格胶片裁切成一个独立的幻灯片，掉落到下方的 <strong>灯箱观片台</strong> 供你仔细鉴赏。
-              </li>
-              <li>
-                <strong>高保真全景导出 (Panorama Graphic Export):</strong> 在观片台右侧，点击 <strong>“Export Panoramic Roll”</strong> 可以把当前的整条摄影胶卷拼接、加上标准齿孔与标识，直接绘画并导出为一张超复古的 PNG 的胶卷全景图！
+                <strong>多载体皮肤 (Halide Emulsion Skins):</strong> 在控制台自由切换富士、柯达、爱乐福等传奇经典暗盒外观，不同外观将自动渲染特定感光度及独特的金属底色。
               </li>
             </ul>
           </div>

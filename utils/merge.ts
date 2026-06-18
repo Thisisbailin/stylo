@@ -236,6 +236,8 @@ export const mergeProjectData = (remote: ProjectData, local: ProjectData): Merge
     designAssets: remote.designAssets || local.designAssets || [],
     canvas: remote.canvas || local.canvas,
     flow: remote.flow || local.flow,
+    activeFlowProjectId: remote.activeFlowProjectId || local.activeFlowProjectId,
+    flowProjects: remote.flowProjects || local.flowProjects || [],
     phase5Usage: mergeTokenUsage(remote.phase5Usage, local.phase5Usage),
     stats: mergePerformanceMetrics(remote.stats, local.stats)
   };

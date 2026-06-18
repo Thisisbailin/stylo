@@ -1,0 +1,921 @@
+import type { ProjectData, FlowProject, FlowState } from "../../types";
+import type { NodeFlowNode, NodeFlowNodeData } from "../types";
+import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+
+const ensureFlow = (flow?: FlowState): FlowState => ({
+  revision: typeof flow?.revision === "number" ? flow.revision : 0,
+  flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
+  graphLinks: Array.isArray(flow?.graphLinks) ? flow.graphLinks : [],
+  globalAssetHistory: Array.isArray(flow?.globalAssetHistory) ? flow.globalAssetHistory : [],
+  linkStyle: flow?.linkStyle || "curved",
+  activeView: flow?.activeView ?? null,
+  links: Array.isArray(flow?.links) ? flow.links : [],
+});
+
+export type FoundationViewBlock = {
+  id: string;
+  title: string;
+  content: string;
+  color: string;
+  order: number;
+  boundaryNodeIds: string[];
+};
+
+export type FoundationTimeBlock = FoundationViewBlock & {
+  startMin: number;
+  durationMin: number;
+};
+
+export type FoundationSpaceBlock = FoundationViewBlock & {
+  width: number;
+};
+
+export type FoundationProjectHead = {
+  title: string;
+  content: string;
+};
+
+export type FoundationScaffold = {
+  id: string;
+  title: string;
+  durationMin: number;
+  head?: FoundationProjectHead;
+  spaceAxisBlocks?: FoundationSpaceBlock[];
+  blocks: FoundationTimeBlock[];
+};
+
+const FLOW_PROJECT_LIMIT = 3;
+const FLOW_PROJECT_COLOR_STYLES = [
+  { color: "amber" },
+  { color: "moss" },
+  { color: "blue" },
+  { color: "rose" },
+  { color: "violet" },
+  { color: "slate" },
+] as const;
+
+export const TIMELINE_COLORS = [
+  { name: "墨", value: "slate" },
+  { name: "琥珀", value: "amber" },
+  { name: "苔绿", value: "moss" },
+  { name: "海蓝", value: "blue" },
+  { name: "胭脂", value: "rose" },
+  { name: "紫藤", value: "violet" },
+];
+
+export const MIN_TIMELINE_BLOCK_MINUTES = 3;
+export const DEFAULT_TIMELINE_DURATION = 120;
+const FOUNDATION_ARCHIVE_NODE_SIZE = { width: 320, height: 252 };
+const FOLDER_NODE_SIZE = { width: 230, height: 128 };
+const FOUNDATION_LAYOUT = {
+  root: { x: 80, y: 40 },
+  projectIndex: { x: 360, y: 24 },
+  timeAxis: { x: 80, y: 260 },
+  timeAxisIndex: { x: 360, y: 244 },
+  spaceAxis: { x: 80, y: 780 },
+  spaceAxisIndex: { x: 360, y: 764 },
+  blockStartX: 360,
+  blockArchiveOffsetX: 270,
+  timeBlockY: 500,
+  spaceBlockY: 1020,
+  blockColumnWidth: 620,
+  blockRowHeight: 220,
+} as const;
+export const FOUNDATION_ROOT_NODE_PREFIX = "project-root-";
+export const DEFAULT_TIMELINE_HEAD: FoundationProjectHead = {
+  title: "项目索引",
+  content: "项目根文档，组织空间轴与时间轴的文件树。",
+};
+
+const createTimelineBlock = (
+  id: string,
+  title: string,
+  durationMin: number,
+  order: number,
+  color: string,
+  content = ""
+): FoundationTimeBlock => ({
+  id,
+  title,
+  content,
+  startMin: 0,
+  durationMin,
+  color,
+  order,
+  boundaryNodeIds: [],
+});
+
+export const createSpaceBlock = (
+  id: string,
+  title: string,
+  order: number,
+  width: number,
+  color: string,
+  content = ""
+): FoundationSpaceBlock => ({
+  id,
+  title,
+  content,
+  color,
+  order,
+  width,
+  boundaryNodeIds: [],
+});
+
+export const createDefaultSpaceBlocks = (): FoundationSpaceBlock[] => [
+  createSpaceBlock("space-spec", "规格", 0, 0.72, "slate", "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。"),
+  createSpaceBlock("space-world", "世界观", 1, 1, "moss", "影片整体背景、规则与设定。"),
+  createSpaceBlock("space-characters", "角色档案", 2, 1.15, "amber", "主要角色、动机、关系与小传。"),
+  createSpaceBlock("space-locations", "场景地图", 3, 0.9, "blue", "空间、地点、动线与场景关系。"),
+  createSpaceBlock("space-style", "风格备忘录", 4, 0.95, "rose", "影像、语气、对白、节奏和参考。"),
+];
+
+const distributeRemainder = (blocks: FoundationTimeBlock[], targetDuration: number) => {
+  const next = blocks.map((block) => ({ ...block, durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(block.durationMin)) }));
+  let total = next.reduce((sum, block) => sum + block.durationMin, 0);
+  let guard = 0;
+
+  while (total < targetDuration && next.length && guard < 1000) {
+    next[guard % next.length].durationMin += 1;
+    total += 1;
+    guard += 1;
+  }
+
+  guard = 0;
+  while (total > targetDuration && next.length && guard < 1000) {
+    const block = next[guard % next.length];
+    if (block.durationMin > MIN_TIMELINE_BLOCK_MINUTES) {
+      block.durationMin -= 1;
+      total -= 1;
+    }
+    guard += 1;
+  }
+
+  return next;
+};
+
+export const recalculateTimelineBlocks = (blocks: FoundationTimeBlock[], durationMin: number) => {
+  const ordered = distributeRemainder(
+    blocks
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((block, index) => ({
+        ...block,
+        order: index,
+        boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? Array.from(new Set(block.boundaryNodeIds)) : [],
+      })),
+    durationMin
+  );
+  let cursor = 0;
+  return ordered.map((block, index) => {
+    const next = { ...block, order: index, startMin: cursor };
+    cursor += next.durationMin;
+    return next;
+  });
+};
+
+export const normalizeSpaceBlocks = (blocks?: FoundationSpaceBlock[]) =>
+  (() => {
+    const base = Array.isArray(blocks) && blocks.length ? blocks : createDefaultSpaceBlocks();
+    const hasSpec = base.some((block) => block.id === "space-spec" || block.title === "规格");
+    return hasSpec ? base : [createDefaultSpaceBlocks()[0], ...base];
+  })()
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((block, index) => ({
+      id: block.id || `space-block-${index + 1}`,
+      title: block.title || `全局视角 ${index + 1}`,
+      content: block.content || "",
+      color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
+      order: index,
+      width: Math.max(0.45, Number(block.width) || 1),
+      boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? Array.from(new Set(block.boundaryNodeIds)) : [],
+    }));
+
+const createFoundationFolderNode = (
+  id: string,
+  title: string,
+  position: { x: number; y: number }
+): NodeFlowNode => ({
+  id,
+  type: "folder",
+  position,
+  style: FOLDER_NODE_SIZE,
+  data: {
+    ...createDefaultNodeFlowNodeData("folder"),
+    title,
+  },
+});
+
+const createFoundationArchiveNode = (
+  id: string,
+  title: string,
+  content: string,
+  position: { x: number; y: number }
+): NodeFlowNode => ({
+  id,
+  type: "mdText",
+  position,
+  style: FOUNDATION_ARCHIVE_NODE_SIZE,
+  data: {
+    ...createDefaultNodeFlowNodeData("mdText"),
+    documentId: id.replace(/^md-/, ""),
+    title,
+    text: content,
+    content,
+    preview: compactMarkdownPreview(content),
+    documentKind: "archive",
+    format: "markdown",
+  } as NodeFlowNodeData,
+});
+
+export const createFoundationLink = (source: string, target: string): FlowState["links"][number] => ({
+  id: `link-${source}-${target}-text-text`,
+  source,
+  target,
+  sourceHandle: "text",
+  targetHandle: "text",
+});
+
+const getFoundationSeedIds = (rootNodeId: string) => ({
+  projectIndexId: `${rootNodeId}--project-index`,
+  timeAxisId: `${rootNodeId}--time-axis`,
+  timeAxisIndexId: `${rootNodeId}--time-axis-index`,
+  spaceAxisId: `${rootNodeId}--space-axis`,
+  spaceAxisIndexId: `${rootNodeId}--space-axis-index`,
+});
+
+const createBlockArchiveMarkdown = (
+  title: string,
+  axis: "时间轴" | "空间轴",
+  fields: string[],
+  content: string
+) => [`# ${title}`, "", `- 轴：${axis}`, ...fields, "", "## 用户记录", "", content || "未记录"].join("\n");
+
+export const buildFoundationGraphSeed = (
+  projectTitle: string,
+  durationMin: number,
+  rootNodeId: string
+): { nodes: NodeFlowNode[]; links: FlowState["links"] } => {
+  const ids = getFoundationSeedIds(rootNodeId);
+  const timeBlocks = createDefaultTimeline(durationMin).blocks;
+  const spaceAxisBlocks = createDefaultSpaceBlocks();
+  const nodes: NodeFlowNode[] = [
+    createFoundationFolderNode(rootNodeId, projectTitle || "项目", FOUNDATION_LAYOUT.root),
+    createFoundationArchiveNode(
+      ids.projectIndexId,
+      "项目索引.md",
+      ["# 项目索引", "", `- 项目：${projectTitle || "项目"}`, `- 预估时长：${durationMin} min`, "", "## 结构", "", "- 时间轴", "- 空间轴"].join("\n"),
+      FOUNDATION_LAYOUT.projectIndex
+    ),
+    createFoundationFolderNode(ids.timeAxisId, "时间轴", FOUNDATION_LAYOUT.timeAxis),
+    createFoundationArchiveNode(ids.timeAxisIndexId, "时间轴索引.md", "# 时间轴\n\n由连接到时间轴文件夹的块文件夹自动解析。", FOUNDATION_LAYOUT.timeAxisIndex),
+    createFoundationFolderNode(ids.spaceAxisId, "空间轴", FOUNDATION_LAYOUT.spaceAxis),
+    createFoundationArchiveNode(ids.spaceAxisIndexId, "空间轴索引.md", "# 空间轴\n\n由连接到空间轴文件夹的块文件夹自动解析。", FOUNDATION_LAYOUT.spaceAxisIndex),
+  ];
+  const links: FlowState["links"] = [
+    createFoundationLink(rootNodeId, ids.projectIndexId),
+    createFoundationLink(rootNodeId, ids.timeAxisId),
+    createFoundationLink(rootNodeId, ids.spaceAxisId),
+    createFoundationLink(ids.timeAxisId, ids.timeAxisIndexId),
+    createFoundationLink(ids.spaceAxisId, ids.spaceAxisIndexId),
+  ];
+
+  timeBlocks.forEach((block, index) => {
+    const folderId = `${rootNodeId}--time-block-${index + 1}`;
+    const archiveId = `${folderId}--archive`;
+    nodes.push(
+      createFoundationFolderNode(folderId, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }),
+      createFoundationArchiveNode(
+        archiveId,
+        `${block.title}档案.md`,
+        createBlockArchiveMarkdown(block.title, "时间轴", [
+          `- 起点：${block.startMin} min`,
+          `- 时长：${block.durationMin} min`,
+          `- 颜色：${block.color}`,
+        ], block.content),
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+      )
+    );
+    links.push(createFoundationLink(ids.timeAxisId, folderId), createFoundationLink(folderId, archiveId));
+  });
+
+  spaceAxisBlocks.forEach((block, index) => {
+    const folderId = `${rootNodeId}--space-block-${index + 1}`;
+    const archiveId = `${folderId}--archive`;
+    nodes.push(
+      createFoundationFolderNode(folderId, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }),
+      createFoundationArchiveNode(
+        archiveId,
+        `${block.title}档案.md`,
+        createBlockArchiveMarkdown(block.title, "空间轴", [
+          `- 宽度权重：${block.width}`,
+          `- 颜色：${block.color}`,
+        ], block.content),
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+      )
+    );
+    links.push(createFoundationLink(ids.spaceAxisId, folderId), createFoundationLink(folderId, archiveId));
+  });
+
+  return { nodes, links };
+};
+
+export const createDefaultTimeline = (durationMin = DEFAULT_TIMELINE_DURATION): FoundationScaffold => ({
+  id: "film-structure",
+  title: "影片时间轴",
+  durationMin,
+  head: DEFAULT_TIMELINE_HEAD,
+  spaceAxisBlocks: createDefaultSpaceBlocks(),
+  blocks: recalculateTimelineBlocks(
+    [
+      createTimelineBlock("timeline-opening", "开场设定", 15, 0, "amber", "建立世界、语气和主人公最初的缺口。"),
+      createTimelineBlock("timeline-turn", "第一转折", 25, 1, "moss", "让人物做出无法回头的选择，故事进入真正的推进。"),
+      createTimelineBlock("timeline-pressure", "中段压力", 50, 2, "blue", "关系、目标和代价持续升级，核心问题被逼到台前。"),
+      createTimelineBlock("timeline-finale", "结尾回收", 30, 3, "rose", "完成选择、代价和主题回声。"),
+    ],
+    durationMin
+  ),
+});
+
+export const createEmptyProjectFlow = (
+  durationMin = DEFAULT_TIMELINE_DURATION,
+  projectTitle = "项目",
+  rootNodeId = `${FOUNDATION_ROOT_NODE_PREFIX}${Date.now().toString(36)}`
+): FlowState => {
+  const seed = buildFoundationGraphSeed(projectTitle, durationMin, rootNodeId);
+  return {
+  revision: 0,
+  flowNodes: seed.nodes,
+  graphLinks: [],
+  globalAssetHistory: [],
+  linkStyle: "curved",
+  activeView: null,
+  links: seed.links,
+  };
+};
+
+export const getFlowProjectDuration = (flow?: FlowState, fallback = DEFAULT_TIMELINE_DURATION) =>
+  Math.max(30, Math.min(300, Math.round(Number(fallback) || DEFAULT_TIMELINE_DURATION)));
+
+export const getFlowProjectsForState = (projectData: ProjectData) => {
+  const currentFlow = ensureFlow(projectData.flow);
+  if (Array.isArray(projectData.flowProjects) && projectData.flowProjects.length) {
+    return projectData.flowProjects.slice(0, FLOW_PROJECT_LIMIT).map((project) => ({
+      ...project,
+      rootNodeId: project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`,
+    }));
+  }
+  const now = Date.now();
+  const id = projectData.activeFlowProjectId || "flow-project-main";
+  const rootNodeId = `${FOUNDATION_ROOT_NODE_PREFIX}${id}`;
+  return [
+    {
+      id,
+      title: projectData.fileName || "主项目",
+      color: FLOW_PROJECT_COLOR_STYLES[0].color,
+      durationMin: getFlowProjectDuration(currentFlow),
+      rootNodeId,
+      createdAt: now,
+      updatedAt: now,
+      flow: currentFlow.flowNodes?.some((node) => node.id === rootNodeId)
+        ? currentFlow
+        : createEmptyProjectFlow(DEFAULT_TIMELINE_DURATION, projectData.fileName || "主项目", rootNodeId),
+    },
+  ];
+};
+
+export const saveActiveFlowIntoProjects = (projectData: ProjectData, now = Date.now()) => {
+  const activeId = projectData.activeFlowProjectId || projectData.flowProjects?.[0]?.id || "flow-project-main";
+  const activeFlow = ensureFlow(projectData.flow);
+  const projects = getFlowProjectsForState(projectData);
+  return projects.map((project) =>
+    project.id === activeId
+      ? {
+          ...project,
+          durationMin: getFlowProjectDuration(activeFlow, project.durationMin),
+          updatedAt: now,
+          rootNodeId: project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`,
+          flow: activeFlow,
+        }
+      : project
+  );
+};
+
+export const ensureTimeline = (timeline?: FoundationScaffold): FoundationScaffold => {
+  if (!timeline || !Array.isArray(timeline.blocks) || !timeline.blocks.length) return createDefaultTimeline();
+  const durationMin = Math.max(30, Math.min(300, Math.round(Number(timeline.durationMin) || DEFAULT_TIMELINE_DURATION)));
+  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
+  return {
+    id: timeline.id || "film-structure",
+    title: timeline.title || "影片时间轴",
+    durationMin,
+    head: {
+      title: head.title || DEFAULT_TIMELINE_HEAD.title,
+      content: head.content || "",
+    },
+    spaceAxisBlocks: normalizeSpaceBlocks(timeline.spaceAxisBlocks),
+    blocks: recalculateTimelineBlocks(
+      timeline.blocks.map((block, index) => ({
+        id: block.id || `timeline-block-${index + 1}`,
+        title: block.title || `时间区块 ${index + 1}`,
+        content: block.content || "",
+        startMin: Number(block.startMin) || 0,
+        durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(Number(block.durationMin) || 12)),
+        color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
+        order: Number.isFinite(block.order) ? block.order : index,
+        boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? block.boundaryNodeIds : [],
+      })),
+      durationMin
+    ),
+  };
+};
+
+export const formatTimelineTime = (minute: number) => {
+  const safe = Math.max(0, Math.round(minute));
+  const hours = Math.floor(safe / 60);
+  const mins = safe % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+export const buildTimelineMarkdown = (timeline: FoundationScaffold) => {
+  const spaceAxisBlocks = normalizeSpaceBlocks(timeline.spaceAxisBlocks);
+  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
+  const boundaryConnectionCount =
+    spaceAxisBlocks.reduce((sum, block) => sum + block.boundaryNodeIds.length, 0) +
+    timeline.blocks.reduce((sum, block) => sum + block.boundaryNodeIds.length, 0);
+
+  return [
+    `# 项目`,
+    "",
+    `- 根：${head.title}`,
+    `- 总时长：${timeline.durationMin} min`,
+    `- 空间区块：${spaceAxisBlocks.length}`,
+    `- 时间区块：${timeline.blocks.length}`,
+    `- 块边界连接：${boundaryConnectionCount}`,
+    "",
+    `## ${head.title} / 全局层`,
+    "",
+    ...spaceAxisBlocks.flatMap((block) => [
+      `### ${block.title}`,
+      "",
+      `- 边界连接：${block.boundaryNodeIds.length}`,
+      "",
+    ]),
+    `## 时间轴`,
+    "",
+    ...timeline.blocks.flatMap((block) => [
+      `### ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}`,
+      "",
+      `- 边界连接：${block.boundaryNodeIds.length}`,
+      "",
+    ]),
+  ].join("\n");
+};
+
+export const compactMarkdownPreview = (content: string) => {
+  const clean = content.replace(/\s+/g, " ").trim();
+  if (!clean) return "写下角色、场景、风格、规格或任何全局档案。";
+  return clean.length > 180 ? `${clean.slice(0, 180)}...` : clean;
+};
+
+export type ParsedFoundationBlock = FoundationTimeBlock & {
+  archiveNodeId?: string;
+};
+
+export type ParsedFoundationSpaceBlock = FoundationSpaceBlock & {
+  archiveNodeId?: string;
+};
+
+export type ParsedFoundationGraph = {
+  rootNodeId: string;
+  timeAxisNodeId: string;
+  spaceAxisNodeId: string;
+  headArchiveNodeId?: string;
+  timeline: FoundationScaffold;
+};
+
+const getNodeTitle = (node?: NodeFlowNode | null) => {
+  const data = (node?.data || {}) as { title?: string; label?: string; filename?: string };
+  return data.title?.trim() || data.label?.trim() || data.filename?.trim() || node?.id || "";
+};
+
+const getMarkdownContent = (node?: NodeFlowNode | null) => {
+  const data = (node?.data || {}) as { text?: string; content?: string };
+  return typeof data.content === "string" ? data.content : data.text || "";
+};
+
+const parseMarkdownNumber = (content: string, label: string, fallback: number) => {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`${escaped}\\s*[：:]\\s*([0-9.]+)`));
+  const value = match ? Number(match[1]) : NaN;
+  return Number.isFinite(value) ? value : fallback;
+};
+
+const parseMarkdownColor = (content: string, fallback = "slate") => {
+  const match = content.match(/颜色\s*[：:]\s*([A-Za-z0-9_-]+)/);
+  return match?.[1] || fallback;
+};
+
+const parseMarkdownUserContent = (content: string) => {
+  const marker = "## 用户记录";
+  const index = content.indexOf(marker);
+  if (index < 0) return content.replace(/^# .+?\n+/, "").trim();
+  return content.slice(index + marker.length).trim() || "";
+};
+
+const sortFoundationChildren = (items: NodeFlowNode[]) =>
+  items.slice().sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0) || (a.position?.x || 0) - (b.position?.x || 0));
+
+const getOutgoingTargets = (links: FlowState["links"], sourceId: string) =>
+  links.filter((link) => link.source === sourceId).map((link) => link.target);
+
+const findFirstArchiveChild = (
+  nodeById: Map<string, NodeFlowNode>,
+  links: FlowState["links"],
+  folderId: string,
+  titlePattern?: RegExp
+) => {
+  const children = getOutgoingTargets(links, folderId)
+    .map((id) => nodeById.get(id))
+    .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "mdText");
+  return titlePattern
+    ? children.find((node) => titlePattern.test(getNodeTitle(node))) || children[0] || null
+    : children[0] || null;
+};
+
+const buildFoundationMarkdownIndex = (
+  projectTitle: string,
+  timeline: FoundationScaffold,
+  spaceAxisBlocks: FoundationSpaceBlock[]
+) => [
+  "# 项目索引",
+  "",
+  `- 项目：${projectTitle}`,
+  `- 预估时长：${timeline.durationMin} min`,
+  "",
+  "## 时间轴",
+  "",
+  ...timeline.blocks.map(
+    (block) =>
+      `- ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}（边界连接：${block.boundaryNodeIds.length}）`
+  ),
+  "",
+  "## 空间轴",
+  "",
+  ...spaceAxisBlocks.map((block) => `- ${block.title}（边界连接：${block.boundaryNodeIds.length}）`),
+].join("\n");
+
+export const parseFoundationGraph = (
+  flow: FlowState,
+  project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
+): ParsedFoundationGraph => {
+  const flowNodes = flow.flowNodes || [];
+  const nodeById = new Map(flowNodes.map((node) => [node.id, node]));
+  const rootNode = nodeById.get(project.rootNodeId);
+  if (!rootNode) {
+    return {
+      rootNodeId: project.rootNodeId,
+      timeAxisNodeId: "",
+      spaceAxisNodeId: "",
+      timeline: createDefaultTimeline(project.durationMin),
+    };
+  }
+
+  const rootChildren = getOutgoingTargets(flow.links, rootNode.id)
+    .map((id) => nodeById.get(id))
+    .filter((node): node is NodeFlowNode => Boolean(node));
+  const childFolders = rootChildren.filter((node) => node.type === "folder");
+  const timeAxis = childFolders.find((node) => node.id.endsWith("--time-axis") || getNodeTitle(node).includes("时间")) || childFolders[0];
+  const spaceAxis = childFolders.find((node) => node.id.endsWith("--space-axis") || getNodeTitle(node).includes("空间")) || childFolders.find((node) => node.id !== timeAxis?.id) || childFolders[1];
+  const projectIndex = rootChildren.find((node) => node.type === "mdText");
+
+  const parseTimeBlocks = (axisId?: string): ParsedFoundationBlock[] => {
+    if (!axisId) return createDefaultTimeline(project.durationMin).blocks;
+    const folderChildren = sortFoundationChildren(
+      getOutgoingTargets(flow.links, axisId)
+        .map((id) => nodeById.get(id))
+        .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "folder")
+    );
+    if (!folderChildren.length) return createDefaultTimeline(project.durationMin).blocks;
+    const blocks = folderChildren.map((folder, index) => {
+      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id, /档案|archive/i);
+      const content = getMarkdownContent(archive);
+      return {
+        id: folder.id,
+        title: getNodeTitle(folder) || `时间区块 ${index + 1}`,
+        content: parseMarkdownUserContent(content),
+        startMin: 0,
+        durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(parseMarkdownNumber(content, "时长", 12))),
+        color: parseMarkdownColor(content, TIMELINE_COLORS[index % TIMELINE_COLORS.length].value),
+        order: index,
+        boundaryNodeIds: getOutgoingTargets(flow.links, folder.id).filter((id) => id !== archive?.id && nodeById.get(id)?.type !== "folder"),
+        archiveNodeId: archive?.id,
+      };
+    });
+    return recalculateTimelineBlocks(blocks, Math.max(30, project.durationMin)) as ParsedFoundationBlock[];
+  };
+
+  const parseSpaceBlocks = (axisId?: string): ParsedFoundationSpaceBlock[] => {
+    if (!axisId) return createDefaultSpaceBlocks();
+    const folderChildren = sortFoundationChildren(
+      getOutgoingTargets(flow.links, axisId)
+        .map((id) => nodeById.get(id))
+        .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "folder")
+    );
+    if (!folderChildren.length) return createDefaultSpaceBlocks();
+    return folderChildren.map((folder, index) => {
+      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id, /档案|archive/i);
+      const content = getMarkdownContent(archive);
+      return {
+        id: folder.id,
+        title: getNodeTitle(folder) || `全局视角 ${index + 1}`,
+        content: parseMarkdownUserContent(content),
+        color: parseMarkdownColor(content, TIMELINE_COLORS[index % TIMELINE_COLORS.length].value),
+        order: index,
+        width: Math.max(0.45, parseMarkdownNumber(content, "宽度权重", 1)),
+        boundaryNodeIds: getOutgoingTargets(flow.links, folder.id).filter((id) => id !== archive?.id && nodeById.get(id)?.type !== "folder"),
+        archiveNodeId: archive?.id,
+      };
+    });
+  };
+
+  const timeBlocks = parseTimeBlocks(timeAxis?.id);
+  const spaceAxisBlocks = parseSpaceBlocks(spaceAxis?.id);
+  const timeline: FoundationScaffold = {
+    id: "foundation-view",
+    title: getNodeTitle(timeAxis) || "时间轴",
+    durationMin: Math.max(30, project.durationMin),
+    head: {
+      title: getNodeTitle(projectIndex) || "项目索引.md",
+      content: getMarkdownContent(projectIndex),
+    },
+    spaceAxisBlocks,
+    blocks: timeBlocks,
+  };
+
+  return {
+    rootNodeId: rootNode.id,
+    timeAxisNodeId: timeAxis?.id || "",
+    spaceAxisNodeId: spaceAxis?.id || "",
+    headArchiveNodeId: projectIndex?.id,
+    timeline,
+  };
+};
+
+export const getFoundationScaffoldNodeIds = (
+  flow: FlowState,
+  project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
+) => {
+  const parsed = parseFoundationGraph(flow, project);
+  const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
+  const ids = new Set<string>();
+  if (parsed.rootNodeId) ids.add(parsed.rootNodeId);
+  if (parsed.timeAxisNodeId) ids.add(parsed.timeAxisNodeId);
+  if (parsed.spaceAxisNodeId) ids.add(parsed.spaceAxisNodeId);
+  if (parsed.headArchiveNodeId) ids.add(parsed.headArchiveNodeId);
+
+  const timeIndex = findFirstArchiveChild(nodeById, flow.links, parsed.timeAxisNodeId, /索引|index/i);
+  const spaceIndex = findFirstArchiveChild(nodeById, flow.links, parsed.spaceAxisNodeId, /索引|index/i);
+  if (timeIndex) ids.add(timeIndex.id);
+  if (spaceIndex) ids.add(spaceIndex.id);
+
+  parsed.timeline.blocks.forEach((block) => {
+    ids.add(block.id);
+    const archiveNodeId = (block as ParsedFoundationBlock).archiveNodeId;
+    if (archiveNodeId) ids.add(archiveNodeId);
+  });
+  normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks).forEach((block) => {
+    ids.add(block.id);
+    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
+    if (archiveNodeId) ids.add(archiveNodeId);
+  });
+  return ids;
+};
+
+export const layoutFoundationGraph = (
+  flow: FlowState,
+  project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
+): FlowState => {
+  const parsed = parseFoundationGraph(flow, project);
+  const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
+  const timeBlocks = parsed.timeline.blocks;
+  const spaceAxisBlocks = normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks);
+  const timeIndex = findFirstArchiveChild(nodeById, flow.links, parsed.timeAxisNodeId, /索引|index/i);
+  const spaceIndex = findFirstArchiveChild(nodeById, flow.links, parsed.spaceAxisNodeId, /索引|index/i);
+  const positionById = new Map<string, { x: number; y: number }>([
+    [parsed.rootNodeId, FOUNDATION_LAYOUT.root],
+    ...(parsed.headArchiveNodeId ? [[parsed.headArchiveNodeId, FOUNDATION_LAYOUT.projectIndex] as const] : []),
+    ...(parsed.timeAxisNodeId ? [[parsed.timeAxisNodeId, FOUNDATION_LAYOUT.timeAxis] as const] : []),
+    ...(timeIndex ? [[timeIndex.id, FOUNDATION_LAYOUT.timeAxisIndex] as const] : []),
+    ...(parsed.spaceAxisNodeId ? [[parsed.spaceAxisNodeId, FOUNDATION_LAYOUT.spaceAxis] as const] : []),
+    ...(spaceIndex ? [[spaceIndex.id, FOUNDATION_LAYOUT.spaceAxisIndex] as const] : []),
+  ]);
+
+  timeBlocks.forEach((block, index) => {
+    positionById.set(block.id, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
+    const archiveNodeId = (block as ParsedFoundationBlock).archiveNodeId;
+    if (archiveNodeId) positionById.set(archiveNodeId, { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
+  });
+  spaceAxisBlocks.forEach((block, index) => {
+    positionById.set(block.id, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
+    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
+    if (archiveNodeId) positionById.set(archiveNodeId, { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
+  });
+
+  const projectIndexContent = buildFoundationMarkdownIndex(project.title, parsed.timeline, spaceAxisBlocks);
+  const timeIndexContent = [
+    "# 时间轴",
+    "",
+    `- 总时长：${parsed.timeline.durationMin} min`,
+    `- 块数量：${timeBlocks.length}`,
+    "",
+    ...timeBlocks.map(
+      (block) =>
+        `- ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}（边界连接：${block.boundaryNodeIds.length}）`
+    ),
+  ].join("\n");
+  const spaceIndexContent = [
+    "# 空间轴",
+    "",
+    `- 块数量：${spaceAxisBlocks.length}`,
+    "",
+    ...spaceAxisBlocks.map((block) => `- ${block.title}（边界连接：${block.boundaryNodeIds.length}）`),
+  ].join("\n");
+
+  return {
+    ...flow,
+    revision: (flow.revision || 0) + 1,
+    flowNodes: (flow.flowNodes || []).map((node) => {
+      const nextPosition = positionById.get(node.id);
+      const content =
+        node.id === parsed.headArchiveNodeId
+          ? projectIndexContent
+          : node.id === timeIndex?.id
+            ? timeIndexContent
+            : node.id === spaceIndex?.id
+              ? spaceIndexContent
+              : null;
+      return {
+        ...node,
+        ...(nextPosition ? { position: nextPosition } : {}),
+        data: content === null
+          ? node.data
+          : {
+              ...node.data,
+              text: content,
+              content,
+              preview: compactMarkdownPreview(content),
+            },
+      };
+    }),
+  };
+};
+
+export const applyFoundationTimelineToGraph = (
+  flow: FlowState,
+  project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">,
+  nextTimeline: FoundationScaffold
+): FlowState => {
+  const parsed = parseFoundationGraph(flow, project);
+  const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
+  const currentTimeIds = new Set(parsed.timeline.blocks.map((block) => block.id));
+  const currentSpaceIds = new Set(normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks).map((block) => block.id));
+  const nextTimeIds = new Set(nextTimeline.blocks.map((block) => block.id));
+  const nextSpaceBlocks = normalizeSpaceBlocks(nextTimeline.spaceAxisBlocks);
+  const nextSpaceIds = new Set(nextSpaceBlocks.map((block) => block.id));
+  const removedIds = new Set<string>();
+  currentTimeIds.forEach((id) => {
+    if (!nextTimeIds.has(id)) removedIds.add(id);
+  });
+  currentSpaceIds.forEach((id) => {
+    if (!nextSpaceIds.has(id)) removedIds.add(id);
+  });
+
+  const removedArchiveIds = new Set<string>();
+  removedIds.forEach((id) => {
+    const archive = findFirstArchiveChild(nodeById, flow.links, id, /档案|archive/i);
+    if (archive) removedArchiveIds.add(archive.id);
+  });
+
+  const nextNodes = (flow.flowNodes || [])
+    .filter((node) => !removedIds.has(node.id) && !removedArchiveIds.has(node.id))
+    .map((node) => {
+      const timeBlock = nextTimeline.blocks.find((block) => block.id === node.id);
+      const spaceBlock = nextSpaceBlocks.find((block) => block.id === node.id);
+      if (timeBlock || spaceBlock) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            title: (timeBlock || spaceBlock)?.title || getNodeTitle(node),
+          },
+        };
+      }
+      const parentLink = flow.links.find((link) => link.target === node.id);
+      const parentBlockId = parentLink?.source || "";
+      const parentTimeBlock = nextTimeline.blocks.find((block) => block.id === parentBlockId);
+      const parentSpaceBlock = nextSpaceBlocks.find((block) => block.id === parentBlockId);
+      if (node.type === "mdText" && parentTimeBlock) {
+        const content = createBlockArchiveMarkdown(parentTimeBlock.title, "时间轴", [
+          `- 起点：${parentTimeBlock.startMin} min`,
+          `- 时长：${parentTimeBlock.durationMin} min`,
+          `- 颜色：${parentTimeBlock.color}`,
+        ], parentTimeBlock.content);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            title: `${parentTimeBlock.title}档案.md`,
+            text: content,
+            content,
+            preview: compactMarkdownPreview(content),
+          },
+        };
+      }
+      if (node.type === "mdText" && parentSpaceBlock) {
+        const content = createBlockArchiveMarkdown(parentSpaceBlock.title, "空间轴", [
+          `- 宽度权重：${parentSpaceBlock.width}`,
+          `- 颜色：${parentSpaceBlock.color}`,
+        ], parentSpaceBlock.content);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            title: `${parentSpaceBlock.title}档案.md`,
+            text: content,
+            content,
+            preview: compactMarkdownPreview(content),
+          },
+        };
+      }
+      return node;
+    });
+
+  const nextLinks = flow.links.filter(
+    (link) =>
+      !removedIds.has(link.source) &&
+      !removedIds.has(link.target) &&
+      !removedArchiveIds.has(link.source) &&
+      !removedArchiveIds.has(link.target)
+  );
+  const existingNodeIds = new Set(nextNodes.map((node) => node.id));
+  const existingLinkIds = new Set(nextLinks.map((link) => link.id));
+  const addNode = (node: NodeFlowNode) => {
+    if (!existingNodeIds.has(node.id)) {
+      nextNodes.push(node);
+      existingNodeIds.add(node.id);
+    }
+  };
+  const addLink = (link: FlowState["links"][number]) => {
+    if (!existingLinkIds.has(link.id)) {
+      nextLinks.push(link);
+      existingLinkIds.add(link.id);
+    }
+  };
+
+  nextTimeline.blocks.forEach((block, index) => {
+    if (currentTimeIds.has(block.id)) return;
+    const archiveId = `${block.id}--archive`;
+    addNode(createFoundationFolderNode(block.id, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }));
+    addNode(createFoundationArchiveNode(
+      archiveId,
+      `${block.title}档案.md`,
+      createBlockArchiveMarkdown(block.title, "时间轴", [
+        `- 起点：${block.startMin} min`,
+        `- 时长：${block.durationMin} min`,
+        `- 颜色：${block.color}`,
+      ], block.content),
+      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+    ));
+    if (parsed.timeAxisNodeId) addLink(createFoundationLink(parsed.timeAxisNodeId, block.id));
+    addLink(createFoundationLink(block.id, archiveId));
+  });
+
+  nextSpaceBlocks.forEach((block, index) => {
+    if (currentSpaceIds.has(block.id)) return;
+    const archiveId = `${block.id}--archive`;
+    addNode(createFoundationFolderNode(block.id, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }));
+    addNode(createFoundationArchiveNode(
+      archiveId,
+      `${block.title}档案.md`,
+      createBlockArchiveMarkdown(block.title, "空间轴", [
+        `- 宽度权重：${block.width}`,
+        `- 颜色：${block.color}`,
+      ], block.content),
+      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+    ));
+    if (parsed.spaceAxisNodeId) addLink(createFoundationLink(parsed.spaceAxisNodeId, block.id));
+    addLink(createFoundationLink(block.id, archiveId));
+  });
+
+  return layoutFoundationGraph(
+    {
+      ...flow,
+      revision: (flow.revision || 0) + 1,
+      flowNodes: nextNodes,
+      links: nextLinks,
+    },
+    project
+  );
+};

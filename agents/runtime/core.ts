@@ -34,7 +34,13 @@ import type {
 } from "./types";
 
 const SUCCESSFUL_ACTION_TOOL_NAMES = new Set([
+  "create_document",
+  "update_document",
+  "connect_flow_nodes",
+  "move_flow_node",
   "operate_project_resource",
+  "prepare_generation_execution",
+  "cancel_generation_execution",
 ]);
 
 const createTraceEntry = (
@@ -423,7 +429,7 @@ export const runQalamAgentCore = async ({
       stream: true,
     });
 
-    const streamReader = result.toStream().getReader();
+    const streamReader = (result.toStream() as any).getReader();
     try {
       while (true) {
         const { done, value } = await streamReader.read();

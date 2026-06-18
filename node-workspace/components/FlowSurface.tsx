@@ -1,4 +1,4 @@
-﻿import React, { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -18,6 +18,7 @@ import {
   Boxes,
   Bot,
   FileText,
+  Folder,
   GripVertical,
   Image as ImageIcon,
   Layers,
@@ -32,12 +33,9 @@ import {
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import type {
   ProjectData,
+  FlowProject,
   FlowState,
   CanvasMeasuredSize,
-  FlowSpatialBlock,
-  FlowTimelineBlock,
-  FlowFoundationHead,
-  FlowFoundationState,
 } from "../../types";
 import type { NodeFlowContextSnapshot, NodeFlowFile, NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
 import {
@@ -45,6 +43,7 @@ import {
   VideoInputNode,
   ImageInputNode,
   AnnotationNode,
+  FolderNode,
   TextNode,
   ScriptBoardNode,
   IdentityCardNode,
@@ -67,9 +66,37 @@ import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConn
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
+import {
+  DEFAULT_TIMELINE_DURATION,
+  DEFAULT_TIMELINE_HEAD,
+  FOUNDATION_ROOT_NODE_PREFIX,
+  MIN_TIMELINE_BLOCK_MINUTES,
+  TIMELINE_COLORS,
+  applyFoundationTimelineToGraph,
+  buildFoundationGraphSeed,
+  buildTimelineMarkdown,
+  compactMarkdownPreview,
+  createDefaultSpaceBlocks,
+  createEmptyProjectFlow,
+  createFoundationLink,
+  createSpaceBlock,
+  formatTimelineTime,
+  getFlowProjectDuration,
+  getFlowProjectsForState,
+  getFoundationScaffoldNodeIds,
+  layoutFoundationGraph,
+  normalizeSpaceBlocks,
+  parseFoundationGraph,
+  recalculateTimelineBlocks,
+  saveActiveFlowIntoProjects,
+  type FoundationProjectHead,
+  type FoundationScaffold,
+  type FoundationSpaceBlock,
+  type FoundationTimeBlock,
+} from "../foundation/scaffold";
 import { Canister as OriginalFilmCanister } from "./film-roll-lab/components/Canister";
 import { Filmstrip as OriginalFilmstrip } from "./film-roll-lab/components/Filmstrip";
-import type { CanisterStyle, FilmFilter, FilmFrame, PhysicsParams } from "./film-roll-lab/types";
+import type { CanisterStyle, PhysicsParams } from "./film-roll-lab/types";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -93,18 +120,81 @@ type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
 type FoundationGatewaySettingsPanel = "assets" | "identity" | "skills";
 type FoundationGatewayAssetsSection = "images" | "videos" | "prompts";
 
+
 const FOUNDATION_FILM_PHYSICS: PhysicsParams = {
   stiffness: 140,
   damping: 18,
   mass: 1.1,
   rotationMultiplier: 2.5,
-  filmstripHeight: 54,
+  filmstripHeight: 56,
   frameWidth: 118,
+  closedWidth: 46,
+  openWidth: 520,
 };
 
-const FOUNDATION_FILM_FRAMES: FilmFrame[] = [];
 const FOUNDATION_FILM_NOOP = () => {};
-const FOUNDATION_FILM_FILTER_NOOP = (_frameId: string, _filter: FilmFilter) => {};
+
+const FLOW_PROJECT_LIMIT = 3;
+const FLOW_PROJECT_DURATIONS = [60, 90, 120, 150, 180] as const;
+const FLOW_PROJECT_COLOR_STYLES = [
+  {
+    color: "amber",
+    primaryColor: "#facc15",
+    accentColor: "#ef4444",
+    backgroundColor: "#ca8a04",
+    textColor: "#18181b",
+  },
+  {
+    color: "moss",
+    primaryColor: "#10b981",
+    accentColor: "#f59e0b",
+    backgroundColor: "#047857",
+    textColor: "#ffffff",
+  },
+  {
+    color: "blue",
+    primaryColor: "#60a5fa",
+    accentColor: "#f97316",
+    backgroundColor: "#1d4ed8",
+    textColor: "#f8fafc",
+  },
+  {
+    color: "rose",
+    primaryColor: "#fb7185",
+    accentColor: "#fde047",
+    backgroundColor: "#be123c",
+    textColor: "#ffffff",
+  },
+  {
+    color: "violet",
+    primaryColor: "#a78bfa",
+    accentColor: "#34d399",
+    backgroundColor: "#6d28d9",
+    textColor: "#ffffff",
+  },
+  {
+    color: "slate",
+    primaryColor: "#94a3b8",
+    accentColor: "#facc15",
+    backgroundColor: "#475569",
+    textColor: "#ffffff",
+  },
+] as const;
+
+const PROJECT_CANISTER_PHYSICS: PhysicsParams = {
+  stiffness: 150,
+  damping: 19,
+  mass: 1,
+  rotationMultiplier: 1.8,
+  filmstripHeight: 34,
+  frameWidth: 82,
+  closedWidth: 34,
+  openWidth: 220,
+};
+
+const getProjectColorStyle = (color: string, index = 0) =>
+  FLOW_PROJECT_COLOR_STYLES.find((item) => item.color === color) ||
+  FLOW_PROJECT_COLOR_STYLES[index % FLOW_PROJECT_COLOR_STYLES.length];
 
 const getFoundationCanisterStyle = (activeAxis: "time" | "space"): CanisterStyle => ({
   id: activeAxis === "time" ? "retro-yellow" : "fuji-green",
@@ -117,6 +207,25 @@ const getFoundationCanisterStyle = (activeAxis: "time" | "space"): CanisterStyle
   iso: activeAxis === "time" ? 200 : 400,
   exp: activeAxis === "time" ? 36 : 24,
 });
+
+const getProjectCanisterStyle = (
+  project: NonNullable<ProjectData["flowProjects"]>[number],
+  index: number
+): CanisterStyle => {
+  const style = getProjectColorStyle(project.color, index);
+  const brandIds: CanisterStyle["id"][] = ["retro-yellow", "fuji-green", "agfa-red"];
+  return {
+    id: brandIds[index % brandIds.length],
+    name: project.title,
+    primaryColor: style.primaryColor,
+    accentColor: style.accentColor,
+    backgroundColor: style.backgroundColor,
+    textColor: style.textColor,
+    brandText: `P${index + 1}`,
+    iso: project.durationMin,
+    exp: Math.max(12, Math.min(36, Math.round(project.durationMin / 5))),
+  };
+};
 
 type ScriptConnectionDropState = {
   position: { x: number; y: number };
@@ -134,12 +243,6 @@ type ScriptFoundationGuideLine = {
   path: string;
   color: string;
   isActive: boolean;
-};
-
-type ScriptFoundationNodeSummary = {
-  id: string;
-  title: string;
-  kind: "剧本" | "图片" | "档案" | "节点";
 };
 
 type ScriptFoundationTargetPosition = {
@@ -170,22 +273,16 @@ type Props = {
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
   revision: typeof flow?.revision === "number" ? flow.revision : 0,
-  pages: Array.isArray(flow?.pages) ? flow.pages : [],
-  images: Array.isArray(flow?.images) ? flow.images : [],
-  textNodes: Array.isArray(flow?.textNodes) ? flow.textNodes : [],
   flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
   graphLinks: Array.isArray(flow?.graphLinks) ? flow.graphLinks : [],
   globalAssetHistory: Array.isArray(flow?.globalAssetHistory) ? flow.globalAssetHistory : [],
   linkStyle: flow?.linkStyle || "curved",
   activeView: flow?.activeView ?? null,
   links: Array.isArray(flow?.links) ? flow.links : [],
-  timeline: flow?.timeline,
 });
 
-const imageNodeId = (imageId: string) => `image-${imageId}`;
 const markdownNodeId = (documentId: string) => `md-${documentId}`;
 
-const isImageNodeId = (id?: string | null) => !!id && id.startsWith("image-");
 const isScriptPageNodeId = (id?: string | null) => !!id && id.startsWith("script-");
 const isMarkdownNodeId = (id?: string | null) => !!id && id.startsWith("md-");
 type ScriptCreateGroup = "script" | "library" | "input" | "generation" | "motion";
@@ -207,6 +304,7 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "剧本文档", hint: "Fountain 稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
   { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive", tone: "is-slate", surface: "paper" },
+  { label: "文件夹", hint: "由 foundation 自动生成", type: "folder", Icon: Folder, group: "script", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "仅可查看" },
   { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile", tone: "is-moss", surface: "card" },
   { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
   { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
@@ -219,238 +317,8 @@ const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "Seedance", hint: "多模态视频", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
 ];
 
-const TIMELINE_COLORS = [
-  { name: "墨", value: "slate" },
-  { name: "琥珀", value: "amber" },
-  { name: "苔绿", value: "moss" },
-  { name: "海蓝", value: "blue" },
-  { name: "胭脂", value: "rose" },
-  { name: "紫藤", value: "violet" },
-];
-
-const MIN_TIMELINE_BLOCK_MINUTES = 3;
-const DEFAULT_TIMELINE_DURATION = 120;
 const SCRIPT_PAGE_NODE_SIZE = { width: 320, height: 249 };
 const MARKDOWN_TEXT_NODE_SIZE = { width: 320, height: 252 };
-const DEFAULT_TIMELINE_HEAD: FlowFoundationHead = {
-  title: "项目索引",
-  content: "项目根文档，组织空间轴与时间轴的文件树。",
-  linkedNodeIds: [],
-};
-
-const createTimelineBlock = (
-  id: string,
-  title: string,
-  durationMin: number,
-  order: number,
-  color: string,
-  content = ""
-): FlowTimelineBlock => ({
-  id,
-  title,
-  content,
-  startMin: 0,
-  durationMin,
-  color,
-  order,
-  linkedNodeIds: [],
-});
-
-const createSpaceBlock = (
-  id: string,
-  title: string,
-  order: number,
-  width: number,
-  color: string,
-  content = ""
-): FlowSpatialBlock => ({
-  id,
-  title,
-  content,
-  color,
-  order,
-  width,
-  linkedNodeIds: [],
-});
-
-const createDefaultSpaceBlocks = (): FlowSpatialBlock[] => [
-  createSpaceBlock("space-spec", "规格", 0, 0.72, "slate", "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。"),
-  createSpaceBlock("space-world", "世界观", 1, 1, "moss", "影片整体背景、规则与设定。"),
-  createSpaceBlock("space-characters", "角色档案", 2, 1.15, "amber", "主要角色、动机、关系与小传。"),
-  createSpaceBlock("space-locations", "场景地图", 3, 0.9, "blue", "空间、地点、动线与场景关系。"),
-  createSpaceBlock("space-style", "风格备忘录", 4, 0.95, "rose", "影像、语气、对白、节奏和参考。"),
-];
-
-const distributeRemainder = (blocks: FlowTimelineBlock[], targetDuration: number) => {
-  const next = blocks.map((block) => ({ ...block, durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(block.durationMin)) }));
-  let total = next.reduce((sum, block) => sum + block.durationMin, 0);
-  let guard = 0;
-
-  while (total < targetDuration && next.length && guard < 1000) {
-    next[guard % next.length].durationMin += 1;
-    total += 1;
-    guard += 1;
-  }
-
-  guard = 0;
-  while (total > targetDuration && next.length && guard < 1000) {
-    const block = next[guard % next.length];
-    if (block.durationMin > MIN_TIMELINE_BLOCK_MINUTES) {
-      block.durationMin -= 1;
-      total -= 1;
-    }
-    guard += 1;
-  }
-
-  return next;
-};
-
-const recalculateTimelineBlocks = (blocks: FlowTimelineBlock[], durationMin: number) => {
-  const ordered = distributeRemainder(
-    blocks
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .map((block, index) => ({
-        ...block,
-        order: index,
-        linkedNodeIds: Array.isArray(block.linkedNodeIds) ? Array.from(new Set(block.linkedNodeIds)) : [],
-      })),
-    durationMin
-  );
-  let cursor = 0;
-  return ordered.map((block, index) => {
-    const next = { ...block, order: index, startMin: cursor };
-    cursor += next.durationMin;
-    return next;
-  });
-};
-
-const normalizeSpaceBlocks = (blocks?: FlowSpatialBlock[]) =>
-  (() => {
-    const base = Array.isArray(blocks) && blocks.length ? blocks : createDefaultSpaceBlocks();
-    const hasSpec = base.some((block) => block.id === "space-spec" || block.title === "规格");
-    return hasSpec ? base : [createDefaultSpaceBlocks()[0], ...base];
-  })()
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((block, index) => ({
-      id: block.id || `space-block-${index + 1}`,
-      title: block.title || `全局视角 ${index + 1}`,
-      content: block.content || "",
-      color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
-      order: index,
-      width: Math.max(0.45, Number(block.width) || 1),
-      linkedNodeIds: Array.isArray(block.linkedNodeIds) ? Array.from(new Set(block.linkedNodeIds)) : [],
-    }));
-
-const createDefaultTimeline = (): FlowFoundationState => ({
-  id: "film-structure",
-  title: "影片时间轴",
-  durationMin: DEFAULT_TIMELINE_DURATION,
-  head: DEFAULT_TIMELINE_HEAD,
-  spaceBlocks: createDefaultSpaceBlocks(),
-  blocks: recalculateTimelineBlocks(
-    [
-      createTimelineBlock("timeline-opening", "开场设定", 15, 0, "amber", "建立世界、语气和主人公最初的缺口。"),
-      createTimelineBlock("timeline-turn", "第一转折", 25, 1, "moss", "让人物做出无法回头的选择，故事进入真正的推进。"),
-      createTimelineBlock("timeline-pressure", "中段压力", 50, 2, "blue", "关系、目标和代价持续升级，核心问题被逼到台前。"),
-      createTimelineBlock("timeline-finale", "结尾回收", 30, 3, "rose", "完成选择、代价和主题回声。"),
-    ],
-    DEFAULT_TIMELINE_DURATION
-  ),
-});
-
-const ensureTimeline = (timeline?: FlowFoundationState): FlowFoundationState => {
-  if (!timeline || !Array.isArray(timeline.blocks) || !timeline.blocks.length) return createDefaultTimeline();
-  const durationMin = Math.max(30, Math.min(300, Math.round(Number(timeline.durationMin) || DEFAULT_TIMELINE_DURATION)));
-  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
-  return {
-    id: timeline.id || "film-structure",
-    title: timeline.title || "影片时间轴",
-    durationMin,
-    head: {
-      title: head.title || DEFAULT_TIMELINE_HEAD.title,
-      content: head.content || "",
-      linkedNodeIds: [],
-    },
-    spaceBlocks: normalizeSpaceBlocks(timeline.spaceBlocks),
-    blocks: recalculateTimelineBlocks(
-      timeline.blocks.map((block, index) => ({
-        id: block.id || `timeline-block-${index + 1}`,
-        title: block.title || `时间区块 ${index + 1}`,
-        content: block.content || "",
-        startMin: Number(block.startMin) || 0,
-        durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(Number(block.durationMin) || 12)),
-        color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
-        order: Number.isFinite(block.order) ? block.order : index,
-        linkedNodeIds: Array.isArray(block.linkedNodeIds) ? block.linkedNodeIds : [],
-      })),
-      durationMin
-    ),
-  };
-};
-
-const formatTimelineTime = (minute: number) => {
-  const safe = Math.max(0, Math.round(minute));
-  const hours = Math.floor(safe / 60);
-  const mins = safe % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-};
-
-const getNodeLine = (nodeId: string, nodeById: Map<string, ScriptFoundationNodeSummary>) => {
-  const node = nodeById.get(nodeId);
-  return `${node?.kind || "文档"}：${node?.title || nodeId}`;
-};
-
-const buildTimelineMarkdown = (timeline: FlowFoundationState, nodeSummaries: ScriptFoundationNodeSummary[]) => {
-  const nodeById = new Map(nodeSummaries.map((node) => [node.id, node]));
-  const spaceBlocks = normalizeSpaceBlocks(timeline.spaceBlocks);
-  const head = timeline.head || DEFAULT_TIMELINE_HEAD;
-  const linkedNodeIds = new Set([
-    ...spaceBlocks.flatMap((block) => block.linkedNodeIds),
-    ...timeline.blocks.flatMap((block) => block.linkedNodeIds),
-  ]);
-  const unlinkedNodes = nodeSummaries.filter((node) => !linkedNodeIds.has(node.id));
-
-  return [
-    `# 项目`,
-    "",
-    `- 根：${head.title}`,
-    `- 总时长：${timeline.durationMin} min`,
-    `- 空间区块：${spaceBlocks.length}`,
-    `- 时间区块：${timeline.blocks.length}`,
-    `- 已建立父子关系：${linkedNodeIds.size}`,
-    "",
-    `## ${head.title} / 全局层`,
-    "",
-    ...spaceBlocks.flatMap((block) => [
-      `### ${block.title}`,
-      "",
-      ...(block.linkedNodeIds.length
-        ? block.linkedNodeIds.map((nodeId) => `- ${getNodeLine(nodeId, nodeById)}`)
-        : ["- 未连接子文档"]),
-      "",
-    ]),
-    `## 时间轴`,
-    "",
-    ...timeline.blocks.flatMap((block) => [
-      `### ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}`,
-      "",
-      ...(block.linkedNodeIds.length
-        ? block.linkedNodeIds.map((nodeId) => `- ${getNodeLine(nodeId, nodeById)}`)
-        : ["- 未连接子文档"]),
-      "",
-    ]),
-    ...(unlinkedNodes.length
-      ? [
-          "## 未归入时间轴",
-          "",
-          ...unlinkedNodes.map((node) => `- ${node.kind}：${node.title}`),
-          "",
-        ]
-      : []),
-  ].join("\n");
-};
 
 const pickOutputHandle = (handles: ScriptHandleType[], preferred?: ScriptHandleType | null) => {
   if (preferred && handles.includes(preferred)) return preferred;
@@ -541,11 +409,6 @@ const getDefaultScriptPosition = (index: number) => ({
   y: Math.floor(index / 3) * 330,
 });
 
-const getDefaultImagePosition = (index: number) => ({
-  x: -420,
-  y: index * 330,
-});
-
 const getDefaultMarkdownPosition = (index: number) => ({
   x: 420 + (index % 2) * 360,
   y: 120 + Math.floor(index / 2) * 300,
@@ -565,43 +428,6 @@ const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextS
   roles: projectData.roles || [],
 });
 
-const createMarkdownTextFlowNode = (
-  textNode: NonNullable<FlowState["textNodes"]>[number],
-  index: number
-): NodeFlowNode => ({
-  id: markdownNodeId(textNode.id),
-  type: "mdText",
-  position: textNode.position || getDefaultMarkdownPosition(index),
-  measured: sanitizeScriptMeasured(textNode.measured),
-  style: MARKDOWN_TEXT_NODE_SIZE,
-  data: {
-    ...createDefaultNodeFlowNodeData("mdText"),
-    documentId: textNode.id,
-    title: textNode.title || "档案文档",
-    text: textNode.content || "",
-    content: textNode.content || "",
-    preview: compactMarkdownPreview(textNode.content || ""),
-  },
-});
-
-const toRuntimeImageNode = (
-  image: FlowState["images"][number],
-  index: number
-): NodeFlowNode => ({
-  id: imageNodeId(image.id),
-  type: "imageInput",
-  position: image.position || getDefaultImagePosition(index),
-  measured: sanitizeScriptMeasured(image.measured),
-  data: {
-    ...createDefaultNodeFlowNodeData("imageInput"),
-    image: image.imageUrl,
-    dimensions: null,
-    title: image.filename || "Image",
-    label: image.filename || "",
-    filename: image.filename,
-  },
-});
-
 const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => ({
   ...node,
   position: node.position || getDefaultFlowNodePosition(index),
@@ -610,7 +436,7 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   data: {
     ...createDefaultNodeFlowNodeData(node.type),
     ...(node.data || {}),
-  },
+  } as NodeFlowNodeData,
 });
 
 const isScriptRuntimeHandle = (handle?: string | null): handle is ScriptHandleType =>
@@ -628,6 +454,9 @@ const getScriptNodeHandlesForType = (type?: FlowRenderNode["type"] | null) => {
   if (!type || type === "scriptPage" || type === "mdText") {
     return { inputs: ["image", "text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
   }
+  if (type === "folder") {
+    return { inputs: ["text"] as ScriptHandleType[], outputs: ["text"] as ScriptHandleType[] };
+  }
   const handles = getNodeHandles(type as NodeType);
   return {
     inputs: handles.inputs as ScriptHandleType[],
@@ -635,13 +464,10 @@ const getScriptNodeHandlesForType = (type?: FlowRenderNode["type"] | null) => {
   };
 };
 
-const compactMarkdownPreview = (content: string) => {
-  const clean = content.replace(/\s+/g, " ").trim();
-  if (!clean) return "写下角色、场景、风格、规格或任何全局档案。";
-  return clean.length > 180 ? `${clean.slice(0, 180)}...` : clean;
-};
+
 
 const nodeTypes: NodeTypes = {
+  folder: FolderNode,
   scriptPage: TextNode,
   text: TextNode,
   mdText: TextNode,
@@ -660,13 +486,12 @@ const nodeTypes: NodeTypes = {
 };
 
 type ScriptFoundationProps = {
-  timeline: FlowFoundationState;
-  nodeSummaries: ScriptFoundationNodeSummary[];
+  timeline: FoundationScaffold;
   activeBlockId: string;
   onActiveBlockChange: (blockId: string) => void;
-  onUpdateHead: (patch: Partial<FlowFoundationHead>) => void;
-  onUpdateBlock: (blockId: string, patch: Partial<FlowTimelineBlock>) => void;
-  onUpdateSpaceBlock: (blockId: string, patch: Partial<FlowSpatialBlock>) => void;
+  onUpdateHead: (patch: Partial<FoundationProjectHead>) => void;
+  onUpdateBlock: (blockId: string, patch: Partial<FoundationTimeBlock>) => void;
+  onUpdateSpaceBlock: (blockId: string, patch: Partial<FoundationSpaceBlock>) => void;
   onAddSpaceBlock: (afterBlockId?: string) => void;
   onSplitBlock: (blockId: string) => void;
   onSplitSpaceBlock: (blockId: string) => void;
@@ -680,6 +505,10 @@ type ScriptFoundationProps = {
   onCreateArchiveNode: () => void;
   onCreateScriptNode: () => void;
   onCreateFlowNode: (type: NodeType) => void;
+  flowProjects: NonNullable<ProjectData["flowProjects"]>;
+  activeFlowProjectId: string;
+  onSwitchFlowProject: (projectId: string) => void;
+  onCreateFlowProject: (durationMin: number) => void;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
   agentComposerValue?: string;
@@ -734,6 +563,8 @@ const getFlowRenderNodeSize = (node: FlowRenderNode) => {
   const fallbackHeight =
     node.type === "scriptPage"
       ? 249
+      : node.type === "folder"
+        ? 128
       : node.type === "mdText"
         ? 252
         : node.type === "imageInput"
@@ -749,7 +580,6 @@ const getFlowRenderNodeSize = (node: FlowRenderNode) => {
 
 const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   timeline,
-  nodeSummaries,
   activeBlockId,
   onActiveBlockChange,
   onUpdateHead,
@@ -768,6 +598,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onCreateArchiveNode,
   onCreateScriptNode,
   onCreateFlowNode,
+  flowProjects,
+  activeFlowProjectId,
+  onSwitchFlowProject,
+  onCreateFlowProject,
   onOpenAgent,
   onSubmitAgentMessage,
   agentComposerValue = "",
@@ -793,30 +627,34 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
   const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
   const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectDuration, setNewProjectDuration] = useState<number>(DEFAULT_TIMELINE_DURATION);
   const [liveViewport, setLiveViewport] = useState(viewport);
   const [targetPositions, setTargetPositions] = useState<Record<string, ScriptFoundationTargetPosition>>({});
+  const [foundationTrackWidth, setFoundationTrackWidth] = useState(0);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
-  const spaceBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceBlocks), [timeline.spaceBlocks]);
+  const spaceAxisBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceAxisBlocks), [timeline.spaceAxisBlocks]);
   const activeBlock = timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0];
   const actionBlock =
     menuState?.type === "block"
       ? activeAxis === "time"
         ? timeline.blocks.find((block) => block.id === menuState.blockId) || null
-        : spaceBlocks.find((block) => block.id === menuState.blockId) || null
+        : spaceAxisBlocks.find((block) => block.id === menuState.blockId) || null
       : null;
   const editingBlock =
     editingTarget?.type === "time"
       ? timeline.blocks.find((block) => block.id === editingTarget.id) || null
       : editingTarget?.type === "space"
-        ? spaceBlocks.find((block) => block.id === editingTarget.id) || null
+        ? spaceAxisBlocks.find((block) => block.id === editingTarget.id) || null
         : null;
-  const timelineMarkdown = useMemo(() => buildTimelineMarkdown(timeline, nodeSummaries), [nodeSummaries, timeline]);
+  const timelineMarkdown = useMemo(() => buildTimelineMarkdown(timeline), [timeline]);
 
   const closeMarkdownCard = useCallback(() => {
     setEditingTarget(null);
     setIsFoundationGatewayOpen(false);
+    setIsCreatingProject(false);
     onCloseMarkdownCard?.();
   }, [onCloseMarkdownCard]);
 
@@ -843,6 +681,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setMenuState(null);
     setEditingTarget(null);
     setIsFoundationGatewayOpen(false);
+    setIsCreatingProject(false);
     const nextAxis = activeAxis === "time" ? "space" : "time";
     axisSwitchTimerRef.current = window.setTimeout(() => {
       setActiveAxis(nextAxis);
@@ -881,7 +720,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".script-foundation-md-card, .script-foundation-gateway-card")) return;
+      if (target?.closest(".script-foundation-md-card, .script-foundation-gateway")) return;
       closeMarkdownCard();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -897,6 +736,34 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   }, [closeMarkdownCard, editingBlock, isFoundationGatewayOpen]);
 
   useEffect(() => setLiveViewport(viewport), [viewport]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const measureTrack = () => {
+      const nextWidth = Math.round(track.getBoundingClientRect().width);
+      setFoundationTrackWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
+    };
+
+    measureTrack();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measureTrack) : null;
+    resizeObserver?.observe(track);
+    window.addEventListener("resize", measureTrack);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measureTrack);
+    };
+  }, [activeAxis, isAgentTailOpen, spaceAxisBlocks.length, timeline.blocks.length]);
+
+  const foundationFilmPhysics = useMemo<PhysicsParams>(() => {
+    const fittedOpenWidth = foundationTrackWidth > 0 ? foundationTrackWidth + 22 : FOUNDATION_FILM_PHYSICS.openWidth || 520;
+    return {
+      ...FOUNDATION_FILM_PHYSICS,
+      openWidth: Math.max(160, Math.round(fittedOpenWidth)),
+    };
+  }, [foundationTrackWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -956,14 +823,14 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       window.removeEventListener("scroll", scheduleMeasure, true);
       document.removeEventListener("transitionend", scheduleMeasure, true);
     };
-  }, [activeAxis, isAgentTailOpen, spaceBlocks, timeline.blocks]);
+  }, [activeAxis, isAgentTailOpen, spaceAxisBlocks, timeline.blocks]);
 
   const foundationGuideLines = useMemo<ScriptFoundationGuideLine[]>(() => {
     if (typeof window === "undefined") return [];
     const targets = [
-      ...timeline.blocks.map((block) => ({ type: "time" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
-      ...spaceBlocks.map((block) => ({ type: "space" as const, id: block.id, color: block.color, linkedNodeIds: block.linkedNodeIds })),
-    ].filter((target) => target.linkedNodeIds.length);
+      ...timeline.blocks.map((block) => ({ type: "time" as const, id: block.id, color: block.color, boundaryNodeIds: block.boundaryNodeIds })),
+      ...spaceAxisBlocks.map((block) => ({ type: "space" as const, id: block.id, color: block.color, boundaryNodeIds: block.boundaryNodeIds })),
+    ].filter((target) => target.boundaryNodeIds.length);
     if (!targets.length) return [];
 
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -975,7 +842,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       const targetPosition =
         (target.type === activeAxis ? targetPositions[`${target.type}:${target.id}`] : undefined) || headTarget;
       if (!targetPosition) return;
-      target.linkedNodeIds.forEach((nodeId) => {
+      target.boundaryNodeIds.forEach((nodeId) => {
         const node = nodeById.get(nodeId);
         if (!node) return;
         const size = getFlowRenderNodeSize(node);
@@ -1020,7 +887,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     });
 
     return nextLines;
-  }, [activeAxis, activeBlockId, liveViewport, nodes, spaceBlocks, targetPositions, timeline.blocks]);
+  }, [activeAxis, activeBlockId, liveViewport, nodes, spaceAxisBlocks, targetPositions, timeline.blocks]);
 
   useEffect(() => {
     onFoundationGuideLinesChange?.(foundationGuideLines);
@@ -1056,6 +923,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setNodeCreateMenu(null);
     setEditingTarget(null);
     setIsAgentTailOpen(false);
+    setIsCreatingProject(false);
     setIsFoundationGatewayOpen(true);
   };
 
@@ -1075,19 +943,37 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     openFoundationGateway();
   };
 
+  const handleFilmstripToggle = () => {
+    switchAxisWithFilmMotion();
+  };
+
   const openGatewaySettingsPanel = (
     panel: FoundationGatewaySettingsPanel,
     assetsSection?: FoundationGatewayAssetsSection
   ) => {
     onOpenAgentSettingsPanel?.(panel, assetsSection);
     setIsFoundationGatewayOpen(false);
+    setIsCreatingProject(false);
     onCloseMarkdownCard?.();
   };
 
   const openGatewayVisualLab = (key: "glassLab" | "filmRollLab") => {
     onOpenVisualLab?.(key);
     setIsFoundationGatewayOpen(false);
+    setIsCreatingProject(false);
     onCloseMarkdownCard?.();
+  };
+
+  const handleSwitchProject = (projectId: string) => {
+    if (projectId === activeFlowProjectId) return;
+    onSwitchFlowProject(projectId);
+    closeMarkdownCard();
+  };
+
+  const handleCreateProject = () => {
+    onCreateFlowProject(newProjectDuration);
+    setNewProjectDuration(DEFAULT_TIMELINE_DURATION);
+    closeMarkdownCard();
   };
 
   const handleBlockClick = (event: React.MouseEvent<HTMLDivElement>, blockId: string) => {
@@ -1153,16 +1039,9 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       >
         <div className="script-foundation-ribbon-background">
           <OriginalFilmstrip
-            frames={FOUNDATION_FILM_FRAMES}
             isOpen={!isAgentTailOpen && !isAxisSwitching}
-            onUploadImage={FOUNDATION_FILM_NOOP}
-            onUpdateFilter={FOUNDATION_FILM_FILTER_NOOP}
-            onCutFrame={FOUNDATION_FILM_NOOP}
-            onDeleteFrame={FOUNDATION_FILM_NOOP}
-            onAddFrame={FOUNDATION_FILM_NOOP}
-            onDevelopScan={FOUNDATION_FILM_NOOP}
-            physics={FOUNDATION_FILM_PHYSICS}
-            onToggleCanister={handleHeadClick}
+            physics={foundationFilmPhysics}
+            onToggleCanister={handleFilmstripToggle}
           />
         </div>
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
@@ -1177,32 +1056,30 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
             <span className="script-foundation-original-canister">
-              <span className="script-foundation-original-canister__scale">
-                <OriginalFilmCanister
-                  isOpen={!isAgentTailOpen && !isAxisSwitching}
-                  onToggle={FOUNDATION_FILM_NOOP}
-                  physics={FOUNDATION_FILM_PHYSICS}
-                  styleConfig={getFoundationCanisterStyle(activeAxis)}
-                />
-              </span>
+              <OriginalFilmCanister
+                isOpen={!isAgentTailOpen && !isAxisSwitching}
+                onToggle={FOUNDATION_FILM_NOOP}
+                physics={foundationFilmPhysics}
+                styleConfig={getFoundationCanisterStyle(activeAxis)}
+              />
             </span>
           </button>
 
           {!isAgentTailOpen ? (
             <div ref={trackRef} className="script-foundation-track">
-              {(activeAxis === "time" ? timeline.blocks : spaceBlocks).map((block, axisIndex, axisBlocks) => {
-                const spaceWidthTotal = spaceBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
+              {(activeAxis === "time" ? timeline.blocks : spaceAxisBlocks).map((block, axisIndex, axisBlocks) => {
+                const spaceWidthTotal = spaceAxisBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
                 const width =
                   activeAxis === "time"
-                    ? Math.max(6, ((block as FlowTimelineBlock).durationMin / timeline.durationMin) * 100)
-                    : Math.max(8, ((block as FlowSpatialBlock).width / spaceWidthTotal) * 100);
-                const timeBlock = block as FlowTimelineBlock;
+                    ? Math.max(6, ((block as FoundationTimeBlock).durationMin / timeline.durationMin) * 100)
+                    : Math.max(8, ((block as FoundationSpaceBlock).width / spaceWidthTotal) * 100);
+                const timeBlock = block as FoundationTimeBlock;
                 const previousBlock = axisBlocks[axisIndex - 1];
                 const nextBlock = axisBlocks[axisIndex + 1];
                 const joinsPrev = previousBlock?.color === block.color;
                 const joinsNext = nextBlock?.color === block.color;
                 const isActive = activeAxis === "time" && block.id === activeBlock?.id;
-                const linkedCount = block.linkedNodeIds.length;
+                const boundaryCount = block.boundaryNodeIds.length;
                 return (
                   <React.Fragment key={block.id}>
                     <div
@@ -1245,7 +1122,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                         <strong>{block.title}</strong>
                         <div className="script-foundation-block__foot">
                           <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
-                          <span>{linkedCount ? `${linkedCount} 个节点` : "可连线"}</span>
+                          <span>{boundaryCount ? `${boundaryCount} 条边界` : "可连线"}</span>
                         </div>
                       </div>
                     </div>
@@ -1363,13 +1240,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                   <div key={group.key} className="script-foundation-node-group">
                     <p>{group.label}</p>
                     <div className="script-foundation-node-grid">
-                      {options.map(({ label, hint, type, Icon, meta, tone, surface }) => (
+                      {options.map(({ label, hint, type, Icon, meta, tone, surface, disabled, disabledHint }) => (
                         <button
                           key={type}
                           type="button"
-                          className={`script-foundation-node-card ${tone}`}
+                          className={`script-foundation-node-card ${tone} ${disabled ? "is-disabled" : ""}`}
                           data-surface={surface}
-                          onClick={() =>
+                          disabled={disabled}
+                          onClick={() => {
+                            if (disabled) return;
                             runNodeCreateAction(() => {
                               if (type === "scriptPage") {
                                 onCreateScriptNode();
@@ -1380,16 +1259,16 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                                 return;
                               }
                               onCreateFlowNode(type);
-                            })
-                          }
+                            });
+                          }}
                         >
                           <span className="script-foundation-node-card__icon">
-                            <Icon size={16} strokeWidth={1.85} />
+                            <Icon size={16} />
                           </span>
                           <span className="script-foundation-node-card__body">
                             <span className="script-foundation-node-card__meta">{meta}</span>
                             <strong>{label}</strong>
-                            <small>{hint}</small>
+                            <small>{disabledHint || hint}</small>
                           </span>
                         </button>
                       ))}
@@ -1418,7 +1297,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               <button
                 type="button"
                 onClick={() => (activeAxis === "time" ? onSplitBlock(actionBlock.id) : onSplitSpaceBlock(actionBlock.id))}
-                disabled={activeAxis === "time" && (actionBlock as FlowTimelineBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
+                disabled={activeAxis === "time" && (actionBlock as FoundationTimeBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
                 title={activeAxis === "time" ? "拆分区间" : "拆分全局块"}
               >
                 <Scissors size={14} strokeWidth={1.8} />
@@ -1426,7 +1305,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               <button
                 type="button"
                 onClick={() => (activeAxis === "time" ? onDeleteBlock(actionBlock.id) : onDeleteSpaceBlock(actionBlock.id))}
-                disabled={activeAxis === "time" ? timeline.blocks.length <= 1 : spaceBlocks.length <= 1}
+                disabled={activeAxis === "time" ? timeline.blocks.length <= 1 : spaceAxisBlocks.length <= 1}
                 className="is-danger"
                 title={activeAxis === "time" ? "删除区间" : "删除全局块"}
               >
@@ -1454,98 +1333,183 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
       {isFoundationGatewayOpen ? (
         <section className="script-foundation-gateway" role="dialog" aria-label="Foundation 卡牌组">
-          <div className="script-foundation-gateway__grid">
-            <article className="script-foundation-gateway-card script-foundation-gateway-card--index">
-              <div className="script-foundation-gateway-card__title">
-                <span className="script-foundation-gateway-card__icon">
-                  <FileText size={18} strokeWidth={1.9} />
-                </span>
-                <div>
-                  <span>Index Card</span>
-                  <strong>{head.title || "项目索引"}</strong>
+          <div className="script-foundation-gateway__section script-foundation-gateway__section--cards">
+            <div className="script-foundation-gateway__section-head">
+              <span>Foundation Cards</span>
+              <strong>{head.title || "项目索引"}</strong>
+            </div>
+            <div className="script-foundation-gateway__grid">
+              <article className="script-foundation-gateway-card script-foundation-gateway-card--index">
+                <div className="script-foundation-gateway-card__title">
+                  <span className="script-foundation-gateway-card__icon">
+                    <FileText size={18} strokeWidth={1.9} />
+                  </span>
+                  <div>
+                    <span>Index Card</span>
+                    <strong>{head.title || "项目索引"}</strong>
+                  </div>
                 </div>
-              </div>
-              <textarea value={timelineMarkdown} readOnly />
-            </article>
+                <textarea value={timelineMarkdown} readOnly />
+              </article>
 
-            <article className="script-foundation-gateway-card">
-              <div className="script-foundation-gateway-card__title">
-                <span className="script-foundation-gateway-card__icon">
-                  <Boxes size={18} strokeWidth={1.9} />
-                </span>
-                <div>
-                  <span>Qalam Setting</span>
-                  <strong>Assets</strong>
+              <article
+                className="script-foundation-gateway-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => openGatewayVisualLab("filmRollLab")}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openGatewayVisualLab("filmRollLab");
+                  }
+                }}
+              >
+                <div className="script-foundation-gateway-card__title">
+                  <span className="script-foundation-gateway-card__icon">
+                    <Boxes size={18} strokeWidth={1.9} />
+                  </span>
+                  <div>
+                    <span>Qalam Setting</span>
+                    <strong>Assets</strong>
+                  </div>
                 </div>
-              </div>
-              <p>项目素材组，按图片、视频和提示词进入对应资产视图。</p>
-              <div className="script-foundation-gateway-card__chips">
-                {[
-                  { key: "images" as const, label: "Images" },
-                  { key: "videos" as const, label: "Videos" },
-                  { key: "prompts" as const, label: "Prompts" },
-                ].map((item) => (
-                  <button key={item.key} type="button" onClick={() => openGatewaySettingsPanel("assets", item.key)}>
-                    {item.label}
+                <p>项目素材组，按图片、视频和提示词进入对应资产视图。</p>
+                <div className="script-foundation-gateway-card__chips">
+                  {[
+                    { key: "images" as const, label: "Images" },
+                    { key: "videos" as const, label: "Videos" },
+                    { key: "prompts" as const, label: "Prompts" },
+                  ].map((item) => (
+                    <button key={item.key} type="button" onClick={() => openGatewaySettingsPanel("assets", item.key)}>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </article>
+
+              <button
+                type="button"
+                className="script-foundation-gateway-card"
+                onClick={() => openGatewaySettingsPanel("identity")}
+              >
+                <span className="script-foundation-gateway-card__title">
+                  <span className="script-foundation-gateway-card__icon">
+                    <Layers size={18} strokeWidth={1.9} />
+                  </span>
+                  <span>
+                    <span>Project</span>
+                    <strong>Identity System</strong>
+                  </span>
+                </span>
+                <span className="script-foundation-gateway-card__copy">角色、场景与身份系统入口。</span>
+              </button>
+
+              <button
+                type="button"
+                className="script-foundation-gateway-card"
+                onClick={() => openGatewaySettingsPanel("skills")}
+              >
+                <span className="script-foundation-gateway-card__title">
+                  <span className="script-foundation-gateway-card__icon">
+                    <Sparkles size={18} strokeWidth={1.9} />
+                  </span>
+                  <span>
+                    <span>Qalam Setting</span>
+                    <strong>Skills</strong>
+                  </span>
+                </span>
+                <span className="script-foundation-gateway-card__copy">内建工作方法和能力模块。</span>
+              </button>
+
+              <article className="script-foundation-gateway-card">
+                <div className="script-foundation-gateway-card__title">
+                  <span className="script-foundation-gateway-card__icon">
+                    <ScanSearch size={18} strokeWidth={1.9} />
+                  </span>
+                  <div>
+                    <span>Project</span>
+                    <strong>Visual Lab</strong>
+                  </div>
+                </div>
+                <p>进入 Project 中的视觉实验模块。</p>
+                <div className="script-foundation-gateway-card__chips">
+                  <button type="button" onClick={(event) => { event.stopPropagation(); openGatewayVisualLab("glassLab"); }}>
+                    Glass
                   </button>
-                ))}
-              </div>
-            </article>
-
-            <button
-              type="button"
-              className="script-foundation-gateway-card"
-              onClick={() => openGatewaySettingsPanel("identity")}
-            >
-              <span className="script-foundation-gateway-card__title">
-                <span className="script-foundation-gateway-card__icon">
-                  <Layers size={18} strokeWidth={1.9} />
-                </span>
-                <span>
-                  <span>Project</span>
-                  <strong>Identity System</strong>
-                </span>
-              </span>
-              <span className="script-foundation-gateway-card__copy">角色、场景与身份系统入口。</span>
-            </button>
-
-            <button
-              type="button"
-              className="script-foundation-gateway-card"
-              onClick={() => openGatewaySettingsPanel("skills")}
-            >
-              <span className="script-foundation-gateway-card__title">
-                <span className="script-foundation-gateway-card__icon">
-                  <Sparkles size={18} strokeWidth={1.9} />
-                </span>
-                <span>
-                  <span>Qalam Setting</span>
-                  <strong>Skills</strong>
-                </span>
-              </span>
-              <span className="script-foundation-gateway-card__copy">内建工作方法和能力模块。</span>
-            </button>
-
-            <article className="script-foundation-gateway-card">
-              <div className="script-foundation-gateway-card__title">
-                <span className="script-foundation-gateway-card__icon">
-                  <ScanSearch size={18} strokeWidth={1.9} />
-                </span>
-                <div>
-                  <span>Project</span>
-                  <strong>Visual Lab</strong>
+                  <button type="button" onClick={(event) => { event.stopPropagation(); openGatewayVisualLab("filmRollLab"); }}>
+                    Film
+                  </button>
                 </div>
-              </div>
-              <p>进入 Project 中的视觉实验模块。</p>
-              <div className="script-foundation-gateway-card__chips">
-                <button type="button" onClick={() => openGatewayVisualLab("glassLab")}>
-                  Glass
+              </article>
+            </div>
+          </div>
+
+          <div className="script-foundation-gateway__section script-foundation-gateway__section--projects">
+            <div className="script-foundation-gateway__section-head">
+              <span>Project Rolls</span>
+              <strong>{flowProjects.length}/{FLOW_PROJECT_LIMIT}</strong>
+            </div>
+            <div className="script-foundation-project-shelf">
+              {flowProjects.map((project, index) => {
+                const isActiveProject = project.id === activeFlowProjectId;
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    className={`script-foundation-project-roll is-${project.color} ${isActiveProject ? "is-active" : ""}`}
+                    onClick={() => handleSwitchProject(project.id)}
+                    title={project.title}
+                  >
+                    <span className="script-foundation-project-roll__canister">
+                      <OriginalFilmCanister
+                        isOpen={isActiveProject}
+                        onToggle={FOUNDATION_FILM_NOOP}
+                        physics={PROJECT_CANISTER_PHYSICS}
+                        styleConfig={getProjectCanisterStyle(project, index)}
+                      />
+                    </span>
+                    <span className="script-foundation-project-roll__body">
+                      <strong>{project.title}</strong>
+                      <small>{project.durationMin} min</small>
+                    </span>
+                  </button>
+                );
+              })}
+
+              {flowProjects.length < FLOW_PROJECT_LIMIT ? (
+                <button
+                  type="button"
+                  className="script-foundation-project-roll script-foundation-project-roll--add"
+                  onClick={() => setIsCreatingProject((current) => !current)}
+                  title="新建项目"
+                  aria-label="新建项目"
+                >
+                  <Plus size={20} strokeWidth={1.9} />
                 </button>
-                <button type="button" onClick={() => openGatewayVisualLab("filmRollLab")}>
-                  Film
+              ) : null}
+            </div>
+
+            {isCreatingProject ? (
+              <div className="script-foundation-project-create">
+                <label>
+                  <span>预估时长</span>
+                  <select
+                    value={newProjectDuration}
+                    onChange={(event) => setNewProjectDuration(Number(event.target.value))}
+                  >
+                    {FLOW_PROJECT_DURATIONS.map((duration) => (
+                      <option key={duration} value={duration}>
+                        {duration} min
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" onClick={handleCreateProject}>
+                  <Plus size={14} strokeWidth={1.9} />
+                  创建
                 </button>
               </div>
-            </article>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -1608,82 +1572,106 @@ export const useFlowSurface = ({
   const [axisRevealRequest, setAxisRevealRequest] = useState(0);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
   const [foundationGuideLines, setFoundationGuideLines] = useState<ScriptFoundationGuideLine[]>([]);
+  const [showFoundationNodes, setShowFoundationNodes] = useState(false);
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
   const flow = useMemo(() => ensureFlow(projectData.flow), [projectData.flow]);
-  const timeline = useMemo(() => ensureTimeline(flow.timeline), [flow.timeline]);
+  const flowProjects = useMemo(() => getFlowProjectsForState(projectData), [projectData]);
+  const activeFlowProjectId = projectData.activeFlowProjectId || flowProjects[0]?.id || "flow-project-main";
+  const activeFlowProject = useMemo(
+    () => flowProjects.find((project) => project.id === activeFlowProjectId) || flowProjects[0],
+    [activeFlowProjectId, flowProjects]
+  );
+  const foundationGraph = useMemo(
+    () =>
+      parseFoundationGraph(flow, {
+        rootNodeId: activeFlowProject?.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${activeFlowProjectId}`,
+        title: activeFlowProject?.title || projectData.fileName || "主项目",
+        durationMin: activeFlowProject?.durationMin || DEFAULT_TIMELINE_DURATION,
+      }),
+    [activeFlowProject?.durationMin, activeFlowProject?.rootNodeId, activeFlowProject?.title, activeFlowProjectId, flow, projectData.fileName]
+  );
+  const timeline = foundationGraph.timeline;
+  const foundationScaffoldNodeIds = useMemo(
+    () =>
+      getFoundationScaffoldNodeIds(flow, {
+        rootNodeId: activeFlowProject?.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${activeFlowProjectId}`,
+        title: activeFlowProject?.title || projectData.fileName || "主项目",
+        durationMin: activeFlowProject?.durationMin || DEFAULT_TIMELINE_DURATION,
+      }),
+    [activeFlowProject?.durationMin, activeFlowProject?.rootNodeId, activeFlowProject?.title, activeFlowProjectId, flow, projectData.fileName]
+  );
   const flowRuntimeContext = useMemo(() => createScriptNodeFlowContext(projectData), [projectData]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !activeFlowProject) return;
     setProjectData((previous) => {
+      const now = Date.now();
+      const projects = getFlowProjectsForState(previous);
+      const activeId = previous.activeFlowProjectId || projects[0]?.id || activeFlowProject.id;
+      const project = projects.find((item) => item.id === activeId) || activeFlowProject;
+      const rootNodeId = project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`;
       const currentFlow = ensureFlow(previous.flow);
-      const existingIds = new Set((currentFlow.flowNodes || []).map((node) => node.id));
-      const migratedMarkdownNodes = (currentFlow.textNodes || [])
-        .filter((textNode) => !existingIds.has(markdownNodeId(textNode.id)))
-        .map((textNode, index) => createMarkdownTextFlowNode(textNode, index));
-
-      if (!migratedMarkdownNodes.length && !currentFlow.pages.length && !(currentFlow.textNodes || []).length) {
-        return previous;
-      }
-
+      const currentFlowNodes = currentFlow.flowNodes || [];
+      const seed = buildFoundationGraphSeed(project.title, project.durationMin, rootNodeId);
+      const existingIds = new Set(currentFlowNodes.map((node) => node.id));
+      const seededNodes = seed.nodes.filter((node) => !existingIds.has(node.id));
+      const nextNodeIds = new Set([...currentFlowNodes.map((node) => node.id), ...seededNodes.map((node) => node.id)]);
+      const existingLinkIds = new Set(currentFlow.links.map((link) => link.id));
+      const seededLinks = seed.links.filter(
+        (link) => !existingLinkIds.has(link.id) && nextNodeIds.has(link.source) && nextNodeIds.has(link.target)
+      );
+      if (!seededNodes.length && !seededLinks.length && project.rootNodeId === rootNodeId) return previous;
+      const nextLinks = [
+        ...seededLinks,
+        ...currentFlow.links.filter((link) => nextNodeIds.has(link.source) && nextNodeIds.has(link.target)),
+      ];
+      const nextFlow = {
+        ...currentFlow,
+        revision: (currentFlow.revision || 0) + 1,
+        flowNodes: [...seededNodes, ...currentFlowNodes],
+        links: nextLinks,
+      };
+      const nextProjects = projects.map((item) =>
+        item.id === activeId
+          ? {
+              ...item,
+              rootNodeId,
+              updatedAt: now,
+              flow: nextFlow,
+            }
+          : item
+      );
       return {
         ...previous,
-        flow: {
-          ...currentFlow,
-          pages: [],
-          textNodes: [],
-          flowNodes: [
-            ...(currentFlow.flowNodes || []),
-            ...migratedMarkdownNodes,
-          ],
-        },
+        activeFlowProjectId: activeId,
+        flow: nextFlow,
+        flowProjects: nextProjects,
       };
     });
-  }, [flow.flowNodes, flow.pages, flow.textNodes, isActive, setProjectData]);
+  }, [activeFlowProject, isActive, setProjectData]);
 
   const nodes = useMemo<FlowRenderNode[]>(() => {
-    const imageNodes: FlowRenderNode[] = flow.images.map((image, index) => ({
-      id: imageNodeId(image.id),
-      type: "imageInput",
-      position: image.position || getDefaultImagePosition(index),
-      measured: sanitizeScriptMeasured(image.measured),
-      selected: selectedNodeIds.has(imageNodeId(image.id)),
-      data: {
-        ...createDefaultNodeFlowNodeData("imageInput"),
-        image: image.imageUrl,
-        dimensions: null,
-        title: image.filename || "Image",
-        label: image.filename || "",
-        filename: image.filename,
-      },
-    }));
-
-    const flowNodes: FlowRenderNode[] = (flow.flowNodes || []).map((node, index) => ({
-      ...node,
-      position: node.position || getDefaultFlowNodePosition(index),
-      selected: selectedNodeIds.has(node.id),
-      data: {
-        ...createDefaultNodeFlowNodeData(node.type),
-        ...(node.data || {}),
-      },
-    }));
-
-    return [...imageNodes, ...flowNodes];
-  }, [
-    flow.flowNodes,
-    flow.images,
-    selectedNodeIds,
-  ]);
+    return (flow.flowNodes || [])
+      .filter((node) => showFoundationNodes || !foundationScaffoldNodeIds.has(node.id))
+      .map((node, index) => ({
+        ...node,
+        position: node.position || getDefaultFlowNodePosition(index),
+        selected: selectedNodeIds.has(node.id),
+        data: {
+          ...createDefaultNodeFlowNodeData(node.type),
+          ...(node.data || {}),
+        } as NodeFlowNodeData,
+      }));
+  }, [flow.flowNodes, foundationScaffoldNodeIds, selectedNodeIds, showFoundationNodes]);
 
   const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
   const nodeTypeById = useMemo(() => new Map(nodes.map((node) => [node.id, node.type])), [nodes]);
-  const flowRuntimeNodes = useMemo<NodeFlowNode[]>(() => {
-    const runtimeImageNodes = flow.images.map((image, index) => toRuntimeImageNode(image, index));
-    const runtimeFlowNodes = (flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index));
-    return [...runtimeImageNodes, ...runtimeFlowNodes];
-  }, [flow.flowNodes, flow.images]);
+  const flowRuntimeNodes = useMemo<NodeFlowNode[]>(
+    () => (flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index)),
+    [flow.flowNodes]
+  );
   const flowRuntimeNodeIdSet = useMemo(
     () => new Set(flowRuntimeNodes.map((node) => node.id)),
     [flowRuntimeNodes]
@@ -1695,57 +1683,127 @@ export const useFlowSurface = ({
         .map(toRuntimeScriptLink),
     [flow.links, flowRuntimeNodeIdSet]
   );
-  const nodeSummaries = useMemo<ScriptFoundationNodeSummary[]>(
-    () =>
-      nodes.map((node) => ({
-        id: node.id,
-        title:
-          node.type === "imageInput"
-            ? ((node.data as { filename?: string | null; title?: string; label?: string }).filename ||
-              (node.data as { title?: string; label?: string }).title ||
-              (node.data as { label?: string }).label ||
-              "Image")
-            : node.type === "mdText"
-              ? ((node.data as MarkdownTextData).title || "档案文档")
-            : node.type === "scriptPage"
-              ? ((node.data as ScriptPageData).title || "剧本文档")
-              : ((node.data as { title?: string; label?: string }).title || (node.data as { label?: string }).label || node.type),
-        kind:
-          node.type === "imageInput"
-            ? "图片"
-            : node.type === "mdText"
-              ? "档案"
-              : node.type === "scriptPage"
-                ? "剧本"
-                : "节点",
-      })),
-    [nodes]
-  );
   const edges = useMemo<FlowRenderEdge[]>(
     () =>
       flow.links
+        .filter((link) => showFoundationNodes || (!foundationScaffoldNodeIds.has(link.source) && !foundationScaffoldNodeIds.has(link.target)))
         .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
         .map((link) => ({
           id: link.id,
           source: link.source,
           target: link.target,
-          sourceHandle: link.sourceHandle || (isImageNodeId(link.source) ? "image" : "text"),
-          targetHandle: link.targetHandle || (isImageNodeId(link.source) ? "image" : "text"),
+          sourceHandle: link.sourceHandle || "text",
+          targetHandle: link.targetHandle || "text",
           type: "default",
           animated: false,
           style: { stroke: "var(--app-accent-strong)", strokeWidth: 1.8 },
         })),
-    [flow.links, nodeIdSet]
+    [flow.links, foundationScaffoldNodeIds, nodeIdSet, showFoundationNodes]
   );
 
   const persistFlow = useCallback(
     (updater: (flow: FlowState, previous: ProjectData) => FlowState) => {
-      setProjectData((previous) => ({
-        ...previous,
-        flow: updater(ensureFlow(previous.flow), previous),
-      }));
+      setProjectData((previous) => {
+        const nextFlow = updater(ensureFlow(previous.flow), previous);
+        const nextData = {
+          ...previous,
+          activeFlowProjectId: previous.activeFlowProjectId || previous.flowProjects?.[0]?.id || "flow-project-main",
+          flow: nextFlow,
+        };
+        return {
+          ...nextData,
+          flowProjects: saveActiveFlowIntoProjects(nextData),
+        };
+      });
     },
     [setProjectData]
+  );
+
+  const handleSwitchFlowProject = useCallback(
+    (projectId: string) => {
+      setSelectedNodeIds(new Set());
+      setConnectionDrop(null);
+      setShowFoundationNodes(false);
+      setProjectData((previous) => {
+        const now = Date.now();
+        const projects = saveActiveFlowIntoProjects(previous, now);
+        const target = projects.find((project) => project.id === projectId);
+        if (!target) return previous;
+        return {
+          ...previous,
+          activeFlowProjectId: target.id,
+          flow: ensureFlow(target.flow),
+          flowProjects: projects,
+        };
+      });
+    },
+    [setProjectData]
+  );
+
+  const handleCreateFlowProject = useCallback(
+    (durationMin: number) => {
+      setSelectedNodeIds(new Set());
+      setConnectionDrop(null);
+      setShowFoundationNodes(false);
+      setProjectData((previous) => {
+        const now = Date.now();
+        const projects = saveActiveFlowIntoProjects(previous, now);
+        if (projects.length >= FLOW_PROJECT_LIMIT) return previous;
+        const nextIndex = projects.length;
+        const color = FLOW_PROJECT_COLOR_STYLES[nextIndex % FLOW_PROJECT_COLOR_STYLES.length].color;
+        const safeDuration = Math.max(30, Math.min(300, Math.round(durationMin) || DEFAULT_TIMELINE_DURATION));
+        const id = `flow-project-${now.toString(36)}`;
+        const rootNodeId = `${FOUNDATION_ROOT_NODE_PREFIX}${id}`;
+        const title = `项目 ${nextIndex + 1}`;
+        const newFlow = createEmptyProjectFlow(safeDuration, title, rootNodeId);
+        const newProject = {
+          id,
+          title,
+          color,
+          durationMin: safeDuration,
+          rootNodeId,
+          createdAt: now,
+          updatedAt: now,
+          flow: newFlow,
+        };
+        return {
+          ...previous,
+          activeFlowProjectId: id,
+          flow: newFlow,
+          flowProjects: [...projects, newProject],
+        };
+      });
+    },
+    [setProjectData]
+  );
+
+  const handleOrganizeFoundationScaffold = useCallback(() => {
+    setConnectionDrop(null);
+    setShowFoundationNodes(true);
+    const rootNodeId = activeFlowProject?.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${activeFlowProjectId}`;
+    setSelectedNodeIds(new Set([rootNodeId]));
+    persistFlow((currentFlow, previous) => {
+      const projects = getFlowProjectsForState(previous);
+      const project = projects.find((item) => item.id === (previous.activeFlowProjectId || activeFlowProjectId)) || activeFlowProject;
+      return layoutFoundationGraph(currentFlow, {
+        rootNodeId,
+        title: project?.title || previous.fileName || "主项目",
+        durationMin: project?.durationMin || DEFAULT_TIMELINE_DURATION,
+      });
+    });
+  }, [activeFlowProject, activeFlowProjectId, persistFlow]);
+
+  const handleSetFoundationNodeView = useCallback(
+    (visible: boolean) => {
+      setConnectionDrop(null);
+      if (!visible) {
+        setShowFoundationNodes(false);
+        setSelectedNodeIds(new Set());
+        return;
+      }
+      handleOrganizeFoundationScaffold();
+    },
+    [handleOrganizeFoundationScaffold]
   );
 
   useEffect(() => {
@@ -1787,12 +1845,8 @@ export const useFlowSurface = ({
       const storeLinks = state.links;
 
       persistFlow((currentFlow) => {
-        const imageNodeIds = new Set(currentFlow.images.map((image) => imageNodeId(image.id)));
         const flowNodeIds = new Set((currentFlow.flowNodes || []).map((node) => node.id));
-        const protectedNodeIds = [
-          ...imageNodeIds,
-          ...flowNodeIds,
-        ];
+        const protectedNodeIds = [...flowNodeIds];
         const missingProtectedNodeIds = protectedNodeIds.filter((id) => !storeNodeIds.has(id));
         if (missingProtectedNodeIds.length > 0) return currentFlow;
 
@@ -1806,7 +1860,7 @@ export const useFlowSurface = ({
                 data: {
                   ...createDefaultNodeFlowNodeData(node.type),
                   ...(node.data || {}),
-                },
+                } as NodeFlowNodeData,
               };
             }
             return {
@@ -1816,7 +1870,7 @@ export const useFlowSurface = ({
               data: {
                 ...createDefaultNodeFlowNodeData(storeNode.type),
                 ...(storeNode.data || {}),
-              },
+              } as NodeFlowNodeData,
               parentId: storeNode.parentId,
               extent: storeNode.extent,
               style: storeNode.style,
@@ -1824,7 +1878,6 @@ export const useFlowSurface = ({
             };
           });
         const newStoreFlowNodes = state.nodes
-          .filter((node) => !imageNodeIds.has(node.id))
           .filter((node) => !flowNodeIds.has(node.id))
           .map((node) => ({
             ...node,
@@ -1833,13 +1886,10 @@ export const useFlowSurface = ({
             data: {
               ...createDefaultNodeFlowNodeData(node.type),
               ...(node.data || {}),
-            },
+            } as NodeFlowNodeData,
           }));
         const nextFlowNodes = [...currentFlowNodes, ...newStoreFlowNodes];
-        const allowedNodeIds = new Set([
-          ...imageNodeIds,
-          ...nextFlowNodes.map((node) => node.id),
-        ]);
+        const allowedNodeIds = new Set(nextFlowNodes.map((node) => node.id));
 
         return {
           ...currentFlow,
@@ -1848,19 +1898,6 @@ export const useFlowSurface = ({
           globalAssetHistory: state.globalAssetHistory,
           linkStyle: state.linkStyle,
           activeView: state.activeView,
-          images: currentFlow.images.map((image, index) => {
-            const storeNode = storeNodeById.get(imageNodeId(image.id));
-            if (!storeNode || storeNode.type !== "imageInput") return image;
-            const data = storeNode.data as { image?: string | null; filename?: string | null };
-            return {
-              ...image,
-              imageUrl: typeof data.image === "string" ? data.image : image.imageUrl,
-              filename: typeof data.filename === "string" ? data.filename : image.filename,
-              position: storeNode.position || image.position || getDefaultImagePosition(index),
-            };
-          }),
-          pages: [],
-          textNodes: [],
           flowNodes: nextFlowNodes,
           links: storeLinks
             .filter((link) => allowedNodeIds.has(link.source) && allowedNodeIds.has(link.target))
@@ -1884,23 +1921,37 @@ export const useFlowSurface = ({
   }, [activeTimelineBlockId, timeline.blocks]);
 
   const persistTimeline = useCallback(
-    (updater: (timeline: FlowFoundationState) => FlowFoundationState) => {
-      persistFlow((currentFlow) => {
-        const nextTimeline = updater(ensureTimeline(currentFlow.timeline));
-        return {
-          ...currentFlow,
-          timeline: {
-            ...nextTimeline,
-            blocks: recalculateTimelineBlocks(nextTimeline.blocks, nextTimeline.durationMin),
+    (updater: (timeline: FoundationScaffold) => FoundationScaffold) => {
+      persistFlow((currentFlow, previous) => {
+        const projects = getFlowProjectsForState(previous);
+        const project = projects.find((item) => item.id === (previous.activeFlowProjectId || activeFlowProjectId)) || activeFlowProject;
+        const rootNodeId = project?.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${activeFlowProjectId}`;
+        const projectDuration = project?.durationMin || DEFAULT_TIMELINE_DURATION;
+        const currentTimeline = parseFoundationGraph(currentFlow, {
+          rootNodeId,
+          title: project?.title || previous.fileName || "主项目",
+          durationMin: projectDuration,
+        }).timeline;
+        const nextTimeline = updater(currentTimeline);
+        return applyFoundationTimelineToGraph(
+          currentFlow,
+          {
+            rootNodeId,
+            title: project?.title || previous.fileName || "主项目",
+            durationMin: nextTimeline.durationMin || projectDuration,
           },
-        };
+          {
+            ...nextTimeline,
+            blocks: recalculateTimelineBlocks(nextTimeline.blocks, nextTimeline.durationMin || projectDuration),
+          }
+        );
       });
     },
-    [persistFlow]
+    [activeFlowProject, activeFlowProjectId, persistFlow]
   );
 
   const handleTimelineBlockUpdate = useCallback(
-    (blockId: string, patch: Partial<FlowTimelineBlock>) => {
+    (blockId: string, patch: Partial<FoundationTimeBlock>) => {
       persistTimeline((current) => ({
         ...current,
         blocks: current.blocks.map((block) => (block.id === blockId ? { ...block, ...patch } : block)),
@@ -1910,15 +1961,12 @@ export const useFlowSurface = ({
   );
 
   const handleTimelineHeadUpdate = useCallback(
-    (patch: Partial<FlowFoundationHead>) => {
+    (patch: Partial<FoundationProjectHead>) => {
       persistTimeline((current) => ({
         ...current,
         head: {
           ...(current.head || DEFAULT_TIMELINE_HEAD),
           ...patch,
-          linkedNodeIds: Array.isArray(patch.linkedNodeIds)
-            ? Array.from(new Set(patch.linkedNodeIds))
-            : current.head?.linkedNodeIds || DEFAULT_TIMELINE_HEAD.linkedNodeIds,
         },
       }));
     },
@@ -1926,10 +1974,10 @@ export const useFlowSurface = ({
   );
 
   const handleSpaceBlockUpdate = useCallback(
-    (blockId: string, patch: Partial<FlowSpatialBlock>) => {
+    (blockId: string, patch: Partial<FoundationSpaceBlock>) => {
       persistTimeline((current) => ({
         ...current,
-        spaceBlocks: normalizeSpaceBlocks(current.spaceBlocks).map((block) =>
+        spaceAxisBlocks: normalizeSpaceBlocks(current.spaceAxisBlocks).map((block) =>
           block.id === blockId ? { ...block, ...patch } : block
         ),
       }));
@@ -1940,7 +1988,7 @@ export const useFlowSurface = ({
   const handleSpaceBlockAdd = useCallback(
     (afterBlockId?: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
         const insertIndex = afterBlockId ? blocks.findIndex((block) => block.id === afterBlockId) + 1 : blocks.length;
         const safeIndex = insertIndex > 0 ? insertIndex : blocks.length;
         const nextBlock = createSpaceBlock(
@@ -1953,7 +2001,7 @@ export const useFlowSurface = ({
         );
         const nextBlocks = blocks.slice();
         nextBlocks.splice(safeIndex, 0, nextBlock);
-        return { ...current, spaceBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+        return { ...current, spaceAxisBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
       });
     },
     [persistTimeline]
@@ -1968,13 +2016,13 @@ export const useFlowSurface = ({
         if (block.durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2) return current;
         const firstDuration = Math.ceil(block.durationMin / 2);
         const secondDuration = block.durationMin - firstDuration;
-        const nextBlock: FlowTimelineBlock = {
+        const nextBlock: FoundationTimeBlock = {
           ...block,
           id: `timeline-block-${Date.now()}`,
           title: `${block.title} · 延展`,
           content: "",
           durationMin: secondDuration,
-          linkedNodeIds: [],
+          boundaryNodeIds: [],
           order: block.order + 0.5,
         };
         const blocks = current.blocks.map((item) =>
@@ -1990,23 +2038,23 @@ export const useFlowSurface = ({
   const handleSpaceBlockSplit = useCallback(
     (blockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
         const index = blocks.findIndex((block) => block.id === blockId);
         if (index < 0) return current;
         const block = blocks[index];
         const firstWidth = Math.max(0.45, block.width / 2);
-        const nextBlock: FlowSpatialBlock = {
+        const nextBlock: FoundationSpaceBlock = {
           ...block,
           id: `space-block-${Date.now()}`,
           title: `${block.title} · 延展`,
           content: "",
           width: firstWidth,
-          linkedNodeIds: [],
+          boundaryNodeIds: [],
           order: block.order + 0.5,
         };
         blocks[index] = { ...block, width: firstWidth };
         blocks.splice(index + 1, 0, nextBlock);
-        return { ...current, spaceBlocks: blocks.map((item, order) => ({ ...item, order })) };
+        return { ...current, spaceAxisBlocks: blocks.map((item, order) => ({ ...item, order })) };
       });
     },
     [persistTimeline]
@@ -2033,7 +2081,7 @@ export const useFlowSurface = ({
   const handleSpaceBlockDelete = useCallback(
     (blockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
         if (blocks.length <= 1) return current;
         const removed = blocks.find((block) => block.id === blockId);
         const nextBlocks = blocks.filter((block) => block.id !== blockId);
@@ -2043,7 +2091,7 @@ export const useFlowSurface = ({
             width: nextBlocks[nextBlocks.length - 1].width + removed.width,
           };
         }
-        return { ...current, spaceBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+        return { ...current, spaceAxisBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
       });
     },
     [persistTimeline]
@@ -2056,30 +2104,21 @@ export const useFlowSurface = ({
         setAxisRevealRequest(Date.now());
         return true;
       }
-      persistTimeline((current) => ({
-        ...current,
-        head: current.head || DEFAULT_TIMELINE_HEAD,
-        blocks:
-          target.type === "time"
-            ? current.blocks.map((block) => {
-                if (block.id !== target.id) return block;
-                if (block.linkedNodeIds.includes(nodeId)) return block;
-                return { ...block, linkedNodeIds: [...block.linkedNodeIds, nodeId] };
-              })
-            : current.blocks,
-        spaceBlocks:
-          target.type === "space"
-            ? normalizeSpaceBlocks(current.spaceBlocks).map((block) => {
-                if (block.id !== target.id) return block;
-                if (block.linkedNodeIds.includes(nodeId)) return block;
-                return { ...block, linkedNodeIds: [...block.linkedNodeIds, nodeId] };
-              })
-            : normalizeSpaceBlocks(current.spaceBlocks),
-      }));
+      persistFlow((currentFlow) => {
+        const id = `link-${target.id}-${nodeId}-text-text`;
+        if (currentFlow.links.some((link) => link.id === id || (link.source === target.id && link.target === nodeId))) {
+          return currentFlow;
+        }
+        return {
+          ...currentFlow,
+          revision: (currentFlow.revision || 0) + 1,
+          links: [...currentFlow.links, createFoundationLink(target.id, nodeId)],
+        };
+      });
       if (target.type === "time") setActiveTimelineBlockId(target.id);
       return true;
     },
-    [nodeIdSet, persistTimeline]
+    [nodeIdSet, persistFlow]
   );
 
   const handleTimelineBlockReorder = useCallback(
@@ -2103,13 +2142,13 @@ export const useFlowSurface = ({
   const handleSpaceBlockReorder = useCallback(
     (sourceBlockId: string, targetBlockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceBlocks);
+        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
         const sourceIndex = blocks.findIndex((block) => block.id === sourceBlockId);
         const targetIndex = blocks.findIndex((block) => block.id === targetBlockId);
         if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
         const [moved] = blocks.splice(sourceIndex, 1);
         blocks.splice(targetIndex, 0, moved);
-        return { ...current, spaceBlocks: blocks.map((block, order) => ({ ...block, order })) };
+        return { ...current, spaceAxisBlocks: blocks.map((block, order) => ({ ...block, order })) };
       });
     },
     [persistTimeline]
@@ -2131,18 +2170,11 @@ export const useFlowSurface = ({
             MIN_TIMELINE_BLOCK_MINUTES,
             originalBlocks[blockIndex].durationMin + deltaMinutes
           );
-          const nextDuration = Math.max(
-            30,
-            originalTimeline.durationMin + (nextLastDuration - originalBlocks[blockIndex].durationMin)
-          );
           blocks[blockIndex].durationMin = nextLastDuration;
-          persistFlow((currentFlow) => ({
-            ...currentFlow,
-            timeline: {
-              ...originalTimeline,
-              durationMin: nextDuration,
-              blocks: recalculateTimelineBlocks(blocks, nextDuration),
-            },
+          persistTimeline((current) => ({
+            ...current,
+            durationMin: originalTimeline.durationMin,
+            blocks,
           }));
         };
 
@@ -2194,12 +2226,12 @@ export const useFlowSurface = ({
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", stopPointerMove, { once: true });
     },
-    [persistFlow, persistTimeline, timeline]
+    [persistTimeline, timeline]
   );
 
   const handleSpaceResizeStart = useCallback(
     (blockId: string, edge: "left" | "right", startX: number, trackWidth: number) => {
-      const originalBlocks = normalizeSpaceBlocks(timeline.spaceBlocks).map((block) => ({ ...block }));
+      const originalBlocks = normalizeSpaceBlocks(timeline.spaceAxisBlocks).map((block) => ({ ...block }));
       const blockIndex = originalBlocks.findIndex((block) => block.id === blockId);
       const neighborIndex = edge === "left" ? blockIndex - 1 : blockIndex + 1;
       if (blockIndex < 0 || neighborIndex < 0 || neighborIndex >= originalBlocks.length) return;
@@ -2217,7 +2249,7 @@ export const useFlowSurface = ({
           blocks[blockIndex].width = nextWidth;
           blocks[neighborIndex].width = pairTotal - nextWidth;
         }
-        persistTimeline((current) => ({ ...current, spaceBlocks: blocks }));
+        persistTimeline((current) => ({ ...current, spaceAxisBlocks: blocks }));
       };
 
       const stopPointerMove = () => {
@@ -2228,7 +2260,7 @@ export const useFlowSurface = ({
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", stopPointerMove, { once: true });
     },
-    [persistTimeline, timeline.spaceBlocks]
+    [persistTimeline, timeline.spaceAxisBlocks]
   );
 
   const buildLinkForCreatedNode = useCallback(
@@ -2315,8 +2347,6 @@ export const useFlowSurface = ({
         ...previous,
         flow: {
           ...nextFlow,
-          pages: [],
-          textNodes: [],
           flowNodes: [...(nextFlow.flowNodes || []), nextNode],
           links: buildLinkForCreatedNode(nextFlow.links, createdNodeId, "scriptPage", dropState),
         },
@@ -2349,14 +2379,12 @@ export const useFlowSurface = ({
           } as NodeFlowNodeData,
         };
         return {
-          ...previous,
-          flow: {
-            ...nextFlow,
-            pages: [],
-            textNodes: [],
-            flowNodes: [...(nextFlow.flowNodes || []), nextNode],
-            links: buildLinkForCreatedNode(nextFlow.links, createdNodeId, "mdText", dropState),
-          },
+        ...previous,
+        flow: {
+          ...nextFlow,
+          flowNodes: [...(nextFlow.flowNodes || []), nextNode],
+          links: buildLinkForCreatedNode(nextFlow.links, createdNodeId, "mdText", dropState),
+        },
         };
       });
       setSelectedNodeIds(new Set([createdNodeId]));
@@ -2373,6 +2401,7 @@ export const useFlowSurface = ({
       extraData?: Partial<NodeFlowNodeData>,
       fixedNodeId?: string
     ) => {
+      if (type === "folder") return null;
       const requestedPosition = position || getDefaultFlowNodePosition(flow.flowNodes?.length || 0);
       const commandState = {
         revision: flow.revision || 0,
@@ -2465,7 +2494,6 @@ export const useFlowSurface = ({
       setProjectData((previous) => {
         const currentFlow = ensureFlow(previous.flow);
         const existingIds = new Set<string>([
-          ...currentFlow.images.map((image) => imageNodeId(image.id)),
           ...(currentFlow.flowNodes || []).map((node) => node.id),
         ]);
         const idMap = new Map<string, string>();
@@ -2489,12 +2517,12 @@ export const useFlowSurface = ({
             data: {
               ...createDefaultNodeFlowNodeData(node.type),
               ...(node.data || {}),
-            },
+            } as NodeFlowNodeData,
           };
         });
         const importedNodeIds = new Set(importedNodes.map((node) => node.id));
         const importedLinks = hydrated.links
-          .map((link, index) => {
+          .map((link, index): FlowState["links"][number] | null => {
             const source = idMap.get(link.source);
             const target = idMap.get(link.target);
             if (!source || !target) return null;
@@ -2597,18 +2625,10 @@ export const useFlowSurface = ({
           return next;
         });
       }
-      const removedImageIds = changes
-        .filter((change): change is Extract<NodeChange<FlowRenderNode>, { type: "remove" }> => change.type === "remove")
-        .filter((change) => change.id.startsWith("image-"))
-        .map((change) => change.id.replace(/^image-/, ""));
       const removedFlowNodeIds = changes
         .filter((change): change is Extract<NodeChange<FlowRenderNode>, { type: "remove" }> => change.type === "remove")
-        .map((change) => change.id)
-        .filter((id) => !isImageNodeId(id));
-      const removedNodeIds = new Set([
-        ...removedImageIds.map((id) => imageNodeId(id)),
-        ...removedFlowNodeIds,
-      ]);
+        .map((change) => change.id);
+      const removedNodeIds = new Set(removedFlowNodeIds);
       if (removedNodeIds.size) {
         setSelectedNodeIds((current) => {
           const next = new Set(current);
@@ -2620,7 +2640,6 @@ export const useFlowSurface = ({
       if (
         !hasPositionChange &&
         !hasDimensionChange &&
-        removedImageIds.length === 0 &&
         removedFlowNodeIds.length === 0
       ) return;
 
@@ -2629,18 +2648,9 @@ export const useFlowSurface = ({
       const nextNodeById = new Map(nextNodes.map((node) => [node.id, node]));
 
       persistFlow((currentFlow) => {
-        const removedImageSet = new Set(removedImageIds);
         const removedFlowNodeSet = new Set(removedFlowNodeIds);
-        const images = currentFlow.images
-          .filter((image) => !removedImageSet.has(image.id))
-          .map((image) => ({
-            ...image,
-            position: positionById.get(imageNodeId(image.id)) || image.position,
-            measured: sanitizeScriptMeasured(nextNodeById.get(imageNodeId(image.id))?.measured) || sanitizeScriptMeasured(image.measured),
-          }));
         return {
           ...currentFlow,
-          pages: [],
           flowNodes: (currentFlow.flowNodes || [])
             .filter((node) => !removedFlowNodeSet.has(node.id))
             .map((node, index) => ({
@@ -2648,31 +2658,9 @@ export const useFlowSurface = ({
               position: positionById.get(node.id) || node.position || getDefaultFlowNodePosition(index),
               measured: sanitizeScriptMeasured(nextNodeById.get(node.id)?.measured) || sanitizeScriptMeasured(node.measured),
             })),
-          images,
-          textNodes: [],
           links: currentFlow.links.filter((link) => {
-            if (removedImageIds.some((id) => link.source === imageNodeId(id) || link.target === imageNodeId(id))) return false;
             return !removedFlowNodeSet.has(link.source) && !removedFlowNodeSet.has(link.target);
           }),
-          timeline: currentFlow.timeline
-            ? {
-                ...ensureTimeline(currentFlow.timeline),
-                head: {
-                  ...(ensureTimeline(currentFlow.timeline).head || DEFAULT_TIMELINE_HEAD),
-                  linkedNodeIds: (ensureTimeline(currentFlow.timeline).head?.linkedNodeIds || []).filter(
-                    (nodeId) => !removedNodeIds.has(nodeId)
-                  ),
-                },
-                spaceBlocks: normalizeSpaceBlocks(ensureTimeline(currentFlow.timeline).spaceBlocks).map((block) => ({
-                  ...block,
-                  linkedNodeIds: block.linkedNodeIds.filter((nodeId) => !removedNodeIds.has(nodeId)),
-                })),
-                blocks: ensureTimeline(currentFlow.timeline).blocks.map((block) => ({
-                  ...block,
-                  linkedNodeIds: block.linkedNodeIds.filter((nodeId) => !removedNodeIds.has(nodeId)),
-                })),
-              }
-            : currentFlow.timeline,
         };
       });
     },
@@ -2896,6 +2884,10 @@ export const useFlowSurface = ({
   const handleDropCreate = useCallback(
     (type: FlowCreateType) => {
       if (!connectionDrop) return;
+      if (type === "folder") {
+        setConnectionDrop(null);
+        return;
+      }
       if (type === "scriptPage") {
         handleAddScriptPage(connectionDrop.flowPosition, connectionDrop);
         setConnectionDrop(null);
@@ -2915,8 +2907,8 @@ export const useFlowSurface = ({
 
   const handleScriptNodeClick = useCallback(
     (node: FlowRenderNode) => {
-      const linkedBlock = timeline.blocks.find((block) => block.linkedNodeIds.includes(node.id));
-      if (linkedBlock) setActiveTimelineBlockId(linkedBlock.id);
+      const boundaryBlock = timeline.blocks.find((block) => block.boundaryNodeIds.includes(node.id));
+      if (boundaryBlock) setActiveTimelineBlockId(boundaryBlock.id);
       if (node.type === "scriptPage") {
         onOpenScriptDocument(node.id);
       }
@@ -2924,7 +2916,7 @@ export const useFlowSurface = ({
     [onOpenScriptDocument, timeline.blocks]
   );
 
-  const foundationUnderlay = foundationGuideLines.length ? (
+  const foundationUnderlay = !showFoundationNodes && foundationGuideLines.length ? (
     <svg className="script-foundation-connection-layer" aria-hidden="true">
       {foundationGuideLines.map((line) => (
         <path
@@ -2948,7 +2940,7 @@ export const useFlowSurface = ({
         />
       ) : null}
 
-      {nodes.length === 0 ? (
+      {nodes.length === 0 && foundationScaffoldNodeIds.size === 0 ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <button
             type="button"
@@ -2961,10 +2953,9 @@ export const useFlowSurface = ({
         </div>
       ) : null}
 
-      {!isWritingEditorOpen ? (
+      {!isWritingEditorOpen && !showFoundationNodes ? (
         <ScriptFoundation
           timeline={timeline}
-          nodeSummaries={nodeSummaries}
           activeBlockId={activeTimelineBlockId}
           onActiveBlockChange={setActiveTimelineBlockId}
           onUpdateHead={handleTimelineHeadUpdate}
@@ -2992,6 +2983,10 @@ export const useFlowSurface = ({
                   });
             handleAddFlowNode(type, position);
           }}
+          flowProjects={flowProjects}
+          activeFlowProjectId={activeFlowProjectId}
+          onSwitchFlowProject={handleSwitchFlowProject}
+          onCreateFlowProject={handleCreateFlowProject}
           onOpenAgent={onOpenAgent}
           onSubmitAgentMessage={onSubmitAgentMessage}
           agentComposerValue={agentComposerValue}
@@ -3012,7 +3007,7 @@ export const useFlowSurface = ({
   );
 
   return {
-    key: "script",
+    key: "flow",
     nodes,
     edges,
     nodeTypes,
@@ -3035,6 +3030,9 @@ export const useFlowSurface = ({
       importNodeFlow: handleImportScriptNodeFlow,
       exportNodeFlow: handleExportScriptNodeFlow,
       runAll: handleRunScriptAll,
+      organizeFoundationScaffold: handleOrganizeFoundationScaffold,
+      setFoundationNodeView: handleSetFoundationNodeView,
+      foundationNodeView: showFoundationNodes,
     },
   };
 };

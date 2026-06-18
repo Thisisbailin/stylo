@@ -1098,6 +1098,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onResetProject={onResetProject}
         requestedPanel={agentSettingsPanel}
         requestedAssetsSection={agentSettingsAssetsSection}
+        onOrganizeFoundationScaffold={flowSurface.actions?.organizeFoundationScaffold}
+        onSetFoundationNodeView={flowSurface.actions?.setFoundationNodeView}
+        foundationNodeView={flowSurface.actions?.foundationNodeView}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
       {editingScriptNodeId !== null ? (

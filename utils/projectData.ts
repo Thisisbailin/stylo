@@ -1,6 +1,7 @@
-import {
+﻿import {
   DesignAssetItem,
   Episode,
+  FlowProject,
   ProjectData,
   ProjectRoleIdentity,
   ProjectRolePortrait,
@@ -82,138 +83,15 @@ const normalizeCanvasViewport = (value: any): ProjectData["canvas"]["viewport"] 
   return { x, y, zoom: Math.max(0.1, Math.min(8, zoom)) };
 };
 
-const normalizeFlowFoundation = (value: any, nodeIds: Set<string>): ProjectData["flow"] extends infer Flow
-  ? Flow extends { timeline?: infer Timeline }
-    ? Timeline
-    : never
-  : never => {
-  if (!value || typeof value !== "object") return undefined as never;
-  const durationMin = Math.max(30, Math.min(300, Math.round(Number(value.durationMin) || 120)));
-  const rawBlocks = Array.isArray(value.blocks) ? value.blocks : [];
-  let cursor = 0;
-  const blocks = rawBlocks
-    .map((block: any, index: number) => {
-      const duration = Math.max(3, Math.round(Number(block?.durationMin) || 12));
-      const next = {
-        id: ensureStableId(block?.id, "timeline-block"),
-        title: toSafeString(block?.title || `时间区块 ${index + 1}`),
-        content: toSafeString(block?.content),
-        startMin: cursor,
-        durationMin: duration,
-        color: toSafeString(block?.color || "slate"),
-        order: typeof block?.order === "number" && Number.isFinite(block.order) ? block.order : index,
-        linkedNodeIds: Array.isArray(block?.linkedNodeIds)
-          ? Array.from(new Set(block.linkedNodeIds.map((nodeId: any) => toSafeString(nodeId)).filter((nodeId: string) => nodeIds.has(nodeId))))
-          : [],
-      };
-      cursor += duration;
-      return next;
-    })
-    .sort((a: any, b: any) => a.order - b.order)
-    .map((block: any, index: number) => ({ ...block, order: index }));
-
-  const head = value.head && typeof value.head === "object"
-    ? {
-        title: toSafeString(value.head.title || "项目索引"),
-        content: toSafeString(value.head.content),
-        linkedNodeIds: [],
-      }
-    : {
-        title: "项目索引",
-        content: "项目根文档，组织空间轴与时间轴的文件树。",
-        linkedNodeIds: [],
-      };
-
-  const rawSpaceBlocks = Array.isArray(value.spaceBlocks)
-    ? value.spaceBlocks.some((block: any) => block?.id === "space-spec" || block?.title === "规格")
-      ? value.spaceBlocks
-      : [
-          {
-            id: "space-spec",
-            title: "规格",
-            content: "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。",
-            color: "slate",
-            order: -1,
-            width: 0.72,
-            linkedNodeIds: [],
-          },
-          ...value.spaceBlocks,
-        ]
-    : undefined;
-
-  const spaceBlocks = rawSpaceBlocks
-    ? rawSpaceBlocks
-        .map((block: any, index: number) => ({
-          id: ensureStableId(block?.id, "space-block"),
-          title: toSafeString(block?.title || `全局视角 ${index + 1}`),
-          content: toSafeString(block?.content),
-          color: toSafeString(block?.color || "slate"),
-          order: typeof block?.order === "number" && Number.isFinite(block.order) ? block.order : index,
-          width: Math.max(0.45, Number(block?.width) || 1),
-          linkedNodeIds: Array.isArray(block?.linkedNodeIds)
-            ? Array.from(new Set(block.linkedNodeIds.map((nodeId: any) => toSafeString(nodeId)).filter((nodeId: string) => nodeIds.has(nodeId))))
-            : [],
-        }))
-        .sort((a: any, b: any) => a.order - b.order)
-        .map((block: any, index: number) => ({ ...block, order: index }))
-    : undefined;
-
-  return {
-    id: toSafeString(value.id || "film-structure"),
-    title: toSafeString(value.title || "影片时间轴"),
-    durationMin,
-    head,
-    ...(spaceBlocks ? { spaceBlocks } : {}),
-    blocks,
-  } as never;
-};
 
 const normalizeFlow = (value: any): ProjectData["flow"] => {
   const revision = typeof value?.revision === "number" && Number.isFinite(value.revision) ? value.revision : 0;
-
-  const pages = Array.isArray(value?.pages)
-    ? value.pages
-        .map((page: any) => ({
-          episodeId: Number(page?.episodeId),
-          position: normalizeCanvasPosition(page?.position),
-        }))
-        .filter((page: any) => Number.isFinite(page.episodeId) && page.episodeId > 0)
-    : [];
-
-  const images = Array.isArray(value?.images)
-    ? value.images
-        .map((image: any) => ({
-          id: ensureStableId(image?.id, "script-image"),
-          imageUrl: toSafeString(image?.imageUrl || image?.url),
-          filename: toOptionalString(image?.filename || image?.fileName),
-          position: normalizeCanvasPosition(image?.position),
-          createdAt: typeof image?.createdAt === "number" ? image.createdAt : Date.now(),
-        }))
-        .filter((image: any) => !!image.imageUrl)
-    : [];
-
-  const textNodes = Array.isArray(value?.textNodes)
-    ? value.textNodes
-        .map((node: any) => ({
-          id: ensureStableId(node?.id, "script-text"),
-          title:
-            toSafeString(node?.title || "档案文档") === "文本卡片"
-              ? "档案文档"
-              : toSafeString(node?.title || "档案文档"),
-          content: toSafeString(node?.content),
-          position: normalizeCanvasPosition(node?.position),
-          createdAt: typeof node?.createdAt === "number" ? node.createdAt : Date.now(),
-        }))
-    : [];
 
   const flowNodes = Array.isArray(value?.flowNodes)
     ? value.flowNodes.map(normalizeNodeFlowNode).filter(Boolean)
     : [];
 
   const nodeIds = new Set<string>([
-    ...pages.map((page: any) => `script-${page.episodeId}`),
-    ...images.map((image: any) => `image-${image.id}`),
-    ...textNodes.map((node: any) => `md-${node.id}`),
     ...flowNodes.map((node: any) => node.id),
   ]);
   const links = Array.isArray(value?.links)
@@ -228,7 +106,6 @@ const normalizeFlow = (value: any): ProjectData["flow"] => {
         .filter((link: any) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
 
-  const timeline = normalizeFlowFoundation(value?.timeline, nodeIds);
   const graphLinks = Array.isArray(value?.graphLinks) ? value.graphLinks : [];
   const globalAssetHistory = Array.isArray(value?.globalAssetHistory) ? value.globalAssetHistory : [];
   const linkStyle = value?.linkStyle === "angular" ? "angular" : "curved";
@@ -236,16 +113,79 @@ const normalizeFlow = (value: any): ProjectData["flow"] => {
 
   return {
     revision,
-    pages,
-    images,
-    textNodes,
     flowNodes: flowNodes as any,
     graphLinks,
     globalAssetHistory,
     linkStyle,
     activeView,
     links,
-    ...(timeline ? { timeline } : {}),
+  };
+};
+
+const FLOW_PROJECT_COLORS = ["amber", "moss", "blue", "rose", "violet", "slate"];
+const MAX_FLOW_PROJECTS = 3;
+
+const normalizeFlowProjectDuration = (value: unknown, fallback = 120) =>
+  Math.max(30, Math.min(300, Math.round(Number(value) || fallback)));
+
+const normalizeFlowProjects = (
+  value: unknown,
+  activeFlow: NonNullable<ProjectData["flow"]>,
+  activeProjectId?: string,
+  fileName?: string
+) => {
+  const now = Date.now();
+  const rawProjects = Array.isArray(value) ? value.slice(0, MAX_FLOW_PROJECTS) : [];
+  const projects = rawProjects.map((project: any, index): FlowProject => {
+    const flow = normalizeFlow(project?.flow);
+    const id = toSafeString(project?.id || `flow-project-${index + 1}`);
+    const durationMin = normalizeFlowProjectDuration(project?.durationMin, 120);
+    return {
+      id,
+      title: toSafeString(project?.title || (index === 0 ? fileName || "主项目" : `项目 ${index + 1}`)),
+      color: toSafeString(project?.color || FLOW_PROJECT_COLORS[index % FLOW_PROJECT_COLORS.length]),
+      durationMin,
+      rootNodeId: toSafeString(project?.rootNodeId || `project-root-${id}`),
+      createdAt: typeof project?.createdAt === "number" ? project.createdAt : now,
+      updatedAt: typeof project?.updatedAt === "number" ? project.updatedAt : now,
+      flow,
+    };
+  });
+
+  const fallbackId = toSafeString(activeProjectId || projects[0]?.id || "flow-project-main");
+  const activeId = projects.some((project) => project.id === fallbackId) ? fallbackId : projects[0]?.id || fallbackId;
+  const activeDuration = normalizeFlowProjectDuration(projects.find((project) => project.id === activeId)?.durationMin, 120);
+  const normalizedActiveFlow = activeFlow;
+
+  const nextProjects = projects.length
+    ? projects.map((project) =>
+        project.id === activeId
+          ? {
+              ...project,
+              durationMin: activeDuration,
+              rootNodeId: project.rootNodeId || `project-root-${project.id}`,
+              updatedAt: now,
+              flow: normalizedActiveFlow,
+            }
+          : project
+      )
+    : [
+        {
+          id: activeId,
+          title: fileName || "主项目",
+          color: FLOW_PROJECT_COLORS[0],
+          durationMin: activeDuration,
+          rootNodeId: `project-root-${activeId}`,
+          createdAt: now,
+          updatedAt: now,
+          flow: normalizedActiveFlow,
+        },
+      ];
+
+  return {
+    activeFlowProjectId: activeId,
+    flowProjects: nextProjects.slice(0, MAX_FLOW_PROJECTS),
+    flow: normalizedActiveFlow,
   };
 };
 
@@ -309,7 +249,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
     return normalizeRolePortraits(
       {
         mention,
-        name: toSafeString(role?.name || role?.displayName || mention || "身份"),
+        name: toSafeString(role?.name || role?.displayName || mention || "韬唤"),
       } as ProjectRoleIdentity,
       portraits.slice(0, MAX_ROLE_PORTRAITS)
     );
@@ -334,7 +274,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
 const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
   const rawMention = toSafeString(role?.mention).replace(/^@/, "");
   const mentionRoot = rawMention.includes("_") ? rawMention.split("_")[0] : rawMention;
-  const name = toSafeString(role?.name || role?.displayName || mentionRoot || "身份");
+  const name = toSafeString(role?.name || role?.displayName || mentionRoot || "韬唤");
   const mention = mentionRoot || buildMention(name);
   const kind = role?.kind === "scene" ? "scene" : "person";
   const tone = role?.tone === "sky" ? "sky" : "emerald";
@@ -355,7 +295,7 @@ const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
     isMain: typeof role?.isMain === "boolean" ? role.isMain : undefined,
     isCore: typeof role?.isCore === "boolean" ? role.isCore : undefined,
     title: toOptionalString(role?.title) || name,
-    summary: toSafeString(role?.summary || role?.role || role?.type || `${kind === "person" ? "人物" : "场景"}身份`),
+    summary: toSafeString(role?.summary || role?.role || role?.type || `${kind === "person" ? "浜虹墿" : "鍦烘櫙"}韬唤`),
     description: toSafeString(role?.description || role?.bio || role?.visuals),
     visualTags: toOptionalString(role?.visualTags),
     episodeUsage: toOptionalString(role?.episodeUsage),
@@ -443,11 +383,11 @@ const collapseExplicitRoles = (roles: ProjectRoleIdentity[]): ProjectRoleIdentit
           name,
           displayName: name,
           mention,
-          aliases: [name, `@${mention}`, ...aliasValues],
+          aliases: normalizeAliases([], [name, `@${mention}`, ...aliasValues]),
           portraits,
           avatarUrl: primary.avatarUrl,
           voiceReferenceAudioUrl: primary.voiceReferenceAudioUrl || primary.previewAudioUrl,
-        } as ProjectRoleIdentity,
+        },
         portraits
       )
     );
@@ -471,7 +411,7 @@ const remapDesignAssets = (assets: DesignAssetItem[], roles: ProjectRoleIdentity
     mentionMap.set(role.displayName, { refId: role.id, label });
     (role.portraits || []).forEach((portrait) => {
       const portraitRefId = `portrait:${portrait.id}`;
-      const portraitLabel = `${role.name} · ${portrait.name}`;
+      const portraitLabel = `${role.name} 路 ${portrait.name}`;
       mentionMap.set(portrait.id, { refId: portraitRefId, label: portraitLabel });
       mentionMap.set(portrait.mention, { refId: portraitRefId, label: portraitLabel });
       mentionMap.set(`@${portrait.mention}`, { refId: portraitRefId, label: portraitLabel });
@@ -511,8 +451,17 @@ export const normalizeProjectData = (data: any): ProjectData => {
     ...(projectData?.canvas || {}),
     viewport: normalizeCanvasViewport(projectData?.canvas?.viewport),
   };
-  base.flow = normalizeFlow(projectData?.flow);
   base.rawScript = typeof projectData?.rawScript === "string" ? projectData.rawScript : "";
   base.fileName = typeof projectData?.fileName === "string" ? projectData.fileName : "";
+  const normalizedFlow = normalizeFlow(projectData?.flow);
+  const normalizedProjects = normalizeFlowProjects(
+    projectData?.flowProjects,
+    normalizedFlow as NonNullable<ProjectData["flow"]>,
+    typeof projectData?.activeFlowProjectId === "string" ? projectData.activeFlowProjectId : undefined,
+    base.fileName
+  );
+  base.flow = normalizedProjects.flow;
+  base.activeFlowProjectId = normalizedProjects.activeFlowProjectId;
+  base.flowProjects = normalizedProjects.flowProjects;
   return sanitizeValue(base) as ProjectData;
 };

@@ -30,7 +30,7 @@ export const READ_PROJECT_RESOURCE_VIEWS = [
   "anchor",
   "lens",
   "lifecycle",
-  "timeline",
+  "folders",
 ] as const;
 export const READ_PROJECT_RESOURCE_TARGETS = [
   "script:node",
@@ -64,7 +64,7 @@ const readProjectResourceParameters = {
     view: {
       type: "string",
       enum: [...READ_PROJECT_RESOURCE_VIEWS],
-      description: "Optional read view such as identity, detail, full, local, anchor, lens, lifecycle, or timeline.",
+      description: "Optional read view such as identity, detail, full, local, anchor, lens, lifecycle, or folders.",
     },
     name: {
       type: "string",
@@ -206,7 +206,7 @@ const parseArgs = (input: unknown) => {
 export const readProjectResourceToolDef = {
   name: "read_project_resource",
   description:
-    "Read a concrete entity from the shared Flow project world. Public reads focus on Script foundation/document resources and visible canvas graph resources.",
+    "Read a concrete entity from the shared Flow node-and-link project graph. Script-keyed reads are document/archive/folder projections over the same Flow nodes.",
   parameters: readProjectResourceParameters,
   execute: async (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
@@ -309,12 +309,12 @@ export const readProjectResourceToolDef = {
       const links = buildScriptResourceLinks(projectData, workflow);
       const effectiveMap = map || maps[0] || null;
       const visibleNodes =
-        effectiveMap?.view === "source"
+        effectiveMap?.view === "documents"
           ? nodes.filter((node) => node.resourceType === "document_node" || node.resourceType === "archive_node")
           : effectiveMap?.view === "archives"
             ? nodes.filter((node) => node.resourceType === "archive_node")
-            : effectiveMap?.view === "timeline"
-              ? nodes.filter((node) => node.resourceType === "timeline_block" || node.resourceType === "script_index")
+            : effectiveMap?.view === "folders"
+              ? nodes.filter((node) => node.resourceType === "folder_node")
               : nodes;
       return {
         layer: "script",
@@ -617,7 +617,7 @@ export const readProjectResourceToolDef = {
       return `读取 Script 关系 ${output.item?.link_id || output.link_id || ""}`.trim();
     }
     if (output?.layer === "script" && output?.entity === "map") {
-      return `读取 Script 地图 ${output.item?.name || output?.view || "foundation"}`;
+      return `读取 Script 地图 ${output.item?.name || output?.view || "flow"}`;
     }
     if (output?.layer === "nodeflow" && output?.entity === "node") {
       return `读取 Flow 节点${output?.view === "identity" ? "识别层" : "细节层"} ${output.item?.title || output.item?.node_ref || output.item?.node_id || ""}`;

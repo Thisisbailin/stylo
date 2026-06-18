@@ -69,7 +69,7 @@ const summarizeToolOutput = (output: unknown) => {
 };
 
 const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBase: number): AgentSessionMessage[] =>
-  items.flatMap((item, index) => {
+  items.flatMap((item, index): AgentSessionMessage[] => {
     const createdAt = timestampBase + index;
     if (!item || typeof item !== "object") return [];
 

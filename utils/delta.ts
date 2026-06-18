@@ -10,6 +10,8 @@ export type ProjectMetaDelta = {
   designAssets: ProjectData["designAssets"];
   canvas: ProjectData["canvas"];
   flow: ProjectData["flow"];
+  activeFlowProjectId: ProjectData["activeFlowProjectId"];
+  flowProjects: ProjectData["flowProjects"];
   phase5Usage: ProjectData["phase5Usage"];
   stats: ProjectData["stats"];
 };
@@ -41,6 +43,8 @@ const buildMeta = (data: ProjectData): ProjectMetaDelta => ({
   designAssets: data.designAssets,
   canvas: data.canvas,
   flow: data.flow,
+  activeFlowProjectId: data.activeFlowProjectId,
+  flowProjects: data.flowProjects,
   phase5Usage: data.phase5Usage,
   stats: data.stats,
 });

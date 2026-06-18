@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useUser, useClerk, useAuth } from './lib/auth';
-import { ProjectData, SyncState, SyncStatus } from './types';
+import { FlowState, ProjectData, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA } from './constants';
 import { normalizeProjectData } from './utils/projectData';
 import { FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
@@ -506,7 +506,11 @@ const App: React.FC = () => {
     navigateToAppView('main');
 
     setProjectData((prev) => {
-      const flow = prev.flow || {};
+      const flow: FlowState = {
+        flowNodes: [],
+        links: [],
+        ...(prev.flow || {}),
+      };
       const flowNodes = Array.isArray(flow.flowNodes) ? flow.flowNodes : [];
       const existing = flowNodes.find(
         (node) => node.type === 'identityCard' && (node.data as any)?.identityId === identityId

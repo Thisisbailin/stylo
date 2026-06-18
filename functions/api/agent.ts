@@ -65,9 +65,6 @@ const createAgentProjectData = (projectData: ProjectData | undefined, nodeFlow?:
   designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
   canvas: projectData?.canvas || { viewport: null },
   flow: {
-    pages: [],
-    images: [],
-    textNodes: [],
     flowNodes: [],
     links: [],
   },
@@ -130,18 +127,18 @@ const createNodeFlowBridgeState = (
       data: { ...createDefaultNodeFlowNodeData(type), ...(extraData || {}) } as NodeFlowNodeData,
       style: dim ? { width: dim.width, height: dim.height } : undefined,
     };
-    currentNodeFlow = appendNodeToNodeFlow(currentNodeFlow, newNode);
+    currentNodeFlow = appendNodeToNodeFlow(currentNodeFlow, newNode) as NodeFlowFile;
     nodeFlowUpdated = true;
     return id;
   };
 
   const updateNodeStyle = (nodeId: string, style: Record<string, unknown>) => {
-    currentNodeFlow = patchNodeFlowNodeStyle(currentNodeFlow, nodeId, style);
+    currentNodeFlow = patchNodeFlowNodeStyle(currentNodeFlow, nodeId, style) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 
   const updateNodeData = (nodeId: string, data: Partial<NodeFlowNodeData>) => {
-    currentNodeFlow = patchNodeFlowNodeData(currentNodeFlow, nodeId, data);
+    currentNodeFlow = patchNodeFlowNodeData(currentNodeFlow, nodeId, data) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 
@@ -165,17 +162,17 @@ const createNodeFlowBridgeState = (
   };
 
   const removeNode = (nodeId: string) => {
-    currentNodeFlow = removeNodeFromNodeFlow(currentNodeFlow, nodeId);
+    currentNodeFlow = removeNodeFromNodeFlow(currentNodeFlow, nodeId) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 
-  const connectNodes = (connection: { source: string; target: string; sourceHandle?: string; targetHandle?: string }) => {
-    currentNodeFlow = connectNodesInNodeFlow(currentNodeFlow, connection);
+  const connectNodes = (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => {
+    currentNodeFlow = connectNodesInNodeFlow(currentNodeFlow, connection as any) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 
   const removeLink = (linkId: string) => {
-    currentNodeFlow = removeLinkFromNodeFlow(currentNodeFlow, linkId);
+    currentNodeFlow = removeLinkFromNodeFlow(currentNodeFlow, linkId) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 
@@ -200,7 +197,7 @@ const createNodeFlowBridgeState = (
   };
 
   const toggleLinkPause = (linkId: string) => {
-    currentNodeFlow = toggleNodeFlowLinkPauseInState(currentNodeFlow, linkId);
+    currentNodeFlow = toggleNodeFlowLinkPauseInState(currentNodeFlow, linkId) as NodeFlowFile;
     nodeFlowUpdated = true;
   };
 

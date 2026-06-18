@@ -9,6 +9,7 @@ const IMAGE_SOURCE_NODE_TYPES = new Set([
 const TEXT_SOURCE_NODE_TYPES = new Set([
   "scriptPage",
   "mdText",
+  "folder",
   "text",
   "scriptBoard",
   "identityCard",
@@ -64,6 +65,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "prompt":
       return { inputs: [], outputs: ["text"] };
     case "text":
+    case "folder":
       return { inputs: ["text"], outputs: ["text"] };
     case "scriptPage":
     case "mdText":

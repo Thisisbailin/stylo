@@ -6,6 +6,7 @@ export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 export type NodeType =
   | "scriptPage"
   | "mdText"
+  | "folder"
   | "imageInput"
   | "audioInput"
   | "videoInput"
@@ -185,6 +186,10 @@ export interface MarkdownTextNodeData extends TextNodeData {
   preview?: string;
 }
 
+export interface FolderNodeData extends BaseNodeData {
+  title: string;
+}
+
 export interface ScriptBoardNodeData extends BaseNodeData {
   title: string;
   episodeId?: number;
@@ -328,6 +333,7 @@ export type NodeFlowNodeData =
   | TextNodeData
   | ScriptPageNodeData
   | MarkdownTextNodeData
+  | FolderNodeData
   | ScriptBoardNodeData
   | IdentityCardNodeData
   | ImageGenNodeData

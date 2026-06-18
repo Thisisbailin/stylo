@@ -20,6 +20,7 @@ type NodeFlowBuilderDeps = {
 const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: number; height: number }> = {
   scriptPage: { width: 320, height: 249 },
   mdText: { width: 320, height: 252 },
+  folder: { width: 230, height: 128 },
   text: { width: 320, height: 240 },
   imageInput: { width: 320, height: 240 },
   audioInput: { width: 320, height: 180 },
@@ -30,6 +31,7 @@ const GAP = { x: 72, y: 56 };
 const NODE_HANDLES: Record<CreateNodeFlowMapNodeInput["type"], { inputs: string[]; outputs: string[] }> = {
   scriptPage: { inputs: ["text"], outputs: ["text"] },
   mdText: { inputs: ["text"], outputs: ["text"] },
+  folder: { inputs: ["text"], outputs: ["text"] },
   text: { inputs: ["text"], outputs: ["text"] },
   imageInput: { inputs: [], outputs: ["image"] },
   audioInput: { inputs: [], outputs: ["audio"] },
