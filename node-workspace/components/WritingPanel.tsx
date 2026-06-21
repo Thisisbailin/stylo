@@ -853,13 +853,14 @@ export const WritingPanel: React.FC<Props> = ({
       const nodeId = scriptNode?.id || initialScriptNodeId;
       if (!nodeId) return;
       const title = nextDraft.title.trim() || scriptNodeTitle || "剧本文档";
-      const content = normalizeFountainDocumentToHollywood(nextDraft.body);
+      const content = nextDraft.body;
       const preview = analyzeFountainLines(nextDraft.body)
         .map(({ line, kind }) => displayFountainLine(line, kind))
         .join(" ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 180);
+      pendingLocalCommitRef.current = { title, body: content };
       if (onCommitScriptDocument) {
         onCommitScriptDocument({ nodeId, title, content, preview });
         return;
@@ -924,22 +925,24 @@ export const WritingPanel: React.FC<Props> = ({
   useEffect(() => {
     if (!scriptNode?.id || scriptNode.id !== loadedScriptNodeId) return;
     if (pendingScriptPatch) return;
-    const externalDraft = buildDraftFromDocument(scriptNodeTitle, scriptNodeContent);
     const currentDraft = draftRef.current;
     const pendingLocalCommit = pendingLocalCommitRef.current;
     if (pendingLocalCommit) {
       if (
-        externalDraft.body === pendingLocalCommit.body &&
-        externalDraft.title === pendingLocalCommit.title
+        scriptNodeContent === pendingLocalCommit.body &&
+        scriptNodeTitle === pendingLocalCommit.title &&
+        currentDraft.body === pendingLocalCommit.body &&
+        currentDraft.title === pendingLocalCommit.title
       ) {
         pendingLocalCommitRef.current = null;
-      } else {
-        return;
       }
+      return;
     }
+    if (isEditorFocused) return;
+    const externalDraft = buildDraftFromDocument(scriptNodeTitle, scriptNodeContent);
     if (externalDraft.body === currentDraft.body && externalDraft.title === currentDraft.title) return;
     setDraft(externalDraft);
-  }, [loadedScriptNodeId, pendingScriptPatch, scriptNode?.id, scriptNodeContent, scriptNodeTitle]);
+  }, [isEditorFocused, loadedScriptNodeId, pendingScriptPatch, scriptNode?.id, scriptNodeContent, scriptNodeTitle]);
 
   useEffect(() => {
     if (!scriptNode?.id || !agentScriptEditProposals) return;

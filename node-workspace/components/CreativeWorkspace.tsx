@@ -472,18 +472,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             : previous.flowProjects,
         };
       });
-      const storeNode = useNodeFlowStore.getState().nodes.find((node) => node.id === nodeId);
-      const storeData = (storeNode?.data || {}) as Record<string, unknown>;
-      if (
-        storeData.title !== title ||
-        storeData.text !== content ||
-        storeData.content !== content ||
-        storeData.preview !== preview
-      ) {
-        updateNodeData(nodeId, patch);
-      }
     },
-    [setProjectData, updateNodeData]
+    [setProjectData]
   );
 
   useEffect(() => {

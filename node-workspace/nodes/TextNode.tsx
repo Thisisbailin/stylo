@@ -144,6 +144,14 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     const [cursorPos, setCursorPos] = useState((data.text || "").length);
     const [isFocused, setIsFocused] = useState(false);
     const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
+    const isScriptDocument = data.documentKind === "script" || data.format === "fountain";
+    const storedScriptPreview = (data as TextNodeData & { preview?: string }).preview;
+    const scriptPreview = useMemo(() => {
+        const fullText = (data.text || "").replace(/\s+/g, " ").trim();
+        const source = storedScriptPreview?.trim() || fullText;
+        const clipped = source.slice(0, 180).trimEnd();
+        return `${clipped}${fullText.length > clipped.length ? "…" : ""}`;
+    }, [data.text, storedScriptPreview]);
 
     const mentionTargets = useMemo(() => {
         const roles = nodeFlowContext?.context?.roles || [];
@@ -205,7 +213,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     const isAgentReviewPending = data.agentReviewPending === true;
 
     const renderedHtml = useMemo(() => {
-        if (!draftText) return "";
+        if (isScriptDocument || !draftText) return "";
         const parts: string[] = [];
         let lastIndex = 0;
         const regex = /@([\w\u4e00-\u9fa5\-\/]+)/g;
@@ -228,7 +236,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
         }
         parts.push(escapeHtml(draftText.slice(lastIndex)));
         return parts.join("").replace(/\n/g, "<br />");
-    }, [draftText, resolveMention]);
+    }, [draftText, isScriptDocument, resolveMention]);
 
     const updateCursor = useCallback(() => {
         const el = editorRef.current;
@@ -343,6 +351,11 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
                 minHeight: typeof nodeEl.style.minHeight === "string" ? nodeEl.style.minHeight : undefined,
             };
         }
+        if (isScriptDocument) {
+            nodeEl.style.removeProperty("height");
+            nodeEl.style.removeProperty("min-height");
+            return;
+        }
         const trim = draftText.trim();
         if (!trim) {
             if (baseStyleRef.current.height !== undefined) nodeEl.style.height = baseStyleRef.current.height;
@@ -358,7 +371,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
         const next = Math.max(nodeEl.offsetHeight || 0, desired);
         nodeEl.style.height = `${next}px`;
         nodeEl.style.minHeight = `${next}px`;
-    }, [draftText]);
+    }, [draftText, isScriptDocument]);
 
     useEffect(() => {
         if (isComposingRef.current) return;
@@ -374,12 +387,13 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     }, [data.text]);
 
     useEffect(() => {
+        if (isScriptDocument) return;
         if (isComposingRef.current) return;
         const text = data.text || draftText;
         if (!text.includes("@")) return;
         const mentions = computeMentionMeta(text);
         updateNodeData(id, { atMentions: mentions.atMentions, entityBindings: mentions.entityBindings });
-    }, [computeMentionMeta, data.text, draftText, id, mentionTargets, updateNodeData]);
+    }, [computeMentionMeta, data.text, draftText, id, isScriptDocument, mentionTargets, updateNodeData]);
 
     useEffect(() => {
         if (showMentionPicker) return;
@@ -405,7 +419,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
             outputs={["text"]}
             selected={selected}
             variant="text"
-            nodeType={isDocumentTextNode ? "text-document" : "text"}
+            nodeType={isScriptDocument ? "script-document" : isDocumentTextNode ? "text-document" : "text"}
             headerActions={
                 isAgentReviewPending ? (
                     <span className="text-node-review-status" title="Qalam 修改待审核">
@@ -417,11 +431,16 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
         >
             <div
                 ref={shellRef}
-                className="text-node-shell relative flex-1"
+                className={`text-node-shell relative flex-1 ${isScriptDocument ? "script-node-preview-shell" : ""}`}
                 data-has-content={draftText.trim().length > 0 ? "true" : "false"}
             >
                 <div className="text-node-drag-rail" aria-hidden="true" />
-                <div
+                {isScriptDocument ? (
+                    <div className="script-node-preview" title={scriptPreview || "剧本内容为空"}>
+                        {scriptPreview || "剧本内容为空"}
+                    </div>
+                ) : (
+                  <div
                     ref={editorRef}
                     className="text-node-editor nodrag"
                     contentEditable={!isReadOnly}
@@ -483,9 +502,10 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
                         isComposingRef.current = false;
                         handleInput();
                     }}
-                />
+                  />
+                )}
 
-                {showMentionPicker && pickerPos && (
+                {!isScriptDocument && showMentionPicker && pickerPos && (
                     <div
                         className="mention-picker animate-in fade-in slide-in-from-top-1 absolute z-30"
                         style={{ left: pickerPos.left, top: pickerPos.top, width: 280 }}

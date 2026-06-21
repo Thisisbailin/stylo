@@ -1204,6 +1204,32 @@ body.qalam-resizing * {
   color: var(--node-text-secondary);
 }
 
+.node-card-base[data-node-type="script-document"] {
+  min-height: 220px;
+}
+
+.node-card-base[data-node-type="script-document"] .node-card-body {
+  min-height: 160px;
+}
+
+.script-node-preview-shell {
+  min-height: 150px;
+}
+
+.script-node-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  padding-right: 24px;
+  color: var(--node-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
 .script-md-node-shell {
   min-height: 188px;
 }
