@@ -481,6 +481,8 @@ export const operateProjectResourceToolDef = {
         target: "nodeflow:node",
         action: "update",
         updated: true,
+        review_required: updated.reviewRequired === true,
+        commit_status: updated.commitStatus || "committed",
         artifact: {
           kind: "node",
           target: "nodeflow:node",
@@ -488,6 +490,8 @@ export const operateProjectResourceToolDef = {
           ref: updated.nodeRef,
           title: updated.title,
           node_kind: updated.nodeType,
+          review_required: updated.reviewRequired === true,
+          commit_status: updated.commitStatus || "committed",
         },
         item: {
           node_id: updated.nodeId,
@@ -495,6 +499,8 @@ export const operateProjectResourceToolDef = {
           node_kind: updated.nodeType,
           title: updated.title,
           patch: updated.patch,
+          review_required: updated.reviewRequired === true,
+          commit_status: updated.commitStatus || "committed",
         },
       };
     }
@@ -641,7 +647,9 @@ export const operateProjectResourceToolDef = {
       return `创建 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "node" && output?.action === "update") {
-      return `更新 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
+      return output?.commit_status === "pending_review"
+        ? `提交 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id} 修改待审核`
+        : `更新 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;
     }
     if (output?.entity === "node" && output?.action === "move") {
       return `移动 Flow 节点 ${output?.item?.title || output?.item?.node_ref || output?.item?.node_id}`;

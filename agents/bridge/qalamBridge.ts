@@ -59,6 +59,8 @@ export type UpdateNodeFlowNodeResult = {
   nodeType: string;
   title: string;
   patch: Record<string, unknown>;
+  reviewRequired?: boolean;
+  commitStatus?: "committed" | "pending_review";
 };
 
 export type MoveNodeFlowNodeInput = {

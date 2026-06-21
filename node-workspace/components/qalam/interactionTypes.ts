@@ -19,3 +19,10 @@ export type AgentScriptEditProposalBatch = {
   id: string;
   proposals: AgentScriptEditProposal[];
 };
+
+export type ScriptDocumentCommit = {
+  nodeId: string;
+  title: string;
+  content: string;
+  preview: string;
+};

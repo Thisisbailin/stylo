@@ -2,7 +2,7 @@ import React, { useRef, useLayoutEffect, useState, useEffect, useMemo, useCallba
 import { BaseNode } from "./BaseNode";
 import { TextNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { AtSign } from "lucide-react";
+import { AtSign, FileDiff } from "lucide-react";
 import {
     buildMentionIndex,
     buildMentionTargets,
@@ -202,6 +202,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     const showMentionPicker = isFocused && !!mentionState;
     const isDocumentTextNode = typeof data.episodeId === "number" || typeof data.documentId === "string";
     const isReadOnly = data.readOnly === true;
+    const isAgentReviewPending = data.agentReviewPending === true;
 
     const renderedHtml = useMemo(() => {
         if (!draftText) return "";
@@ -405,6 +406,14 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
             selected={selected}
             variant="text"
             nodeType={isDocumentTextNode ? "text-document" : "text"}
+            headerActions={
+                isAgentReviewPending ? (
+                    <span className="text-node-review-status" title="Qalam 修改待审核">
+                        <FileDiff size={12} strokeWidth={1.9} />
+                        <span>待审核</span>
+                    </span>
+                ) : undefined
+            }
         >
             <div
                 ref={shellRef}

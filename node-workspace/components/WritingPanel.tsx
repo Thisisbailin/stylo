@@ -4,7 +4,7 @@ import type { ProjectData } from "../../types";
 import type { NodeFlowNode } from "../types";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
 import type { AgentUiContext } from "../../agents/runtime/types";
-import type { AgentScriptEditProposalBatch } from "./qalam/interactionTypes";
+import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./qalam/interactionTypes";
 
 type Character = ReturnType<typeof projectRolesToCharacters>[number];
 
@@ -17,6 +17,7 @@ type Props = {
   isQalamOpen?: boolean;
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
+  onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
   onOpenQalam?: () => void;
   onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
 };
@@ -799,6 +800,7 @@ export const WritingPanel: React.FC<Props> = ({
   isQalamOpen = false,
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
+  onCommitScriptDocument,
   onOpenQalam,
   onSubmitToQalam,
 }) => {
@@ -845,6 +847,63 @@ export const WritingPanel: React.FC<Props> = ({
     return map;
   }, [knownCharacters]);
   const deferredDraft = useDeferredValue(draft);
+
+  const commitDraftToProject = useCallback(
+    (nextDraft: WritingDraft) => {
+      const nodeId = scriptNode?.id || initialScriptNodeId;
+      if (!nodeId) return;
+      const title = nextDraft.title.trim() || scriptNodeTitle || "剧本文档";
+      const content = normalizeFountainDocumentToHollywood(nextDraft.body);
+      const preview = analyzeFountainLines(nextDraft.body)
+        .map(({ line, kind }) => displayFountainLine(line, kind))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 180);
+      if (onCommitScriptDocument) {
+        onCommitScriptDocument({ nodeId, title, content, preview });
+        return;
+      }
+      setProjectData((previous) => {
+        const flow = ensureFlow(previous.flow);
+        let didUpdate = false;
+        const flowNodes = (flow.flowNodes || []).map((node) => {
+          if (node.id !== nodeId || node.type !== "scriptPage") return node;
+          didUpdate = true;
+          const data = (node.data || {}) as Record<string, unknown>;
+          const documentId =
+            typeof data.documentId === "string" && data.documentId.trim()
+              ? data.documentId
+              : node.id.replace(/^script-/, "") || node.id;
+          return {
+            ...node,
+            data: {
+              ...data,
+              title,
+              text: content,
+              content,
+              documentId,
+              documentKind: "script",
+              format: "fountain",
+              preview,
+              updatedAt: Date.now(),
+            },
+          };
+        });
+        if (!didUpdate) return previous;
+        return {
+          ...previous,
+          rawScript: "",
+          episodes: [],
+          flow: {
+            ...flow,
+            flowNodes,
+          },
+        };
+      });
+    },
+    [initialScriptNodeId, onCommitScriptDocument, scriptNode?.id, scriptNodeTitle, setProjectData]
+  );
 
   useEffect(() => {
     draftRef.current = draft;
@@ -897,6 +956,7 @@ export const WritingPanel: React.FC<Props> = ({
     if (!lines.some((line) => line.kind !== "equal")) {
       pendingLocalCommitRef.current = proposedDraft;
       setDraft(proposedDraft);
+      commitDraftToProject(proposedDraft);
       onResolveAgentScriptEditProposal?.(proposal.id);
       return;
     }
@@ -909,7 +969,7 @@ export const WritingPanel: React.FC<Props> = ({
       nextBody: proposedDraft.body,
       lines,
     });
-  }, [agentScriptEditProposals, onResolveAgentScriptEditProposal, scriptNode?.id]);
+  }, [agentScriptEditProposals, commitDraftToProject, onResolveAgentScriptEditProposal, scriptNode?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1375,54 +1435,8 @@ export const WritingPanel: React.FC<Props> = ({
 
   const applyToProject = useCallback(() => {
     if (pendingScriptPatch) return;
-    const nodeId = scriptNode?.id || initialScriptNodeId;
-    if (!nodeId) return;
-    const title = draft.title.trim() || scriptNodeTitle || "剧本文档";
-    const content = normalizeFountainDocumentToHollywood(draft.body);
-    const preview = analyzeFountainLines(draft.body)
-      .map(({ line, kind }) => displayFountainLine(line, kind))
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 180);
-    setProjectData((previous) => {
-      const flow = ensureFlow(previous.flow);
-      let didUpdate = false;
-      const flowNodes = (flow.flowNodes || []).map((node) => {
-        if (node.id !== nodeId || node.type !== "scriptPage") return node;
-        didUpdate = true;
-        const data = (node.data || {}) as Record<string, unknown>;
-        const documentId =
-          typeof data.documentId === "string" && data.documentId.trim()
-            ? data.documentId
-            : node.id.replace(/^script-/, "") || node.id;
-        return {
-          ...node,
-          data: {
-            ...data,
-            title,
-            text: content,
-            content,
-            documentId,
-            documentKind: "script",
-            format: "fountain",
-            preview,
-            updatedAt: Date.now(),
-          },
-        };
-      });
-      if (!didUpdate) return previous;
-      return {
-        ...previous,
-        rawScript: "",
-        episodes: [],
-        flow: {
-          ...flow,
-          flowNodes,
-        },
-      };
-    });
-  }, [draft.body, draft.title, initialScriptNodeId, pendingScriptPatch, scriptNode?.id, scriptNodeTitle, setProjectData]);
+    commitDraftToProject(draft);
+  }, [commitDraftToProject, draft, pendingScriptPatch]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1467,10 +1481,12 @@ export const WritingPanel: React.FC<Props> = ({
         body: nextBody,
       }));
       if (isComplete) {
-        pendingLocalCommitRef.current = {
+        const reviewedDraft = {
           title: reviewedTitle || pendingScriptPatch.baseTitle,
           body: nextBody,
         };
+        pendingLocalCommitRef.current = reviewedDraft;
+        commitDraftToProject(reviewedDraft);
         setLastReviewedPatch({ title: pendingScriptPatch.baseTitle, body: pendingScriptPatch.baseBody });
         setPendingScriptPatch(null);
         onResolveAgentScriptEditProposal?.(pendingScriptPatch.id);
@@ -1478,7 +1494,7 @@ export const WritingPanel: React.FC<Props> = ({
       }
       setPendingScriptPatch(nextPatch);
     },
-    [onResolveAgentScriptEditProposal, pendingScriptPatch]
+    [commitDraftToProject, onResolveAgentScriptEditProposal, pendingScriptPatch]
   );
 
   const reviewPatchLine = useCallback(
@@ -1500,10 +1516,11 @@ export const WritingPanel: React.FC<Props> = ({
     if (!lastReviewedPatch) return;
     pendingLocalCommitRef.current = lastReviewedPatch;
     setDraft(lastReviewedPatch);
+    commitDraftToProject(lastReviewedPatch);
     setPendingScriptPatch(null);
     setLastReviewedPatch(null);
     requestAnimationFrame(() => editorRef.current?.focus());
-  }, [lastReviewedPatch]);
+  }, [commitDraftToProject, lastReviewedPatch]);
 
   const submitSelectionToQalam = useCallback(() => {
     const selectedText = selectionBubble?.text.trim();

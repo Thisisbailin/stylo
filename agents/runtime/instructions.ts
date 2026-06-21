@@ -69,6 +69,7 @@ const BASE_INSTRUCTION = [
   "Do not confuse auxiliary skill guidance with the main Flow project world.",
   "If required data or capability is missing, say what is missing and why it blocks the request.",
   "Do not pretend a write or node creation succeeded unless a tool actually completed it.",
+  "Existing scriptPage text/content edits are client review-gated. When a tool result reports commit_status=pending_review or commitStatus=pending_review, say the change was submitted for review; never claim it is committed until the user approves it.",
   "Prefer transparent reasoning over rigid host-authored workflows.",
 ].join(" ");
 

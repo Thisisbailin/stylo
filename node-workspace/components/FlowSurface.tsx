@@ -245,6 +245,7 @@ type Props = {
   isAgentFirstMode?: boolean;
   onOpenAgentSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
   onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
+  pendingScriptReviewNodeIds?: ReadonlySet<string>;
 };
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
@@ -1548,6 +1549,7 @@ export const useFlowSurface = ({
   isAgentFirstMode,
   onOpenAgentSettingsPanel,
   onOpenVisualLab,
+  pendingScriptReviewNodeIds,
 }: Props): CanvasSurfaceConfig => {
   const {
     isLocked,
@@ -1759,9 +1761,10 @@ export const useFlowSurface = ({
         data: {
           ...createDefaultNodeFlowNodeData(node.type),
           ...(node.data || {}),
+          agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
         } as NodeFlowNodeData,
       }));
-  }, [flow.flowNodes, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds]);
+  }, [flow.flowNodes, pendingScriptReviewNodeIds, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds]);
 
   const foundationBlockFolderNodes = useMemo(
     () =>

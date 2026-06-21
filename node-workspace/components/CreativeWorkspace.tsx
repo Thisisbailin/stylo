@@ -32,7 +32,9 @@ import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types"
 import type {
   AgentScriptEditProposalBatch,
   QalamSubmitRequest,
+  ScriptDocumentCommit,
 } from "./qalam/interactionTypes";
+import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 
 interface CreativeWorkspaceProps {
   projectData: ProjectData;
@@ -386,6 +388,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setReadingMode,
     currentNodeId,
     setCurrentNode,
+    updateNodeData,
     addToGlobalHistory,
     globalAssetHistory,
   } = useNodeFlowStore();
@@ -406,6 +409,82 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   useEffect(() => {
     setAppConfig(config);
   }, [config, setAppConfig]);
+
+  const pendingScriptReviewNodeIds = useMemo(
+    () => new Set((agentScriptEditProposals?.proposals || []).map((proposal) => proposal.nodeId)),
+    [agentScriptEditProposals]
+  );
+
+  const commitScriptDocument = useCallback(
+    ({ nodeId, title, content, preview }: ScriptDocumentCommit) => {
+      const updatedAt = Date.now();
+      const patch = {
+        title,
+        text: content,
+        content,
+        documentKind: "script" as const,
+        format: "fountain" as const,
+        preview,
+        updatedAt,
+      };
+      setProjectData((previous) => {
+        const flow = previous.flow || { links: [] };
+        let didUpdate = false;
+        const flowNodes = (flow.flowNodes || []).map((node) => {
+          if (node.id !== nodeId || node.type !== "scriptPage") return node;
+          const data = (node.data || {}) as Record<string, unknown>;
+          if (
+            data.title === title &&
+            data.text === content &&
+            data.content === content &&
+            data.preview === preview
+          ) {
+            return node;
+          }
+          didUpdate = true;
+          const documentId =
+            typeof data.documentId === "string" && data.documentId.trim()
+              ? data.documentId
+              : node.id.replace(/^script-/, "") || node.id;
+          return {
+            ...node,
+            data: {
+              ...data,
+              ...patch,
+              documentId,
+            },
+          };
+        });
+        if (!didUpdate) return previous;
+        const nextData: ProjectData = {
+          ...previous,
+          rawScript: "",
+          episodes: [],
+          flow: {
+            ...flow,
+            flowNodes,
+          },
+        };
+        return {
+          ...nextData,
+          flowProjects: previous.flowProjects?.length
+            ? saveActiveFlowIntoProjects(nextData, updatedAt)
+            : previous.flowProjects,
+        };
+      });
+      const storeNode = useNodeFlowStore.getState().nodes.find((node) => node.id === nodeId);
+      const storeData = (storeNode?.data || {}) as Record<string, unknown>;
+      if (
+        storeData.title !== title ||
+        storeData.text !== content ||
+        storeData.content !== content ||
+        storeData.preview !== preview
+      ) {
+        updateNodeData(nodeId, patch);
+      }
+    },
+    [setProjectData, updateNodeData]
+  );
 
   useEffect(() => {
     if (!snapToGrid) setSnapGuide(null);
@@ -596,6 +675,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     isAgentFirstMode: isQalamFirstMode,
     onOpenAgentSettingsPanel: (panel, assetsSection) => openAgentSettingsPanel(panel, assetsSection),
     onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
+    pendingScriptReviewNodeIds,
   });
 
   const getToolbarNodePosition = useCallback(
@@ -1006,6 +1086,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           isQalamOpen={!isQalamCollapsed}
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
+          onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
           onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), text, uiContext })}
           onClose={() => setEditingScriptNodeId(null)}

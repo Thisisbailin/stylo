@@ -273,6 +273,10 @@ const updateNodeFlowNode = (
     typeof input.patch.title === "string" && input.patch.title.trim()
       ? input.patch.title.trim()
       : (node.data?.title as string | undefined) || resolved.nodeRef || resolved.nodeId;
+  const reviewRequired =
+    resolved.nodeType === "scriptPage" &&
+    (Object.prototype.hasOwnProperty.call(input.patch, "text") ||
+      Object.prototype.hasOwnProperty.call(input.patch, "content"));
   return {
     nodeId: resolved.nodeId,
     node_id: resolved.nodeId,
@@ -283,6 +287,8 @@ const updateNodeFlowNode = (
     node_kind: resolved.nodeType,
     title: nextTitle,
     patch: input.patch,
+    reviewRequired,
+    commitStatus: reviewRequired ? "pending_review" : "committed",
   };
 };
 

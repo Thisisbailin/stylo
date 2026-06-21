@@ -519,6 +519,8 @@ export const updateDocumentToolDef = {
       target: "document",
       action: "update",
       updated: true,
+      review_required: updated.reviewRequired === true,
+      commit_status: updated.commitStatus || "committed",
       item: {
         ...documentIdentity(node),
         raw_node_id: updated.nodeId,
@@ -529,8 +531,15 @@ export const updateDocumentToolDef = {
         content_chars: contentUpdate ? contentUpdate.content.length : currentContent.length,
         line_count: contentUpdate ? documentStats(contentUpdate.content).line_count : documentStats(currentContent).line_count,
         patch_keys: Object.keys(updated.patch),
+        review_required: updated.reviewRequired === true,
+        commit_status: updated.commitStatus || "committed",
       },
     };
   },
-  summarize: (output: any) => output?.updated ? `Updated document ${output?.item?.title || output?.item?.document_ref}` : "Document not updated",
+  summarize: (output: any) =>
+    output?.updated
+      ? output?.commit_status === "pending_review"
+        ? `Submitted document ${output?.item?.title || output?.item?.document_ref} for review`
+        : `Updated document ${output?.item?.title || output?.item?.document_ref}`
+      : "Document not updated",
 };

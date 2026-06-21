@@ -1143,6 +1143,22 @@ body.qalam-resizing * {
   min-height: 0;
 }
 
+.text-node-review-status {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, #b06d3f 34%, var(--node-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, #b06d3f 12%, var(--node-surface));
+  padding: 0 8px;
+  color: color-mix(in srgb, #c17a49 72%, var(--node-text-primary));
+  font-size: 10px;
+  font-weight: 680;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .text-node-drag-rail {
   position: absolute;
   top: 6px;
