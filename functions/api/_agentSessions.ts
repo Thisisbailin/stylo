@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { RequestUsage, type AgentInputItem, type OpenAIResponsesCompactionArgs, type OpenAIResponsesCompactionAwareSession, type OpenAIResponsesCompactionResult, type Session } from "@openai/agents";
 import { getUserId } from "./_auth";
 import type { AgentSessionMessage } from "../../agents/runtime/types";
+import { repairSessionToolTransactions, trimSessionItemsSafely } from "../../agents/runtime/sessionRepair";
 
 export type EnvWithDb = {
   DB: any;
@@ -21,9 +22,7 @@ const STORED_SESSION_MESSAGE_LIMIT = 240;
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
 const trimSessionItems = (items: AgentInputItem[], limit?: number) => {
-  if (limit === undefined) return items.map(cloneItem);
-  if (limit <= 0) return [];
-  return items.slice(Math.max(items.length - limit, 0)).map(cloneItem);
+  return trimSessionItemsSafely(items, limit);
 };
 
 const clipText = (value: string, limit: number) => {
@@ -130,7 +129,11 @@ const normalizeRecord = (row: any): PersistedAgentSessionRecord => {
   let messages: AgentSessionMessage[] = [];
   try {
     const parsedItems = JSON.parse(String(row?.items || "[]"));
-    if (Array.isArray(parsedItems)) items = parsedItems.filter((item) => item && typeof item === "object").map(cloneItem);
+    if (Array.isArray(parsedItems)) {
+      items = repairSessionToolTransactions(
+        parsedItems.filter((item) => item && typeof item === "object") as AgentInputItem[]
+      );
+    }
   } catch {}
   try {
     const parsedMessages = JSON.parse(String(row?.messages || "[]"));
@@ -219,7 +222,7 @@ export class D1EdgeSession implements Session {
     await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
       items: trimSessionItems(merged, STORED_SESSION_ITEM_LIMIT),
       messages: [...existing.messages, ...projectedMessages].slice(-STORED_SESSION_MESSAGE_LIMIT),
-      updatedAt: timestampBase,
+      updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
     });
   }
 
@@ -232,7 +235,7 @@ export class D1EdgeSession implements Session {
     await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
       items: nextItems,
       messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-STORED_SESSION_MESSAGE_LIMIT),
-      updatedAt: timestampBase,
+      updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
     });
     return cloneItem(removed);
   }
@@ -240,6 +243,26 @@ export class D1EdgeSession implements Session {
   async clearSession(): Promise<void> {
     await ensureAgentSessionsTable(this.env);
     await this.env.DB.prepare("DELETE FROM agent_sessions WHERE session_key = ?1").bind(this.sessionKey).run();
+  }
+
+  async replaceItemsIfUnchanged(expectedItems: AgentInputItem[], nextItems: AgentInputItem[]): Promise<boolean> {
+    const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+    const expected = repairSessionToolTransactions(expectedItems);
+    if (JSON.stringify(existing.items) !== JSON.stringify(expected)) return false;
+    const normalizedNext = trimSessionItems(nextItems, STORED_SESSION_ITEM_LIMIT);
+    const updatedAt = Math.max(Date.now(), existing.updatedAt + 1);
+    const result = await this.env.DB.prepare(
+      "UPDATE agent_sessions SET items = ?1, messages = ?2, updated_at = ?3 WHERE session_key = ?4 AND updated_at = ?5"
+    )
+      .bind(
+        JSON.stringify(normalizedNext),
+        JSON.stringify(projectAgentItemsToSessionMessages(normalizedNext, updatedAt).slice(-STORED_SESSION_MESSAGE_LIMIT)),
+        updatedAt,
+        this.sessionKey,
+        existing.updatedAt
+      )
+      .run();
+    return Number(result?.meta?.changes ?? result?.changes ?? 0) > 0;
   }
 }
 
@@ -289,6 +312,26 @@ type QalamChatCompactionSessionOptions = {
   tailItems?: number;
 };
 
+type CompareAndSwapSession = Session & {
+  replaceItemsIfUnchanged?: (expectedItems: AgentInputItem[], nextItems: AgentInputItem[]) => Promise<boolean>;
+};
+
+const replaceSessionItemsAfterCompaction = async (
+  session: Session,
+  expectedItems: AgentInputItem[],
+  nextItems: AgentInputItem[]
+) => {
+  const compareAndSwap = (session as CompareAndSwapSession).replaceItemsIfUnchanged;
+  if (typeof compareAndSwap === "function") {
+    return await compareAndSwap.call(session, expectedItems, nextItems);
+  }
+  const latestItems = await session.getItems();
+  if (JSON.stringify(latestItems) !== JSON.stringify(expectedItems)) return false;
+  await session.clearSession();
+  await session.addItems(nextItems);
+  return true;
+};
+
 export class QalamChatCompactionSession implements Session {
   private readonly client: OpenAI;
   private readonly maxItems: number;
@@ -334,7 +377,7 @@ export class QalamChatCompactionSession implements Session {
       const sessionItems = await this.options.underlyingSession.getItems();
       if (sessionItems.length <= this.tailItems + 1) return;
 
-      const preservedTail = sessionItems.slice(-this.tailItems).map(cloneItem);
+      const preservedTail = trimSessionItems(sessionItems, this.tailItems);
       const compactionSource = sessionItems.slice(0, Math.max(sessionItems.length - this.tailItems, 0));
       const compactionCandidateItems = selectCompactionCandidateItems(compactionSource);
       if (args?.force !== true && compactionCandidateItems.length < this.threshold) return;
@@ -360,8 +403,7 @@ export class QalamChatCompactionSession implements Session {
       const summaryText = response.choices?.[0]?.message?.content?.trim() || "";
       if (!summaryText) return;
 
-      await this.options.underlyingSession.clearSession();
-      await this.options.underlyingSession.addItems([
+      await replaceSessionItemsAfterCompaction(this.options.underlyingSession, sessionItems, [
         buildCompactionSummaryItem(summaryText),
         ...preservedTail,
       ]);
@@ -509,7 +551,7 @@ export class QalamResponsesCompactionSession implements OpenAIResponsesCompactio
       const sessionItems = await this.options.underlyingSession.getItems();
       if (sessionItems.length <= this.tailItems + 1) return null;
 
-      const preservedTail = sessionItems.slice(-this.tailItems).map(cloneItem);
+      const preservedTail = trimSessionItems(sessionItems, this.tailItems);
       const compactionSource = sessionItems.slice(0, Math.max(sessionItems.length - this.tailItems, 0));
       const compactionCandidateItems = selectCompactionCandidateItems(compactionSource);
       const shouldCompact = args?.force === true || compactionCandidateItems.length >= this.threshold;
@@ -548,11 +590,11 @@ export class QalamResponsesCompactionSession implements OpenAIResponsesCompactio
       const summaryText = extractResponseText(response);
       if (!summaryText.trim()) return null;
 
-      await this.options.underlyingSession.clearSession();
-      await this.options.underlyingSession.addItems([
+      const replaced = await replaceSessionItemsAfterCompaction(this.options.underlyingSession, sessionItems, [
         buildCompactionSummaryItem(summaryText),
         ...preservedTail,
       ]);
+      if (!replaced) return null;
 
       const usage = (response as any)?.usage || {};
       return {

@@ -1,5 +1,6 @@
 import type { AgentInputItem, Session } from "@openai/agents";
 import type { AgentSessionMessage, QalamSessionRecord, QalamSessionStore } from "./types";
+import { repairSessionToolTransactions, trimSessionItemsSafely } from "./sessionRepair";
 
 export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "qalam_agent_sessions_v1";
 export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "qalam:agent-session-storage-updated";
@@ -14,9 +15,7 @@ type PersistedAgentSessionRecord = {
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
 const trimSessionItems = (items: AgentInputItem[], limit?: number) => {
-  if (limit === undefined) return items.map(cloneItem);
-  if (limit <= 0) return [];
-  return items.slice(Math.max(items.length - limit, 0)).map(cloneItem);
+  return trimSessionItemsSafely(items, limit);
 };
 
 const normalizeSessionMessage = (message: any): AgentSessionMessage | null => {
@@ -117,7 +116,11 @@ const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBa
 const normalizePersistedRecord = (value: any): PersistedAgentSessionRecord | null => {
   if (!value || typeof value !== "object" || typeof value.id !== "string") return null;
   const updatedAt = typeof value.updatedAt === "number" ? value.updatedAt : Date.now();
-  const items = Array.isArray(value.items) ? value.items.filter((item) => item && typeof item === "object").map(cloneItem) : [];
+  const items = Array.isArray(value.items)
+    ? repairSessionToolTransactions(
+        value.items.filter((item: unknown) => item && typeof item === "object") as AgentInputItem[]
+      )
+    : [];
   const messages = Array.isArray(value.messages)
     ? value.messages.map(normalizeSessionMessage).filter(Boolean) as AgentSessionMessage[]
     : [];

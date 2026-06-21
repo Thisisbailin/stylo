@@ -1,5 +1,6 @@
 import type { AgentInputItem, Session, SessionInputCallback } from "@openai/agents";
 import type { AgentSessionMessage } from "./types";
+import { repairSessionToolTransactions, trimSessionItemsSafely } from "./sessionRepair";
 
 type EdgeSessionRecord = {
   id: string;
@@ -26,9 +27,7 @@ const getEdgeSessionMap = () => {
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
 const trimSessionItems = (items: AgentInputItem[], limit?: number) => {
-  if (limit === undefined) return items.map(cloneItem);
-  if (limit <= 0) return [];
-  return items.slice(Math.max(items.length - limit, 0)).map(cloneItem);
+  return trimSessionItemsSafely(items, limit);
 };
 
 const clipText = (value: string, limit: number) => {
@@ -148,7 +147,7 @@ const compactAgentItem = (item: AgentInputItem): AgentInputItem => {
 };
 
 const compactAgentItems = (items: AgentInputItem[], maxItems = EDGE_SESSION_MAX_ITEMS) =>
-  items.map(compactAgentItem).slice(-maxItems);
+  repairSessionToolTransactions(items.map(compactAgentItem).slice(-maxItems));
 
 export class EdgeMemorySession implements Session {
   constructor(private readonly sessionId: string) {}

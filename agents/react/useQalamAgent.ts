@@ -641,7 +641,6 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
 
       if (event.type === "run_failed") {
         browserAgentDebugError("useQalamAgent run failed", event.error);
-        activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
         const forcedAbortMessage = runAbortMessageRef.current[event.runId];
         const finalError = forcedAbortMessage || event.error;
@@ -719,6 +718,8 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         throw error;
       } finally {
         abortRef.current = null;
+        activeRunIdRef.current = null;
+        activeRunStartedAtRef.current = null;
         setIsRunning(false);
       }
     },
