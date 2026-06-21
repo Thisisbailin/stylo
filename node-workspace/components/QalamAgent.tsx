@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
-import type { NodeFlowFile } from "../types";
+import type { NodeFlowFile, NodeFlowNode } from "../types";
 import { createStableId } from "../../utils/id";
 import { ARK_DEFAULT_MODEL, DEEPSEEK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import {
@@ -23,6 +23,12 @@ import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 import { projectRolesToCharacters, projectRolesToLocations } from "../../utils/projectRoles";
+import type { AgentUiContext } from "../../agents/runtime/types";
+import type {
+  AgentScriptEditProposal,
+  AgentScriptEditProposalBatch,
+  QalamSubmitRequest,
+} from "./qalam/interactionTypes";
 
 type Props = {
   projectData: ProjectData;
@@ -32,7 +38,7 @@ type Props = {
   settingsOpen?: boolean;
   openRequest?: number;
   closeRequest?: number;
-  submitRequest?: { id: number; text: string } | null;
+  submitRequest?: QalamSubmitRequest | null;
   cancelRequest?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
   onDockFrameChange?: (frame: { dockWidth: number; isSplit: boolean; collapsed: boolean }) => void;
@@ -43,6 +49,7 @@ type Props = {
   conversationResetToken?: number;
   panelStyleOverride?: React.CSSProperties;
   showUsageBadge?: boolean;
+  onScriptEditProposals?: (batch: AgentScriptEditProposalBatch) => void;
 };
 
 const WORK_HINT_KEYWORDS = [
@@ -78,6 +85,109 @@ const WORK_HINT_KEYWORDS = [
 const toSearch = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 
 const getNodeFlowSnapshot = () => useNodeFlowStore.getState();
+
+const buildNodeFlowFileFromProjectData = (
+  data: ProjectData,
+  fallback: Pick<NodeFlowFile, "revision" | "linkStyle" | "nodeFlowContext" | "viewport" | "activeView">
+): NodeFlowFile | null => {
+  const flow = data.flow;
+  if (!flow || !Array.isArray(flow.flowNodes)) return null;
+  return {
+    version: 2,
+    revision: typeof flow.revision === "number" ? flow.revision : fallback.revision + 1,
+    name: data.fileName || "Qalam Flow Workspace",
+    nodes: flow.flowNodes,
+    links: Array.isArray(flow.links) ? flow.links : [],
+    graphLinks: Array.isArray(flow.graphLinks) ? flow.graphLinks : [],
+    linkStyle: flow.linkStyle || fallback.linkStyle,
+    globalAssetHistory: Array.isArray(flow.globalAssetHistory) ? flow.globalAssetHistory : [],
+    nodeFlowContext: fallback.nodeFlowContext,
+    viewport: fallback.viewport || undefined,
+    activeView: flow.activeView ?? fallback.activeView ?? null,
+  };
+};
+
+const readScriptDocument = (node: NodeFlowNode) => {
+  const data = (node.data || {}) as Record<string, unknown>;
+  const text = typeof data.content === "string" ? data.content : typeof data.text === "string" ? data.text : "";
+  return {
+    title: typeof data.title === "string" && data.title.trim() ? data.title : "剧本文档",
+    content: text,
+    documentId: typeof data.documentId === "string" && data.documentId.trim() ? data.documentId : undefined,
+  };
+};
+
+const collectScriptEditProposals = (
+  currentNodes: NodeFlowNode[],
+  candidateNodes: NodeFlowNode[]
+): AgentScriptEditProposal[] => {
+  const currentById = new Map(currentNodes.map((node) => [node.id, node]));
+  const receivedAt = Date.now();
+  return candidateNodes.flatMap((candidate, index) => {
+    if (candidate.type !== "scriptPage") return [];
+    const current = currentById.get(candidate.id);
+    if (!current || current.type !== "scriptPage") return [];
+    const previousDocument = readScriptDocument(current);
+    const nextDocument = readScriptDocument(candidate);
+    if (previousDocument.content === nextDocument.content) return [];
+    return [{
+      id: `agent-script-edit-${receivedAt.toString(36)}-${index}`,
+      nodeId: candidate.id,
+      documentId: nextDocument.documentId || previousDocument.documentId,
+      title: nextDocument.title,
+      content: nextDocument.content,
+      receivedAt,
+    }];
+  });
+};
+
+const preserveProposedScriptEdits = (
+  candidate: NodeFlowFile,
+  currentNodes: NodeFlowNode[],
+  proposals: AgentScriptEditProposal[]
+): NodeFlowFile => {
+  if (!proposals.length) return candidate;
+  const proposalNodeIds = new Set(proposals.map((proposal) => proposal.nodeId));
+  const currentById = new Map(currentNodes.map((node) => [node.id, node]));
+  return {
+    ...candidate,
+    nodes: candidate.nodes.map((node) => {
+      if (!proposalNodeIds.has(node.id)) return node;
+      const current = currentById.get(node.id);
+      if (!current) return node;
+      const currentData = (current.data || {}) as Record<string, unknown>;
+      const nextData = { ...((node.data || {}) as Record<string, unknown>) };
+      ["title", "text", "content", "preview", "updatedAt"].forEach((key) => {
+        if (key in currentData) nextData[key] = currentData[key];
+        else delete nextData[key];
+      });
+      return { ...node, data: nextData as NodeFlowNode["data"] };
+    }),
+  };
+};
+
+const mergeNodeFlowIntoProjectData = (base: ProjectData, nodeFlow: NodeFlowFile): ProjectData => {
+  const nextFlow = {
+    ...(base.flow || { links: [] }),
+    revision: nodeFlow.revision,
+    flowNodes: nodeFlow.nodes,
+    links: nodeFlow.links,
+    graphLinks: nodeFlow.graphLinks || [],
+    linkStyle: nodeFlow.linkStyle,
+    globalAssetHistory: nodeFlow.globalAssetHistory || [],
+    activeView: nodeFlow.activeView ?? null,
+  } as NonNullable<ProjectData["flow"]>;
+  const activeProjectId = base.activeFlowProjectId || base.flowProjects?.[0]?.id;
+  return {
+    ...base,
+    flow: nextFlow,
+    flowProjects: base.flowProjects?.map((project) =>
+      project.id === activeProjectId
+        ? { ...project, flow: nextFlow, updatedAt: Date.now() }
+        : project
+    ),
+  };
+};
 
 const parseMentions = (text: string) => {
   const matches: string[] = text.match(/@([\w\u4e00-\u9fa5\-\/]+)/g) || [];
@@ -333,6 +443,7 @@ export const QalamAgent: React.FC<Props> = ({
   conversationResetToken,
   panelStyleOverride,
   showUsageBadge = true,
+  onScriptEditProposals,
 }) => {
   const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
@@ -359,6 +470,8 @@ export const QalamAgent: React.FC<Props> = ({
   const globalAssetHistory = useNodeFlowStore((state) => state.globalAssetHistory);
   const nodeFlowContext = useNodeFlowStore((state) => state.nodeFlowContext);
   const activeView = useNodeFlowStore((state) => state.activeView);
+  const projectDataRef = useRef(projectData);
+  projectDataRef.current = projectData;
   const viewport = useNodeFlowStore((state) => state.viewport);
   const [collapsed, setCollapsed] = useState(true);
   const [isRevealing, setIsRevealing] = useState(false);
@@ -500,7 +613,15 @@ export const QalamAgent: React.FC<Props> = ({
           qalamTools: config.textConfig?.qalamTools,
         }),
         getAuthToken,
+        getProjectDataSnapshot: () => projectData,
         getNodeFlowSnapshot: () =>
+          buildNodeFlowFileFromProjectData(projectData, {
+            revision,
+            linkStyle,
+            nodeFlowContext,
+            viewport: viewport || undefined,
+            activeView,
+          }) ||
           ({
             version: 2,
             revision,
@@ -513,7 +634,7 @@ export const QalamAgent: React.FC<Props> = ({
             nodeFlowContext,
             viewport: viewport || undefined,
             activeView: activeView ?? null,
-          }) satisfies NodeFlowFile,
+          } satisfies NodeFlowFile),
       }),
     [
       activeView,
@@ -532,7 +653,7 @@ export const QalamAgent: React.FC<Props> = ({
       globalAssetHistory,
       nodeFlowContext,
       nodes,
-      projectData.fileName,
+      projectData,
       viewport,
     ]
   );
@@ -839,7 +960,7 @@ export const QalamAgent: React.FC<Props> = ({
       });
   }, [approvalPreferences, approveExecution, openPanel, pendingExecutionApprovals, setMessages]);
 
-  const submitText = useCallback(async (rawText: string) => {
+  const submitText = useCallback(async (rawText: string, submittedUiContext?: AgentUiContext) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
     setMessages((prev) => {
@@ -853,14 +974,58 @@ export const QalamAgent: React.FC<Props> = ({
         userText: cleanedInput,
         enabledSkillIds: [],
         uiContext: {
+          ...submittedUiContext,
           mentionTags: resolveMentionTags(cleanedInput),
         },
       });
-      if (runResult.updatedProjectData) {
-        setProjectData(runResult.updatedProjectData);
-      }
-      if (runResult.updatedNodeFlow) {
-        importNodeFlow(runResult.updatedNodeFlow);
+      if (runResult.updatedProjectData || runResult.updatedNodeFlow) {
+        const latestProjectData = projectDataRef.current;
+        const currentFlow = buildNodeFlowFileFromProjectData(latestProjectData, {
+          revision,
+          linkStyle,
+          nodeFlowContext,
+          viewport: viewport || undefined,
+          activeView,
+        });
+        const candidateFlow =
+          runResult.updatedNodeFlow ||
+          (runResult.updatedProjectData
+            ? buildNodeFlowFileFromProjectData(runResult.updatedProjectData, {
+                revision,
+                linkStyle,
+                nodeFlowContext,
+                viewport: viewport || undefined,
+                activeView,
+              })
+            : null);
+        const proposals =
+          currentFlow && candidateFlow
+            ? collectScriptEditProposals(currentFlow.nodes, candidateFlow.nodes)
+            : [];
+        const committedFlow =
+          candidateFlow && currentFlow
+            ? preserveProposedScriptEdits(candidateFlow, currentFlow.nodes, proposals)
+            : candidateFlow;
+        const resultBase = runResult.updatedProjectData
+          ? { ...latestProjectData, ...runResult.updatedProjectData }
+          : latestProjectData;
+
+        if (committedFlow) {
+          const nextProjectData = mergeNodeFlowIntoProjectData(resultBase, committedFlow);
+          setProjectData(nextProjectData);
+          projectDataRef.current = nextProjectData;
+          importNodeFlow(committedFlow);
+        } else if (runResult.updatedProjectData) {
+          setProjectData(resultBase);
+          projectDataRef.current = resultBase;
+        }
+
+        if (proposals.length) {
+          onScriptEditProposals?.({
+            id: `agent-script-batch-${Date.now().toString(36)}`,
+            proposals,
+          });
+        }
       }
       if (runResult.updatedExecutionApprovals) {
         setExecutionApprovals(runResult.updatedExecutionApprovals);
@@ -896,7 +1061,7 @@ export const QalamAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [isSending, importNodeFlow, resolveMentionTags, runAgentMessage, setExecutionApprovals, setMessages, setProjectData]);
+  }, [activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto qalam-panel";
   const dockInset = 16;
@@ -1060,7 +1225,7 @@ export const QalamAgent: React.FC<Props> = ({
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
     openPanel();
-    void submitText(submitRequest.text);
+    void submitText(submitRequest.text, submitRequest.uiContext);
   }, [openPanel, submitRequest, submitText]);
 
   const isOpenPhase = panelPhase === "open";

@@ -88,7 +88,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [ioPane, setIoPane] = useState<"project" | "export">("project");
   const [nodePaletteMode, setNodePaletteMode] = useState<"panels" | "workflow">("workflow");
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
-  const [fileMenuWidth, setFileMenuWidth] = useState(420);
+  const [fileMenuWidth, setFileMenuWidth] = useState(360);
   const [isResizingFileMenu, setIsResizingFileMenu] = useState(false);
   const scriptInputRef = useRef<HTMLInputElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
@@ -163,7 +163,27 @@ export const FloatingActionBar: React.FC<Props> = ({
     };
   };
   const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 580), [nodesAnchorRect]);
-  const fileMenuPopoverStyle = useMemo(() => getPopoverStyle(accountAnchorRect, fileMenuWidth), [accountAnchorRect, fileMenuWidth]);
+  const fileMenuPopoverStyle = useMemo((): React.CSSProperties | undefined => {
+    if (typeof window === "undefined") return undefined;
+    const viewportPadding = 16;
+    const width = Math.min(fileMenuWidth, window.innerWidth - viewportPadding * 2);
+    if (!accountAnchorRect) {
+      return {
+        position: "fixed",
+        right: viewportPadding,
+        bottom: 72,
+        width,
+        maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
+      };
+    }
+    return {
+      position: "fixed",
+      right: Math.max(viewportPadding, window.innerWidth - accountAnchorRect.right),
+      bottom: Math.max(viewportPadding + accountAnchorRect.height + 10, window.innerHeight - accountAnchorRect.top + 10),
+      width,
+      maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
+    };
+  }, [accountAnchorRect, fileMenuWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -626,7 +646,7 @@ export const FloatingActionBar: React.FC<Props> = ({
           createPortal(
             <div
             ref={fileMenuPanelRef}
-            className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden relative ${panelClass}`}
+            className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden ${panelClass}`}
             style={{ ...panelStyle, ...fileMenuPopoverStyle }}
           >
             <button

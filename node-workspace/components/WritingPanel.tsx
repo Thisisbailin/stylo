@@ -1,8 +1,10 @@
 import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Download, Focus, Minimize2, MoreHorizontal, Trash2, X } from "lucide-react";
+import { BarChart3, Check, CheckCheck, Download, Focus, Minimize2, MoreHorizontal, Quote, RotateCcw, SendHorizontal, Trash2, X, XCircle } from "lucide-react";
 import type { ProjectData } from "../../types";
 import type { NodeFlowNode } from "../types";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
+import type { AgentUiContext } from "../../agents/runtime/types";
+import type { AgentScriptEditProposalBatch } from "./qalam/interactionTypes";
 
 type Character = ReturnType<typeof projectRolesToCharacters>[number];
 
@@ -13,8 +15,10 @@ type Props = {
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   initialScriptNodeId?: string | null;
   isQalamOpen?: boolean;
+  agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
+  onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onOpenQalam?: () => void;
-  onSubmitToQalam?: (text: string) => void;
+  onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
 };
 
 type WritingDraft = {
@@ -27,6 +31,37 @@ type AgentLineState = {
   top: number;
   text: string;
   phase: "active" | "sent";
+};
+
+type ScriptPatchLineStatus = "pending" | "accepted" | "rejected";
+
+type ScriptPatchLine = {
+  id: string;
+  kind: "equal" | "delete" | "insert";
+  line: string;
+  status: ScriptPatchLineStatus;
+};
+
+type PendingScriptPatch = {
+  id: string;
+  baseTitle: string;
+  nextTitle: string;
+  baseBody: string;
+  nextBody: string;
+  lines: ScriptPatchLine[];
+};
+
+type SelectionBubbleState = {
+  text: string;
+  start: number;
+  end: number;
+  top: number;
+  message: string;
+};
+
+type ReviewedScriptSnapshot = {
+  title: string;
+  body: string;
 };
 
 const buildCharacterDetail = (character?: Character) => {
@@ -44,7 +79,7 @@ const buildCharacterDetail = (character?: Character) => {
 
 const buildDraftFromDocument = (title: string, content: string): WritingDraft => ({
   title: title.trim() || "剧本文档",
-  body: content || "",
+  body: normalizeFountainDocumentToHollywood(content || ""),
 });
 
 const downloadTextFile = (filename: string, content: string, mimeType: string) => {
@@ -60,11 +95,94 @@ const downloadTextFile = (filename: string, content: string, mimeType: string) =
 };
 
 const countCharactersInBody = (body: string) => {
-  const matches = body.match(/@([\w\u4e00-\u9fa5-]+)/g) || [];
-  return Array.from(new Set(matches.map((item) => item.slice(1))));
+  const names = analyzeFountainLines(body)
+    .filter(({ kind }) => kind === "character" || kind === "dual_dialogue")
+    .map(({ line }) => stripFountainMarkup(line).trim())
+    .filter(Boolean);
+  return Array.from(new Set(names));
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const splitScriptLines = (text: string) => text.split(/\r?\n/);
+
+const createPatchLineId = (prefix: string, index: number) => `${prefix}-${index}-${Date.now().toString(36)}`;
+
+const buildFallbackLinePatch = (baseBody: string, nextBody: string): ScriptPatchLine[] => {
+  const baseLines = splitScriptLines(baseBody);
+  const nextLines = splitScriptLines(nextBody);
+  const max = Math.max(baseLines.length, nextLines.length);
+  const lines: ScriptPatchLine[] = [];
+  for (let index = 0; index < max; index += 1) {
+    const oldLine = baseLines[index];
+    const newLine = nextLines[index];
+    if (oldLine === newLine) {
+      lines.push({ id: createPatchLineId("eq", lines.length), kind: "equal", line: oldLine || "", status: "accepted" });
+      continue;
+    }
+    if (oldLine != null) {
+      lines.push({ id: createPatchLineId("del", lines.length), kind: "delete", line: oldLine, status: "pending" });
+    }
+    if (newLine != null) {
+      lines.push({ id: createPatchLineId("ins", lines.length), kind: "insert", line: newLine, status: "pending" });
+    }
+  }
+  return lines;
+};
+
+const buildScriptLinePatch = (baseBody: string, nextBody: string): ScriptPatchLine[] => {
+  if (baseBody === nextBody) {
+    return splitScriptLines(baseBody).map((line, index) => ({
+      id: createPatchLineId("eq", index),
+      kind: "equal",
+      line,
+      status: "accepted",
+    }));
+  }
+
+  const baseLines = splitScriptLines(baseBody);
+  const nextLines = splitScriptLines(nextBody);
+  if (baseLines.length * nextLines.length > 160000) {
+    return buildFallbackLinePatch(baseBody, nextBody);
+  }
+
+  const dp = Array.from({ length: baseLines.length + 1 }, () => Array(nextLines.length + 1).fill(0));
+  for (let i = baseLines.length - 1; i >= 0; i -= 1) {
+    for (let j = nextLines.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = baseLines[i] === nextLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const lines: ScriptPatchLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < baseLines.length || j < nextLines.length) {
+    if (i < baseLines.length && j < nextLines.length && baseLines[i] === nextLines[j]) {
+      lines.push({ id: createPatchLineId("eq", lines.length), kind: "equal", line: baseLines[i], status: "accepted" });
+      i += 1;
+      j += 1;
+    } else if (j < nextLines.length && (i >= baseLines.length || dp[i][j + 1] >= dp[i + 1][j])) {
+      lines.push({ id: createPatchLineId("ins", lines.length), kind: "insert", line: nextLines[j], status: "pending" });
+      j += 1;
+    } else if (i < baseLines.length) {
+      lines.push({ id: createPatchLineId("del", lines.length), kind: "delete", line: baseLines[i], status: "pending" });
+      i += 1;
+    }
+  }
+  return lines;
+};
+
+const hasPendingPatchLines = (patch: PendingScriptPatch) =>
+  patch.lines.some((line) => line.kind !== "equal" && line.status === "pending");
+
+const deriveReviewedScriptBody = (patch: PendingScriptPatch) =>
+  patch.lines
+    .flatMap((line) => {
+      if (line.kind === "equal") return [line.line];
+      if (line.kind === "delete") return line.status === "accepted" ? [] : [line.line];
+      return line.status === "accepted" ? [line.line] : [];
+    })
+    .join("\n");
 
 type FountainLineKind =
   | "action"
@@ -82,43 +200,26 @@ type FountainLineKind =
   | "synopsis"
   | "page_break";
 
-const FOUNTAIN_FORMAT_ORDER: FountainLineKind[] = [
-  "action",
-  "scene_heading",
-  "character",
-  "dual_dialogue",
-  "dialogue",
-  "parenthetical",
-  "lyric",
-  "transition",
-  "centered",
-  "note",
-  "boneyard",
-  "section",
-  "synopsis",
-  "page_break",
-];
-
 const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
-  action: "动作",
-  scene_heading: "场景",
-  character: "角色",
-  dual_dialogue: "双人对白",
-  dialogue: "对白",
-  parenthetical: "括注",
-  lyric: "歌词",
-  transition: "转场",
-  centered: "居中",
-  note: "注释",
-  boneyard: "隐藏",
-  section: "章节",
-  synopsis: "梗概",
-  page_break: "分页",
+  action: "Action",
+  scene_heading: "Scene",
+  character: "Character",
+  dual_dialogue: "Dual",
+  dialogue: "Dialogue",
+  parenthetical: "Paren",
+  lyric: "Lyric",
+  transition: "Transition",
+  centered: "Centered",
+  note: "Note",
+  boneyard: "Boneyard",
+  section: "Section",
+  synopsis: "Synopsis",
+  page_break: "Page",
 };
 
 const FOUNTAIN_FORMAT_META: Record<FountainLineKind, { marker: string; sample: string }> = {
   action: { marker: "!", sample: "!Action description" },
-  scene_heading: { marker: ".", sample: ".INT. APARTMENT - DAY" },
+  scene_heading: { marker: ".", sample: ".INT. LOCATION - DAY" },
   character: { marker: "@", sample: "@CHARACTER" },
   dual_dialogue: { marker: "^", sample: "@CHARACTER ^" },
   dialogue: { marker: "\"", sample: "Dialogue text" },
@@ -150,13 +251,60 @@ const FOUNTAIN_QUICK_FORMATS: FountainLineKind[] = [
   "page_break",
 ];
 
-const SCENE_BOUNDARY_LABEL_OPTIONS = ["INT.", "EXT.", "INT./EXT.", "I/E"];
-const SCENE_TIME_LABEL_OPTIONS = ["DAY", "NIGHT", "DAWN", "DUSK", "MORNING", "AFTERNOON", "EVENING", "LATER"];
+const CHINESE_FOUNTAIN_MARKERS: Record<FountainLineKind, string> = {
+  action: "△",
+  scene_heading: "【场景】",
+  character: "【角色】",
+  dual_dialogue: "【双人对白】",
+  dialogue: "【对白】",
+  parenthetical: "【括注】",
+  lyric: "【歌词】",
+  transition: "【转场】",
+  centered: "【居中】",
+  note: "【注释】",
+  boneyard: "【隐藏】",
+  section: "【章节】",
+  synopsis: "【梗概】",
+  page_break: "【分页】",
+};
+
+const SCENE_BOUNDARY_OPTIONS = [
+  { label: "INT.", fountain: "INT." },
+  { label: "EXT.", fountain: "EXT." },
+  { label: "INT./EXT.", fountain: "INT./EXT." },
+  { label: "I/E", fountain: "I/E" },
+] as const;
+const SCENE_TIME_OPTIONS = [
+  { label: "DAY", fountain: "DAY" },
+  { label: "NIGHT", fountain: "NIGHT" },
+  { label: "DAWN", fountain: "DAWN" },
+  { label: "DUSK", fountain: "DUSK" },
+  { label: "MORNING", fountain: "MORNING" },
+  { label: "AFTERNOON", fountain: "AFTERNOON" },
+  { label: "EVENING", fountain: "EVENING" },
+  { label: "LATER", fountain: "LATER" },
+] as const;
+
+const SCENE_BOUNDARY_LABEL_OPTIONS = SCENE_BOUNDARY_OPTIONS.map(({ label }) => label);
+const SCENE_TIME_LABEL_OPTIONS = SCENE_TIME_OPTIONS.map(({ label }) => label);
+const TRANSITION_LABEL_OPTIONS = ["CUT TO", "DISSOLVE TO", "FADE OUT", "FADE IN", "SMASH CUT TO"];
+const PLACEHOLDER_SCENE_NAME = "LOCATION";
+const PLACEHOLDER_CHARACTER_NAME = "CHARACTER";
+
+const mergeUnique = (items: string[]) => {
+  const seen = new Set<string>();
+  return items
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+};
 
 const FOUNTAIN_EMPTY_TEMPLATE_LINES = new Set([
-  ".INT. 场景名 - DAY",
+  ".INT. LOCATION - DAY",
   "@CHARACTER",
-  "@角色名",
   "@CHARACTER ^",
   "(beat)",
   "~Lyric line",
@@ -167,6 +315,19 @@ const FOUNTAIN_EMPTY_TEMPLATE_LINES = new Set([
   "# Section",
   "= Synopsis",
   "===",
+  "【场景】内景｜场景名｜日",
+  "【角色】角色名",
+  "【双人对白】角色名",
+  "【对白】对白内容",
+  "【括注】动作提示",
+  "【歌词】歌词内容",
+  "【转场】切至",
+  "【居中】居中文本",
+  "【注释】创作备注",
+  "【隐藏】暂不采用的内容",
+  "【章节】章节名",
+  "【梗概】段落梗概",
+  "【分页】",
 ]);
 
 const isFountainEmptyTemplateLine = (line: string) => FOUNTAIN_EMPTY_TEMPLATE_LINES.has(line.trim());
@@ -191,6 +352,13 @@ const getFountainRawContent = (line: string) =>
 const stripFountainMarkup = (line: string) => {
   const trimmed = line.trim();
   if (!trimmed) return "";
+  if (trimmed.startsWith(CHINESE_FOUNTAIN_MARKERS.action)) {
+    return trimmed.slice(CHINESE_FOUNTAIN_MARKERS.action.length).trim();
+  }
+  const chineseMarker = Object.entries(CHINESE_FOUNTAIN_MARKERS).find(
+    ([kind, marker]) => kind !== "action" && trimmed.startsWith(marker)
+  );
+  if (chineseMarker) return trimmed.slice(chineseMarker[1].length).trim();
   if (/^={3,}$/.test(trimmed)) return "";
   if (/^\[\[.*\]\]$/.test(trimmed)) return trimmed.replace(/^\[\[/, "").replace(/\]\]$/, "").trim();
   if (/^\/\*/.test(trimmed)) return trimmed.replace(/^\/\*\s*/, "").replace(/\s*\*\/$/, "").trim();
@@ -206,8 +374,14 @@ const stripFountainMarkup = (line: string) => {
   return line.replace(/\s*\^\s*$/, "");
 };
 
-const isCharacterLine = (line: string) => /^@/.test(line.trim());
-const isDualDialogueLine = (line: string) => /^@?.*[A-Za-z\u4e00-\u9fa5].*\^\s*$/.test(line.trim());
+const isCharacterLine = (line: string) => {
+  const trimmed = line.trim();
+  return trimmed.startsWith(CHINESE_FOUNTAIN_MARKERS.character) || /^@/.test(trimmed);
+};
+const isDualDialogueLine = (line: string) => {
+  const trimmed = line.trim();
+  return trimmed.startsWith(CHINESE_FOUNTAIN_MARKERS.dual_dialogue) || /^@?.*[A-Za-z\u4e00-\u9fa5].*\^\s*$/.test(trimmed);
+};
 const isAutomaticSceneHeading = (line: string) =>
   /^(INT|EXT|EST|INT\.\/EXT|INT\/EXT|I\/E)(\.|\s)/i.test(line.trim());
 const isAutomaticTransition = (line: string) => {
@@ -216,7 +390,7 @@ const isAutomaticTransition = (line: string) => {
 };
 const isAutomaticCharacterCue = (line: string, previousLine = "", nextLine = "") => {
   const trimmed = line.trim();
-  if (!trimmed || !/[A-Z\u4e00-\u9fa5]/.test(trimmed)) return false;
+  if (!trimmed || !/[A-Z]/.test(trimmed)) return false;
   if (trimmed !== trimmed.toUpperCase()) return false;
   if (/^\d+$/.test(trimmed)) return false;
   return !previousLine.trim() && !!nextLine.trim();
@@ -236,6 +410,10 @@ const getPreviousNonEmptyLine = (lines: string[], lineIndex: number) => {
 
 const getFountainLineKind = (line: string, previousNonEmptyLine = "", isInBoneyard = false): FountainLineKind => {
   const trimmed = line.trim();
+  const chineseKind = (Object.entries(CHINESE_FOUNTAIN_MARKERS) as Array<[FountainLineKind, string]>).find(
+    ([, marker]) => trimmed.startsWith(marker)
+  )?.[0];
+  if (chineseKind) return chineseKind;
   if (isInBoneyard || trimmed.includes("/*") || trimmed.includes("*/")) return "boneyard";
   if (!trimmed) return "action";
   if (/^={3,}$/.test(trimmed)) return "page_break";
@@ -284,34 +462,29 @@ const analyzeFountainLines = (body: string): FountainLineAnalysis[] => {
   });
 };
 
-const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
-  const raw = getFountainRawContent(line);
-
+const formatChineseFountainLine = (rawContent: string, targetKind: FountainLineKind) => {
+  const raw = rawContent.trim();
   switch (targetKind) {
     case "scene_heading":
-      return raw ? `.${raw.toUpperCase()}` : ".INT. 场景名 - DAY";
+      return raw ? `.${raw.toUpperCase()}` : ".INT. LOCATION - DAY";
     case "character":
-      return raw ? `@${raw.toUpperCase()}` : "@CHARACTER";
-    case "dual_dialogue": {
-      const cleaned = raw.replace(/\s*\^\s*$/, "").trim();
-      return cleaned ? `@${cleaned.toUpperCase()} ^` : "@CHARACTER ^";
-    }
+      return `@${(raw || "CHARACTER").toUpperCase()}`;
+    case "dual_dialogue":
+      return `@${(raw.replace(/\s*\^\s*$/, "").trim() || "CHARACTER").toUpperCase()} ^`;
     case "dialogue":
-      return raw;
+      return raw || "Dialogue text";
     case "parenthetical":
-      return raw ? `(${raw})` : "(beat)";
+      return `(${raw || "beat"})`;
     case "lyric":
       return `~${raw || "Lyric line"}`;
     case "transition":
-      return raw
-        ? `> ${raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`}`
-        : "> CUT TO:";
+      return `> ${(raw.replace(/[：:]$/, "") || "CUT TO").toUpperCase()}:`;
     case "centered":
-      return raw ? `> ${raw} <` : "> CENTERED TEXT <";
+      return `> ${raw || "CENTERED TEXT"} <`;
     case "note":
       return `[[${raw || "Note"}]]`;
     case "boneyard":
-      return raw ? `/* ${raw} */` : "/* Hidden text */";
+      return `/* ${raw || "Hidden text"} */`;
     case "section":
       return `# ${raw || "Section"}`;
     case "synopsis":
@@ -352,15 +525,14 @@ const getFountainTemplateSelection = (formattedLine: string, targetKind: Fountai
     case "centered":
       return { start: leading + 2, end: Math.max(leading + 2, formattedLine.length - 2) };
     case "note":
-      return { start: 2, end: Math.max(2, formattedLine.length - 2) };
+      return { start: leading + 2, end: Math.max(leading + 2, formattedLine.length - 2) };
     case "boneyard":
-      return { start: 3, end: Math.max(3, formattedLine.length - 3) };
+      return { start: leading + 3, end: Math.max(leading + 3, formattedLine.length - 3) };
     case "section":
     case "synopsis":
-      return { start: 2, end: formattedLine.length };
+      return { start: leading + 2, end: formattedLine.length };
     case "page_break":
       return { start: formattedLine.length, end: formattedLine.length };
-    case "dialogue":
     case "action":
     default:
       return { start: 0, end: formattedLine.length };
@@ -375,6 +547,15 @@ const getFountainContentOffset = (line: string) => {
   const trimmedOffset = line.indexOf(trimmed);
   const withTrimmedOffset = (offset: number) => trimmedOffset + Math.max(0, offset);
 
+  if (trimmed.startsWith(CHINESE_FOUNTAIN_MARKERS.action)) {
+    const markerEnd = CHINESE_FOUNTAIN_MARKERS.action.length;
+    return withTrimmedOffset(markerEnd + (trimmed[markerEnd] === " " ? 1 : 0));
+  }
+  const chineseMarker = (Object.entries(CHINESE_FOUNTAIN_MARKERS) as Array<[FountainLineKind, string]>).find(
+    ([kind, marker]) => kind !== "action" && trimmed.startsWith(marker)
+  );
+  if (chineseMarker) return withTrimmedOffset(chineseMarker[1].length);
+
   if (/^>.*<$/.test(trimmed)) return withTrimmedOffset(trimmed.startsWith("> ") ? 2 : 1);
   if (/^\[\[/.test(trimmed)) return withTrimmedOffset(2);
   if (/^\/\*/.test(trimmed)) return withTrimmedOffset(trimmed.startsWith("/* ") ? 3 : 2);
@@ -388,23 +569,94 @@ const getFountainContentOffset = (line: string) => {
 
 const displayFountainLine = (line: string, kind: FountainLineKind) => {
   if (kind === "page_break") return " ";
-  if (kind === "character") return stripFountainMarkup(line).toUpperCase();
-  if (kind === "dual_dialogue") return stripFountainMarkup(line).replace(/\s*\^\s*$/, "").toUpperCase();
-  if (kind === "scene_heading") return stripFountainMarkup(line).toUpperCase();
-  if (kind === "transition") return stripFountainMarkup(line).toUpperCase();
+  if (kind === "dual_dialogue") return stripFountainMarkup(line).replace(/\s*\^\s*$/, "");
   return stripFountainMarkup(line);
+};
+
+const getFountainHiddenPrefix = (line: string) => {
+  const offset = getFountainContentOffset(line);
+  return offset > 0 ? line.slice(0, offset) : "";
+};
+
+const renderCleanFountainLine = (line: string, kind: FountainLineKind) => {
+  const hiddenPrefix = getFountainHiddenPrefix(line);
+  const rawDisplay = displayFountainLine(line, kind);
+  const content = rawDisplay || " ";
+
+  if (kind === "scene_heading") {
+    const slots = getSceneHeadingSlots(rawDisplay);
+    return (
+      <>
+        <span className="writing-line-hidden-prefix">{hiddenPrefix}</span>
+        <span className="writing-scene-inline-label">{slots.boundary}</span>
+        <span className="writing-scene-inline-label is-location">{slots.sceneName || PLACEHOLDER_SCENE_NAME}</span>
+        <span className="writing-scene-inline-label">{slots.time}</span>
+      </>
+    );
+  }
+
+  if (kind === "page_break") {
+    return <span className="writing-page-break-line" />;
+  }
+
+  return (
+    <>
+      <span className="writing-line-hidden-prefix">{hiddenPrefix}</span>
+      <span className="writing-line-visible-text">{content}</span>
+    </>
+  );
+};
+
+const getChineseBoundaryLabel = (value: string) => {
+  const normalized = value.trim().toUpperCase();
+  const chineseBoundaryAliases: Record<string, string> = {
+    内景: "INT.",
+    外景: "EXT.",
+    内外景: "INT./EXT.",
+    "内/外": "I/E",
+  };
+  if (chineseBoundaryAliases[value.trim()]) return chineseBoundaryAliases[value.trim()];
+  return SCENE_BOUNDARY_OPTIONS.find(
+    ({ label, fountain }) => label === value.trim() || fountain === normalized
+  )?.label || "INT.";
+};
+
+const getChineseTimeLabel = (value: string) => {
+  const normalized = value.trim().toUpperCase();
+  const chineseTimeAliases: Record<string, string> = {
+    日: "DAY",
+    夜: "NIGHT",
+    黎明: "DAWN",
+    黄昏: "DUSK",
+    上午: "MORNING",
+    下午: "AFTERNOON",
+    傍晚: "EVENING",
+    稍后: "LATER",
+  };
+  if (chineseTimeAliases[value.trim()]) return chineseTimeAliases[value.trim()];
+  return SCENE_TIME_OPTIONS.find(
+    ({ label, fountain }) => label === value.trim() || fountain === normalized
+  )?.label || "DAY";
 };
 
 const getSceneHeadingSlots = (displayLine: string) => {
   const clean = displayLine.replace(/\s+/g, " ").trim();
+  const chineseChunks = clean.split(/[｜|]/).map((item) => item.trim());
+  if (chineseChunks.length >= 2) {
+    return {
+      boundary: getChineseBoundaryLabel(chineseChunks[0] || "内景"),
+      sceneName: chineseChunks.slice(1, -1).join("｜") || "",
+      time: getChineseTimeLabel(chineseChunks[chineseChunks.length - 1] || "DAY"),
+    };
+  }
   const boundaryMatch = clean.match(/^(INT\.\/EXT\.?|INT\/EXT\.?|INT\.|EXT\.|EST\.|I\/E)(?:\s+|$)/i);
   const rawBoundary = boundaryMatch?.[1]?.toUpperCase();
-  const boundary = rawBoundary?.startsWith("INT/EXT") ? "INT./EXT." : rawBoundary || SCENE_BOUNDARY_LABEL_OPTIONS[0];
+  const boundary = getChineseBoundaryLabel(rawBoundary?.startsWith("INT/EXT") ? "INT./EXT." : rawBoundary || "INT.");
   const remainder = boundaryMatch ? clean.slice(boundaryMatch[0].length).trim() : clean;
   const chunks = remainder.split(/\s+-\s+/).map((item) => item.trim()).filter(Boolean);
   const lastChunk = chunks[chunks.length - 1]?.toUpperCase();
-  const hasTime = !!lastChunk && SCENE_TIME_LABEL_OPTIONS.includes(lastChunk);
-  const time = hasTime ? lastChunk : SCENE_TIME_LABEL_OPTIONS[0];
+  const hasTime = !!lastChunk && SCENE_TIME_OPTIONS.some(({ fountain }) => fountain === lastChunk);
+  const time = hasTime ? getChineseTimeLabel(lastChunk) : "DAY";
   const sceneName = hasTime ? chunks.slice(0, -1).join(" - ") : remainder;
   return {
     boundary,
@@ -412,6 +664,104 @@ const getSceneHeadingSlots = (displayLine: string) => {
     time,
   };
 };
+
+const normalizeFountainLineToChinese = (line: string, kind: FountainLineKind) => {
+  if (!line.trim()) return "";
+  if (
+    line.trim().startsWith(CHINESE_FOUNTAIN_MARKERS.action) ||
+    Object.values(CHINESE_FOUNTAIN_MARKERS).some((marker) => line.trim().startsWith(marker))
+  ) {
+    return line;
+  }
+  const raw = stripFountainMarkup(line);
+  if (kind === "scene_heading") {
+    const slots = getSceneHeadingSlots(raw);
+    return `${CHINESE_FOUNTAIN_MARKERS.scene_heading}${slots.boundary}｜${slots.sceneName || PLACEHOLDER_SCENE_NAME}｜${slots.time}`;
+  }
+  return formatChineseFountainLine(raw, kind);
+};
+
+function normalizeFountainDocumentToChinese(body: string) {
+  if (!body) return "";
+  return analyzeFountainLines(body)
+    .map(({ line, kind }) => normalizeFountainLineToChinese(line, kind))
+    .join("\n");
+}
+
+const serializeChineseFountainLine = (line: string, kind: FountainLineKind) => {
+  if (!line.trim()) return "";
+  const isChineseLine =
+    line.trim().startsWith(CHINESE_FOUNTAIN_MARKERS.action) ||
+    Object.values(CHINESE_FOUNTAIN_MARKERS).some((marker) => line.trim().startsWith(marker));
+  if (!isChineseLine) return line;
+
+  const raw = stripFountainMarkup(line);
+  switch (kind) {
+    case "scene_heading": {
+      const slots = getSceneHeadingSlots(raw);
+      const boundary = SCENE_BOUNDARY_OPTIONS.find(({ label }) => label === slots.boundary)?.fountain || "INT.";
+      const time = SCENE_TIME_OPTIONS.find(({ label }) => label === slots.time)?.fountain || "DAY";
+      return `.${boundary} ${slots.sceneName || PLACEHOLDER_SCENE_NAME} - ${time}`;
+    }
+    case "character":
+      return `@${raw}`;
+    case "dual_dialogue":
+      return `@${raw} ^`;
+    case "dialogue":
+      return raw;
+    case "parenthetical":
+      return `(${raw})`;
+    case "lyric":
+      return `~${raw}`;
+    case "transition":
+      return `> ${raw}${/[：:]$/.test(raw) ? "" : ":"}`;
+    case "centered":
+      return `> ${raw} <`;
+    case "note":
+      return `[[${raw}]]`;
+    case "boneyard":
+      return `/* ${raw} */`;
+    case "section":
+      return `# ${raw}`;
+    case "synopsis":
+      return `= ${raw}`;
+    case "page_break":
+      return "===";
+    case "action":
+    default:
+      return `!${raw}`;
+  }
+};
+
+const serializeChineseFountainDocument = (body: string) =>
+  analyzeFountainLines(body)
+    .map(({ line, kind }) => serializeChineseFountainLine(line, kind))
+    .join("\n");
+
+function normalizeFountainDocumentToHollywood(body: string) {
+  if (!body) return "";
+  const serialized = serializeChineseFountainDocument(body);
+  return analyzeFountainLines(serialized)
+    .map(({ line, kind }) => {
+      if (!line.trim()) return "";
+      const raw = stripFountainMarkup(line);
+      switch (kind) {
+        case "scene_heading": {
+          const slots = getSceneHeadingSlots(raw);
+          return `.${slots.boundary} ${slots.sceneName || PLACEHOLDER_SCENE_NAME} - ${slots.time}`;
+        }
+        case "character":
+          return `@${raw.toUpperCase() || PLACEHOLDER_CHARACTER_NAME}`;
+        case "dual_dialogue":
+          return `@${raw.replace(/\s*\^\s*$/, "").toUpperCase() || PLACEHOLDER_CHARACTER_NAME} ^`;
+        case "transition":
+          return `> ${raw.replace(/[：:]$/, "").toUpperCase() || "CUT TO"}:`;
+        default:
+          return line;
+      }
+    })
+    .join("\n");
+}
 
 const ensureFlow = (flow: ProjectData["flow"]): NonNullable<ProjectData["flow"]> => ({
   flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
@@ -447,6 +797,8 @@ export const WritingPanel: React.FC<Props> = ({
   onClose,
   initialScriptNodeId,
   isQalamOpen = false,
+  agentScriptEditProposals = null,
+  onResolveAgentScriptEditProposal,
   onOpenQalam,
   onSubmitToQalam,
 }) => {
@@ -458,6 +810,9 @@ export const WritingPanel: React.FC<Props> = ({
   const scriptNodeContent = useMemo(() => getScriptNodeContent(scriptNode), [scriptNode]);
   const [loadedScriptNodeId, setLoadedScriptNodeId] = useState<string | null>(() => scriptNode?.id || null);
   const [draft, setDraft] = useState<WritingDraft>(() => buildDraftFromDocument(scriptNodeTitle, scriptNodeContent));
+  const draftRef = useRef<WritingDraft>(draft);
+  const [pendingScriptPatch, setPendingScriptPatch] = useState<PendingScriptPatch | null>(null);
+  const [lastReviewedPatch, setLastReviewedPatch] = useState<ReviewedScriptSnapshot | null>(null);
   const [cursorPos, setCursorPos] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
@@ -470,10 +825,13 @@ export const WritingPanel: React.FC<Props> = ({
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(true);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
+  const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
   const writingRoomRef = useRef<HTMLDivElement>(null);
   const agentLineTimerRef = useRef<number | null>(null);
+  const handledAgentProposalIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalCommitRef = useRef<WritingDraft | null>(null);
 
   const knownCharacters = useMemo(
     () => projectRolesToCharacters(projectData.roles || []).filter((character) => !!character?.name?.trim()) as Character[],
@@ -489,13 +847,69 @@ export const WritingPanel: React.FC<Props> = ({
   const deferredDraft = useDeferredValue(draft);
 
   useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
     const nextNodeId = scriptNode?.id || null;
     if (nextNodeId === loadedScriptNodeId) return;
     const nextDraft = buildDraftFromDocument(scriptNodeTitle, scriptNodeContent);
     setDraft(nextDraft);
     setLoadedScriptNodeId(nextNodeId);
     setAgentLine(null);
+    setSelectionBubble(null);
+    setPendingScriptPatch(null);
+    pendingLocalCommitRef.current = null;
   }, [loadedScriptNodeId, scriptNode?.id, scriptNodeContent, scriptNodeTitle]);
+
+  useEffect(() => {
+    if (!scriptNode?.id || scriptNode.id !== loadedScriptNodeId) return;
+    if (pendingScriptPatch) return;
+    const externalDraft = buildDraftFromDocument(scriptNodeTitle, scriptNodeContent);
+    const currentDraft = draftRef.current;
+    const pendingLocalCommit = pendingLocalCommitRef.current;
+    if (pendingLocalCommit) {
+      if (
+        externalDraft.body === pendingLocalCommit.body &&
+        externalDraft.title === pendingLocalCommit.title
+      ) {
+        pendingLocalCommitRef.current = null;
+      } else {
+        return;
+      }
+    }
+    if (externalDraft.body === currentDraft.body && externalDraft.title === currentDraft.title) return;
+    setDraft(externalDraft);
+  }, [loadedScriptNodeId, pendingScriptPatch, scriptNode?.id, scriptNodeContent, scriptNodeTitle]);
+
+  useEffect(() => {
+    if (!scriptNode?.id || !agentScriptEditProposals) return;
+    const proposal = agentScriptEditProposals.proposals.find((item) => item.nodeId === scriptNode.id);
+    if (!proposal || handledAgentProposalIdsRef.current.has(proposal.id)) return;
+    handledAgentProposalIdsRef.current.add(proposal.id);
+    const currentDraft = draftRef.current;
+    const proposedDraft = buildDraftFromDocument(proposal.title, proposal.content);
+    if (proposedDraft.body === currentDraft.body && proposedDraft.title === currentDraft.title) {
+      onResolveAgentScriptEditProposal?.(proposal.id);
+      return;
+    }
+    const lines = buildScriptLinePatch(currentDraft.body, proposedDraft.body);
+    if (!lines.some((line) => line.kind !== "equal")) {
+      pendingLocalCommitRef.current = proposedDraft;
+      setDraft(proposedDraft);
+      onResolveAgentScriptEditProposal?.(proposal.id);
+      return;
+    }
+    setSelectionBubble(null);
+    setPendingScriptPatch({
+      id: proposal.id,
+      baseTitle: currentDraft.title,
+      nextTitle: proposedDraft.title,
+      baseBody: currentDraft.body,
+      nextBody: proposedDraft.body,
+      lines,
+    });
+  }, [agentScriptEditProposals, onResolveAgentScriptEditProposal, scriptNode?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -529,20 +943,18 @@ export const WritingPanel: React.FC<Props> = ({
   const handleExportFountain = useCallback(() => {
     const title = projectData.fileName?.replace(/\.[^/.]+$/, "") || "qalam-script";
     const filename = `${title || "qalam-script"}.fountain`;
-    downloadTextFile(filename, draft.body, "text/plain;charset=utf-8");
+    downloadTextFile(filename, normalizeFountainDocumentToHollywood(draft.body), "text/plain;charset=utf-8");
   }, [draft.body, projectData.fileName]);
 
   const parserIssues = useMemo(() => {
     const issues: string[] = [];
 
-    const lines = deferredDraft.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    lines.forEach((line, lineIndex) => {
-      const mentions = (line.match(/@([\w\u4e00-\u9fa5-]+)/g) || []).map((item) => item.slice(1));
-      mentions.forEach((name) => {
-        if (!["CHARACTER", "角色", "角色名"].includes(name) && !characterMap.has(name)) {
-          issues.push(`第 ${lineIndex + 1} 行引用了未绑定角色 @${name}`);
-        }
-      });
+    analyzeFountainLines(deferredDraft.body).forEach(({ line, kind }, lineIndex) => {
+      if (kind !== "character" && kind !== "dual_dialogue") return;
+      const name = stripFountainMarkup(line).trim();
+      if (![PLACEHOLDER_CHARACTER_NAME, "角色", "角色名"].includes(name) && !characterMap.has(name)) {
+        issues.push(`第 ${lineIndex + 1} 行引用了未绑定角色 ${name}`);
+      }
     });
 
     return Array.from(new Set(issues));
@@ -616,7 +1028,37 @@ export const WritingPanel: React.FC<Props> = ({
     setAgentLine((current) =>
       current ? { ...current, top: computeAgentLineTop(editor, current.anchor) } : current
     );
+    setSelectionBubble((current) =>
+      current ? { ...current, top: Math.max(12, computeAgentLineTop(editor, current.start) - 52) } : current
+    );
   };
+
+  const updateSelectionBubble = useCallback(
+    (editor: HTMLTextAreaElement) => {
+      const start = editor.selectionStart || 0;
+      const end = editor.selectionEnd || start;
+      if (start === end) {
+        setSelectionBubble(null);
+        return;
+      }
+      const text = editor.value.slice(start, end).trim();
+      if (!text) {
+        setSelectionBubble(null);
+        return;
+      }
+      setSelectionBubble((current) => ({
+        text,
+        start,
+        end,
+        top: Math.max(12, computeAgentLineTop(editor, start) - 52),
+        message:
+          current?.start === start && current.end === end && current.text === text
+            ? current.message
+            : "",
+      }));
+    },
+    [computeAgentLineTop]
+  );
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -654,25 +1096,56 @@ export const WritingPanel: React.FC<Props> = ({
     [computeAgentLineTop, openWritingQalam]
   );
 
-  const currentFountainKind = useMemo(() => {
-    const bounds = getLineBoundsAt(draft.body, cursorPos);
-    return analyzeFountainLines(draft.body)[bounds.lineIndex]?.kind || "action";
-  }, [cursorPos, draft.body]);
+  const analyzedDraftLines = useMemo(() => analyzeFountainLines(draft.body), [draft.body]);
+  const currentLineBounds = useMemo(() => getLineBoundsAt(draft.body, cursorPos), [cursorPos, draft.body]);
+  const currentFountainKind = analyzedDraftLines[currentLineBounds.lineIndex]?.kind || "action";
   const currentFountainMeta = FOUNTAIN_FORMAT_META[currentFountainKind];
   const currentSceneHeadingSlots = useMemo(() => {
     if (currentFountainKind !== "scene_heading") return null;
-    const bounds = getLineBoundsAt(draft.body, cursorPos);
-    return getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
-  }, [currentFountainKind, cursorPos, draft.body]);
+    return getSceneHeadingSlots(displayFountainLine(currentLineBounds.line, "scene_heading"));
+  }, [currentFountainKind, currentLineBounds.line]);
+  const currentLineContent = useMemo(
+    () => stripFountainMarkup(currentLineBounds.line),
+    [currentLineBounds.line]
+  );
+  const parsedCharacterNames = useMemo(
+    () =>
+      mergeUnique(
+        analyzedDraftLines
+          .filter(({ kind }) => kind === "character" || kind === "dual_dialogue")
+          .map(({ line }) => stripFountainMarkup(line))
+          .filter((name) => name !== PLACEHOLDER_CHARACTER_NAME)
+      ),
+    [analyzedDraftLines]
+  );
+  const characterSuggestions = useMemo(
+    () => mergeUnique([...parsedCharacterNames, ...knownCharacters.map((character) => character.name || "")]),
+    [knownCharacters, parsedCharacterNames]
+  );
+  const sceneNameSuggestions = useMemo(
+    () =>
+      mergeUnique(
+        analyzedDraftLines
+          .filter(({ kind }) => kind === "scene_heading")
+          .map(({ line }) => getSceneHeadingSlots(displayFountainLine(line, "scene_heading")).sceneName)
+          .filter((name) => name !== PLACEHOLDER_SCENE_NAME)
+      ),
+    [analyzedDraftLines]
+  );
+  const sceneSummaries = useMemo(
+    () =>
+      analyzedDraftLines
+        .filter(({ kind }) => kind === "scene_heading")
+        .map(({ line }) => getSceneHeadingSlots(displayFountainLine(line, "scene_heading")))
+        .filter((scene) => scene.sceneName && scene.sceneName !== PLACEHOLDER_SCENE_NAME),
+    [analyzedDraftLines]
+  );
 
-  const updateCurrentSceneHeading = useCallback(
-    (patch: Partial<{ boundary: string; sceneName: string; time: string }>) => {
+  const replaceCurrentLine = useCallback(
+    (nextLine: string) => {
       const editor = editorRef.current;
       if (!editor) return;
       const bounds = getLineBoundsAt(editor.value, cursorPos);
-      const currentSlots = getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
-      const nextSlots = { ...currentSlots, ...patch };
-      const nextLine = `.${nextSlots.boundary} ${nextSlots.sceneName} - ${nextSlots.time}`;
       const nextBody = `${editor.value.slice(0, bounds.lineStart)}${nextLine}${editor.value.slice(bounds.lineEnd)}`;
       const relativeCursor = Math.max(0, cursorPos - bounds.lineStart);
       const nextCursor = bounds.lineStart + Math.min(relativeCursor, nextLine.length);
@@ -686,6 +1159,24 @@ export const WritingPanel: React.FC<Props> = ({
     [cursorPos]
   );
 
+  const updateCurrentSceneHeading = useCallback(
+    (patch: Partial<{ boundary: string; sceneName: string; time: string }>) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const bounds = getLineBoundsAt(editor.value, cursorPos);
+      const currentSlots = getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
+      const nextSlots = { ...currentSlots, ...patch };
+      const nextLine = `.${nextSlots.boundary} ${nextSlots.sceneName || PLACEHOLDER_SCENE_NAME} - ${nextSlots.time}`;
+      replaceCurrentLine(nextLine);
+    },
+    [cursorPos, replaceCurrentLine]
+  );
+
+  const updateCurrentLineContent = useCallback(
+    (value: string) => replaceCurrentLine(formatChineseFountainLine(value, currentFountainKind)),
+    [currentFountainKind, replaceCurrentLine]
+  );
+
   const applyFountainLineFormat = useCallback(
     (editor: HTMLTextAreaElement, nextKind: FountainLineKind) => {
       const text = editor.value;
@@ -694,8 +1185,16 @@ export const WritingPanel: React.FC<Props> = ({
       const cursor = selectionStart;
       const bounds = getLineBoundsAt(text, cursor);
       const lines = text.split(/\r?\n/);
-      const rawLine = getFountainRawContent(bounds.line);
-      const formattedLine = formatFountainLine(bounds.line, nextKind);
+      const currentKind = getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
+      if (currentKind === nextKind && bounds.line.trim()) {
+        editor.focus();
+        return;
+      }
+      const rawLine =
+        currentKind === "scene_heading"
+          ? getSceneHeadingSlots(displayFountainLine(bounds.line, currentKind)).sceneName
+          : getFountainRawContent(bounds.line);
+      const formattedLine = formatChineseFountainLine(rawLine, nextKind);
       const templateSelection = getFountainTemplateSelection(formattedLine, nextKind);
       const contentOffset = getFountainContentOffset(bounds.line);
       const rawSelectionStart = Math.max(0, Math.min(rawLine.length, selectionStart - bounds.lineStart - contentOffset));
@@ -722,7 +1221,7 @@ export const WritingPanel: React.FC<Props> = ({
       if (nextKind === "dialogue") {
         const previousLine = getPreviousNonEmptyLine(lines, bounds.lineIndex);
         if (!isCharacterLine(previousLine)) {
-          const characterCue = "@角色名";
+          const characterCue = `@${PLACEHOLDER_CHARACTER_NAME}`;
           const insert = rawLine ? `${characterCue}\n${formattedLine}` : characterCue;
           nextText = `${text.slice(0, bounds.lineStart)}${insert}${text.slice(bounds.lineEnd)}`;
           nextSelectionStart = bounds.lineStart + 1;
@@ -741,21 +1240,63 @@ export const WritingPanel: React.FC<Props> = ({
     []
   );
 
-  const cycleFountainLineFormat = useCallback(
+  const completeCurrentLineFromSuggestions = useCallback(
     (editor: HTMLTextAreaElement, direction: 1 | -1) => {
       const text = editor.value;
       const cursor = editor.selectionStart || 0;
       const bounds = getLineBoundsAt(text, cursor);
       const lines = text.split(/\r?\n/);
       const currentKind = getFountainLineKind(bounds.line, getPreviousNonEmptyLine(lines, bounds.lineIndex));
-      const currentIndex = Math.max(0, FOUNTAIN_FORMAT_ORDER.indexOf(currentKind));
-      const nextKind =
-        FOUNTAIN_FORMAT_ORDER[
-          (currentIndex + direction + FOUNTAIN_FORMAT_ORDER.length) % FOUNTAIN_FORMAT_ORDER.length
-        ];
-      applyFountainLineFormat(editor, nextKind);
+      const currentContent = stripFountainMarkup(bounds.line).trim();
+      let nextLine: string | null = null;
+      let selectionStart = cursor;
+      let selectionEnd = cursor;
+
+      const pickSuggestion = (options: string[], currentValue: string) => {
+        if (!options.length) return "";
+        const exactIndex = options.findIndex((option) => option === currentValue);
+        if (exactIndex >= 0) {
+          return options[(exactIndex + direction + options.length) % options.length];
+        }
+        const matched = options.find((option) => option.toLowerCase().startsWith(currentValue.toLowerCase()));
+        return matched || options[direction === 1 ? 0 : options.length - 1];
+      };
+
+      if (currentKind === "character" || currentKind === "dual_dialogue") {
+        const nextName = pickSuggestion(characterSuggestions, currentContent);
+        if (!nextName) return false;
+        nextLine = formatChineseFountainLine(nextName, currentKind);
+        selectionStart = bounds.lineStart + getFountainTemplateSelection(nextLine, currentKind).start;
+        selectionEnd = bounds.lineStart + nextLine.length;
+      } else if (currentKind === "scene_heading") {
+        const slots = getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
+        const nextSceneName = pickSuggestion(sceneNameSuggestions, slots.sceneName);
+        if (!nextSceneName) return false;
+        nextLine = `.${slots.boundary} ${nextSceneName} - ${slots.time}`;
+        const selection = getFountainTemplateSelection(nextLine, "scene_heading");
+        selectionStart = bounds.lineStart + selection.start;
+        selectionEnd = bounds.lineStart + selection.end;
+      } else if (currentKind === "transition") {
+        const nextTransition = pickSuggestion(TRANSITION_LABEL_OPTIONS, currentContent);
+        if (!nextTransition) return false;
+        nextLine = formatChineseFountainLine(nextTransition, "transition");
+        selectionStart = bounds.lineStart + getFountainTemplateSelection(nextLine, "transition").start;
+        selectionEnd = bounds.lineStart + nextLine.length;
+      } else {
+        return false;
+      }
+
+      const nextBody = `${text.slice(0, bounds.lineStart)}${nextLine}${text.slice(bounds.lineEnd)}`;
+      setDraft((current) => ({ ...current, body: nextBody }));
+      requestAnimationFrame(() => {
+        editor.focus();
+        editor.selectionStart = selectionStart;
+        editor.selectionEnd = selectionEnd;
+        setCursorPos(selectionEnd);
+      });
+      return true;
     },
-    [applyFountainLineFormat]
+    [characterSuggestions, sceneNameSuggestions]
   );
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -772,7 +1313,7 @@ export const WritingPanel: React.FC<Props> = ({
         return;
       }
 
-      if (event.key === "Enter") {
+      if ((event.key === "Enter" || event.key === "Tab") && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         insertMention(filteredCharacters[activeMentionIndex]?.name || filteredCharacters[0].name);
         return;
@@ -785,25 +1326,65 @@ export const WritingPanel: React.FC<Props> = ({
       }
     }
 
-    if (event.key === "Tab") {
-      event.preventDefault();
-      setDismissedMentionStart(null);
-      cycleFountainLineFormat(event.currentTarget, event.shiftKey ? -1 : 1);
-      return;
-    }
-
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       activateAgentLine(event.currentTarget);
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      setDismissedMentionStart(null);
+      completeCurrentLineFromSuggestions(event.currentTarget, event.shiftKey ? -1 : 1);
+      return;
+    }
+
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      event.currentTarget.selectionStart === event.currentTarget.selectionEnd
+    ) {
+      const editor = event.currentTarget;
+      const selectionStart = editor.selectionStart || 0;
+      const bounds = getLineBoundsAt(editor.value, selectionStart);
+      if (selectionStart !== bounds.lineEnd) return;
+
+      const nextKind: FountainLineKind =
+        currentFountainKind === "character" ||
+        currentFountainKind === "dual_dialogue" ||
+        currentFountainKind === "parenthetical"
+          ? "dialogue"
+          : currentFountainKind === "lyric"
+            ? "lyric"
+            : "action";
+      const nextLine = formatChineseFountainLine("", nextKind);
+      const nextTemplateSelection = getFountainTemplateSelection(nextLine, nextKind);
+      const nextBody = `${editor.value.slice(0, selectionStart)}\n${nextLine}${editor.value.slice(selectionStart)}`;
+      const nextSelectionStart = selectionStart + 1 + nextTemplateSelection.start;
+      const nextSelectionEnd = selectionStart + 1 + nextTemplateSelection.end;
+      event.preventDefault();
+      setDraft((current) => ({ ...current, body: nextBody }));
+      requestAnimationFrame(() => {
+        editor.focus();
+        editor.selectionStart = nextSelectionStart;
+        editor.selectionEnd = nextSelectionEnd;
+        setCursorPos(nextSelectionEnd);
+      });
     }
   };
 
   const applyToProject = useCallback(() => {
+    if (pendingScriptPatch) return;
     const nodeId = scriptNode?.id || initialScriptNodeId;
     if (!nodeId) return;
     const title = draft.title.trim() || scriptNodeTitle || "剧本文档";
-    const content = draft.body;
-    const preview = content.replace(/\s+/g, " ").slice(0, 180);
+    const content = normalizeFountainDocumentToHollywood(draft.body);
+    const preview = analyzeFountainLines(draft.body)
+      .map(({ line, kind }) => displayFountainLine(line, kind))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
     setProjectData((previous) => {
       const flow = ensureFlow(previous.flow);
       let didUpdate = false;
@@ -841,7 +1422,7 @@ export const WritingPanel: React.FC<Props> = ({
         },
       };
     });
-  }, [draft.body, draft.title, initialScriptNodeId, scriptNode?.id, scriptNodeTitle, setProjectData]);
+  }, [draft.body, draft.title, initialScriptNodeId, pendingScriptPatch, scriptNode?.id, scriptNodeTitle, setProjectData]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -867,6 +1448,85 @@ export const WritingPanel: React.FC<Props> = ({
     }, 260);
   }, [agentLine, closeAgentLine, onSubmitToQalam]);
 
+  const updatePatchReview = useCallback(
+    (updater: (line: ScriptPatchLine) => ScriptPatchLine) => {
+      if (!pendingScriptPatch) return;
+      const nextPatch = {
+        ...pendingScriptPatch,
+        lines: pendingScriptPatch.lines.map((line) => (line.kind === "equal" ? line : updater(line))),
+      };
+      const nextBody = deriveReviewedScriptBody(nextPatch);
+      const isComplete = !hasPendingPatchLines(nextPatch);
+      const acceptedAllChanges = nextPatch.lines
+        .filter((line) => line.kind !== "equal")
+        .every((line) => line.status === "accepted");
+      const reviewedTitle = isComplete && acceptedAllChanges ? nextPatch.nextTitle : nextPatch.baseTitle;
+      setDraft((draftCurrent) => ({
+        ...draftCurrent,
+        title: isComplete ? reviewedTitle || draftCurrent.title : draftCurrent.title,
+        body: nextBody,
+      }));
+      if (isComplete) {
+        pendingLocalCommitRef.current = {
+          title: reviewedTitle || pendingScriptPatch.baseTitle,
+          body: nextBody,
+        };
+        setLastReviewedPatch({ title: pendingScriptPatch.baseTitle, body: pendingScriptPatch.baseBody });
+        setPendingScriptPatch(null);
+        onResolveAgentScriptEditProposal?.(pendingScriptPatch.id);
+        return;
+      }
+      setPendingScriptPatch(nextPatch);
+    },
+    [onResolveAgentScriptEditProposal, pendingScriptPatch]
+  );
+
+  const reviewPatchLine = useCallback(
+    (lineId: string, status: ScriptPatchLineStatus) => {
+      updatePatchReview((line) => (line.id === lineId ? { ...line, status } : line));
+    },
+    [updatePatchReview]
+  );
+
+  const acceptAllPatchLines = useCallback(() => {
+    updatePatchReview((line) => ({ ...line, status: "accepted" }));
+  }, [updatePatchReview]);
+
+  const rejectAllPatchLines = useCallback(() => {
+    updatePatchReview((line) => ({ ...line, status: "rejected" }));
+  }, [updatePatchReview]);
+
+  const undoReviewedPatch = useCallback(() => {
+    if (!lastReviewedPatch) return;
+    pendingLocalCommitRef.current = lastReviewedPatch;
+    setDraft(lastReviewedPatch);
+    setPendingScriptPatch(null);
+    setLastReviewedPatch(null);
+    requestAnimationFrame(() => editorRef.current?.focus());
+  }, [lastReviewedPatch]);
+
+  const submitSelectionToQalam = useCallback(() => {
+    const selectedText = selectionBubble?.text.trim();
+    const message = selectionBubble?.message.trim();
+    if (!selectedText || !message || !scriptNode?.id) return;
+    const data = (scriptNode.data || {}) as Record<string, unknown>;
+    openWritingQalam();
+    onSubmitToQalam?.(message, {
+      documentSelection: {
+        kind: "script",
+        nodeId: scriptNode.id,
+        documentId: typeof data.documentId === "string" ? data.documentId : undefined,
+        title: draft.title,
+        selectedText,
+        range: {
+          start: selectionBubble.start,
+          end: selectionBubble.end,
+        },
+      },
+    });
+    setSelectionBubble(null);
+  }, [draft.title, onSubmitToQalam, openWritingQalam, scriptNode, selectionBubble]);
+
   const isCompactLayout = viewportSize.width < 1180;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
@@ -875,7 +1535,14 @@ export const WritingPanel: React.FC<Props> = ({
     () => Math.max(1, draft.body.split(/\r?\n/).length),
     [draft.body]
   );
-  const scriptCharacterCount = draft.body.trim().length;
+  const scriptCharacterCount = useMemo(
+    () =>
+      analyzedDraftLines
+        .map(({ line, kind }) => displayFountainLine(line, kind))
+        .join("")
+        .trim().length,
+    [analyzedDraftLines]
+  );
   const screenplaySceneCount = useMemo(
     () => analyzeFountainLines(deferredDraft.body).filter(({ kind }) => kind === "scene_heading").length,
     [deferredDraft]
@@ -887,7 +1554,7 @@ export const WritingPanel: React.FC<Props> = ({
         analyzeFountainLines(deferredDraft.body)
           .filter(({ kind }) => kind === "scene_heading")
           .map(({ line }) => getSceneHeadingSlots(displayFountainLine(line, "scene_heading")).sceneName)
-          .filter((name) => name && name !== "场景名")
+          .filter((name) => name && name !== PLACEHOLDER_SCENE_NAME && name !== "场景名")
       ).size,
     [deferredDraft]
   );
@@ -973,25 +1640,120 @@ export const WritingPanel: React.FC<Props> = ({
                                 onMouseDown={() => {
                                   if (agentLine) setAgentLine(null);
                                 }}
+                                onMouseUp={(event) => updateSelectionBubble(event.currentTarget)}
                                 onClick={(event) => {
                                   setDismissedMentionStart(null);
                                   setCursorPos(event.currentTarget.selectionStart || 0);
+                                  updateSelectionBubble(event.currentTarget);
                                 }}
                                 onSelect={(event) => {
                                   setDismissedMentionStart(null);
                                   setCursorPos(event.currentTarget.selectionStart || 0);
+                                  updateSelectionBubble(event.currentTarget);
                                 }}
                                 onKeyUp={(event) => {
                                   if (event.key !== "Escape") setDismissedMentionStart(null);
                                   setCursorPos(event.currentTarget.selectionStart || 0);
+                                  updateSelectionBubble(event.currentTarget);
                                 }}
                                 onKeyDown={handleEditorKeyDown}
+                                readOnly={!!pendingScriptPatch}
                                 rows={18}
                                 aria-label="剧本正文"
                                 spellCheck
-                                placeholder={".INT. 场景名 - DAY\n\n在这里开始写作。使用下方格式栏设置当前行。"}
+                                placeholder={pendingScriptPatch ? "Review Qalam's line changes first." : ".INT. LOCATION - DAY\n\nAction begins here."}
                                 className="writing-editor relative z-10 w-full overflow-hidden border-none bg-transparent px-10 pb-10 pt-8 font-sans text-[17px] leading-9 outline-none"
                               />
+
+                              {selectionBubble && !pendingScriptPatch ? (
+                                <form
+                                  className="writing-selection-bubble"
+                                  style={{ top: `${selectionBubble.top}px` }}
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    submitSelectionToQalam();
+                                  }}
+                                >
+                                  <span className="writing-selection-bubble__context" title={selectionBubble.text}>
+                                    <Quote size={12} strokeWidth={1.9} />
+                                    <span>{selectionBubble.text.replace(/\s+/g, " ").slice(0, 28)}</span>
+                                  </span>
+                                  <input
+                                    value={selectionBubble.message}
+                                    onChange={(event) =>
+                                      setSelectionBubble((current) =>
+                                        current ? { ...current, message: event.target.value } : current
+                                      )
+                                    }
+                                    placeholder="询问 Qalam"
+                                    aria-label="针对选中文本向 Qalam 提问"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="is-send"
+                                    disabled={!selectionBubble.message.trim()}
+                                    aria-label="发送消息"
+                                  >
+                                    <SendHorizontal size={14} strokeWidth={1.9} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="is-ghost"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => setSelectionBubble(null)}
+                                    aria-label="关闭选区对话入口"
+                                  >
+                                    <X size={13} strokeWidth={1.9} />
+                                  </button>
+                                </form>
+                              ) : null}
+
+                              {pendingScriptPatch ? (
+                                <div className="writing-patch-review" role="dialog" aria-label="Qalam 行级修改审核">
+                                  <div className="writing-patch-review__head">
+                                    <div>
+                                      <span>Qalam 修改</span>
+                                      <strong>{pendingScriptPatch.lines.filter((line) => line.kind !== "equal").length} 行待审</strong>
+                                    </div>
+                                    <div className="writing-patch-review__actions">
+                                      <button type="button" onClick={acceptAllPatchLines} title="一键审核通过">
+                                        <CheckCheck size={14} strokeWidth={1.9} />
+                                      </button>
+                                      <button type="button" onClick={rejectAllPatchLines} title="全部拒绝">
+                                        <XCircle size={14} strokeWidth={1.9} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="writing-patch-review__list">
+                                    {pendingScriptPatch.lines
+                                      .filter((line) => line.kind !== "equal")
+                                      .slice(0, 24)
+                                      .map((line) => (
+                                        <div key={`review-${line.id}`} className={`writing-patch-review__item is-${line.kind} is-${line.status}`}>
+                                          <span>{line.kind === "delete" ? "删除" : "新增"}</span>
+                                          <p>{stripFountainMarkup(line.line) || line.line || "空行"}</p>
+                                          {line.status === "pending" ? (
+                                            <div>
+                                              <button type="button" onClick={() => reviewPatchLine(line.id, "accepted")} title="通过此行">
+                                                <Check size={13} strokeWidth={2} />
+                                              </button>
+                                              <button type="button" onClick={() => reviewPatchLine(line.id, "rejected")} title="拒绝此行">
+                                                <X size={13} strokeWidth={2} />
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <em>{line.status === "accepted" ? "已通过" : "已拒绝"}</em>
+                                          )}
+                                        </div>
+                                      ))}
+                                  </div>
+                                </div>
+                              ) : lastReviewedPatch ? (
+                                <button type="button" className="writing-patch-undo" onClick={undoReviewedPatch}>
+                                  <RotateCcw size={14} strokeWidth={1.9} />
+                                  <span>撤销上次审核</span>
+                                </button>
+                              ) : null}
 
                               {agentLine ? (
                                 <div
@@ -1056,13 +1818,13 @@ export const WritingPanel: React.FC<Props> = ({
                 <div className="writing-format-dock">
                   <div className="writing-format-dock__content">
                     {currentSceneHeadingSlots ? (
-                      <div className="writing-scene-format-fields" aria-label="当前场景格式">
+                      <div className="writing-scene-format-fields" aria-label="Current scene heading">
                         <label className="writing-scene-format-field is-choice">
-                          <span>内/外景</span>
+                          <span>Prefix</span>
                           <select
                             value={currentSceneHeadingSlots.boundary}
                             onChange={(event) => updateCurrentSceneHeading({ boundary: event.target.value })}
-                            aria-label="内外景"
+                            aria-label="Scene prefix"
                           >
                             {SCENE_BOUNDARY_LABEL_OPTIONS.map((option) => (
                               <option key={option} value={option}>{option}</option>
@@ -1070,20 +1832,21 @@ export const WritingPanel: React.FC<Props> = ({
                           </select>
                         </label>
                         <label className="writing-scene-format-field is-name">
-                          <span>场景名</span>
+                          <span>Location</span>
                           <input
                             value={currentSceneHeadingSlots.sceneName}
+                            list="writing-scene-options"
                             onChange={(event) => updateCurrentSceneHeading({ sceneName: event.target.value })}
-                            aria-label="场景名"
-                            placeholder="场景名"
+                            aria-label="Location"
+                            placeholder="LOCATION"
                           />
                         </label>
                         <label className="writing-scene-format-field is-choice">
-                          <span>时间</span>
+                          <span>Time</span>
                           <select
                             value={currentSceneHeadingSlots.time}
                             onChange={(event) => updateCurrentSceneHeading({ time: event.target.value })}
-                            aria-label="场景时间"
+                            aria-label="Scene time"
                           >
                             {SCENE_TIME_LABEL_OPTIONS.map((option) => (
                               <option key={option} value={option}>{option}</option>
@@ -1093,19 +1856,68 @@ export const WritingPanel: React.FC<Props> = ({
                       </div>
                     ) : null}
 
+                    {currentFountainKind === "character" || currentFountainKind === "dual_dialogue" ? (
+                      <div className="writing-context-format-fields" aria-label="Current character cue">
+                        <label className="writing-context-format-field">
+                          <span>{currentFountainKind === "dual_dialogue" ? "Dual character" : "Character"}</span>
+                          <input
+                            value={currentLineContent}
+                            list="writing-character-options"
+                            onChange={(event) => updateCurrentLineContent(event.target.value)}
+                            aria-label="Character name"
+                            placeholder="CHARACTER"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {currentFountainKind === "transition" ? (
+                      <div className="writing-context-format-fields" aria-label="Current transition">
+                        <label className="writing-context-format-field">
+                          <span>Transition</span>
+                          <input
+                            value={currentLineContent}
+                            list="writing-transition-options"
+                            onChange={(event) => updateCurrentLineContent(event.target.value)}
+                            aria-label="Transition"
+                            placeholder="CUT TO"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+
+                    <datalist id="writing-character-options">
+                      {characterSuggestions.map((name) => (
+                        <option key={name} value={name}>
+                          {characterMap.get(name)?.role || "Draft character"}
+                        </option>
+                      ))}
+                    </datalist>
+                    <datalist id="writing-scene-options">
+                      {sceneNameSuggestions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                    <datalist id="writing-transition-options">
+                      {TRANSITION_LABEL_OPTIONS.map((option) => (
+                        <option key={option} value={option} />
+                      ))}
+                    </datalist>
+
                     <div className="writing-format-bar">
                       {FOUNTAIN_QUICK_FORMATS.map((kind) => (
                         <button
                           key={kind}
                           type="button"
                           title={FOUNTAIN_FORMAT_META[kind].sample}
+                          aria-pressed={currentFountainKind === kind}
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
                             const editor = editorRef.current;
                             if (!editor) return;
                             applyFountainLineFormat(editor, kind);
                           }}
-                          className={`writing-format-button ${currentFountainKind === kind ? "is-active" : ""}`}
+                          className={`writing-format-button is-${kind} ${currentFountainKind === kind ? "is-active" : ""}`}
                         >
                           <span className="writing-format-button__marker">{FOUNTAIN_FORMAT_META[kind].marker}</span>
                           <span>{FOUNTAIN_FORMAT_LABELS[kind]}</span>
@@ -1142,12 +1954,62 @@ export const WritingPanel: React.FC<Props> = ({
                 </div>
 
                 <div className="writing-side-section">
-                  <div className="writing-side-label">Format</div>
+                  <div className="writing-side-label">当前格式</div>
                   <div className="writing-guide-list">
                     <div className="writing-format-summary">
                       <span className="writing-format-summary__marker">{currentFountainMeta.marker}</span>
                       <span>{FOUNTAIN_FORMAT_LABELS[currentFountainKind]}</span>
                     </div>
+                  </div>
+                </div>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">人物</div>
+                  <div className="writing-reference-list">
+                    {characterSuggestions.length ? (
+                      characterSuggestions.slice(0, 18).map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className="writing-reference-chip"
+                          onClick={() => {
+                            if (currentFountainKind !== "character" && currentFountainKind !== "dual_dialogue") return;
+                            updateCurrentLineContent(name);
+                          }}
+                          title={characterMap.get(name) ? buildCharacterDetail(characterMap.get(name)) : name}
+                        >
+                          <span>{name}</span>
+                          {characterMap.get(name)?.role ? <small>{characterMap.get(name)?.role}</small> : null}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="writing-empty-reference">暂无人物</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="writing-side-section">
+                  <div className="writing-side-label">场景</div>
+                  <div className="writing-reference-list">
+                    {sceneSummaries.length ? (
+                      sceneSummaries.slice(0, 18).map((scene, index) => (
+                        <button
+                          key={`${scene.boundary}-${scene.sceneName}-${scene.time}-${index}`}
+                          type="button"
+                          className="writing-reference-chip is-scene"
+                          onClick={() => {
+                            if (!currentSceneHeadingSlots) return;
+                            updateCurrentSceneHeading(scene);
+                          }}
+                          title={`${scene.boundary}｜${scene.sceneName}｜${scene.time}`}
+                        >
+                          <span>{scene.sceneName}</span>
+                          <small>{scene.boundary} · {scene.time}</small>
+                        </button>
+                      ))
+                    ) : (
+                      <span className="writing-empty-reference">暂无场景</span>
+                    )}
                   </div>
                 </div>
 

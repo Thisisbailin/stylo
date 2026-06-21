@@ -22,10 +22,12 @@ import {
   AudioLines,
   Boxes,
   Bot,
+  Clock3,
   FileText,
   Folder,
   Image as ImageIcon,
   Layers,
+  Map as MapIcon,
   Network,
   Plus,
   ScanSearch,
@@ -103,9 +105,6 @@ import {
   type FoundationSpaceBlock,
   type FoundationTimeBlock,
 } from "../foundation/scaffold";
-import { Canister as OriginalFilmCanister } from "./film-roll-lab/components/Canister";
-import { Filmstrip as OriginalFilmstrip } from "./film-roll-lab/components/Filmstrip";
-import type { CanisterStyle, PhysicsParams } from "./film-roll-lab/types";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -144,20 +143,6 @@ type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
 type FoundationGatewaySettingsPanel = "assets" | "identity" | "skills";
 type FoundationGatewayAssetsSection = "images" | "videos" | "prompts";
 
-
-const FOUNDATION_FILM_PHYSICS: PhysicsParams = {
-  stiffness: 140,
-  damping: 18,
-  mass: 1.1,
-  rotationMultiplier: 2.5,
-  filmstripHeight: 72,
-  frameWidth: 99,
-  closedWidth: 100,
-  openWidth: 620,
-};
-
-const FOUNDATION_FILM_LEADER_INSET = 48;
-const FOUNDATION_FILM_NOOP = () => {};
 
 const FOUNDATION_EDGE_COLORS: Record<string, string> = {
   amber: "#c79a46",
@@ -221,52 +206,6 @@ const FLOW_PROJECT_COLOR_STYLES = [
     textColor: "#ffffff",
   },
 ] as const;
-
-const PROJECT_CANISTER_PHYSICS: PhysicsParams = {
-  stiffness: 150,
-  damping: 19,
-  mass: 1,
-  rotationMultiplier: 1.8,
-  filmstripHeight: 34,
-  frameWidth: 82,
-  closedWidth: 34,
-  openWidth: 220,
-};
-
-const getProjectColorStyle = (color: string, index = 0) =>
-  FLOW_PROJECT_COLOR_STYLES.find((item) => item.color === color) ||
-  FLOW_PROJECT_COLOR_STYLES[index % FLOW_PROJECT_COLOR_STYLES.length];
-
-const getFoundationCanisterStyle = (activeAxis: "time" | "space"): CanisterStyle => ({
-  id: activeAxis === "time" ? "retro-yellow" : "fuji-green",
-  name: activeAxis === "time" ? "Time Axis" : "Space Axis",
-  primaryColor: activeAxis === "time" ? "#facc15" : "#10b981",
-  accentColor: activeAxis === "time" ? "#ef4444" : "#f43f5e",
-  backgroundColor: activeAxis === "time" ? "#eab308" : "#047857",
-  textColor: activeAxis === "time" ? "#18181b" : "#ffffff",
-  brandText: activeAxis === "time" ? "TIME" : "SPACE",
-  iso: activeAxis === "time" ? 200 : 400,
-  exp: activeAxis === "time" ? 36 : 24,
-});
-
-const getProjectCanisterStyle = (
-  project: NonNullable<ProjectData["flowProjects"]>[number],
-  index: number
-): CanisterStyle => {
-  const style = getProjectColorStyle(project.color, index);
-  const brandIds: CanisterStyle["id"][] = ["retro-yellow", "fuji-green", "agfa-red"];
-  return {
-    id: brandIds[index % brandIds.length],
-    name: project.title,
-    primaryColor: style.primaryColor,
-    accentColor: style.accentColor,
-    backgroundColor: style.backgroundColor,
-    textColor: style.textColor,
-    brandText: `P${index + 1}`,
-    iso: project.durationMin,
-    exp: Math.max(12, Math.min(36, Math.round(project.durationMin / 5))),
-  };
-};
 
 type ScriptConnectionDropState = {
   position: { x: number; y: number };
@@ -779,7 +718,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectDuration, setNewProjectDuration] = useState<number>(DEFAULT_TIMELINE_DURATION);
-  const [foundationTrackWidth, setFoundationTrackWidth] = useState(0);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
@@ -893,34 +831,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const track = trackRef.current;
-    if (!track) return;
-
-    const measureTrack = () => {
-      const nextWidth = Math.round(track.getBoundingClientRect().width);
-      setFoundationTrackWidth((current) => (Math.abs(current - nextWidth) > 1 ? nextWidth : current));
-    };
-
-    measureTrack();
-    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measureTrack) : null;
-    resizeObserver?.observe(track);
-    window.addEventListener("resize", measureTrack);
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", measureTrack);
-    };
-  }, [activeAxis, isAgentTailOpen, spaceAxisBlocks.length, timeline.blocks.length]);
-
-  const foundationFilmPhysics = useMemo<PhysicsParams>(() => {
-    const fittedOpenWidth = foundationTrackWidth > 0 ? foundationTrackWidth + 22 : FOUNDATION_FILM_PHYSICS.openWidth || 520;
-    return {
-      ...FOUNDATION_FILM_PHYSICS,
-      openWidth: Math.max(160, Math.round(fittedOpenWidth)),
-    };
-  }, [foundationTrackWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     let animationFrame = 0;
     let isMounted = true;
     const measureTargets = () => {
@@ -1013,10 +923,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     openFoundationGateway();
   };
 
-  const handleFilmstripToggle = () => {
-    switchAxisWithFilmMotion();
-  };
-
   const openGatewaySettingsPanel = (
     panel: FoundationGatewaySettingsPanel,
     assetsSection?: FoundationGatewayAssetsSection
@@ -1106,23 +1012,12 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   return (
     <>
       {!isFoundationGatewayOpen ? (
-      <div className="script-foundation-dock">
       <div
-        className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
+        className={`script-foundation-dock script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
         aria-label="剧本基地"
-        style={{
-          "--foundation-leader-inset": `${FOUNDATION_FILM_LEADER_INSET}px`,
-          "--foundation-collapsed-axis-width": `${FOUNDATION_FILM_LEADER_INSET + (foundationFilmPhysics.closedWidth || 0)}px`,
-        } as CSSProperties}
       >
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
-          <div className="script-foundation-ribbon-background">
-            <OriginalFilmstrip
-              isOpen={!isAgentTailOpen && !isAxisSwitching}
-              physics={foundationFilmPhysics}
-              onToggleCanister={handleFilmstripToggle}
-            />
-          </div>
+          <div className="script-foundation-ribbon-background" aria-hidden="true" />
           <button
             type="button"
             className="script-foundation-head-block"
@@ -1133,16 +1028,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             onDoubleClick={handleHeadDoubleClick}
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
-            <span className="script-foundation-axis-label">
-              {activeAxis === "time" ? "时间轴" : "空间轴"}
-            </span>
-            <span className="script-foundation-original-canister">
-              <OriginalFilmCanister
-                isOpen={!isAgentTailOpen && !isAxisSwitching}
-                onToggle={FOUNDATION_FILM_NOOP}
-                physics={foundationFilmPhysics}
-                styleConfig={getFoundationCanisterStyle(activeAxis)}
-              />
+            <span className="script-foundation-head-icon" aria-hidden="true">
+              {activeAxis === "time" ? <Clock3 size={17} strokeWidth={1.9} /> : <MapIcon size={17} strokeWidth={1.9} />}
             </span>
           </button>
 
@@ -1199,20 +1086,20 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                       style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
                     >
                       <div className="script-foundation-block__inner">
+                        <strong>{block.title}</strong>
                         <div className="script-foundation-block__meta">
-                          <span className="script-foundation-block__frame-index">
-                            {activeAxis === "time" ? "T" : "S"}{String(axisIndex + 1).padStart(2, "0")}
-                          </span>
                           <span>
                             {activeAxis === "time"
                               ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
                               : "全局视角"}
                           </span>
-                        </div>
-                        <strong>{block.title}</strong>
-                        <div className="script-foundation-block__foot">
-                          <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
-                          <span>{boundaryCount ? `${boundaryCount} 个连接` : "可连线"}</span>
+                          <span>
+                            {boundaryCount
+                              ? `${boundaryCount} 连接`
+                              : activeAxis === "time"
+                                ? `${timeBlock.durationMin} min`
+                                : "空间"}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1311,7 +1198,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           )}
         </div>
 
-      </div>
       </div>
       ) : null}
 
@@ -1539,11 +1425,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
           <div className="script-foundation-gateway__section script-foundation-gateway__section--projects">
             <div className="script-foundation-gateway__section-head">
-              <span>Project Rolls</span>
+              <span>Projects</span>
               <strong>{flowProjects.length}/{FLOW_PROJECT_LIMIT}</strong>
             </div>
             <div className="script-foundation-project-shelf">
-              {flowProjects.map((project, index) => {
+              {flowProjects.map((project) => {
                 const isActiveProject = project.id === activeFlowProjectId;
                 return (
                   <button
@@ -1553,13 +1439,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                     onClick={() => handleSwitchProject(project.id)}
                     title={project.title}
                   >
-                    <span className="script-foundation-project-roll__canister">
-                      <OriginalFilmCanister
-                        isOpen={isActiveProject}
-                        onToggle={FOUNDATION_FILM_NOOP}
-                        physics={PROJECT_CANISTER_PHYSICS}
-                        styleConfig={getProjectCanisterStyle(project, index)}
-                      />
+                    <span className="script-foundation-project-roll__mark" aria-hidden="true">
+                      <Folder size={18} strokeWidth={1.8} />
                     </span>
                     <span className="script-foundation-project-roll__body">
                       <strong>{project.title}</strong>

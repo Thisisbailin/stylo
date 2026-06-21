@@ -14,6 +14,17 @@ export type AgentAttachment = {
 export type AgentUiContext = {
   supplementalContextText?: string;
   mentionTags?: Array<{ kind: "character" | "location"; name: string; id?: string }>;
+  documentSelection?: {
+    kind: "script";
+    nodeId: string;
+    documentId?: string;
+    title: string;
+    selectedText: string;
+    range: {
+      start: number;
+      end: number;
+    };
+  };
 };
 
 export type AgentEnvironmentProjectDigest = {

@@ -14,7 +14,6 @@ import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
-import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
 import { QalamAgent } from "./QalamAgent";
@@ -30,6 +29,10 @@ import type { ModuleKey } from "./ModuleBar";
 import { FileText, List } from "lucide-react";
 import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
 import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
+import type {
+  AgentScriptEditProposalBatch,
+  QalamSubmitRequest,
+} from "./qalam/interactionTypes";
 
 interface CreativeWorkspaceProps {
   projectData: ProjectData;
@@ -336,15 +339,31 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [isQalamSending, setIsQalamSending] = useState(false);
   const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
   const [qalamCloseRequest, setQalamCloseRequest] = useState(0);
-  const [qalamSubmitRequest, setQalamSubmitRequest] = useState<{ id: number; text: string } | null>(null);
+  const [qalamSubmitRequest, setQalamSubmitRequest] = useState<QalamSubmitRequest | null>(null);
+  const [agentScriptEditProposals, setAgentScriptEditProposals] = useState<AgentScriptEditProposalBatch | null>(null);
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
-  const [windowWidth, setWindowWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
-  const [dismissedAutoQalamFirst, setDismissedAutoQalamFirst] = useState(false);
   const [composerInput, setComposerInput] = useState("");
-  const qalamFirstBreakpoint = 920;
-  const isAutoQalamFirst = windowWidth <= qalamFirstBreakpoint;
-  const isQalamFirstMode = isAutoQalamFirst ? !dismissedAutoQalamFirst : isQalamFirstManual;
+  const isQalamFirstMode = isQalamFirstManual;
+  const handleAgentScriptEditProposals = useCallback((batch: AgentScriptEditProposalBatch) => {
+    setAgentScriptEditProposals((current) => {
+      const nextNodeIds = new Set(batch.proposals.map((proposal) => proposal.nodeId));
+      return {
+        id: batch.id,
+        proposals: [
+          ...(current?.proposals || []).filter((proposal) => !nextNodeIds.has(proposal.nodeId)),
+          ...batch.proposals,
+        ],
+      };
+    });
+  }, []);
+  const resolveAgentScriptEditProposal = useCallback((proposalId: string) => {
+    setAgentScriptEditProposals((current) => {
+      if (!current) return current;
+      const proposals = current.proposals.filter((proposal) => proposal.id !== proposalId);
+      return proposals.length ? { ...current, proposals } : null;
+    });
+  }, []);
   const openAgentSettingsPanel = useCallback(
     (panel: AgentSettingsPanelKey = "provider", assetsSection?: MaterialsSectionKey) => {
       setAgentSettingsPanel(panel);
@@ -392,34 +411,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     if (!snapToGrid) setSnapGuide(null);
   }, [snapToGrid]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  const wasAutoQalamFirstRef = useRef(isAutoQalamFirst);
-  useEffect(() => {
-    if (isAutoQalamFirst && !wasAutoQalamFirstRef.current) {
-      setDismissedAutoQalamFirst(false);
-    }
-    wasAutoQalamFirstRef.current = isAutoQalamFirst;
-  }, [isAutoQalamFirst]);
-
   const toggleQalamFirstMode = useCallback(() => {
-    if (isAutoQalamFirst) {
-      setDismissedAutoQalamFirst((prev) => {
-        const next = !prev;
-        if (next) {
-          setQalamCloseRequest((count) => count + 1);
-        } else {
-          setQalamOpenRequest((count) => count + 1);
-        }
-        return next;
-      });
-      return;
-    }
     setIsQalamFirstManual((prev) => {
       const next = !prev;
       if (next) {
@@ -429,7 +421,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       }
       return next;
     });
-  }, [isAutoQalamFirst]);
+  }, []);
 
   useEffect(() => {
     setNodeFlowContext({
@@ -865,19 +857,14 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onCollapsedChange={(collapsed) => {
         setIsQalamCollapsed(collapsed);
         if (collapsed) {
-          if (isAutoQalamFirst) {
-            setDismissedAutoQalamFirst(true);
-          } else if (isQalamFirstMode) {
+          if (isQalamFirstMode) {
             setIsQalamFirstManual(false);
           }
-          return;
-        }
-        if (isAutoQalamFirst) {
-          setDismissedAutoQalamFirst(false);
         }
       }}
       onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
       onSendingChange={setIsQalamSending}
+      onScriptEditProposals={handleAgentScriptEditProposals}
       renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
     />
@@ -983,13 +970,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onAssetLoad={onAssetLoad}
         accountInfo={accountInfo}
         accountThemeControls={accountThemeControls}
+        showGlobalAccountTrigger
         showToolbar={false}
         variant="embedded"
-      />
-      <AssetsPanel
-        accountInfo={accountInfo}
-        syncIndicator={syncIndicator}
-        accountThemeControls={accountThemeControls}
       />
 
       <AgentSettingsPanel
@@ -1021,8 +1004,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           getAuthToken={getAuthToken}
           initialScriptNodeId={editingScriptNodeId}
           isQalamOpen={!isQalamCollapsed}
+          agentScriptEditProposals={agentScriptEditProposals}
+          onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
-          onSubmitToQalam={(text) => setQalamSubmitRequest({ id: Date.now(), text })}
+          onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), text, uiContext })}
           onClose={() => setEditingScriptNodeId(null)}
         />
       ) : null}

@@ -84,6 +84,9 @@ const uiContextInstruction = (uiContext?: AgentUiContext) => {
         .join("\n")}`
     );
   }
+  if (uiContext?.documentSelection) {
+    parts.push(`[Document Selection]\n${JSON.stringify(uiContext.documentSelection)}`);
+  }
   return parts.join("\n\n");
 };
 
