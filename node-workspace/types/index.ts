@@ -363,6 +363,9 @@ export interface NodeFlowNode {
   style?: NodeFlowNodeStyle;
   measured?: NodeFlowMeasured;
   selected?: boolean;
+  deletable?: boolean;
+  draggable?: boolean;
+  connectable?: boolean;
 }
 
 export interface NodeFlowLinkData extends Record<string, unknown> {

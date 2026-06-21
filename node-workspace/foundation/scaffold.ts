@@ -71,9 +71,7 @@ const FOUNDATION_LAYOUT = {
   root: { x: 80, y: 40 },
   projectIndex: { x: 360, y: 24 },
   timeAxis: { x: 80, y: 260 },
-  timeAxisIndex: { x: 360, y: 244 },
   spaceAxis: { x: 80, y: 780 },
-  spaceAxisIndex: { x: 360, y: 764 },
   blockStartX: 360,
   blockArchiveOffsetX: 270,
   timeBlockY: 500,
@@ -82,6 +80,31 @@ const FOUNDATION_LAYOUT = {
   blockRowHeight: 220,
 } as const;
 export const FOUNDATION_ROOT_NODE_PREFIX = "project-root-";
+export const FOUNDATION_PROJECT_INDEX_DEPTH = 3;
+export type FoundationAxis = "time" | "space";
+export type FoundationNodeRole =
+  | "project-root"
+  | "project-index"
+  | "axis-folder"
+  | "block-folder"
+  | "block-document";
+
+export const isFoundationBlockSelectionActive = (
+  activeAxis: FoundationAxis,
+  activeBlockId: string,
+  targetAxis: FoundationAxis,
+  targetBlockId: string
+) => activeAxis === targetAxis && activeBlockId === targetBlockId;
+
+type FoundationNodeMeta = {
+  foundationRole: FoundationNodeRole;
+  foundationAxis?: FoundationAxis;
+  foundationParentId?: string;
+  foundationOrder?: number;
+  locked?: boolean;
+  readOnly?: boolean;
+};
+
 export const DEFAULT_TIMELINE_HEAD: FoundationProjectHead = {
   title: "项目索引",
   content: "项目根文档，组织空间轴与时间轴的文件树。",
@@ -183,6 +206,7 @@ export const normalizeSpaceBlocks = (blocks?: FoundationSpaceBlock[]) =>
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((block, index) => ({
+      ...block,
       id: block.id || `space-block-${index + 1}`,
       title: block.title || `全局视角 ${index + 1}`,
       content: block.content || "",
@@ -195,15 +219,20 @@ export const normalizeSpaceBlocks = (blocks?: FoundationSpaceBlock[]) =>
 const createFoundationFolderNode = (
   id: string,
   title: string,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  meta: FoundationNodeMeta
 ): NodeFlowNode => ({
   id,
   type: "folder",
   position,
   style: FOLDER_NODE_SIZE,
+  deletable: false,
+  connectable: meta.foundationRole === "block-folder",
   data: {
     ...createDefaultNodeFlowNodeData("folder"),
     title,
+    ...meta,
+    locked: true,
   },
 });
 
@@ -211,12 +240,15 @@ const createFoundationArchiveNode = (
   id: string,
   title: string,
   content: string,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  meta: FoundationNodeMeta
 ): NodeFlowNode => ({
   id,
   type: "mdText",
   position,
   style: FOUNDATION_ARCHIVE_NODE_SIZE,
+  deletable: false,
+  connectable: false,
   data: {
     ...createDefaultNodeFlowNodeData("mdText"),
     documentId: id.replace(/^md-/, ""),
@@ -226,6 +258,8 @@ const createFoundationArchiveNode = (
     preview: compactMarkdownPreview(content),
     documentKind: "archive",
     format: "markdown",
+    ...meta,
+    locked: true,
   } as NodeFlowNodeData,
 });
 
@@ -240,10 +274,11 @@ export const createFoundationLink = (source: string, target: string): FlowState[
 const getFoundationSeedIds = (rootNodeId: string) => ({
   projectIndexId: `${rootNodeId}--project-index`,
   timeAxisId: `${rootNodeId}--time-axis`,
-  timeAxisIndexId: `${rootNodeId}--time-axis-index`,
   spaceAxisId: `${rootNodeId}--space-axis`,
-  spaceAxisIndexId: `${rootNodeId}--space-axis-index`,
 });
+
+const getLegacyAxisIndexIds = (rootNodeId: string) =>
+  new Set([`${rootNodeId}--time-axis-index`, `${rootNodeId}--space-axis-index`]);
 
 const createBlockArchiveMarkdown = (
   title: string,
@@ -261,31 +296,62 @@ export const buildFoundationGraphSeed = (
   const timeBlocks = createDefaultTimeline(durationMin).blocks;
   const spaceAxisBlocks = createDefaultSpaceBlocks();
   const nodes: NodeFlowNode[] = [
-    createFoundationFolderNode(rootNodeId, projectTitle || "项目", FOUNDATION_LAYOUT.root),
+    createFoundationFolderNode(rootNodeId, projectTitle || "项目", FOUNDATION_LAYOUT.root, {
+      foundationRole: "project-root",
+    }),
     createFoundationArchiveNode(
       ids.projectIndexId,
       "项目索引.md",
-      ["# 项目索引", "", `- 项目：${projectTitle || "项目"}`, `- 预估时长：${durationMin} min`, "", "## 结构", "", "- 时间轴", "- 空间轴"].join("\n"),
-      FOUNDATION_LAYOUT.projectIndex
+      [
+        "# 项目索引",
+        "",
+        `- 项目：${projectTitle || "项目"}`,
+        `- 预估时长：${durationMin} min`,
+        `- 文件夹解析深度：${FOUNDATION_PROJECT_INDEX_DEPTH}`,
+        "",
+        "## 结构",
+        "",
+        "- 时间轴",
+        "- 空间轴",
+      ].join("\n"),
+      FOUNDATION_LAYOUT.projectIndex,
+      {
+        foundationRole: "project-index",
+        foundationParentId: rootNodeId,
+        readOnly: true,
+      }
     ),
-    createFoundationFolderNode(ids.timeAxisId, "时间轴", FOUNDATION_LAYOUT.timeAxis),
-    createFoundationArchiveNode(ids.timeAxisIndexId, "时间轴索引.md", "# 时间轴\n\n由连接到时间轴文件夹的块文件夹自动解析。", FOUNDATION_LAYOUT.timeAxisIndex),
-    createFoundationFolderNode(ids.spaceAxisId, "空间轴", FOUNDATION_LAYOUT.spaceAxis),
-    createFoundationArchiveNode(ids.spaceAxisIndexId, "空间轴索引.md", "# 空间轴\n\n由连接到空间轴文件夹的块文件夹自动解析。", FOUNDATION_LAYOUT.spaceAxisIndex),
+    createFoundationFolderNode(ids.timeAxisId, "时间轴", FOUNDATION_LAYOUT.timeAxis, {
+      foundationRole: "axis-folder",
+      foundationAxis: "time",
+      foundationParentId: rootNodeId,
+    }),
+    createFoundationFolderNode(ids.spaceAxisId, "空间轴", FOUNDATION_LAYOUT.spaceAxis, {
+      foundationRole: "axis-folder",
+      foundationAxis: "space",
+      foundationParentId: rootNodeId,
+    }),
   ];
   const links: FlowState["links"] = [
     createFoundationLink(rootNodeId, ids.projectIndexId),
     createFoundationLink(rootNodeId, ids.timeAxisId),
     createFoundationLink(rootNodeId, ids.spaceAxisId),
-    createFoundationLink(ids.timeAxisId, ids.timeAxisIndexId),
-    createFoundationLink(ids.spaceAxisId, ids.spaceAxisIndexId),
   ];
 
   timeBlocks.forEach((block, index) => {
     const folderId = `${rootNodeId}--time-block-${index + 1}`;
     const archiveId = `${folderId}--archive`;
     nodes.push(
-      createFoundationFolderNode(folderId, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }),
+      createFoundationFolderNode(
+        folderId,
+        block.title,
+        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        {
+          foundationRole: "block-folder",
+          foundationAxis: "time",
+          foundationParentId: ids.timeAxisId,
+        }
+      ),
       createFoundationArchiveNode(
         archiveId,
         `${block.title}档案.md`,
@@ -294,7 +360,12 @@ export const buildFoundationGraphSeed = (
           `- 时长：${block.durationMin} min`,
           `- 颜色：${block.color}`,
         ], block.content),
-        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        {
+          foundationRole: "block-document",
+          foundationAxis: "time",
+          foundationParentId: folderId,
+        }
       )
     );
     links.push(createFoundationLink(ids.timeAxisId, folderId), createFoundationLink(folderId, archiveId));
@@ -304,7 +375,16 @@ export const buildFoundationGraphSeed = (
     const folderId = `${rootNodeId}--space-block-${index + 1}`;
     const archiveId = `${folderId}--archive`;
     nodes.push(
-      createFoundationFolderNode(folderId, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }),
+      createFoundationFolderNode(
+        folderId,
+        block.title,
+        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        {
+          foundationRole: "block-folder",
+          foundationAxis: "space",
+          foundationParentId: ids.spaceAxisId,
+        }
+      ),
       createFoundationArchiveNode(
         archiveId,
         `${block.title}档案.md`,
@@ -312,7 +392,12 @@ export const buildFoundationGraphSeed = (
           `- 宽度权重：${block.width}`,
           `- 颜色：${block.color}`,
         ], block.content),
-        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        {
+          foundationRole: "block-document",
+          foundationAxis: "space",
+          foundationParentId: folderId,
+        }
       )
     );
     links.push(createFoundationLink(ids.spaceAxisId, folderId), createFoundationLink(folderId, archiveId));
@@ -500,6 +585,24 @@ const getNodeTitle = (node?: NodeFlowNode | null) => {
   return data.title?.trim() || data.label?.trim() || data.filename?.trim() || node?.id || "";
 };
 
+const getFoundationNodeMeta = (node?: NodeFlowNode | null) =>
+  (node?.data || {}) as Partial<FoundationNodeMeta>;
+
+export const getFoundationNodeRole = (node?: NodeFlowNode | null) =>
+  getFoundationNodeMeta(node).foundationRole;
+
+export const isFoundationStructuralNode = (node?: NodeFlowNode | null) =>
+  Boolean(getFoundationNodeMeta(node).foundationRole);
+
+export const isFoundationStructuralLink = (
+  flow: Pick<FlowState, "flowNodes">,
+  link: FlowState["links"][number]
+) => {
+  const target = (flow.flowNodes || []).find((node) => node.id === link.target);
+  const meta = getFoundationNodeMeta(target);
+  return Boolean(meta.foundationRole && meta.foundationParentId === link.source);
+};
+
 const getMarkdownContent = (node?: NodeFlowNode | null) => {
   const data = (node?.data || {}) as { text?: string; content?: string };
   return typeof data.content === "string" ? data.content : data.text || "";
@@ -524,8 +627,18 @@ const parseMarkdownUserContent = (content: string) => {
   return content.slice(index + marker.length).trim() || "";
 };
 
+const getFoundationOrder = (node: NodeFlowNode) => {
+  const order = getFoundationNodeMeta(node).foundationOrder;
+  return typeof order === "number" && Number.isFinite(order) ? order : null;
+};
+
 const sortFoundationChildren = (items: NodeFlowNode[]) =>
-  items.slice().sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0) || (a.position?.x || 0) - (b.position?.x || 0));
+  items.slice().sort((a, b) => {
+    const aOrder = getFoundationOrder(a);
+    const bOrder = getFoundationOrder(b);
+    if (aOrder != null || bOrder != null) return (aOrder ?? Number.MAX_SAFE_INTEGER) - (bOrder ?? Number.MAX_SAFE_INTEGER);
+    return (a.position?.y || 0) - (b.position?.y || 0) || (a.position?.x || 0) - (b.position?.x || 0);
+  });
 
 const getOutgoingTargets = (links: FlowState["links"], sourceId: string) =>
   links.filter((link) => link.source === sourceId).map((link) => link.target);
@@ -533,37 +646,60 @@ const getOutgoingTargets = (links: FlowState["links"], sourceId: string) =>
 const findFirstArchiveChild = (
   nodeById: Map<string, NodeFlowNode>,
   links: FlowState["links"],
-  folderId: string,
-  titlePattern?: RegExp
+  folderId: string
 ) => {
   const children = getOutgoingTargets(links, folderId)
     .map((id) => nodeById.get(id))
     .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "mdText");
-  return titlePattern
-    ? children.find((node) => titlePattern.test(getNodeTitle(node))) || children[0] || null
-    : children[0] || null;
+  const structuralArchive = children.find(
+    (node) =>
+      getFoundationNodeMeta(node).foundationRole === "block-document" ||
+      node.id === `${folderId}--archive`
+  );
+  return structuralArchive || null;
 };
 
 const buildFoundationMarkdownIndex = (
   projectTitle: string,
   timeline: FoundationScaffold,
-  spaceAxisBlocks: FoundationSpaceBlock[]
+  spaceAxisBlocks: FoundationSpaceBlock[],
+  nodeById: Map<string, NodeFlowNode>
 ) => [
   "# 项目索引",
   "",
   `- 项目：${projectTitle}`,
   `- 预估时长：${timeline.durationMin} min`,
+  `- 文件夹解析深度：${FOUNDATION_PROJECT_INDEX_DEPTH}`,
   "",
   "## 时间轴",
   "",
-  ...timeline.blocks.map(
-    (block) =>
-      `- ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}（边界连接：${block.boundaryNodeIds.length}）`
-  ),
+  ...timeline.blocks.flatMap((block) => {
+    const archiveNodeId = (block as ParsedFoundationBlock).archiveNodeId;
+    const archiveTitle = archiveNodeId ? getNodeTitle(nodeById.get(archiveNodeId)) : "未生成块文档";
+    const relatedTitles = block.boundaryNodeIds
+      .map((nodeId) => getNodeTitle(nodeById.get(nodeId)))
+      .filter(Boolean);
+    return [
+      `- ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}`,
+      `  - 块文档：${archiveTitle}`,
+      `  - 其它连接：${relatedTitles.length ? relatedTitles.join("、") : "无"}`,
+    ];
+  }),
   "",
   "## 空间轴",
   "",
-  ...spaceAxisBlocks.map((block) => `- ${block.title}（边界连接：${block.boundaryNodeIds.length}）`),
+  ...spaceAxisBlocks.flatMap((block) => {
+    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
+    const archiveTitle = archiveNodeId ? getNodeTitle(nodeById.get(archiveNodeId)) : "未生成块文档";
+    const relatedTitles = block.boundaryNodeIds
+      .map((nodeId) => getNodeTitle(nodeById.get(nodeId)))
+      .filter(Boolean);
+    return [
+      `- ${block.title}`,
+      `  - 块文档：${archiveTitle}`,
+      `  - 其它连接：${relatedTitles.length ? relatedTitles.join("、") : "无"}`,
+    ];
+  }),
 ].join("\n");
 
 export const parseFoundationGraph = (
@@ -586,9 +722,21 @@ export const parseFoundationGraph = (
     .map((id) => nodeById.get(id))
     .filter((node): node is NodeFlowNode => Boolean(node));
   const childFolders = rootChildren.filter((node) => node.type === "folder");
-  const timeAxis = childFolders.find((node) => node.id.endsWith("--time-axis") || getNodeTitle(node).includes("时间")) || childFolders[0];
-  const spaceAxis = childFolders.find((node) => node.id.endsWith("--space-axis") || getNodeTitle(node).includes("空间")) || childFolders.find((node) => node.id !== timeAxis?.id) || childFolders[1];
-  const projectIndex = rootChildren.find((node) => node.type === "mdText");
+  const timeAxis = childFolders.find(
+    (node) =>
+      getFoundationNodeMeta(node).foundationAxis === "time" ||
+      node.id.endsWith("--time-axis") ||
+      getNodeTitle(node).includes("时间")
+  ) || childFolders[0];
+  const spaceAxis = childFolders.find(
+    (node) =>
+      getFoundationNodeMeta(node).foundationAxis === "space" ||
+      node.id.endsWith("--space-axis") ||
+      getNodeTitle(node).includes("空间")
+  ) || childFolders.find((node) => node.id !== timeAxis?.id) || childFolders[1];
+  const projectIndex = rootChildren.find(
+    (node) => node.type === "mdText" && getFoundationNodeMeta(node).foundationRole === "project-index"
+  ) || rootChildren.find((node) => node.type === "mdText");
 
   const parseTimeBlocks = (axisId?: string): ParsedFoundationBlock[] => {
     if (!axisId) return createDefaultTimeline(project.durationMin).blocks;
@@ -599,7 +747,7 @@ export const parseFoundationGraph = (
     );
     if (!folderChildren.length) return createDefaultTimeline(project.durationMin).blocks;
     const blocks = folderChildren.map((folder, index) => {
-      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id, /档案|archive/i);
+      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id);
       const content = getMarkdownContent(archive);
       return {
         id: folder.id,
@@ -625,7 +773,7 @@ export const parseFoundationGraph = (
     );
     if (!folderChildren.length) return createDefaultSpaceBlocks();
     return folderChildren.map((folder, index) => {
-      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id, /档案|archive/i);
+      const archive = findFirstArchiveChild(nodeById, flow.links, folder.id);
       const content = getMarkdownContent(archive);
       return {
         id: folder.id,
@@ -663,6 +811,256 @@ export const parseFoundationGraph = (
   };
 };
 
+const hasFoundationMeta = (node: NodeFlowNode, meta: FoundationNodeMeta) => {
+  const current = getFoundationNodeMeta(node);
+  return (
+    current.foundationRole === meta.foundationRole &&
+    current.foundationAxis === meta.foundationAxis &&
+    current.foundationParentId === meta.foundationParentId &&
+    current.locked === true &&
+    Boolean(current.readOnly) === Boolean(meta.readOnly) &&
+    node.deletable === false &&
+    node.connectable === (meta.foundationRole === "block-folder")
+  );
+};
+
+const applyFoundationMeta = (
+  node: NodeFlowNode,
+  meta: FoundationNodeMeta,
+  title?: string
+): NodeFlowNode => {
+  const currentTitle = getNodeTitle(node);
+  if (hasFoundationMeta(node, meta) && (!title || currentTitle === title)) return node;
+  return {
+    ...node,
+    deletable: false,
+    connectable: meta.foundationRole === "block-folder",
+    data: {
+      ...node.data,
+      ...(title ? { title } : {}),
+      foundationRole: meta.foundationRole,
+      foundationAxis: meta.foundationAxis,
+      foundationParentId: meta.foundationParentId,
+      locked: true,
+      readOnly: Boolean(meta.readOnly),
+    } as NodeFlowNodeData,
+  };
+};
+
+const sameFoundationLink = (
+  left: FlowState["links"][number],
+  right: FlowState["links"][number]
+) => left.source === right.source && left.target === right.target;
+
+export const ensureFoundationGraphSkeleton = (
+  flow: FlowState,
+  project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
+): FlowState => {
+  const seed = buildFoundationGraphSeed(project.title, project.durationMin, project.rootNodeId);
+  const legacyAxisIndexIds = getLegacyAxisIndexIds(project.rootNodeId);
+  let changed = false;
+  const nodes = (flow.flowNodes || []).filter((node) => {
+    const keep = !legacyAxisIndexIds.has(node.id);
+    if (!keep) changed = true;
+    return keep;
+  });
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  seed.nodes.forEach((template) => {
+    const existing = nodeById.get(template.id);
+    if (!existing) {
+      nodes.push(template);
+      nodeById.set(template.id, template);
+      changed = true;
+      return;
+    }
+    const templateMeta = getFoundationNodeMeta(template) as FoundationNodeMeta;
+    const next = applyFoundationMeta(existing, templateMeta, getNodeTitle(template));
+    if (next !== existing) {
+      const index = nodes.findIndex((node) => node.id === existing.id);
+      nodes[index] = next;
+      nodeById.set(next.id, next);
+      changed = true;
+    }
+  });
+
+  const ids = getFoundationSeedIds(project.rootNodeId);
+  const rootTargets = new Set([ids.projectIndexId, ids.timeAxisId, ids.spaceAxisId]);
+  const axisById = new Map<string, FoundationAxis>([
+    [ids.timeAxisId, "time"],
+    [ids.spaceAxisId, "space"],
+  ]);
+  let links = flow.links.filter((link) => {
+    if (legacyAxisIndexIds.has(link.source) || legacyAxisIndexIds.has(link.target)) {
+      changed = true;
+      return false;
+    }
+    if (link.source === project.rootNodeId && !rootTargets.has(link.target)) {
+      changed = true;
+      return false;
+    }
+    const axis = axisById.get(link.source);
+    if (axis && nodeById.get(link.target)?.type !== "folder") {
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+
+  seed.links.forEach((requiredLink) => {
+    if (links.some((link) => sameFoundationLink(link, requiredLink))) return;
+    links.push(requiredLink);
+    changed = true;
+  });
+
+  axisById.forEach((axis, axisId) => {
+    const blockIds = Array.from(
+      new Set(links.filter((link) => link.source === axisId).map((link) => link.target))
+    );
+    blockIds.forEach((blockId, blockIndex) => {
+      const block = nodeById.get(blockId);
+      if (!block || block.type !== "folder") return;
+      const nextBlock = applyFoundationMeta(block, {
+        foundationRole: "block-folder",
+        foundationAxis: axis,
+        foundationParentId: axisId,
+      });
+      if (nextBlock !== block) {
+        const index = nodes.findIndex((node) => node.id === block.id);
+        nodes[index] = nextBlock;
+        nodeById.set(block.id, nextBlock);
+        changed = true;
+      }
+
+      const archive = findFirstArchiveChild(nodeById, links, blockId);
+      if (archive) {
+        const nextArchive = applyFoundationMeta(archive, {
+          foundationRole: "block-document",
+          foundationAxis: axis,
+          foundationParentId: blockId,
+        });
+        if (nextArchive !== archive) {
+          const index = nodes.findIndex((node) => node.id === archive.id);
+          nodes[index] = nextArchive;
+          nodeById.set(archive.id, nextArchive);
+          changed = true;
+        }
+        return;
+      }
+
+      const archiveId = `${blockId}--archive`;
+      const isTime = axis === "time";
+      const content = createBlockArchiveMarkdown(
+        getNodeTitle(block),
+        isTime ? "时间轴" : "空间轴",
+        isTime
+          ? ["- 起点：0 min", "- 时长：12 min", `- 颜色：${TIMELINE_COLORS[blockIndex % TIMELINE_COLORS.length].value}`]
+          : ["- 宽度权重：1", `- 颜色：${TIMELINE_COLORS[blockIndex % TIMELINE_COLORS.length].value}`],
+        ""
+      );
+      const archiveNode = createFoundationArchiveNode(
+        archiveId,
+        `${getNodeTitle(block)}档案.md`,
+        content,
+        {
+          x: (block.position?.x || FOUNDATION_LAYOUT.blockStartX) + FOUNDATION_LAYOUT.blockArchiveOffsetX,
+          y: (block.position?.y || (isTime ? FOUNDATION_LAYOUT.timeBlockY : FOUNDATION_LAYOUT.spaceBlockY)) - 18,
+        },
+        {
+          foundationRole: "block-document",
+          foundationAxis: axis,
+          foundationParentId: blockId,
+        }
+      );
+      nodes.push(archiveNode);
+      nodeById.set(archiveNode.id, archiveNode);
+      links.push(createFoundationLink(blockId, archiveId));
+      changed = true;
+    });
+  });
+
+  links = links.filter((link) => {
+    const source = nodeById.get(link.source);
+    const target = nodeById.get(link.target);
+    if (!source || !target) {
+      changed = true;
+      return false;
+    }
+    const sourceMeta = getFoundationNodeMeta(source);
+    const targetMeta = getFoundationNodeMeta(target);
+    if (targetMeta.foundationRole === "project-root") {
+      changed = true;
+      return false;
+    }
+    if (
+      sourceMeta.foundationRole === "project-index" ||
+      sourceMeta.foundationRole === "block-document"
+    ) {
+      changed = true;
+      return false;
+    }
+    if (
+      targetMeta.foundationRole &&
+      targetMeta.foundationParentId &&
+      targetMeta.foundationParentId !== link.source
+    ) {
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+
+  const seenRelations = new Set<string>();
+  links = links.filter((link) => {
+    const relation = `${link.source}\u0000${link.target}`;
+    if (seenRelations.has(relation)) {
+      changed = true;
+      return false;
+    }
+    seenRelations.add(relation);
+    return true;
+  });
+
+  const normalizedFlow: FlowState = {
+    ...flow,
+    flowNodes: nodes,
+    links,
+  };
+  const parsed = parseFoundationGraph(normalizedFlow, project);
+  const projectIndexContent = buildFoundationMarkdownIndex(
+    project.title,
+    parsed.timeline,
+    normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks),
+    nodeById
+  );
+  const projectIndex = nodeById.get(ids.projectIndexId);
+  if (projectIndex) {
+    const data = projectIndex.data as NodeFlowNodeData & { text?: string; content?: string; preview?: string };
+    if (data.content !== projectIndexContent || data.text !== projectIndexContent) {
+      const nextProjectIndex: NodeFlowNode = {
+        ...projectIndex,
+        data: {
+          ...projectIndex.data,
+          text: projectIndexContent,
+          content: projectIndexContent,
+          preview: compactMarkdownPreview(projectIndexContent),
+        } as NodeFlowNodeData,
+      };
+      const index = nodes.findIndex((node) => node.id === projectIndex.id);
+      nodes[index] = nextProjectIndex;
+      nodeById.set(projectIndex.id, nextProjectIndex);
+      changed = true;
+    }
+  }
+
+  if (!changed) return flow;
+  return {
+    ...normalizedFlow,
+    revision: (flow.revision || 0) + 1,
+    flowNodes: nodes,
+  };
+};
+
 export const getFoundationScaffoldNodeIds = (
   flow: FlowState,
   project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
@@ -674,11 +1072,6 @@ export const getFoundationScaffoldNodeIds = (
   if (parsed.timeAxisNodeId) ids.add(parsed.timeAxisNodeId);
   if (parsed.spaceAxisNodeId) ids.add(parsed.spaceAxisNodeId);
   if (parsed.headArchiveNodeId) ids.add(parsed.headArchiveNodeId);
-
-  const timeIndex = findFirstArchiveChild(nodeById, flow.links, parsed.timeAxisNodeId, /索引|index/i);
-  const spaceIndex = findFirstArchiveChild(nodeById, flow.links, parsed.spaceAxisNodeId, /索引|index/i);
-  if (timeIndex) ids.add(timeIndex.id);
-  if (spaceIndex) ids.add(spaceIndex.id);
 
   parsed.timeline.blocks.forEach((block) => {
     ids.add(block.id);
@@ -701,15 +1094,11 @@ export const layoutFoundationGraph = (
   const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
   const timeBlocks = parsed.timeline.blocks;
   const spaceAxisBlocks = normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks);
-  const timeIndex = findFirstArchiveChild(nodeById, flow.links, parsed.timeAxisNodeId, /索引|index/i);
-  const spaceIndex = findFirstArchiveChild(nodeById, flow.links, parsed.spaceAxisNodeId, /索引|index/i);
   const positionById = new Map<string, { x: number; y: number }>([
     [parsed.rootNodeId, FOUNDATION_LAYOUT.root],
     ...(parsed.headArchiveNodeId ? [[parsed.headArchiveNodeId, FOUNDATION_LAYOUT.projectIndex] as const] : []),
     ...(parsed.timeAxisNodeId ? [[parsed.timeAxisNodeId, FOUNDATION_LAYOUT.timeAxis] as const] : []),
-    ...(timeIndex ? [[timeIndex.id, FOUNDATION_LAYOUT.timeAxisIndex] as const] : []),
     ...(parsed.spaceAxisNodeId ? [[parsed.spaceAxisNodeId, FOUNDATION_LAYOUT.spaceAxis] as const] : []),
-    ...(spaceIndex ? [[spaceIndex.id, FOUNDATION_LAYOUT.spaceAxisIndex] as const] : []),
   ]);
 
   timeBlocks.forEach((block, index) => {
@@ -723,25 +1112,12 @@ export const layoutFoundationGraph = (
     if (archiveNodeId) positionById.set(archiveNodeId, { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
   });
 
-  const projectIndexContent = buildFoundationMarkdownIndex(project.title, parsed.timeline, spaceAxisBlocks);
-  const timeIndexContent = [
-    "# 时间轴",
-    "",
-    `- 总时长：${parsed.timeline.durationMin} min`,
-    `- 块数量：${timeBlocks.length}`,
-    "",
-    ...timeBlocks.map(
-      (block) =>
-        `- ${formatTimelineTime(block.startMin)}-${formatTimelineTime(block.startMin + block.durationMin)} ${block.title}（边界连接：${block.boundaryNodeIds.length}）`
-    ),
-  ].join("\n");
-  const spaceIndexContent = [
-    "# 空间轴",
-    "",
-    `- 块数量：${spaceAxisBlocks.length}`,
-    "",
-    ...spaceAxisBlocks.map((block) => `- ${block.title}（边界连接：${block.boundaryNodeIds.length}）`),
-  ].join("\n");
+  const projectIndexContent = buildFoundationMarkdownIndex(
+    project.title,
+    parsed.timeline,
+    spaceAxisBlocks,
+    nodeById
+  );
 
   return {
     ...flow,
@@ -751,11 +1127,7 @@ export const layoutFoundationGraph = (
       const content =
         node.id === parsed.headArchiveNodeId
           ? projectIndexContent
-          : node.id === timeIndex?.id
-            ? timeIndexContent
-            : node.id === spaceIndex?.id
-              ? spaceIndexContent
-              : null;
+          : null;
       return {
         ...node,
         ...(nextPosition ? { position: nextPosition } : {}),
@@ -794,7 +1166,7 @@ export const applyFoundationTimelineToGraph = (
 
   const removedArchiveIds = new Set<string>();
   removedIds.forEach((id) => {
-    const archive = findFirstArchiveChild(nodeById, flow.links, id, /档案|archive/i);
+    const archive = findFirstArchiveChild(nodeById, flow.links, id);
     if (archive) removedArchiveIds.add(archive.id);
   });
 
@@ -804,19 +1176,36 @@ export const applyFoundationTimelineToGraph = (
       const timeBlock = nextTimeline.blocks.find((block) => block.id === node.id);
       const spaceBlock = nextSpaceBlocks.find((block) => block.id === node.id);
       if (timeBlock || spaceBlock) {
+        const timeIndex = timeBlock ? nextTimeline.blocks.findIndex((block) => block.id === node.id) : -1;
+        const spaceIndex = spaceBlock ? nextSpaceBlocks.findIndex((block) => block.id === node.id) : -1;
+        const orderedPosition = timeBlock
+          ? {
+              x: FOUNDATION_LAYOUT.blockStartX + (timeIndex % 2) * FOUNDATION_LAYOUT.blockColumnWidth,
+              y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(timeIndex / 2) * FOUNDATION_LAYOUT.blockRowHeight,
+            }
+          : {
+              x: FOUNDATION_LAYOUT.blockStartX + (spaceIndex % 2) * FOUNDATION_LAYOUT.blockColumnWidth,
+              y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(spaceIndex / 2) * FOUNDATION_LAYOUT.blockRowHeight,
+            };
         return {
           ...node,
+          position: orderedPosition,
           data: {
             ...node.data,
             title: (timeBlock || spaceBlock)?.title || getNodeTitle(node),
           },
         };
       }
-      const parentLink = flow.links.find((link) => link.target === node.id);
+      const nodeMeta = getFoundationNodeMeta(node);
+      const parentLink = flow.links.find(
+        (link) =>
+          link.target === node.id &&
+          (nodeMeta.foundationRole === "block-document" || node.id === `${link.source}--archive`)
+      );
       const parentBlockId = parentLink?.source || "";
       const parentTimeBlock = nextTimeline.blocks.find((block) => block.id === parentBlockId);
       const parentSpaceBlock = nextSpaceBlocks.find((block) => block.id === parentBlockId);
-      if (node.type === "mdText" && parentTimeBlock) {
+      if (node.type === "mdText" && parentTimeBlock && parentLink) {
         const content = createBlockArchiveMarkdown(parentTimeBlock.title, "时间轴", [
           `- 起点：${parentTimeBlock.startMin} min`,
           `- 时长：${parentTimeBlock.durationMin} min`,
@@ -833,7 +1222,7 @@ export const applyFoundationTimelineToGraph = (
           },
         };
       }
-      if (node.type === "mdText" && parentSpaceBlock) {
+      if (node.type === "mdText" && parentSpaceBlock && parentLink) {
         const content = createBlockArchiveMarkdown(parentSpaceBlock.title, "空间轴", [
           `- 宽度权重：${parentSpaceBlock.width}`,
           `- 颜色：${parentSpaceBlock.color}`,
@@ -877,7 +1266,16 @@ export const applyFoundationTimelineToGraph = (
   nextTimeline.blocks.forEach((block, index) => {
     if (currentTimeIds.has(block.id)) return;
     const archiveId = `${block.id}--archive`;
-    addNode(createFoundationFolderNode(block.id, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }));
+    addNode(createFoundationFolderNode(
+      block.id,
+      block.title,
+      { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+      {
+        foundationRole: "block-folder",
+        foundationAxis: "time",
+        foundationParentId: parsed.timeAxisNodeId,
+      }
+    ));
     addNode(createFoundationArchiveNode(
       archiveId,
       `${block.title}档案.md`,
@@ -886,7 +1284,12 @@ export const applyFoundationTimelineToGraph = (
         `- 时长：${block.durationMin} min`,
         `- 颜色：${block.color}`,
       ], block.content),
-      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+      {
+        foundationRole: "block-document",
+        foundationAxis: "time",
+        foundationParentId: block.id,
+      }
     ));
     if (parsed.timeAxisNodeId) addLink(createFoundationLink(parsed.timeAxisNodeId, block.id));
     addLink(createFoundationLink(block.id, archiveId));
@@ -895,7 +1298,16 @@ export const applyFoundationTimelineToGraph = (
   nextSpaceBlocks.forEach((block, index) => {
     if (currentSpaceIds.has(block.id)) return;
     const archiveId = `${block.id}--archive`;
-    addNode(createFoundationFolderNode(block.id, block.title, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }));
+    addNode(createFoundationFolderNode(
+      block.id,
+      block.title,
+      { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+      {
+        foundationRole: "block-folder",
+        foundationAxis: "space",
+        foundationParentId: parsed.spaceAxisNodeId,
+      }
+    ));
     addNode(createFoundationArchiveNode(
       archiveId,
       `${block.title}档案.md`,
@@ -903,7 +1315,12 @@ export const applyFoundationTimelineToGraph = (
         `- 宽度权重：${block.width}`,
         `- 颜色：${block.color}`,
       ], block.content),
-      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight }
+      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+      {
+        foundationRole: "block-document",
+        foundationAxis: "space",
+        foundationParentId: block.id,
+      }
     ));
     if (parsed.spaceAxisNodeId) addLink(createFoundationLink(parsed.spaceAxisNodeId, block.id));
     addLink(createFoundationLink(block.id, archiveId));

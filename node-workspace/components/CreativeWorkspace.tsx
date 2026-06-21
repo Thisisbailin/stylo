@@ -14,11 +14,12 @@ import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
+import { AssetsPanel } from "./AssetsPanel";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useFlowSurface } from "./FlowSurface";
-import { CanvasBackgroundField, type CanvasBackgroundFieldHandle } from "./CanvasBackgroundField";
+import { CanvasBackgroundField } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
@@ -364,13 +365,12 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setViewportState,
     readingMode,
     setReadingMode,
-    viewport,
     currentNodeId,
     setCurrentNode,
     addToGlobalHistory,
     globalAssetHistory,
   } = useNodeFlowStore();
-  const { setViewport, screenToFlowPosition, getViewport, fitView } = useReactFlow();
+  const { setViewport, screenToFlowPosition, getViewport, fitView, zoomTo } = useReactFlow();
 
   const minZoom = 0.25;
   const maxZoom = 4;
@@ -383,9 +383,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const initialCanvasViewport = projectData.canvas?.viewport || null;
   const [zoomValue, setZoomValue] = useState(() => initialCanvasViewport?.zoom ?? getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => initialCanvasViewport || getViewport());
-  const liveViewportRef = useRef(liveViewport);
-  const viewportCommitTimeoutRef = useRef<number | null>(null);
-  const backgroundFieldRef = useRef<CanvasBackgroundFieldHandle | null>(null);
 
   useEffect(() => {
     setAppConfig(config);
@@ -470,7 +467,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     [setProjectData]
   );
 
-  const lastViewportRef = useRef<string>("");
   const didInitFitRef = useRef(false);
   const didHydrateCanvasViewportRef = useRef(false);
   useEffect(() => {
@@ -478,40 +474,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     const savedViewport = projectData.canvas?.viewport;
     if (!savedViewport) return;
     didHydrateCanvasViewportRef.current = true;
-    liveViewportRef.current = savedViewport;
     setLiveViewport(savedViewport);
     setZoomValue(savedViewport.zoom);
     setViewport(savedViewport, { duration: 0 });
     setViewportState(savedViewport);
   }, [projectData.canvas?.viewport, setViewport, setViewportState]);
-
-  useEffect(() => {
-    if (!viewport) return;
-    const key = `${viewport.x}:${viewport.y}:${viewport.zoom}`;
-    if (lastViewportRef.current === key) return;
-    lastViewportRef.current = key;
-    setViewport(viewport, { duration: 0 });
-  }, [setViewport, viewport]);
-
-  useEffect(() => {
-    if (!viewport) return;
-    liveViewportRef.current = viewport;
-    setLiveViewport(viewport);
-  }, [viewport]);
-
-  useEffect(() => {
-    if (!liveViewport) return;
-    setZoomValue(liveViewport.zoom);
-  }, [liveViewport]);
-
-  useEffect(() => {
-    return () => {
-      if (viewportCommitTimeoutRef.current != null) {
-        window.clearTimeout(viewportCommitTimeoutRef.current);
-        viewportCommitTimeoutRef.current = null;
-      }
-    };
-  }, []);
 
   const handleQalamComposerAction = useCallback(() => {
     const text = composerInput.trim();
@@ -529,11 +496,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
   useEffect(() => {
     if (didInitFitRef.current) return;
-    if (viewport) return;
+    if (projectData.canvas?.viewport) return;
     if (!nodes.length) return;
     fitView({ padding: 0.2, duration: 0 });
     didInitFitRef.current = true;
-  }, [fitView, nodes.length, viewport]);
+  }, [fitView, nodes.length, projectData.canvas?.viewport]);
 
   useEffect(() => {
     const videoNodes = nodes.filter(
@@ -570,74 +537,21 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const handleZoomChange = useCallback(
     (value: number) => {
       const nextZoom = Math.min(maxZoom, Math.max(minZoom, value));
-      const current = liveViewportRef.current || getViewport();
-      const nextViewport = { ...current, zoom: nextZoom };
-      liveViewportRef.current = nextViewport;
-      setLiveViewport(nextViewport);
       setZoomValue(nextZoom);
-      setViewport(nextViewport, { duration: 120 });
-      setViewportState(nextViewport);
-      persistCanvasViewport(nextViewport);
+      void zoomTo(nextZoom, { duration: 120 });
     },
-    [getViewport, maxZoom, minZoom, persistCanvasViewport, setViewport, setViewportState]
+    [maxZoom, minZoom, zoomTo]
   );
 
   const handleSharedViewportChange = useCallback(
     (nextViewport: SharedCanvasViewport, options?: { commit?: boolean }) => {
-      liveViewportRef.current = nextViewport;
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("qalam:viewport-frame", { detail: nextViewport }));
-      }
-      backgroundFieldRef.current?.requestDraw();
-      if (options?.commit) {
-        setLiveViewport(nextViewport);
-        setZoomValue(nextViewport.zoom);
-        setViewportState(nextViewport);
-        persistCanvasViewport(nextViewport);
-      }
+      if (!options?.commit) return;
+      setLiveViewport(nextViewport);
+      setZoomValue(nextViewport.zoom);
+      setViewportState(nextViewport);
+      persistCanvasViewport(nextViewport);
     },
     [persistCanvasViewport, setViewportState]
-  );
-
-  const handleCanvasWheelCapture = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
-      if (isLocked || !event.ctrlKey) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      const rect = event.currentTarget.getBoundingClientRect();
-      const pointerX = event.clientX - rect.left;
-      const pointerY = event.clientY - rect.top;
-      const current = liveViewportRef.current || getViewport();
-      const normalizedDelta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-      const zoomFactor = Math.exp(-normalizedDelta * 0.002);
-      const nextZoom = Math.min(maxZoom, Math.max(minZoom, current.zoom * zoomFactor));
-      if (!Number.isFinite(nextZoom) || Math.abs(nextZoom - current.zoom) < 0.0001) return;
-
-      const flowX = (pointerX - current.x) / current.zoom;
-      const flowY = (pointerY - current.y) / current.zoom;
-      const nextViewport = {
-        x: pointerX - flowX * nextZoom,
-        y: pointerY - flowY * nextZoom,
-        zoom: nextZoom,
-      };
-
-      setViewport(nextViewport, { duration: 0 });
-      handleSharedViewportChange(nextViewport);
-      if (viewportCommitTimeoutRef.current != null) {
-        window.clearTimeout(viewportCommitTimeoutRef.current);
-      }
-      viewportCommitTimeoutRef.current = window.setTimeout(() => {
-        viewportCommitTimeoutRef.current = null;
-        const committed = liveViewportRef.current;
-        setLiveViewport(committed);
-        setZoomValue(committed.zoom);
-        setViewportState(committed);
-        persistCanvasViewport(committed);
-      }, 120);
-    },
-    [getViewport, handleSharedViewportChange, isLocked, maxZoom, minZoom, persistCanvasViewport, setViewport, setViewportState]
   );
 
   const handleToggleLock = useCallback(() => {
@@ -976,19 +890,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         data-zoomed={zoomValue > 1}
         data-connecting={false}
         style={backgroundStyle}
-        onWheelCapture={handleCanvasWheelCapture}
       >
         <CanvasBackgroundField
-          ref={backgroundFieldRef}
           pattern={bgPattern}
           baseColor={activeTheme.bg}
           primaryColor={activeTheme.pattern}
           secondaryColor={activeTheme.patternSoft}
           accentColor={activeTheme.accentSoft}
-          viewport={liveViewport}
-          viewportRef={liveViewportRef}
-          alignmentGuide={snapGuide}
-          active={!showThemeModal}
         />
         {flowSurface.underlays}
         <ReactFlow
@@ -1003,7 +911,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onNodeDragStart={flowSurface.onNodeDragStart}
           onNodeDrag={flowSurface.onNodeDrag}
           onNodeDragStop={flowSurface.onNodeDragStop}
-          onMove={(_, vp) => handleSharedViewportChange(vp)}
           onMoveEnd={(_, vp) => {
             handleSharedViewportChange(vp, { commit: true });
           }}
@@ -1076,9 +983,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onAssetLoad={onAssetLoad}
         accountInfo={accountInfo}
         accountThemeControls={accountThemeControls}
-        showGlobalAccountTrigger
         showToolbar={false}
         variant="embedded"
+      />
+      <AssetsPanel
+        accountInfo={accountInfo}
+        syncIndicator={syncIndicator}
+        accountThemeControls={accountThemeControls}
       />
 
       <AgentSettingsPanel

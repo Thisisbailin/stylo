@@ -5,6 +5,12 @@ import {
   findScriptResourceNode,
   type ScriptResourceNode,
 } from "./scriptResources";
+import {
+  assertGenericWriteAllowedForNode,
+  assertPatchDoesNotTouchFoundationMeta,
+  findNodeByIdOrRef,
+  getFoundationRole,
+} from "./foundationAccess";
 
 const DOCUMENT_KINDS = ["any", "script", "archive", "note"] as const;
 type DocumentKind = (typeof DOCUMENT_KINDS)[number];
@@ -432,6 +438,11 @@ export const createDocumentToolDef = {
     }
     const nodeType = kind === "script" ? "scriptPage" : kind === "archive" ? "mdText" : "text";
     const title = trim(raw.title) || (kind === "script" ? "剧本文档" : kind === "archive" ? "档案文档" : "文本节点");
+    const parentId = trim(raw.parent_id ?? raw.parentId) || undefined;
+    if (parentId) {
+      const parentNode = findNodeByIdOrRef(bridge.getNodeFlowSnapshot(), { nodeId: parentId });
+      assertGenericWriteAllowedForNode(parentNode, "create_document parent");
+    }
     const created = bridge.createNodeFlowNode({
       expectedRevision: bridge.getNodeFlowSnapshot().revision,
       type: nodeType,
@@ -442,7 +453,7 @@ export const createDocumentToolDef = {
       documentId: kind === "script" || kind === "archive" ? `${kind}-${Date.now().toString(36)}` : undefined,
       x: typeof raw.x === "number" ? raw.x : undefined,
       y: typeof raw.y === "number" ? raw.y : undefined,
-      parentId: trim(raw.parent_id ?? raw.parentId) || undefined,
+      parentId,
     });
     return {
       target: "document",
@@ -479,12 +490,17 @@ export const updateDocumentToolDef = {
     }
     const rawNodeId = getRawNodeId(node);
     if (!rawNodeId) throw new Error("update_document could not resolve the backing Flow node id.");
+    const backingNode = findNodeByIdOrRef(bridge.getNodeFlowSnapshot(), { nodeId: rawNodeId });
+    assertGenericWriteAllowedForNode(backingNode, "update_document", { allowBlockDocument: true });
     const currentContent = typeof node.body.content === "string" ? node.body.content : "";
     const contentUpdate = buildContentUpdate(currentContent, raw);
     const patch =
       raw.patch && typeof raw.patch === "object" && !Array.isArray(raw.patch)
         ? { ...(raw.patch as Record<string, unknown>) }
         : {};
+    if (getFoundationRole(backingNode) === "block-document") {
+      assertPatchDoesNotTouchFoundationMeta(patch);
+    }
     const title = trim(raw.title);
     if (title) patch.title = title;
     if (contentUpdate) {

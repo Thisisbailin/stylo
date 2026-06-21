@@ -144,6 +144,9 @@ export const alignPositionChangesToNodeEdges = <TNode extends AlignableNode>(
     if (!node) return change;
     const result = getEdgeAlignedPosition(node, nodes, change.position);
     lastGuide = result.guide;
+    if (change.dragging) {
+      return change;
+    }
     return {
       ...change,
       position: result.position,

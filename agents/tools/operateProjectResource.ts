@@ -3,6 +3,7 @@ import type {
   QalamAgentBridge,
 } from "../bridge/qalamBridge";
 import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
+import { assertGenericWriteAllowedForNode, findNodeByIdOrRef } from "./foundationAccess";
 
 export const OPERATE_NODEFLOW_ENTITIES = ["node", "link"] as const;
 export const OPERATE_NODEFLOW_ACTIONS = ["create", "update", "move", "connect"] as const;
@@ -414,6 +415,12 @@ export const operateProjectResourceToolDef = {
     const expectedRevision = workflow.revision;
 
     if (args.entity === "node" && args.action === "create") {
+      if (args.parentId) {
+        assertGenericWriteAllowedForNode(
+          findNodeByIdOrRef(workflow, { nodeId: args.parentId }),
+          "operate_project_resource create parent"
+        );
+      }
       const nodeType = resolveNodeType(args.nodeKind);
       const created = bridge.createNodeFlowNode({
         expectedRevision,
@@ -439,6 +446,7 @@ export const operateProjectResourceToolDef = {
         entity: "node",
         target: "nodeflow:node",
         action: "create",
+        updated: true,
         artifact: {
           kind: "node",
           target: "nodeflow:node",
@@ -457,6 +465,10 @@ export const operateProjectResourceToolDef = {
     }
 
     if (args.entity === "node" && args.action === "update") {
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.nodeId, nodeRef: args.nodeRef }),
+        "operate_project_resource update"
+      );
       const updated = bridge.updateNodeFlowNode({
         expectedRevision,
         nodeId: args.nodeId,
@@ -468,6 +480,7 @@ export const operateProjectResourceToolDef = {
         entity: "node",
         target: "nodeflow:node",
         action: "update",
+        updated: true,
         artifact: {
           kind: "node",
           target: "nodeflow:node",
@@ -487,6 +500,10 @@ export const operateProjectResourceToolDef = {
     }
 
     if (args.entity === "node" && args.action === "move") {
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.nodeId, nodeRef: args.nodeRef }),
+        "operate_project_resource move"
+      );
       const moved = bridge.moveNodeFlowNode({
         expectedRevision,
         nodeId: args.nodeId,
@@ -499,6 +516,7 @@ export const operateProjectResourceToolDef = {
         entity: "node",
         target: "nodeflow:node",
         action: "move",
+        updated: true,
         artifact: {
           kind: "node",
           target: "nodeflow:node",
@@ -518,6 +536,14 @@ export const operateProjectResourceToolDef = {
     }
 
     if (args.entity === "link" && args.action === "connect" && args.linkKind === "canvas") {
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.sourceNodeId, nodeRef: args.sourceRef }),
+        "operate_project_resource connect source"
+      );
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.targetNodeId, nodeRef: args.targetRef }),
+        "operate_project_resource connect target"
+      );
       const connected = bridge.connectNodeFlowNodes({
         expectedRevision,
         sourceNodeId: args.sourceNodeId,
@@ -532,6 +558,7 @@ export const operateProjectResourceToolDef = {
         entity: "link",
         target: "nodeflow:link",
         action: "connect",
+        updated: true,
         role: "connection",
         artifact: {
           kind: "link",
@@ -567,6 +594,14 @@ export const operateProjectResourceToolDef = {
       if (!sourceRef || !targetRef) {
         throw new Error("创建 Flow 引用关系需要可解析的 source_ref 和 target_ref。");
       }
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.sourceNodeId, nodeRef: sourceRef }),
+        "operate_project_resource reference source"
+      );
+      assertGenericWriteAllowedForNode(
+        findNodeByIdOrRef(workflow, { nodeId: args.targetNodeId, nodeRef: targetRef }),
+        "operate_project_resource reference target"
+      );
       const created = bridge.createNodeFlowGraphLink({
         expectedRevision,
         sourceRef,
@@ -577,6 +612,7 @@ export const operateProjectResourceToolDef = {
         entity: "link",
         target: "nodeflow:link",
         action: "connect",
+        updated: true,
         role: "reference",
         artifact: {
           kind: "link",

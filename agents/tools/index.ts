@@ -15,6 +15,7 @@ import {
 } from "./flowTools";
 import { listProjectResourcesToolDef } from "./listProjectResources";
 import { operateProjectResourceToolDef } from "./operateProjectResource";
+import { operateFoundationToolDef } from "./foundationTools";
 import { pingToolDef } from "./ping";
 import { readProjectResourceToolDef } from "./readProjectResource";
 import { searchProjectResourceToolDef } from "./searchProjectResource";
@@ -33,6 +34,7 @@ const MUTATING_TOOL_NAMES = new Set([
   "update_document",
   "connect_flow_nodes",
   "move_flow_node",
+  "operate_foundation",
   "operate_project_resource",
   "prepare_generation_execution",
   "cancel_generation_execution",
@@ -46,6 +48,7 @@ const TOOL_DEFS = [
   updateDocumentToolDef,
   connectFlowNodesToolDef,
   moveFlowNodeToolDef,
+  operateFoundationToolDef,
   listProjectResourcesToolDef,
   readProjectResourceToolDef,
   searchProjectResourceToolDef,

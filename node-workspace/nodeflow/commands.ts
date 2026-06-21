@@ -1,5 +1,5 @@
 import type { Connection, EdgeChange, NodeChange, XYPosition } from "@xyflow/react";
-import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
+import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../types";
 import type { NodeFlowCanvasLink, NodeFlowCanvasNode } from "./reactflow";
 import { buildNodeFlowLinkId } from "./links";
 import { ensureUniqueNodeRef, getNodeFlowRef, setNodeFlowRef } from "./refs";
@@ -15,22 +15,14 @@ import {
 import { createDefaultNodeFlowNodeData } from "./defaults";
 import { applyNodeFlowNodeChanges } from "./reactflow";
 import { applyNodeFlowLinkChanges } from "./links";
+import { DEFAULT_NODE_DIMENSIONS, findSafeNodeFlowPosition } from "./placement";
 
 type CommandState = NodeFlowMutableState & {
   activeView?: string | null;
+  viewport?: NodeFlowViewport | null;
 };
 
 type AllocateNodeId = (nodeType: NodeType) => string;
-
-const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
-  scriptPage: { width: 320, height: 249 },
-  mdText: { width: 320, height: 252 },
-  scriptBoard: { width: 920 },
-  identityCard: { width: 760 },
-  audioInput: { width: 340 },
-  videoInput: { width: 360 },
-  seedanceVideoGen: { width: 380 },
-};
 
 export const createNodeFlowNodeCommand = ({
   state,
@@ -55,6 +47,13 @@ export const createNodeFlowNodeCommand = ({
 
   const dim = DEFAULT_NODE_DIMENSIONS[type];
   const nodeId = allocateNodeId(type);
+  const safePosition = findSafeNodeFlowPosition({
+    nodes: state.nodes,
+    type,
+    requestedPosition: position,
+    parentId,
+    viewport: state.viewport,
+  });
   const requestedRef = getNodeFlowRef({ id: nodeId, type, position, data: effectiveExtraData as NodeFlowNodeData } as NodeFlowNode);
   const uniqueRef = ensureUniqueNodeRef({
     desiredRef: requestedRef,
@@ -63,7 +62,7 @@ export const createNodeFlowNodeCommand = ({
   const nextNode: NodeFlowNode = {
     id: nodeId,
     type,
-    position,
+    position: safePosition,
     data: setNodeFlowRef(
       { ...createDefaultNodeFlowNodeData(type), ...effectiveExtraData } as Record<string, unknown>,
       uniqueRef

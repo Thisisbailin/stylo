@@ -201,6 +201,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
 
     const showMentionPicker = isFocused && !!mentionState;
     const isDocumentTextNode = typeof data.episodeId === "number" || typeof data.documentId === "string";
+    const isReadOnly = data.readOnly === true;
 
     const renderedHtml = useMemo(() => {
         if (!draftText) return "";
@@ -398,7 +399,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     return (
         <BaseNode
             title={data.title || "Text"}
-            onTitleChange={(title) => updateNodeData(id, { title })}
+            onTitleChange={isReadOnly ? undefined : (title) => updateNodeData(id, { title })}
             inputs={isDocumentTextNode ? ["image", "text"] : ["text"]}
             outputs={["text"]}
             selected={selected}
@@ -414,7 +415,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
                 <div
                     ref={editorRef}
                     className="text-node-editor nodrag"
-                    contentEditable
+                    contentEditable={!isReadOnly}
                     suppressContentEditableWarning
                     data-placeholder="Describe or input text here..."
                     onInput={handleInput}

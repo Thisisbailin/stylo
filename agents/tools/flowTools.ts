@@ -1,4 +1,5 @@
 import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
+import { assertGenericWriteAllowedForNode, findNodeByIdOrRef } from "./foundationAccess";
 
 const HANDLE_VALUES = ["image", "text", "audio", "video", "multi"] as const;
 
@@ -118,6 +119,11 @@ export const moveFlowNodeToolDef = {
   parameters: moveFlowNodeParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseMoveArgs(input);
+    const workflow = bridge.getNodeFlowSnapshot();
+    assertGenericWriteAllowedForNode(
+      findNodeByIdOrRef(workflow, { nodeId: args.nodeId, nodeRef: args.nodeRef }),
+      "move_flow_node"
+    );
     const moved = bridge.moveNodeFlowNode({
       expectedRevision: bridge.getNodeFlowSnapshot().revision,
       nodeId: args.nodeId,
@@ -147,6 +153,15 @@ export const connectFlowNodesToolDef = {
   parameters: connectFlowNodesParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseConnectArgs(input);
+    const workflow = bridge.getNodeFlowSnapshot();
+    assertGenericWriteAllowedForNode(
+      findNodeByIdOrRef(workflow, { nodeId: args.sourceNodeId, nodeRef: args.sourceRef }),
+      "connect_flow_nodes source"
+    );
+    assertGenericWriteAllowedForNode(
+      findNodeByIdOrRef(workflow, { nodeId: args.targetNodeId, nodeRef: args.targetRef }),
+      "connect_flow_nodes target"
+    );
     if (args.connectionKind === "reference") {
       if (!args.sourceRef || !args.targetRef) {
         throw new Error("connect_flow_nodes connection_kind=reference needs source_ref and target_ref.");

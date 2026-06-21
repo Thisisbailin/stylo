@@ -14,6 +14,7 @@ import { dedupeNodeFlowRefs } from "./refs";
 const NODE_TYPES = new Set<NodeType>([
   "scriptPage",
   "mdText",
+  "folder",
   "imageInput",
   "audioInput",
   "videoInput",

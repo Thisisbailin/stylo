@@ -53,9 +53,9 @@ import { fetchQwenModels, type QwenModel } from "../../services/qwenResponsesSer
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import { createStableId } from "../../utils/id";
 import { CharacterSceneLibraryPanel } from "./CharacterSceneLibraryPanel";
-import { InfoPanel, type InfoSectionKey } from "./InfoPanel";
+import { InfoPanel } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
-import { SyncPanel, type SyncSectionKey } from "./SyncPanel";
+import { SyncPanel } from "./SyncPanel";
 import type { ModuleKey } from "./ModuleBar";
 
 type Props = {
@@ -333,6 +333,21 @@ const getLastArtifact = (records: AgentToolActivityRecord[]) =>
     .filter((record) => record.lastCompletedAt && record.lastArtifact)
     .sort((a, b) => (b.lastCompletedAt || 0) - (a.lastCompletedAt || 0))[0];
 
+const summarizeToolActivity = (toolItem: ToolItem, activityMap: Record<string, AgentToolActivityRecord>) => {
+  const records = toolItem.tools
+    .map((toolName) => activityMap[toolName])
+    .filter(Boolean) as AgentToolActivityRecord[];
+  return {
+    records,
+    totalCalls: records.reduce((sum, record) => sum + record.totalCalls, 0),
+    totalSuccesses: records.reduce((sum, record) => sum + record.totalSuccesses, 0),
+    totalFailures: records.reduce((sum, record) => sum + record.totalFailures, 0),
+    latest: getLatestActivityTimestamp(records),
+    lastFailure: getLastFailure(records),
+    lastArtifact: getLastArtifact(records),
+  };
+};
+
 const resolveAgentModelForProvider = (provider: AgentTextProvider, configured?: string) => {
   const model = (configured || "").trim();
   if (provider === "qwen") {
@@ -414,15 +429,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   onOpenVisualLab,
 }) => {
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
-  const [activeType, setActiveType] = useState<"chat" | "multi" | "video">("chat");
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
   const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPanelKey>("provider");
-  const [activeTool, setActiveTool] = useState<ToolKey>("project-data");
   const [assetsSection, setAssetsSection] = useState<MaterialsSectionKey>("images");
-  const [syncSection, setSyncSection] = useState<SyncSectionKey>("status");
-  const [infoSection, setInfoSection] = useState<InfoSectionKey>("about");
-  const [activeSkillId, setActiveSkillId] = useState("");
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
   const [isLoadingTextModels, setIsLoadingTextModels] = useState(false);
   const [textModelFetchMessage, setTextModelFetchMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -492,10 +502,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     };
   }, [config.textConfig.qalamTools]);
   const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
-  const activeSkill = useMemo(
-    () => availableAgentSkills.find((skill) => skill.id === activeSkillId) || availableAgentSkills[0] || null,
-    [activeSkillId, availableAgentSkills]
-  );
   const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
   const activeAgentBaseUrl =
     config.textConfig.agentBaseUrl ||
@@ -539,28 +545,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     if (traceSpanFilter === "error") return spans.filter((span) => span.error);
     return spans;
   }, [selectedCloudTrace?.spans, traceSpanFilter]);
-  const activeToolItem = useMemo(
-    () => TOOL_ITEMS.find((item) => item.key === activeTool) || TOOL_ITEMS[0],
-    [activeTool]
-  );
   const toolActivityMap = useMemo(() => readAgentToolActivity(), [runtimeMetaVersion]);
-  const activeToolActivity = useMemo(() => {
-    const records = activeToolItem.tools
-      .map((toolName) => toolActivityMap[toolName])
-      .filter(Boolean) as AgentToolActivityRecord[];
-    const latest = getLatestActivityTimestamp(records);
-    const lastFailure = getLastFailure(records);
-    const lastArtifact = getLastArtifact(records);
-    return {
-      records,
-      totalCalls: records.reduce((sum, record) => sum + record.totalCalls, 0),
-      totalSuccesses: records.reduce((sum, record) => sum + record.totalSuccesses, 0),
-      totalFailures: records.reduce((sum, record) => sum + record.totalFailures, 0),
-      latest,
-      lastFailure,
-      lastArtifact,
-    };
-  }, [activeToolItem.tools, toolActivityMap]);
   const imageAssetCount = useMemo(
     () => globalAssetHistory.filter((item) => item.type === "image").length,
     [globalAssetHistory]
@@ -583,7 +568,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     if (historyFilter === "all") return messages;
     return messages.filter((message) => message.role === historyFilter);
   }, [historyFilter, selectedCloudSession?.messages]);
-  const ActiveToolIcon = activeToolItem.Icon;
   useEffect(() => {
     const onUpdated = () => setRuntimeMetaVersion((value) => value + 1);
     if (typeof window === "undefined") return;
@@ -739,13 +723,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   useEffect(() => {
     setActiveMultiProvider(resolveMultiProviderKey(config.multimodalConfig.provider));
   }, [config.multimodalConfig.provider]);
-
-  useEffect(() => {
-    if (!availableAgentSkills.length) return;
-    if (!activeSkillId || !availableAgentSkills.some((skill) => skill.id === activeSkillId)) {
-      setActiveSkillId(availableAgentSkills[0].id);
-    }
-  }, [activeSkillId, availableAgentSkills]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1038,19 +1015,19 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     selectedPanel === "provider"
       ? {
           label: "Provider",
-          title: activeType === "chat" ? "Chat Providers" : activeType === "multi" ? "Multi Providers" : "Video Providers",
+          title: "Providers",
           description: "统一管理 Agent 路线、模型和 runtime 基线，不再单独悬浮成居中弹窗。",
         }
       : selectedPanel === "tools"
         ? {
             label: "Tools",
-            title: activeToolItem.title,
+            title: "Tools",
             description: "",
           }
         : selectedPanel === "skills"
           ? {
               label: "Skills",
-              title: activeSkill?.title || "Skills",
+              title: "Skills",
               description: "",
             }
           : selectedPanel === "identity"
@@ -1068,13 +1045,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               : selectedPanel === "sync"
                 ? {
                     label: "Sync",
-                    title: syncSection === "status" ? "Status & Keys" : "Cloud History",
+                    title: "Sync",
                     description: "同步诊断与云端快照直接并入设置侧栏。",
                   }
                 : selectedPanel === "info"
                   ? {
                       label: "Info",
-                      title: infoSection === "about" ? "About" : "Roadmap",
+                      title: "Info",
                       description: "产品信息入口并入总设置面板。",
                     }
                   : {
@@ -1082,410 +1059,170 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       title: "Conversation & Trace",
                       description: "",
                     };
+  const primaryTabs: Array<{ key: AgentSettingsPanelKey; label: string; Icon: React.ComponentType<{ size?: number; className?: string }>; meta?: string }> = [
+    { key: "provider", label: "Provider", Icon: Sparkles, meta: "3" },
+    { key: "tools", label: "Tools", Icon: Code2, meta: `${TOOL_ITEMS.length}` },
+    { key: "skills", label: "Skills", Icon: Sparkles, meta: `${availableAgentSkills.length || 0}` },
+    { key: "identity", label: "Identity", Icon: Layers, meta: `${projectData.roles?.length || 0}` },
+    { key: "history", label: "History", Icon: Cloud, meta: `${conversationState.items.length}` },
+    { key: "assets", label: "Assets", Icon: Boxes, meta: `${imageAssetCount + videoAssetCount + promptAssetCount}` },
+    { key: "sync", label: "Sync", Icon: Cloud, meta: syncState?.project.status || "local" },
+    { key: "info", label: "Info", Icon: FileText },
+  ];
+
+  const subTabClass = (active: boolean) =>
+    `inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] transition ${
+      active
+        ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
+        : "border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+    }`;
+
+  const renderSecondaryTabs = () => {
+    if (selectedPanel === "assets") {
+      return (
+        <>
+          {[
+            { key: "images" as const, label: "Images", count: imageAssetCount },
+            { key: "videos" as const, label: "Videos", count: videoAssetCount },
+            { key: "prompts" as const, label: "Prompts", count: promptAssetCount },
+          ].map((item) => (
+            <button key={item.key} type="button" onClick={() => setAssetsSection(item.key)} className={subTabClass(assetsSection === item.key)}>
+              <Boxes size={12} />
+              {item.label}
+              <span className="text-[10px] text-[var(--app-text-muted)]">{item.count}</span>
+            </button>
+          ))}
+        </>
+      );
+    }
+    if (selectedPanel === "history") {
+      return (
+        <>
+          <button type="button" onClick={handleNewConversation} className={subTabClass(false)}>
+            新对话
+          </button>
+          {conversationState.items
+            .slice()
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, 12)
+            .map((item) => {
+              const active = item.id === conversationState.activeId;
+              const title = item.title || buildConversationTitle(item.messages || []) || "新对话";
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelectConversation(item.id)}
+                  className={subTabClass(active)}
+                  title={title}
+                >
+                  <span className="max-w-[160px] truncate">{title}</span>
+                </button>
+              );
+            })}
+        </>
+      );
+    }
+    if (selectedPanel === "identity") {
+      return (
+        <>
+          <button type="button" onClick={() => onOpenVisualLab?.("glassLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
+            <ScanSearch size={12} />
+            Glass Lab
+          </button>
+          <button type="button" onClick={() => onOpenVisualLab?.("filmRollLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
+            <ScanSearch size={12} />
+            Film Lab
+          </button>
+        </>
+      );
+    }
+    return null;
+  };
+  const secondaryTabs = renderSecondaryTabs();
 
   return (
     <div
       className="fixed right-[3px] top-[3px] bottom-[3px] z-[80] min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
       style={{
-        width: "calc(50vw - 6px)",
+        width: "min(1040px, calc(100vw - 6px))",
         maxWidth: "calc(100vw - 6px)",
       }}
     >
-      <div className="grid h-full min-w-0 grid-cols-1 xl:grid-cols-[292px_minmax(0,1fr)]">
-        <aside className="min-w-0 overflow-y-auto border-r border-[var(--app-border)] px-5 py-5">
-          <div className="space-y-4">
-            <div className="rounded-[28px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-                    Setting
-                  </div>
+      <div className="flex h-full min-w-0 flex-col">
+        <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-panel)] px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">Setting</div>
+              <div className="mt-1 flex min-w-0 items-center gap-3">
+                <div className="truncate text-[18px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+                  Qalam Agent
                 </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 text-[12px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                  title="Close"
-                >
-                  <span>关闭</span>
-                  <X size={14} />
-                </button>
+                <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
+                  {panelMeta.label}
+                </span>
               </div>
             </div>
-
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Provider</div>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { key: "chat" as const, label: "Chat", Icon: Sparkles },
-                    { key: "multi" as const, label: "Multi", Icon: Eye },
-                    { key: "video" as const, label: "Video", Icon: Video },
-                  ].map(({ key, label, Icon }) => {
-                    const active = activeType === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          setActiveType(key);
-                          setSelectedPanel("provider");
-                        }}
-                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                          active
-                            ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                            : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Icon size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                          {label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Tools</div>
-                <div className="flex flex-col gap-2">
-                  {TOOL_ITEMS.map(({ key, title, Icon, tools }) => {
-                    const active = activeTool === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          setActiveTool(key);
-                          setSelectedPanel("tools");
-                        }}
-                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                          active
-                            ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                            : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                        }`}
-                      >
-                        <span className="flex items-center gap-3 text-left">
-                          <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                            <Icon size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                          </span>
-                          <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{title}</span>
-                        </span>
-                        <span className="shrink-0 rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                          {tools.length} tools
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] uppercase tracking-widest app-text-muted">Skills</div>
-                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    {availableAgentSkills.length || 0} internal
-                  </span>
-                </div>
-                {availableAgentSkills.length ? (
-                  <div className="flex flex-col gap-2">
-                    {availableAgentSkills.map((skill) => {
-                      const active = activeSkill?.id === skill.id;
-                      return (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveSkillId(skill.id);
-                            setSelectedPanel("skills");
-                          }}
-                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                            active
-                              ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                              : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                          }`}
-                        >
-                          <span className="flex items-center gap-3 text-left">
-                            <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                              <Sparkles size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                            </span>
-                            <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{skill.title}</span>
-                          </span>
-                          <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                            {skill.tags?.length || 0} tags
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-muted)]">
-                      这些 skill 不会预先注入到系统提示词里。Agent 会在任务需要时先调用 skill catalog / read 工具，再按需学习并应用对应方法。
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-[var(--app-text-muted)]">当前没有可启用的内建 skill。</div>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Project</div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPanel("identity")}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                    selectedPanel === "identity"
-                      ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                  }`}
-                >
-                  <span className="flex items-center gap-3 text-left">
-                    <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${selectedPanel === "identity" ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                      <Layers size={14} className={selectedPanel === "identity" ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                    </span>
-                    <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">identity system</span>
-                  </span>
-                  <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                    roles
-                  </span>
-                </button>
-                <div
-                  role="button"
-                  tabIndex={onOpenVisualLab ? 0 : -1}
-                  onClick={() => onOpenVisualLab?.("filmRollLab")}
-                  onKeyDown={(event) => {
-                    if (!onOpenVisualLab) return;
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onOpenVisualLab("filmRollLab");
-                    }
-                  }}
-                  className={`grid gap-2 rounded-xl border px-3 py-2 text-[12px] transition ${
-                    onOpenVisualLab
-                      ? "cursor-pointer border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)]"
-                      : "border-[var(--app-border)] text-[var(--app-text-muted)] opacity-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-3 text-left">
-                      <span className="h-8 w-8 rounded-2xl border border-[var(--app-border)] bg-transparent flex items-center justify-center">
-                        <ScanSearch size={14} className="text-[var(--app-text-secondary)]" />
-                      </span>
-                      <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">visual lab</span>
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={(event) => { event.stopPropagation(); onOpenVisualLab?.("glassLab"); }}
-                      disabled={!onOpenVisualLab}
-                      className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
-                    >
-                      glass
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => { event.stopPropagation(); onOpenVisualLab?.("filmRollLab"); }}
-                      disabled={!onOpenVisualLab}
-                      className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] disabled:cursor-not-allowed"
-                    >
-                      film
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] uppercase tracking-widest app-text-muted">History</div>
-                  <button
-                    type="button"
-                    onClick={handleNewConversation}
-                    className="px-2 py-1 rounded-full text-[11px] border border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)] transition"
-                  >
-                    新对话
-                  </button>
-                </div>
-                {conversationState.items.length ? (
-                  <div className="space-y-2">
-                    {conversationState.items
-                      .slice()
-                      .sort((a, b) => b.updatedAt - a.updatedAt)
-                      .map((item) => {
-                        const active = item.id === conversationState.activeId;
-                        const title = item.title || buildConversationTitle(item.messages || []);
-                        const preview = (item.messages || [])
-                          .filter((m) => m.role === "user" && m.text)
-                          .slice(-1)[0]?.text;
-                        return (
-                          <div
-                            key={item.id}
-                            className={`rounded-xl border px-3 py-2 text-left transition ${
-                              active
-                                ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]"
-                                : "border-[var(--app-border)] hover:border-[var(--app-border-strong)]"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleSelectConversation(item.id);
-                              setSelectedPanel("history");
-                            }}
-                            className="text-[12px] font-semibold text-[var(--app-text-primary)] hover:underline"
-                          >
-                            {title || "新对话"}
-                          </button>
-                              <button
-                                type="button"
-                                onClick={() => handleClearConversation(item.id)}
-                                className="text-[11px] text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"
-                              >
-                                清除
-                              </button>
-                            </div>
-                            {preview ? (
-                              <div className="mt-1 text-[11px] text-[var(--app-text-secondary)] truncate">
-                                {preview}
-                              </div>
-                            ) : null}
-                            <div className="mt-1 text-[10px] text-[var(--app-text-muted)]">
-                              {formatTimestamp(item.updatedAt || item.createdAt)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                ) : (
-                  <div className="text-[11px] app-text-muted">暂无对话记录。</div>
-                )}
-                <div className="text-[11px] app-text-muted">仅对 Qalam 对话生效。</div>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Assets</div>
-                {[
-                  { key: "images" as const, label: "images", count: `${imageAssetCount}` },
-                  { key: "videos" as const, label: "videos", count: `${videoAssetCount}` },
-                  { key: "prompts" as const, label: "prompts", count: `${promptAssetCount}` },
-                ].map((item) => {
-                  const active = selectedPanel === "assets" && assetsSection === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => {
-                        setAssetsSection(item.key);
-                        setSelectedPanel("assets");
-                      }}
-                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                        active
-                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3 text-left">
-                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                          <Boxes size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                        </span>
-                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{item.label}</span>
-                      </span>
-                      <span className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] text-[var(--app-text-secondary)]">
-                        {item.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Sync</div>
-                {[
-                  { key: "status" as const, label: "status & keys", Icon: Cloud },
-                  { key: "history" as const, label: "cloud history", Icon: Cloud },
-                ].map(({ key, label, Icon }) => {
-                  const active = selectedPanel === "sync" && syncSection === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        setSyncSection(key);
-                        setSelectedPanel("sync");
-                      }}
-                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                        active
-                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3 text-left">
-                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                          <Icon size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                        </span>
-                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{label}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
-                <div className="text-[11px] uppercase tracking-widest app-text-muted">Info</div>
-                {[
-                  { key: "about" as const, label: "about" },
-                  { key: "roadmap" as const, label: "roadmap" },
-                ].map((item) => {
-                  const active = selectedPanel === "info" && infoSection === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => {
-                        setInfoSection(item.key);
-                        setSelectedPanel("info");
-                      }}
-                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 rounded-xl text-[12px] border transition ${
-                        active
-                          ? "bg-[var(--app-panel-soft)] border-[var(--app-border-strong)] text-[var(--app-text-primary)]"
-                          : "border-[var(--app-border)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
-                      }`}
-                    >
-                      <span className="flex items-center gap-3 text-left">
-                        <span className={`h-8 w-8 rounded-2xl border flex items-center justify-center ${active ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]" : "border-[var(--app-border)] bg-transparent"}`}>
-                          <FileText size={14} className={active ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)]"} />
-                        </span>
-                        <span className="text-[12px] font-semibold text-[var(--app-text-primary)]">{item.label}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 text-[12px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+              title="Close"
+            >
+              <span>关闭</span>
+              <X size={14} />
+            </button>
           </div>
-        </aside>
 
-        <section className="min-w-0 overflow-y-auto px-6 py-5">
-          <div className="space-y-4">
-            <div className="rounded-[30px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-5">
-              <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-                {panelMeta.label}
+          <div className="mt-4 flex flex-wrap gap-2 pb-1">
+            {primaryTabs.map(({ key, label, Icon, meta }) => {
+              const active = selectedPanel === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedPanel(key)}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2 text-[12px] transition ${
+                    active
+                      ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                      : "border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+                  }`}
+                >
+                  <Icon size={14} />
+                  <span>{label}</span>
+                  {meta ? <span className="rounded-full border border-[var(--app-border)] px-1.5 py-0.5 text-[10px] text-[var(--app-text-muted)]">{meta}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </header>
+
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {secondaryTabs ? (
+            <div className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-panel-muted)] px-6 py-3">
+              <div className="flex gap-2 overflow-x-auto pb-0.5">
+                {secondaryTabs}
               </div>
-              <div className="mt-2 flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
-                {panelMeta.title}
-              </div>
-              {panelMeta.description ? (
-                <div className="mt-2 max-w-2xl text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                  {panelMeta.description}
-                </div>
-              ) : null}
             </div>
+          ) : null}
 
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-4">
+              <div className="border-b border-[var(--app-border)] pb-4">
+                <div className="flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+                  {panelMeta.title}
+                </div>
+                {panelMeta.description ? (
+                  <div className="mt-2 max-w-2xl text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                    {panelMeta.description}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-4">
               {selectedPanel === "provider" && (
-                <>
-                  {activeType === "chat" && (
-                    <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                <div className="flex flex-col gap-3">
+                    <div className="order-[10] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Chat Providers</div>
                       <div className="text-[11px] text-[var(--app-text-muted)]">
                         Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen`、`Seed / Ark` 与 `OpenRouter` 三条常规 API 路线。
@@ -1522,10 +1259,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         <div className="truncate">Effective baseUrl: <span className="text-[var(--app-text-primary)]">{activeAgentBaseUrl || "unset"}</span></div>
                       </div>
                     </div>
-                  )}
 
-                  {activeType === "multi" && (
-                    <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                    <div className="order-[30] mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Multi Providers</div>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1553,10 +1288,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         })}
                       </div>
                     </div>
-                  )}
 
-                  {activeType === "video" && (
-                    <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                    <div className="order-[50] mt-5 rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Video Providers</div>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1584,10 +1317,9 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         })}
                       </div>
                     </div>
-                  )}
 
-          {activeType === "chat" && activeAgentProvider === "deepseek" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+          {activeAgentProvider === "deepseek" && (
+            <div className="order-[20] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="text-xs text-[var(--app-text-secondary)]">DeepSeek</div>
                 <div className="rounded-full border border-[var(--app-border)] px-2 py-1 text-[10px] uppercase tracking-widest text-[var(--app-text-muted)]">
@@ -1628,8 +1360,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "chat" && activeAgentProvider === "openrouter" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+          {activeAgentProvider === "openrouter" && (
+            <div className="order-[20] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div>
                 <div className="text-xs text-[var(--app-text-secondary)] mb-1">API Endpoint</div>
                 <div className="text-sm text-[var(--app-text-secondary)]">{activeAgentBaseUrl || OPENROUTER_BASE_URL}</div>
@@ -1680,8 +1412,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "chat" && activeAgentProvider === "ark" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+          {activeAgentProvider === "ark" && (
+            <div className="order-[20] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="text-xs text-[var(--app-text-secondary)]">Volcengine Ark</div>
               </div>
@@ -1786,8 +1518,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "chat" && activeAgentProvider === "qwen" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+          {activeAgentProvider === "qwen" && (
+            <div className="order-[20] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               </div>
@@ -1904,8 +1636,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
           )}
 
 
-          {activeType === "multi" && activeMultiProvider === "openrouter" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+          {activeMultiProvider === "openrouter" && (
+            <div className="order-[40] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">OpenRouter</div>
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
                 <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">multimodal-generation · 1</div>
@@ -1920,8 +1652,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "multi" && activeMultiProvider === "qwen" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+          {activeMultiProvider === "qwen" && (
+            <div className="order-[40] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
                 使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。
@@ -1936,8 +1668,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "multi" && activeMultiProvider === "nanobanana" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
+          {activeMultiProvider === "nanobanana" && (
+            <div className="order-[40] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
               <div className="text-xs text-[var(--app-text-secondary)]">Nano Banana</div>
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">
@@ -1979,8 +1711,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "video" && activeVideoProvider === "qwen" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+          {activeVideoProvider === "qwen" && (
+            <div className="order-[60] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
                 使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。
@@ -1998,8 +1730,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "video" && activeVideoProvider === "vidu" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-2">
+          {activeVideoProvider === "vidu" && (
+            <div className="order-[60] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-2">
               <div className="text-sm font-semibold text-[var(--app-text-primary)]">Vidu CN Q3</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
                 Base URL: {VIDU_DEFAULT_BASE_URL}
@@ -2021,8 +1753,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {activeType === "video" && activeVideoProvider === "seedance" && (
-            <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+          {activeVideoProvider === "seedance" && (
+            <div className="order-[60] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-sm font-semibold text-[var(--app-text-primary)]">Seedance</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
                 Base URL: {SEEDANCE_DEFAULT_BASE_URL}
@@ -2106,11 +1838,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               </div>
             </div>
           )}
-                </>
+                </div>
               )}
 
               {selectedPanel === "tools" && (
-                <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-4">
+                <div className="space-y-6">
+                  {TOOL_ITEMS.map((activeToolItem) => {
+                    const ActiveToolIcon = activeToolItem.Icon;
+                    const activeTool = activeToolItem.key;
+                    const activeToolActivity = summarizeToolActivity(activeToolItem, toolActivityMap);
+                    return (
+                      <section key={activeToolItem.key} className="border-b border-[var(--app-border)] pb-6 last:border-b-0 last:pb-0">
+                        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-4">
                   <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-2">
@@ -2232,16 +1971,16 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         >
                           <span>
                             <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">
-                              {foundationNodeView ? "关闭 foundation 文件夹节点模式" : "将 foundation 加载为文件夹节点模式"}
+                              {foundationNodeView ? "返回 Foundation 模块" : "查看底层节点骨架"}
                             </span>
                             <span className="mt-1 block text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
                               {foundationNodeView
-                                ? "回到胶卷控件模式，并隐藏项目、轴、块三层系统文件夹节点。"
-                                : "以普通文件夹节点和普通连线查看项目、轴、块三层 foundation 根部结构。"}
+                                ? "隐藏系统文件夹和档案节点，回到胶卷盒、轴与块的快捷操作视图。"
+                                : "展开项目、轴、块三层真实节点与固定连线，并自动整理布局。"}
                             </span>
                           </span>
                           <span className="rounded-full border border-[var(--app-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--app-text-secondary)]">
-                            {foundationNodeView ? "Hide" : "Show"}
+                            {foundationNodeView ? "Foundation" : "Nodes"}
                           </span>
                         </button>
                       </div>
@@ -2348,15 +2087,15 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
                   <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-4">
                     <div>
-                      <div className="text-[11px] uppercase tracking-widest app-text-muted">Capability Map</div>
+                      <div className="text-[11px] uppercase tracking-widest app-text-muted">Runtime Activity</div>
                       <div className="mt-2 text-[12px] leading-relaxed text-[var(--app-text-secondary)]">
-                        单一全能型 Agent 沿着查阅、理解、操作三种动作推进工作，而不是通过多个子 Agent 分工。
+                        当前单元对应的真实 tool 调用轨迹与产物摘要。
                       </div>
                     </div>
                     <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">Runtime Activity</div>
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">Activity Summary</div>
                           <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
                             当前能力卡对应的真实 tool 调用轨迹与产物摘要。
                           </div>
@@ -2410,37 +2149,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-3">
-                      {TOOL_ITEMS.map((item, index) => {
-                        const active = item.key === activeTool;
-                        return (
-                          <div
-                            key={item.key}
-                            className={`rounded-2xl border px-3 py-3 transition ${
-                              active
-                                ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)]"
-                                : "border-[var(--app-border)] bg-transparent"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <div className="h-7 w-7 rounded-full border border-[var(--app-border)] flex items-center justify-center text-[11px] font-semibold text-[var(--app-text-primary)]">
-                                  {index + 1}
-                                </div>
-                                <div>
-                                  <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">{item.capability}</div>
-                                  <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">{item.title}</div>
-                                </div>
-                              </div>
-                              <div className="text-[10px] text-[var(--app-text-muted)]">{item.tools.length} tools</div>
-                            </div>
-                            <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
-                              {item.note}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
                     <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">Execution Principle</div>
                       <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
@@ -2448,14 +2156,19 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       </div>
                     </div>
                   </div>
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               )}
 
               {selectedPanel === "skills" && (
                 <div className="space-y-4">
-                  {activeSkill ? (
+                  {availableAgentSkills.length ? (
                     <>
-                      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
+                      {availableAgentSkills.map((activeSkill) => (
+                      <div key={activeSkill.id} className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-2">
                             <div className="flex items-center gap-3">
@@ -2488,6 +2201,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                           </div>
                         ) : null}
                       </div>
+                      ))}
                       <div className="rounded-xl border border-dashed border-[var(--app-border)] px-3 py-2 text-[11px] leading-5 text-[var(--app-text-muted)]">
                         这些 skill 不会预先注入到系统提示词里。Agent 会在任务需要时先调用 skill catalog / read 工具，再按需学习并应用对应方法。
                       </div>
@@ -2993,31 +2707,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
               {selectedPanel === "assets" && (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: "images" as const, label: "Images", count: `${imageAssetCount}` },
-                        { key: "videos" as const, label: "Videos", count: `${videoAssetCount}` },
-                        { key: "prompts" as const, label: "Prompts", count: `${promptAssetCount}` },
-                      ].map((item) => {
-                        const active = assetsSection === item.key;
-                        return (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => setAssetsSection(item.key)}
-                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
-                              active
-                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
-                            }`}
-                          >
-                            {item.label} · {item.count}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
                   <MaterialsPanel
                     activeSection={assetsSection}
                     onActiveSectionChange={setAssetsSection}
@@ -3027,82 +2716,44 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               )}
 
               {selectedPanel === "sync" && (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: "status" as const, label: "Status & Keys" },
-                        { key: "history" as const, label: "Cloud History" },
-                      ].map((item) => {
-                        const active = syncSection === item.key;
-                        return (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => setSyncSection(item.key)}
-                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
-                              active
-                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <SyncPanel
-                    config={config}
-                    onConfigChange={setConfig}
-                    isSignedIn={isSignedIn}
-                    getAuthToken={getAuthToken}
-                    onForceSync={onForceSync}
-                    syncState={syncState}
-                    syncRollout={syncRollout}
-                    onResetProject={onResetProject}
-                    activeSection={syncSection}
-                    onActiveSectionChange={setSyncSection}
-                    showSidebar={false}
-                  />
+                <div className="space-y-6">
+                  {(["status", "history"] as const).map((section) => (
+                    <section key={section} className="space-y-3 border-b border-[var(--app-border)] pb-6 last:border-b-0 last:pb-0">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-text-muted)]">
+                        {section === "status" ? "Status & Keys" : "Cloud History"}
+                      </div>
+                      <SyncPanel
+                        config={config}
+                        onConfigChange={setConfig}
+                        isSignedIn={isSignedIn}
+                        getAuthToken={getAuthToken}
+                        onForceSync={onForceSync}
+                        syncState={syncState}
+                        syncRollout={syncRollout}
+                        onResetProject={onResetProject}
+                        activeSection={section}
+                        showSidebar={false}
+                      />
+                    </section>
+                  ))}
                 </div>
               )}
 
               {selectedPanel === "info" && (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4">
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { key: "about" as const, label: "About" },
-                        { key: "roadmap" as const, label: "Roadmap" },
-                      ].map((item) => {
-                        const active = infoSection === item.key;
-                        return (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => setInfoSection(item.key)}
-                            className={`rounded-full px-3 py-1.5 text-[11px] transition ${
-                              active
-                                ? "border border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]"
-                                : "border border-[var(--app-border)] bg-transparent text-[var(--app-text-secondary)] hover:bg-[var(--app-panel-soft)]"
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <InfoPanel
-                    onOpenLanding={onOpenLanding}
-                    activeSection={infoSection}
-                    onActiveSectionChange={setInfoSection}
-                    showSidebar={false}
-                  />
+                <div className="space-y-6">
+                  {(["about", "roadmap"] as const).map((section) => (
+                    <section key={section} className="space-y-3 border-b border-[var(--app-border)] pb-6 last:border-b-0 last:pb-0">
+                      <InfoPanel
+                        onOpenLanding={onOpenLanding}
+                        activeSection={section}
+                        showSidebar={false}
+                      />
+                    </section>
+                  ))}
                 </div>
               )}
             </div>
+          </div>
           </div>
         </section>
       </div>

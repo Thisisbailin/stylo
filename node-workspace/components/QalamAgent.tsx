@@ -1041,7 +1041,7 @@ export const QalamAgent: React.FC<Props> = ({
         !effectiveCollapsed || isSending || isRevealing ? "qalam-wordmark--active opacity-100 blur-0" : "opacity-96"
       }`}
     >
-      Qalam
+      Stylo
     </span>
   );
 

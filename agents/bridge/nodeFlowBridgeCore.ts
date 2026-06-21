@@ -10,6 +10,7 @@ import {
   inferExecutionApprovalAction,
   type NodeFlowExecutionApprovalProposal,
 } from "../../node-workspace/nodeflow/approvals";
+import { findSafeNodeFlowPosition } from "../../node-workspace/nodeflow/placement";
 import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
 import { ensureUniqueNodeRef, getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../runtime/nodeFlowRefs";
 import { createNodeFlowMapWithBridge } from "./nodeFlowBuilder";
@@ -66,24 +67,6 @@ const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
   "audioInput",
   "videoInput",
 ]);
-
-const getNodeFlowPlacement = (
-  snapshot: NodeFlowFile,
-  x?: number,
-  y?: number
-) => {
-  if (typeof x === "number" && typeof y === "number") {
-    return { x, y };
-  }
-  const activeViewport = snapshot.viewport || null;
-  const baseX = activeViewport ? (-activeViewport.x + 120) / activeViewport.zoom : 120;
-  const baseY = activeViewport ? (-activeViewport.y + 120) / activeViewport.zoom : 120;
-  const offset = (snapshot.nodes.length % 5) * 24;
-  return {
-    x: Math.round(baseX + offset),
-    y: Math.round(baseY + offset),
-  };
-};
 
 const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string) =>
   (title || "").trim() ||
@@ -230,7 +213,13 @@ const createNodeFlowNode = (
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
     throw new Error("createNodeFlowNode currently supports scriptPage, mdText, folder, text, imageInput, audioInput, and videoInput.");
   }
-  const position = getNodeFlowPlacement(snapshot, input.x, input.y);
+  const position = findSafeNodeFlowPosition({
+    nodes: snapshot.nodes,
+    type: input.type,
+    requestedPosition: typeof input.x === "number" && typeof input.y === "number" ? { x: input.x, y: input.y } : undefined,
+    parentId: input.parentId,
+    viewport: snapshot.viewport,
+  });
   const resolvedTitle = resolveNodeTitle(input.type, input.title);
   const desiredNodeRef = normalizeNodeRef(input.nodeRef);
   const resolvedNodeRef = ensureUniqueNodeRef({
@@ -491,7 +480,13 @@ const createTextNode = (
   input: CreateTextNodeInput
 ): CreateTextNodeResult => {
   const snapshot = deps.getNodeFlowSnapshot();
-  const position = getNodeFlowPlacement(snapshot, input.x, input.y);
+  const position = findSafeNodeFlowPosition({
+    nodes: snapshot.nodes,
+    type: "text",
+    requestedPosition: typeof input.x === "number" && typeof input.y === "number" ? { x: input.x, y: input.y } : undefined,
+    parentId: input.parentId,
+    viewport: snapshot.viewport,
+  });
   const nodeId = deps.addNode("text", position, input.parentId, { title: input.title, text: input.text });
   return { id: nodeId, title: input.title };
 };
@@ -502,7 +497,16 @@ const createNodeFlowMap = (
 ): CreateNodeFlowMapResult => {
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
-  const origin = getNodeFlowPlacement(snapshot, input.originX, input.originY);
+  const origin = findSafeNodeFlowPosition({
+    nodes: snapshot.nodes,
+    type: "folder",
+    requestedPosition:
+      typeof input.originX === "number" && typeof input.originY === "number"
+        ? { x: input.originX, y: input.originY }
+        : undefined,
+    parentId: input.parentId,
+    viewport: snapshot.viewport,
+  });
   return createNodeFlowMapWithBridge(
     {
       ...input,

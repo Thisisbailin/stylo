@@ -1,16 +1,21 @@
 import React, { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  addEdge,
-  applyEdgeChanges,
   applyNodeChanges,
+  BaseEdge,
   Connection,
   Edge,
   EdgeChange,
+  EdgeProps,
+  EdgeTypes,
+  getBezierPath,
+  Handle,
   Node,
   NodeChange,
   NodeTypes,
   OnConnectEnd,
   OnConnectStart,
+  Position,
+  useStore,
   XYPosition,
 } from "@xyflow/react";
 import {
@@ -19,7 +24,6 @@ import {
   Bot,
   FileText,
   Folder,
-  GripVertical,
   Image as ImageIcon,
   Layers,
   Network,
@@ -64,8 +68,9 @@ import {
 } from "../utils/edgeAlignment";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection } from "../utils/handles";
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
+import { appendUniqueFlowLink, removeFlowLinksById } from "../nodeflow/flowLinks";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
-import type { CanvasSurfaceConfig, SharedCanvasControls } from "./canvas/types";
+import type { CanvasSurfaceConfig, SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
 import {
   DEFAULT_TIMELINE_DURATION,
   DEFAULT_TIMELINE_HEAD,
@@ -73,7 +78,6 @@ import {
   MIN_TIMELINE_BLOCK_MINUTES,
   TIMELINE_COLORS,
   applyFoundationTimelineToGraph,
-  buildFoundationGraphSeed,
   buildTimelineMarkdown,
   compactMarkdownPreview,
   createDefaultSpaceBlocks,
@@ -83,7 +87,12 @@ import {
   formatTimelineTime,
   getFlowProjectDuration,
   getFlowProjectsForState,
+  getFoundationNodeRole,
   getFoundationScaffoldNodeIds,
+  ensureFoundationGraphSkeleton,
+  isFoundationBlockSelectionActive,
+  isFoundationStructuralLink,
+  isFoundationStructuralNode,
   layoutFoundationGraph,
   normalizeSpaceBlocks,
   parseFoundationGraph,
@@ -112,9 +121,24 @@ type MarkdownTextData = NodeFlowNodeData & {
   documentId?: string;
 };
 
-type FlowRenderNode = Node<NodeFlowNodeData, NodeType>;
+type FlowRenderNodeType = NodeType | "foundationAnchor";
+type FlowRenderNode = Node<NodeFlowNodeData, FlowRenderNodeType>;
 
-type FlowRenderEdge = Edge<Record<string, never>>;
+type FlowViewportBounds = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+type FoundationBoundaryEdgeData = {
+  foundationBoundary?: boolean;
+  foundationSourceScreenX?: number;
+  foundationSourceScreenY?: number;
+  foundationTargetBounds?: FlowViewportBounds;
+};
+
+type FlowRenderEdge = Edge<FoundationBoundaryEdgeData>;
 type FlowCreateType = "scriptPage" | "mdText" | NodeType;
 type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
 type FoundationGatewaySettingsPanel = "assets" | "identity" | "skills";
@@ -126,13 +150,30 @@ const FOUNDATION_FILM_PHYSICS: PhysicsParams = {
   damping: 18,
   mass: 1.1,
   rotationMultiplier: 2.5,
-  filmstripHeight: 56,
-  frameWidth: 118,
-  closedWidth: 46,
-  openWidth: 520,
+  filmstripHeight: 72,
+  frameWidth: 99,
+  closedWidth: 100,
+  openWidth: 620,
 };
 
+const FOUNDATION_FILM_LEADER_INSET = 48;
 const FOUNDATION_FILM_NOOP = () => {};
+
+const FOUNDATION_EDGE_COLORS: Record<string, string> = {
+  amber: "#c79a46",
+  moss: "#6f8f61",
+  blue: "#5d88a8",
+  rose: "#b86b68",
+  violet: "#8a78a7",
+  slate: "#8a8f99",
+};
+
+const FLOW_VIRTUALIZATION_MIN_NODES = 80;
+const FLOW_VIRTUALIZATION_OVERSCAN_RATIO = 0.75;
+const FLOW_VIRTUALIZATION_MIN_OVERSCAN = 720;
+const FLOW_VIRTUALIZATION_BUCKET_SIZE = 960;
+const FOUNDATION_EDGE_OVERSCAN_RATIO = 0.4;
+const FOUNDATION_EDGE_MIN_OVERSCAN = 360;
 
 const FLOW_PROJECT_LIMIT = 3;
 const FLOW_PROJECT_DURATIONS = [60, 90, 120, 150, 180] as const;
@@ -236,18 +277,14 @@ type ScriptConnectionDropState = {
   sourceHandleId: string | null;
 };
 
-type ScriptFoundationGuideLine = {
-  id: string;
-  targetId: string;
-  nodeId: string;
-  path: string;
-  color: string;
-  isActive: boolean;
-};
-
 type ScriptFoundationTargetPosition = {
   x: number;
   y: number;
+};
+
+type ScriptFoundationProjection = {
+  activeAxis: ScriptAxisMode;
+  positions: Record<string, ScriptFoundationTargetPosition>;
 };
 
 type Props = {
@@ -466,23 +503,100 @@ const getScriptNodeHandlesForType = (type?: FlowRenderNode["type"] | null) => {
 
 
 
+const FOUNDATION_BOUNDARY_HANDLE_ID = "foundation-boundary";
+
+const withFoundationBoundaryHandle = (Component: React.ComponentType<any>) => {
+  const NodeWithFoundationBoundaryHandle = (props: any) => (
+    <>
+      <Component {...props} />
+      <Handle
+        id={FOUNDATION_BOUNDARY_HANDLE_ID}
+        type="target"
+        position={Position.Bottom}
+        isConnectable={false}
+        className="foundation-boundary-handle"
+      />
+    </>
+  );
+  return NodeWithFoundationBoundaryHandle;
+};
+
+const FoundationProjectionAnchor = () => (
+  <div className="foundation-projection-anchor" aria-hidden="true">
+    <Handle id={FOUNDATION_BOUNDARY_HANDLE_ID} type="source" position={Position.Top} isConnectable={false} />
+  </div>
+);
+
+const FoundationBoundaryEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  style,
+  data,
+}) => {
+  const transform = useStore((state) => state.transform);
+  const [viewportX, viewportY, zoom] = transform;
+  const safeZoom = Math.max(zoom || 1, 0.001);
+  const targetBounds = data?.foundationTargetBounds;
+  if (targetBounds && typeof window !== "undefined") {
+    const viewportBounds = getViewportBounds(
+      { x: viewportX, y: viewportY, zoom: safeZoom },
+      getViewportWindowSize(),
+      FOUNDATION_EDGE_OVERSCAN_RATIO,
+      FOUNDATION_EDGE_MIN_OVERSCAN
+    );
+    if (!nodeBoundsIntersect(targetBounds, viewportBounds)) return null;
+  }
+  const hasProjectionSource =
+    typeof data?.foundationSourceScreenX === "number" &&
+    Number.isFinite(data.foundationSourceScreenX) &&
+    typeof data?.foundationSourceScreenY === "number" &&
+    Number.isFinite(data.foundationSourceScreenY);
+  const projectedSourceX = hasProjectionSource
+    ? ((data.foundationSourceScreenX as number) - viewportX) / safeZoom
+    : sourceX;
+  const projectedSourceY = hasProjectionSource
+    ? ((data.foundationSourceScreenY as number) - viewportY) / safeZoom
+    : sourceY;
+  const [path] = getBezierPath({
+    sourceX: projectedSourceX,
+    sourceY: projectedSourceY,
+    targetX,
+    targetY,
+    sourcePosition: sourcePosition || Position.Bottom,
+    targetPosition: targetPosition || Position.Top,
+  });
+
+  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+};
+
 const nodeTypes: NodeTypes = {
-  folder: FolderNode,
-  scriptPage: TextNode,
-  text: TextNode,
-  mdText: TextNode,
-  imageInput: ImageInputNode,
-  audioInput: AudioInputNode,
-  videoInput: VideoInputNode,
-  annotation: AnnotationNode,
-  scriptBoard: ScriptBoardNode,
-  identityCard: IdentityCardNode,
-  imageGen: ImageGenNode,
-  nanoBananaImageGen: NanoBananaImageGenNode,
-  wanImageGen: WanImageGenNode,
-  wanReferenceVideoGen: WanReferenceVideoGenNode,
-  viduVideoGen: ViduVideoGenNode,
-  seedanceVideoGen: SeedanceVideoGenNode,
+  foundationAnchor: FoundationProjectionAnchor,
+  folder: withFoundationBoundaryHandle(FolderNode),
+  scriptPage: withFoundationBoundaryHandle(TextNode),
+  text: withFoundationBoundaryHandle(TextNode),
+  mdText: withFoundationBoundaryHandle(TextNode),
+  imageInput: withFoundationBoundaryHandle(ImageInputNode),
+  audioInput: withFoundationBoundaryHandle(AudioInputNode),
+  videoInput: withFoundationBoundaryHandle(VideoInputNode),
+  annotation: withFoundationBoundaryHandle(AnnotationNode),
+  scriptBoard: withFoundationBoundaryHandle(ScriptBoardNode),
+  identityCard: withFoundationBoundaryHandle(IdentityCardNode),
+  imageGen: withFoundationBoundaryHandle(ImageGenNode),
+  nanoBananaImageGen: withFoundationBoundaryHandle(NanoBananaImageGenNode),
+  wanImageGen: withFoundationBoundaryHandle(WanImageGenNode),
+  wanReferenceVideoGen: withFoundationBoundaryHandle(WanReferenceVideoGenNode),
+  viduVideoGen: withFoundationBoundaryHandle(ViduVideoGenNode),
+  seedanceVideoGen: withFoundationBoundaryHandle(SeedanceVideoGenNode),
+};
+
+const edgeTypes: EdgeTypes = {
+  foundationBoundary: FoundationBoundaryEdge,
 };
 
 type ScriptFoundationProps = {
@@ -492,6 +606,7 @@ type ScriptFoundationProps = {
   onUpdateHead: (patch: Partial<FoundationProjectHead>) => void;
   onUpdateBlock: (blockId: string, patch: Partial<FoundationTimeBlock>) => void;
   onUpdateSpaceBlock: (blockId: string, patch: Partial<FoundationSpaceBlock>) => void;
+  onAddTimeBlock: (afterBlockId?: string) => void;
   onAddSpaceBlock: (afterBlockId?: string) => void;
   onSplitBlock: (blockId: string) => void;
   onSplitSpaceBlock: (blockId: string) => void;
@@ -520,9 +635,7 @@ type ScriptFoundationProps = {
   onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
   onOpenMarkdownCard?: () => void;
   onCloseMarkdownCard?: () => void;
-  onFoundationGuideLinesChange?: (lines: ScriptFoundationGuideLine[]) => void;
-  nodes: FlowRenderNode[];
-  viewport: SharedCanvasControls["viewport"];
+  onFoundationProjectionChange?: (projection: ScriptFoundationProjection) => void;
 };
 
 type ScriptAxisMode = "time" | "space";
@@ -554,29 +667,67 @@ const sanitizeScriptMeasured = (measured?: { width?: unknown; height?: unknown }
   return width || height ? { width, height } : undefined;
 };
 
-const getFlowRenderNodeSize = (node: FlowRenderNode) => {
+const getFlowNodeVirtualSize = (node: Pick<NodeFlowNode, "type" | "style" | "measured">) => {
   const measured = sanitizeScriptMeasured(node.measured);
   const style = node.style || {};
   const styleWidth = typeof style.width === "number" ? style.width : undefined;
   const styleHeight = typeof style.height === "number" ? style.height : undefined;
-  const width = measured?.width || styleWidth || 320;
   const fallbackHeight =
     node.type === "scriptPage"
       ? 249
       : node.type === "folder"
         ? 128
-      : node.type === "mdText"
-        ? 252
-        : node.type === "imageInput"
-          ? 440
-          : node.type === "text"
-            ? 256
-            : 180;
+        : node.type === "mdText"
+          ? 252
+          : node.type === "imageInput"
+            ? 440
+            : node.type === "text"
+              ? 256
+              : 220;
   return {
-    width,
+    width: measured?.width || styleWidth || 320,
     height: measured?.height || styleHeight || fallbackHeight,
   };
 };
+
+const getViewportWindowSize = () => ({
+  width: typeof window === "undefined" ? 1280 : window.innerWidth,
+  height: typeof window === "undefined" ? 720 : window.innerHeight,
+});
+
+const getViewportBounds = (
+  viewport: SharedCanvasViewport,
+  viewportSize: { width: number; height: number },
+  overscanRatio: number,
+  minOverscan: number
+): FlowViewportBounds => {
+  const zoom = Math.max(viewport.zoom || 1, 0.001);
+  const visibleWidth = viewportSize.width / zoom;
+  const visibleHeight = viewportSize.height / zoom;
+  const overscanX = Math.max(minOverscan, visibleWidth * overscanRatio);
+  const overscanY = Math.max(minOverscan, visibleHeight * overscanRatio);
+  const left = -viewport.x / zoom;
+  const top = -viewport.y / zoom;
+  return {
+    left: left - overscanX,
+    right: left + visibleWidth + overscanX,
+    top: top - overscanY,
+    bottom: top + visibleHeight + overscanY,
+  };
+};
+
+const getVirtualizedViewportBounds = (
+  viewport: SharedCanvasViewport,
+  viewportSize: { width: number; height: number }
+) => getViewportBounds(viewport, viewportSize, FLOW_VIRTUALIZATION_OVERSCAN_RATIO, FLOW_VIRTUALIZATION_MIN_OVERSCAN);
+
+const nodeBoundsIntersect = (nodeBounds: FlowViewportBounds, viewportBounds: FlowViewportBounds) =>
+  nodeBounds.right >= viewportBounds.left &&
+  nodeBounds.left <= viewportBounds.right &&
+  nodeBounds.bottom >= viewportBounds.top &&
+  nodeBounds.top <= viewportBounds.bottom;
+
+const getVirtualBucketKey = (bucketX: number, bucketY: number) => `${bucketX}:${bucketY}`;
 
 const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   timeline,
@@ -585,6 +736,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onUpdateHead,
   onUpdateBlock,
   onUpdateSpaceBlock,
+  onAddTimeBlock,
   onAddSpaceBlock,
   onSplitBlock,
   onSplitSpaceBlock,
@@ -613,9 +765,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onOpenVisualLab,
   onOpenMarkdownCard,
   onCloseMarkdownCard,
-  onFoundationGuideLinesChange,
-  nodes,
-  viewport,
+  onFoundationProjectionChange,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
@@ -629,14 +779,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectDuration, setNewProjectDuration] = useState<number>(DEFAULT_TIMELINE_DURATION);
-  const [liveViewport, setLiveViewport] = useState(viewport);
-  const [targetPositions, setTargetPositions] = useState<Record<string, ScriptFoundationTargetPosition>>({});
   const [foundationTrackWidth, setFoundationTrackWidth] = useState(0);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const spaceAxisBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceAxisBlocks), [timeline.spaceAxisBlocks]);
-  const activeBlock = timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0];
+  const activeBlock =
+    activeAxis === "time"
+      ? timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0]
+      : spaceAxisBlocks.find((block) => block.id === activeBlockId) || spaceAxisBlocks[0];
   const actionBlock =
     menuState?.type === "block"
       ? activeAxis === "time"
@@ -649,7 +800,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       : editingTarget?.type === "space"
         ? spaceAxisBlocks.find((block) => block.id === editingTarget.id) || null
         : null;
-  const timelineMarkdown = useMemo(() => buildTimelineMarkdown(timeline), [timeline]);
+  const projectIndexMarkdown = useMemo(
+    () => head.content?.trim() || buildTimelineMarkdown(timeline),
+    [head.content, timeline]
+  );
 
   const closeMarkdownCard = useCallback(() => {
     setEditingTarget(null);
@@ -685,10 +839,12 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     const nextAxis = activeAxis === "time" ? "space" : "time";
     axisSwitchTimerRef.current = window.setTimeout(() => {
       setActiveAxis(nextAxis);
+      const nextActiveBlockId = nextAxis === "time" ? timeline.blocks[0]?.id : spaceAxisBlocks[0]?.id;
+      if (nextActiveBlockId) onActiveBlockChange(nextActiveBlockId);
       setIsAxisSwitching(false);
       axisSwitchTimerRef.current = null;
     }, 180);
-  }, [activeAxis]);
+  }, [activeAxis, onActiveBlockChange, spaceAxisBlocks, timeline.blocks]);
 
   useEffect(() => {
     if (!axisRevealRequest) return;
@@ -735,8 +891,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     };
   }, [closeMarkdownCard, editingBlock, isFoundationGatewayOpen]);
 
-  useEffect(() => setLiveViewport(viewport), [viewport]);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const track = trackRef.current;
@@ -768,27 +922,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   useEffect(() => {
     if (typeof window === "undefined") return;
     let animationFrame = 0;
-    let nextViewport = viewport;
-    const handleViewportFrame = (event: Event) => {
-      const detail = (event as CustomEvent<SharedCanvasControls["viewport"]>).detail;
-      if (!detail) return;
-      nextViewport = detail;
-      if (animationFrame) return;
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = 0;
-        setLiveViewport(nextViewport);
-      });
-    };
-    window.addEventListener("qalam:viewport-frame", handleViewportFrame);
-    return () => {
-      window.removeEventListener("qalam:viewport-frame", handleViewportFrame);
-      if (animationFrame) window.cancelAnimationFrame(animationFrame);
-    };
-  }, [viewport]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let animationFrame = 0;
     let isMounted = true;
     const measureTargets = () => {
       if (!isMounted) return;
@@ -803,7 +936,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           y: Math.round((rect.top + 5) * 2) / 2,
         };
       });
-      setTargetPositions((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+      onFoundationProjectionChange?.({ activeAxis, positions: next });
     };
     const scheduleMeasure = () => {
       if (!isMounted) return;
@@ -823,76 +956,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       window.removeEventListener("scroll", scheduleMeasure, true);
       document.removeEventListener("transitionend", scheduleMeasure, true);
     };
-  }, [activeAxis, isAgentTailOpen, spaceAxisBlocks, timeline.blocks]);
-
-  const foundationGuideLines = useMemo<ScriptFoundationGuideLine[]>(() => {
-    if (typeof window === "undefined") return [];
-    const targets = [
-      ...timeline.blocks.map((block) => ({ type: "time" as const, id: block.id, color: block.color, boundaryNodeIds: block.boundaryNodeIds })),
-      ...spaceAxisBlocks.map((block) => ({ type: "space" as const, id: block.id, color: block.color, boundaryNodeIds: block.boundaryNodeIds })),
-    ].filter((target) => target.boundaryNodeIds.length);
-    if (!targets.length) return [];
-
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const headTarget = targetPositions["head:head"];
-    const stableCoord = (value: number) => Math.round(value * 2) / 2;
-    const nextLines: ScriptFoundationGuideLine[] = [];
-
-    targets.forEach((target) => {
-      const targetPosition =
-        (target.type === activeAxis ? targetPositions[`${target.type}:${target.id}`] : undefined) || headTarget;
-      if (!targetPosition) return;
-      target.boundaryNodeIds.forEach((nodeId) => {
-        const node = nodeById.get(nodeId);
-        if (!node) return;
-        const size = getFlowRenderNodeSize(node);
-        const zoom = liveViewport.zoom || 1;
-        const nodeLeft = node.position.x * zoom + liveViewport.x;
-        const nodeTop = node.position.y * zoom + liveViewport.y;
-        const nodeWidth = size.width * zoom;
-        const nodeHeight = size.height * zoom;
-        const nodeCenterX = nodeLeft + nodeWidth / 2;
-        const nodeCenterY = nodeTop + nodeHeight / 2;
-        const nodeBottom = nodeTop + nodeHeight;
-
-        if (
-          nodeWidth < 24 ||
-          nodeHeight < 24 ||
-          nodeLeft + nodeWidth <= 0 ||
-          nodeLeft >= window.innerWidth ||
-          nodeBottom <= 0 ||
-          nodeTop >= targetPosition.y - 18 ||
-          nodeCenterX <= 0 ||
-          nodeCenterX >= window.innerWidth ||
-          nodeCenterY <= 0 ||
-          nodeCenterY >= window.innerHeight
-        ) {
-          return;
-        }
-
-        const nodeX = stableCoord(nodeCenterX);
-        const nodeY = stableCoord(Math.min(nodeBottom, targetPosition.y - 24));
-        const targetX = stableCoord(targetPosition.x);
-        const targetY = stableCoord(targetPosition.y);
-        const midY = stableCoord(nodeY + (targetY - nodeY) * 0.56);
-        nextLines.push({
-          id: `${target.type}-${target.id}-${nodeId}`,
-          targetId: `${target.type}:${target.id}`,
-          nodeId,
-          color: target.color,
-          isActive: target.type === "time" && target.id === activeBlockId,
-          path: `M ${nodeX.toFixed(1)} ${nodeY.toFixed(1)} C ${nodeX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${midY.toFixed(1)}, ${targetX.toFixed(1)} ${targetY.toFixed(1)}`,
-        });
-      });
-    });
-
-    return nextLines;
-  }, [activeAxis, activeBlockId, liveViewport, nodes, spaceAxisBlocks, targetPositions, timeline.blocks]);
-
-  useEffect(() => {
-    onFoundationGuideLinesChange?.(foundationGuideLines);
-    return () => onFoundationGuideLinesChange?.([]);
-  }, [foundationGuideLines, onFoundationGuideLinesChange]);
+  }, [activeAxis, isAgentTailOpen, onFoundationProjectionChange, spaceAxisBlocks, timeline.blocks]);
 
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
@@ -917,7 +981,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   };
 
   const openFoundationGateway = () => {
-    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     onOpenMarkdownCard?.();
     setMenuState(null);
     setNodeCreateMenu(null);
@@ -928,18 +995,21 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   };
 
   const handleHeadClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
     event.preventDefault();
-    if (event.detail > 1) {
-      openFoundationGateway();
-      return;
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
     }
     clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
       switchAxisWithFilmMotion();
-    }, 170);
+    }, 220);
   };
 
   const handleHeadDoubleClick = () => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     openFoundationGateway();
   };
 
@@ -980,6 +1050,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
     const { clientX, clientY } = event;
     clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
       onActiveBlockChange(blockId);
       setMenuState((current) =>
         current?.type === "block" && current.blockId === blockId ? null : { type: "block", blockId, x: clientX, y: clientY }
@@ -989,9 +1060,12 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   };
 
   const handleBlockDoubleClick = (blockId: string) => {
-    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current);
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     onOpenMarkdownCard?.();
-    if (activeAxis === "time") onActiveBlockChange(blockId);
+    onActiveBlockChange(blockId);
     setMenuState(null);
     setIsFoundationGatewayOpen(false);
     setEditingTarget({ type: activeAxis, id: blockId });
@@ -1036,15 +1110,19 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       <div
         className={`script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
         aria-label="剧本基地"
+        style={{
+          "--foundation-leader-inset": `${FOUNDATION_FILM_LEADER_INSET}px`,
+          "--foundation-collapsed-axis-width": `${FOUNDATION_FILM_LEADER_INSET + (foundationFilmPhysics.closedWidth || 0)}px`,
+        } as CSSProperties}
       >
-        <div className="script-foundation-ribbon-background">
-          <OriginalFilmstrip
-            isOpen={!isAgentTailOpen && !isAxisSwitching}
-            physics={foundationFilmPhysics}
-            onToggleCanister={handleFilmstripToggle}
-          />
-        </div>
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
+          <div className="script-foundation-ribbon-background">
+            <OriginalFilmstrip
+              isOpen={!isAgentTailOpen && !isAxisSwitching}
+              physics={foundationFilmPhysics}
+              onToggleCanister={handleFilmstripToggle}
+            />
+          </div>
           <button
             type="button"
             className="script-foundation-head-block"
@@ -1055,6 +1133,9 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             onDoubleClick={handleHeadDoubleClick}
             title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
           >
+            <span className="script-foundation-axis-label">
+              {activeAxis === "time" ? "时间轴" : "空间轴"}
+            </span>
             <span className="script-foundation-original-canister">
               <OriginalFilmCanister
                 isOpen={!isAgentTailOpen && !isAxisSwitching}
@@ -1078,13 +1159,17 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 const nextBlock = axisBlocks[axisIndex + 1];
                 const joinsPrev = previousBlock?.color === block.color;
                 const joinsNext = nextBlock?.color === block.color;
-                const isActive = activeAxis === "time" && block.id === activeBlock?.id;
+                const isActive = block.id === activeBlock?.id;
                 const boundaryCount = block.boundaryNodeIds.length;
                 return (
                   <React.Fragment key={block.id}>
                     <div
                       data-axis-target-type={activeAxis}
                       data-axis-target-id={block.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${block.title}，双击打开块档案`}
+                      title="双击打开块档案文档"
                       draggable
                       onDragStart={(event) => {
                         setDraggingBlockId(block.id);
@@ -1107,12 +1192,17 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                       onDragEnd={() => setDraggingBlockId(null)}
                       onClick={(event) => handleBlockClick(event, block.id)}
                       onDoubleClick={() => handleBlockDoubleClick(block.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") handleBlockDoubleClick(block.id);
+                      }}
                       className={`script-foundation-block is-${block.color} ${joinsPrev || joinsNext ? "is-segment" : "is-block"} ${joinsPrev ? "joins-prev" : ""} ${joinsNext ? "joins-next" : ""} ${isActive ? "is-active" : ""} ${draggingBlockId === block.id ? "is-dragging" : ""}`}
                       style={{ flexBasis: `${width}%`, "--axis-index": axisIndex } as CSSProperties}
                     >
                       <div className="script-foundation-block__inner">
                         <div className="script-foundation-block__meta">
-                          <GripVertical size={13} strokeWidth={1.8} />
+                          <span className="script-foundation-block__frame-index">
+                            {activeAxis === "time" ? "T" : "S"}{String(axisIndex + 1).padStart(2, "0")}
+                          </span>
                           <span>
                             {activeAxis === "time"
                               ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
@@ -1122,7 +1212,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                         <strong>{block.title}</strong>
                         <div className="script-foundation-block__foot">
                           <span>{activeAxis === "time" ? `${timeBlock.durationMin}min` : "space"}</span>
-                          <span>{boundaryCount ? `${boundaryCount} 条边界` : "可连线"}</span>
+                          <span>{boundaryCount ? `${boundaryCount} 个连接` : "可连线"}</span>
                         </div>
                       </div>
                     </div>
@@ -1285,15 +1375,18 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         <div className="script-foundation-block-menu-wrap" style={getFoundationMenuStyle(menuState.x, menuState.y, 230)}>
           <section className="script-foundation-floating-menu script-foundation-action-popover">
             <div className="script-foundation-action-row">
-              {activeAxis === "space" ? (
-                <button
-                  type="button"
-                  onClick={() => onAddSpaceBlock(actionBlock.id)}
-                  title="新增全局块"
-                >
-                  <Plus size={14} strokeWidth={1.8} />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={() =>
+                  activeAxis === "time"
+                    ? onAddTimeBlock(actionBlock.id)
+                    : onAddSpaceBlock(actionBlock.id)
+                }
+                disabled={activeAxis === "time" && (actionBlock as FoundationTimeBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
+                title={activeAxis === "time" ? "新增时间块" : "新增空间块"}
+              >
+                <Plus size={14} strokeWidth={1.8} />
+              </button>
               <button
                 type="button"
                 onClick={() => (activeAxis === "time" ? onSplitBlock(actionBlock.id) : onSplitSpaceBlock(actionBlock.id))}
@@ -1349,7 +1442,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                     <strong>{head.title || "项目索引"}</strong>
                   </div>
                 </div>
-                <textarea value={timelineMarkdown} readOnly />
+                <textarea value={projectIndexMarkdown} readOnly />
               </article>
 
               <article
@@ -1515,7 +1608,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       ) : null}
 
       {editingBlock ? (
-        <section className="script-foundation-md-card" role="dialog" aria-label="编辑时间区块">
+        <section
+          className="script-foundation-md-card"
+          role="dialog"
+          aria-label={editingTarget?.type === "time" ? "编辑时间块档案" : "编辑空间块档案"}
+        >
             <input
               className="script-foundation-md-title"
               value={editingBlock.title}
@@ -1525,6 +1622,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                   : onUpdateSpaceBlock(editingBlock.id, { title: event.target.value })
               }
             />
+          <div className="script-foundation-md-meta">
+            <span>{editingTarget?.type === "time" ? "时间块档案" : "空间块档案"}</span>
+            <strong>
+              {editingTarget?.type === "time"
+                ? `${formatTimelineTime((editingBlock as FoundationTimeBlock).startMin)}-${formatTimelineTime((editingBlock as FoundationTimeBlock).startMin + (editingBlock as FoundationTimeBlock).durationMin)}`
+                : `权重 ${(editingBlock as FoundationSpaceBlock).width.toFixed(2)}`}
+            </strong>
+            <span>{editingBlock.boundaryNodeIds.length} 个连接节点</span>
+          </div>
           <div className="script-foundation-md-body">
             <textarea
               value={editingBlock.content}
@@ -1571,7 +1677,11 @@ export const useFlowSurface = ({
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
   const [axisRevealRequest, setAxisRevealRequest] = useState(0);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(() => new Set());
-  const [foundationGuideLines, setFoundationGuideLines] = useState<ScriptFoundationGuideLine[]>([]);
+  const [foundationProjection, setFoundationProjection] = useState<ScriptFoundationProjection>({
+    activeAxis: "time",
+    positions: {},
+  });
+  const [viewportWindowSize, setViewportWindowSize] = useState(getViewportWindowSize);
   const [showFoundationNodes, setShowFoundationNodes] = useState(false);
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
@@ -1593,6 +1703,10 @@ export const useFlowSurface = ({
     [activeFlowProject?.durationMin, activeFlowProject?.rootNodeId, activeFlowProject?.title, activeFlowProjectId, flow, projectData.fileName]
   );
   const timeline = foundationGraph.timeline;
+  const foundationSpaceBlocks = useMemo(
+    () => normalizeSpaceBlocks(timeline.spaceAxisBlocks),
+    [timeline.spaceAxisBlocks]
+  );
   const foundationScaffoldNodeIds = useMemo(
     () =>
       getFoundationScaffoldNodeIds(flow, {
@@ -1604,6 +1718,31 @@ export const useFlowSurface = ({
   );
   const flowRuntimeContext = useMemo(() => createScriptNodeFlowContext(projectData), [projectData]);
 
+  const handleFoundationProjectionChange = useCallback((next: ScriptFoundationProjection) => {
+    setFoundationProjection((current) =>
+      current.activeAxis === next.activeAxis && JSON.stringify(current.positions) === JSON.stringify(next.positions)
+        ? current
+        : next
+    );
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let animationFrame = 0;
+    const handleResize = () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        setViewportWindowSize(getViewportWindowSize());
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isActive || !activeFlowProject) return;
     setProjectData((previous) => {
@@ -1613,26 +1752,12 @@ export const useFlowSurface = ({
       const project = projects.find((item) => item.id === activeId) || activeFlowProject;
       const rootNodeId = project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`;
       const currentFlow = ensureFlow(previous.flow);
-      const currentFlowNodes = currentFlow.flowNodes || [];
-      const seed = buildFoundationGraphSeed(project.title, project.durationMin, rootNodeId);
-      const existingIds = new Set(currentFlowNodes.map((node) => node.id));
-      const seededNodes = seed.nodes.filter((node) => !existingIds.has(node.id));
-      const nextNodeIds = new Set([...currentFlowNodes.map((node) => node.id), ...seededNodes.map((node) => node.id)]);
-      const existingLinkIds = new Set(currentFlow.links.map((link) => link.id));
-      const seededLinks = seed.links.filter(
-        (link) => !existingLinkIds.has(link.id) && nextNodeIds.has(link.source) && nextNodeIds.has(link.target)
-      );
-      if (!seededNodes.length && !seededLinks.length && project.rootNodeId === rootNodeId) return previous;
-      const nextLinks = [
-        ...seededLinks,
-        ...currentFlow.links.filter((link) => nextNodeIds.has(link.source) && nextNodeIds.has(link.target)),
-      ];
-      const nextFlow = {
-        ...currentFlow,
-        revision: (currentFlow.revision || 0) + 1,
-        flowNodes: [...seededNodes, ...currentFlowNodes],
-        links: nextLinks,
-      };
+      const nextFlow = ensureFoundationGraphSkeleton(currentFlow, {
+        rootNodeId,
+        title: project.title,
+        durationMin: project.durationMin,
+      });
+      if (nextFlow === currentFlow && project.rootNodeId === rootNodeId) return previous;
       const nextProjects = projects.map((item) =>
         item.id === activeId
           ? {
@@ -1652,9 +1777,100 @@ export const useFlowSurface = ({
     });
   }, [activeFlowProject, isActive, setProjectData]);
 
-  const nodes = useMemo<FlowRenderNode[]>(() => {
+  const foundationBlockVisuals = useMemo(() => {
+    const visuals = new Map<string, { axis: ScriptAxisMode; color: string }>();
+    timeline.blocks.forEach((block) => visuals.set(block.id, { axis: "time", color: block.color }));
+    foundationSpaceBlocks.forEach((block) => visuals.set(block.id, { axis: "space", color: block.color }));
+    return visuals;
+  }, [foundationSpaceBlocks, timeline.blocks]);
+
+  const flowNodeById = useMemo(
+    () => new Map((flow.flowNodes || []).map((node) => [node.id, node])),
+    [flow.flowNodes]
+  );
+
+  const shouldVirtualizeFlow = (flow.flowNodes || []).length >= FLOW_VIRTUALIZATION_MIN_NODES;
+
+  const virtualizedNodeIndex = useMemo(() => {
+    const buckets = new Map<string, string[]>();
+    const boundsById = new Map<string, { left: number; right: number; top: number; bottom: number }>();
+    (flow.flowNodes || []).forEach((node) => {
+      const size = getFlowNodeVirtualSize(node);
+      const left = node.position?.x || 0;
+      const top = node.position?.y || 0;
+      const right = left + size.width;
+      const bottom = top + size.height;
+      boundsById.set(node.id, { left, right, top, bottom });
+      const minBucketX = Math.floor(left / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+      const maxBucketX = Math.floor(right / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+      const minBucketY = Math.floor(top / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+      const maxBucketY = Math.floor(bottom / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+      for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX += 1) {
+        for (let bucketY = minBucketY; bucketY <= maxBucketY; bucketY += 1) {
+          const key = getVirtualBucketKey(bucketX, bucketY);
+          const bucket = buckets.get(key);
+          if (bucket) bucket.push(node.id);
+          else buckets.set(key, [node.id]);
+        }
+      }
+    });
+    return { buckets, boundsById };
+  }, [flow.flowNodes]);
+
+  const virtualizedViewportBounds = useMemo(
+    () => getVirtualizedViewportBounds(canvasControls.viewport, viewportWindowSize),
+    [canvasControls.viewport, viewportWindowSize]
+  );
+
+  const visibleFlowNodeIds = useMemo(() => {
+    if (!shouldVirtualizeFlow) return null;
+    const ids = new Set<string>();
+    const minBucketX = Math.floor(virtualizedViewportBounds.left / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+    const maxBucketX = Math.floor(virtualizedViewportBounds.right / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+    const minBucketY = Math.floor(virtualizedViewportBounds.top / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+    const maxBucketY = Math.floor(virtualizedViewportBounds.bottom / FLOW_VIRTUALIZATION_BUCKET_SIZE);
+    for (let bucketX = minBucketX; bucketX <= maxBucketX; bucketX += 1) {
+      for (let bucketY = minBucketY; bucketY <= maxBucketY; bucketY += 1) {
+        const bucket = virtualizedNodeIndex.buckets.get(getVirtualBucketKey(bucketX, bucketY));
+        if (!bucket) continue;
+        bucket.forEach((nodeId) => {
+          if (ids.has(nodeId)) return;
+          const bounds = virtualizedNodeIndex.boundsById.get(nodeId);
+          if (!bounds) return;
+          if (nodeBoundsIntersect(bounds, virtualizedViewportBounds)) {
+            ids.add(nodeId);
+          }
+        });
+      }
+    }
+    selectedNodeIds.forEach((nodeId) => ids.add(nodeId));
+    return ids;
+  }, [selectedNodeIds, shouldVirtualizeFlow, virtualizedNodeIndex, virtualizedViewportBounds]);
+
+  const foundationProjectionPositions = useMemo(() => {
+    const positions = new Map<string, XYPosition>();
+    if (showFoundationNodes || isWritingEditorOpen) return positions;
+    const headPosition = foundationProjection.positions["head:head"];
+    const viewport = canvasControls.viewport;
+    const zoom = Math.max(viewport.zoom || 1, 0.001);
+    foundationBlockVisuals.forEach((visual, blockId) => {
+      const screenPosition =
+        (visual.axis === foundationProjection.activeAxis
+          ? foundationProjection.positions[`${visual.axis}:${blockId}`]
+          : undefined) || headPosition;
+      if (!screenPosition) return;
+      positions.set(blockId, {
+        x: (screenPosition.x - viewport.x) / zoom,
+        y: (screenPosition.y - viewport.y) / zoom,
+      });
+    });
+    return positions;
+  }, [canvasControls.viewport, foundationBlockVisuals, foundationProjection, isWritingEditorOpen, showFoundationNodes]);
+
+  const baseNodes = useMemo<FlowRenderNode[]>(() => {
     return (flow.flowNodes || [])
-      .filter((node) => showFoundationNodes || !foundationScaffoldNodeIds.has(node.id))
+      .filter((node) => !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
+      .filter((node) => showFoundationNodes || !getFoundationNodeRole(node))
       .map((node, index) => ({
         ...node,
         position: node.position || getDefaultFlowNodePosition(index),
@@ -1664,10 +1880,49 @@ export const useFlowSurface = ({
           ...(node.data || {}),
         } as NodeFlowNodeData,
       }));
-  }, [flow.flowNodes, foundationScaffoldNodeIds, selectedNodeIds, showFoundationNodes]);
+  }, [flow.flowNodes, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds]);
 
-  const nodeIdSet = useMemo(() => new Set(nodes.map((node) => node.id)), [nodes]);
-  const nodeTypeById = useMemo(() => new Map(nodes.map((node) => [node.id, node.type])), [nodes]);
+  const foundationBlockFolderNodes = useMemo(
+    () =>
+      (flow.flowNodes || []).filter(
+        (node) =>
+          getFoundationNodeRole(node) === "block-folder" &&
+          (!showFoundationNodes || !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
+      ),
+    [flow.flowNodes, showFoundationNodes, visibleFlowNodeIds]
+  );
+
+  const foundationProjectionAnchorNodes = useMemo<FlowRenderNode[]>(() => {
+    if (showFoundationNodes || isWritingEditorOpen) return [];
+    return foundationBlockFolderNodes.map((node, index) => ({
+      ...node,
+      type: "foundationAnchor",
+      position: foundationProjectionPositions.get(node.id) || node.position || getDefaultFlowNodePosition(index),
+      selected: false,
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      deletable: false,
+      style: { width: 1, height: 1, opacity: 0, pointerEvents: "none" },
+      measured: { width: 1, height: 1 },
+      data: node.data || createDefaultNodeFlowNodeData(node.type),
+    }));
+  }, [foundationBlockFolderNodes, foundationProjectionPositions, isWritingEditorOpen, showFoundationNodes]);
+
+  const nodes = useMemo<FlowRenderNode[]>(
+    () => [...baseNodes, ...foundationProjectionAnchorNodes],
+    [baseNodes, foundationProjectionAnchorNodes]
+  );
+
+  const nodeIdSet = useMemo(() => {
+    const ids = new Set(baseNodes.map((node) => node.id));
+    if (!showFoundationNodes && !isWritingEditorOpen) {
+      foundationBlockFolderNodes.forEach((node) => ids.add(node.id));
+    }
+    return ids;
+  }, [baseNodes, foundationBlockFolderNodes, isWritingEditorOpen, showFoundationNodes]);
+
+  const nodeTypeById = useMemo(() => new Map(baseNodes.map((node) => [node.id, node.type])), [baseNodes]);
   const flowRuntimeNodes = useMemo<NodeFlowNode[]>(
     () => (flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index)),
     [flow.flowNodes]
@@ -1683,23 +1938,65 @@ export const useFlowSurface = ({
         .map(toRuntimeScriptLink),
     [flow.links, flowRuntimeNodeIdSet]
   );
-  const edges = useMemo<FlowRenderEdge[]>(
-    () =>
-      flow.links
-        .filter((link) => showFoundationNodes || (!foundationScaffoldNodeIds.has(link.source) && !foundationScaffoldNodeIds.has(link.target)))
-        .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
-        .map((link) => ({
+  const edges = useMemo<FlowRenderEdge[]>(() => {
+    return flow.links
+      .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
+      .map((link) => {
+        const sourceVisual = foundationBlockVisuals.get(link.source);
+        const targetRole = getFoundationNodeRole(flowNodeById.get(link.target));
+        const isFoundationBoundary = Boolean(sourceVisual && !targetRole);
+        const foundationSourceScreenPosition =
+          isFoundationBoundary && sourceVisual
+            ? (sourceVisual.axis === foundationProjection.activeAxis
+                ? foundationProjection.positions[`${sourceVisual.axis}:${link.source}`]
+                : undefined) || foundationProjection.positions["head:head"]
+            : undefined;
+        const isActiveBoundary = Boolean(
+          sourceVisual &&
+          isFoundationBlockSelectionActive(
+            foundationProjection.activeAxis,
+            activeTimelineBlockId,
+            sourceVisual.axis,
+            link.source
+          )
+        );
+        return {
           id: link.id,
           source: link.source,
           target: link.target,
-          sourceHandle: link.sourceHandle || "text",
-          targetHandle: link.targetHandle || "text",
-          type: "default",
+          sourceHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.sourceHandle || "text",
+          targetHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.targetHandle || "text",
+          type: isFoundationBoundary ? "foundationBoundary" : "default",
           animated: false,
-          style: { stroke: "var(--app-accent-strong)", strokeWidth: 1.8 },
-        })),
-    [flow.links, foundationScaffoldNodeIds, nodeIdSet, showFoundationNodes]
-  );
+          deletable: !isFoundationStructuralLink(flow, link),
+          zIndex: isFoundationBoundary ? 2 : 0,
+          data: isFoundationBoundary
+            ? {
+                foundationBoundary: true,
+                foundationSourceScreenX: foundationSourceScreenPosition?.x,
+                foundationSourceScreenY: foundationSourceScreenPosition?.y,
+                foundationTargetBounds: virtualizedNodeIndex.boundsById.get(link.target),
+              }
+            : undefined,
+          style: isFoundationBoundary
+            ? {
+                stroke: FOUNDATION_EDGE_COLORS[sourceVisual?.color || ""] || "var(--app-accent-strong)",
+                strokeWidth: isActiveBoundary ? 2.65 : 1.8,
+                opacity: isActiveBoundary ? 0.95 : 0.62,
+              }
+            : { stroke: "var(--app-accent-strong)", strokeWidth: 1.8 },
+        };
+      });
+  }, [
+    activeTimelineBlockId,
+    flow,
+    flowNodeById,
+    foundationBlockVisuals,
+    foundationProjection.activeAxis,
+    foundationProjection.positions,
+    nodeIdSet,
+    virtualizedNodeIndex,
+  ]);
 
   const persistFlow = useCallback(
     (updater: (flow: FlowState, previous: ProjectData) => FlowState) => {
@@ -1723,7 +2020,6 @@ export const useFlowSurface = ({
     (projectId: string) => {
       setSelectedNodeIds(new Set());
       setConnectionDrop(null);
-      setShowFoundationNodes(false);
       setProjectData((previous) => {
         const now = Date.now();
         const projects = saveActiveFlowIntoProjects(previous, now);
@@ -1744,7 +2040,6 @@ export const useFlowSurface = ({
     (durationMin: number) => {
       setSelectedNodeIds(new Set());
       setConnectionDrop(null);
-      setShowFoundationNodes(false);
       setProjectData((previous) => {
         const now = Date.now();
         const projects = saveActiveFlowIntoProjects(previous, now);
@@ -1915,10 +2210,13 @@ export const useFlowSurface = ({
 
   useEffect(() => {
     if (!timeline.blocks.length) return;
-    if (!activeTimelineBlockId || !timeline.blocks.some((block) => block.id === activeTimelineBlockId)) {
+    const hasActiveBlock =
+      timeline.blocks.some((block) => block.id === activeTimelineBlockId) ||
+      foundationSpaceBlocks.some((block) => block.id === activeTimelineBlockId);
+    if (!activeTimelineBlockId || !hasActiveBlock) {
       setActiveTimelineBlockId(timeline.blocks[0].id);
     }
-  }, [activeTimelineBlockId, timeline.blocks]);
+  }, [activeTimelineBlockId, foundationSpaceBlocks, timeline.blocks]);
 
   const persistTimeline = useCallback(
     (updater: (timeline: FoundationScaffold) => FoundationScaffold) => {
@@ -1981,6 +2279,44 @@ export const useFlowSurface = ({
           block.id === blockId ? { ...block, ...patch } : block
         ),
       }));
+    },
+    [persistTimeline]
+  );
+
+  const handleTimelineBlockAdd = useCallback(
+    (afterBlockId?: string) => {
+      persistTimeline((current) => {
+        const blocks = current.blocks.slice().sort((a, b) => a.order - b.order);
+        const requestedIndex = afterBlockId
+          ? blocks.findIndex((block) => block.id === afterBlockId)
+          : blocks.length - 1;
+        const donorIndex = requestedIndex >= 0 ? requestedIndex : blocks.length - 1;
+        const donor = blocks[donorIndex];
+        if (!donor || donor.durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2) return current;
+        const durationMin = Math.max(
+          MIN_TIMELINE_BLOCK_MINUTES,
+          Math.min(12, Math.floor(donor.durationMin / 2))
+        );
+        blocks[donorIndex] = {
+          ...donor,
+          durationMin: donor.durationMin - durationMin,
+        };
+        const nextBlock: FoundationTimeBlock = {
+          id: `timeline-block-${Date.now()}`,
+          title: "新时间块",
+          content: "",
+          startMin: 0,
+          durationMin,
+          color: TIMELINE_COLORS[blocks.length % TIMELINE_COLORS.length].value,
+          order: donorIndex + 1,
+          boundaryNodeIds: [],
+        };
+        blocks.splice(donorIndex + 1, 0, nextBlock);
+        return {
+          ...current,
+          blocks: blocks.map((block, order) => ({ ...block, order })),
+        };
+      });
     },
     [persistTimeline]
   );
@@ -2115,7 +2451,7 @@ export const useFlowSurface = ({
           links: [...currentFlow.links, createFoundationLink(target.id, nodeId)],
         };
       });
-      if (target.type === "time") setActiveTimelineBlockId(target.id);
+      setActiveTimelineBlockId(target.id);
       return true;
     },
     [nodeIdSet, persistFlow]
@@ -2273,6 +2609,14 @@ export const useFlowSurface = ({
       if (!dropState?.sourceNodeId) return currentLinks;
 
       const existingNodeType = nodeTypeById.get(dropState.sourceNodeId);
+      const existingNode = (flow.flowNodes || []).find((node) => node.id === dropState.sourceNodeId);
+      const foundationRole = getFoundationNodeRole(existingNode);
+      if (
+        (dropState.connectionType === "target" && foundationRole) ||
+        (foundationRole && foundationRole !== "block-folder")
+      ) {
+        return currentLinks;
+      }
       const existingNodeHandles = getScriptNodeHandlesForType(existingNodeType);
       const createdNodeHandles = getScriptNodeHandlesForType(createdNodeType);
       const existingTypedHandle = isTypedHandle(dropState.sourceHandleId) ? dropState.sourceHandleId : null;
@@ -2318,7 +2662,7 @@ export const useFlowSurface = ({
         },
       ];
     },
-    [nodeTypeById]
+    [flow.flowNodes, nodeTypeById]
   );
 
   const handleAddScriptPage = useCallback((position?: { x: number; y: number }, dropState: ScriptConnectionDropState | null = null) => {
@@ -2607,7 +2951,15 @@ export const useFlowSurface = ({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowRenderNode>[]) => {
-      const aligned = alignPositionChangesToNodeEdges(changes, nodes, snapToGrid && !isLocked);
+      const mutableChanges = changes.filter(
+        (change) => {
+          if (!("id" in change)) return true;
+          const node = (flow.flowNodes || []).find((item) => item.id === change.id);
+          if (!showFoundationNodes && isFoundationStructuralNode(node)) return false;
+          return change.type !== "remove" || !isFoundationStructuralNode(node);
+        }
+      );
+      const aligned = alignPositionChangesToNodeEdges(mutableChanges, nodes, snapToGrid && !isLocked);
       onAlignmentGuideChange(aligned.guide);
       const effectiveChanges = aligned.changes;
       const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
@@ -2625,7 +2977,7 @@ export const useFlowSurface = ({
           return next;
         });
       }
-      const removedFlowNodeIds = changes
+      const removedFlowNodeIds = effectiveChanges
         .filter((change): change is Extract<NodeChange<FlowRenderNode>, { type: "remove" }> => change.type === "remove")
         .map((change) => change.id);
       const removedNodeIds = new Set(removedFlowNodeIds);
@@ -2664,29 +3016,40 @@ export const useFlowSurface = ({
         };
       });
     },
-    [isLocked, nodes, onAlignmentGuideChange, persistFlow, setProjectData, snapToGrid]
+    [flow.flowNodes, isLocked, nodes, onAlignmentGuideChange, persistFlow, showFoundationNodes, snapToGrid]
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowRenderEdge>[]) => {
-      const nextEdges = applyEdgeChanges(changes, edges);
+      const removedIds = new Set(
+        changes
+          .filter((change): change is Extract<EdgeChange<FlowRenderEdge>, { type: "remove" }> => change.type === "remove")
+          .filter((change) => {
+            const link = flow.links.find((item) => item.id === change.id);
+            return !link || !isFoundationStructuralLink(flow, link);
+          })
+          .map((change) => change.id)
+      );
+      if (!removedIds.size) return;
       persistFlow((currentFlow) => ({
         ...currentFlow,
-        links: nextEdges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: isTypedHandle(edge.sourceHandle) || edge.sourceHandle === "multi" ? edge.sourceHandle : undefined,
-          targetHandle: isTypedHandle(edge.targetHandle) || edge.targetHandle === "multi" ? edge.targetHandle : undefined,
-        })),
+        revision: (currentFlow.revision || 0) + 1,
+        links: removeFlowLinksById(currentFlow.links, removedIds),
       }));
     },
-    [edges, persistFlow]
+    [flow, persistFlow]
   );
 
   const commitScriptConnection = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return false;
+      const sourceNode = (flow.flowNodes || []).find((node) => node.id === connection.source);
+      const targetNode = (flow.flowNodes || []).find((node) => node.id === connection.target);
+      const sourceFoundationRole = getFoundationNodeRole(sourceNode);
+      const targetFoundationRole = getFoundationNodeRole(targetNode);
+      if (targetFoundationRole || (sourceFoundationRole && sourceFoundationRole !== "block-folder")) {
+        return false;
+      }
       const sourceType = nodeTypeById.get(connection.source);
       const targetType = nodeTypeById.get(connection.target);
       if (!sourceType || !targetType) return false;
@@ -2714,29 +3077,24 @@ export const useFlowSurface = ({
         return false;
       }
       const id = `link-${connection.source}-${connection.target}-${sourceHandle}-${targetHandle}`;
-      const nextEdges = addEdge(
-        {
-          ...connection,
+      persistFlow((currentFlow) => {
+        const nextLinks = appendUniqueFlowLink(currentFlow.links, {
           id,
+          source: connection.source,
+          target: connection.target,
           sourceHandle,
           targetHandle,
-        },
-        edges.filter((edge) => edge.id !== id)
-      );
-
-      persistFlow((currentFlow) => ({
-        ...currentFlow,
-        links: nextEdges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: isTypedHandle(edge.sourceHandle) || edge.sourceHandle === "multi" ? edge.sourceHandle : undefined,
-          targetHandle: isTypedHandle(edge.targetHandle) || edge.targetHandle === "multi" ? edge.targetHandle : undefined,
-        })),
-      }));
+        });
+        if (nextLinks === currentFlow.links) return currentFlow;
+        return {
+          ...currentFlow,
+          revision: (currentFlow.revision || 0) + 1,
+          links: nextLinks,
+        };
+      });
       return true;
     },
-    [edges, nodeTypeById, persistFlow]
+    [flow.flowNodes, nodeTypeById, persistFlow]
   );
 
   const handleConnect = useCallback(
@@ -2907,26 +3265,16 @@ export const useFlowSurface = ({
 
   const handleScriptNodeClick = useCallback(
     (node: FlowRenderNode) => {
-      const boundaryBlock = timeline.blocks.find((block) => block.boundaryNodeIds.includes(node.id));
+      const boundaryBlock = [...timeline.blocks, ...foundationSpaceBlocks].find((block) =>
+        block.boundaryNodeIds.includes(node.id)
+      );
       if (boundaryBlock) setActiveTimelineBlockId(boundaryBlock.id);
       if (node.type === "scriptPage") {
         onOpenScriptDocument(node.id);
       }
     },
-    [onOpenScriptDocument, timeline.blocks]
+    [foundationSpaceBlocks, onOpenScriptDocument, timeline.blocks]
   );
-
-  const foundationUnderlay = !showFoundationNodes && foundationGuideLines.length ? (
-    <svg className="script-foundation-connection-layer" aria-hidden="true">
-      {foundationGuideLines.map((line) => (
-        <path
-          key={line.id}
-          className={`script-foundation-connection is-${line.color} ${line.isActive ? "is-active" : ""}`}
-          d={line.path}
-        />
-      ))}
-    </svg>
-  ) : null;
 
   const overlays = (
     <>
@@ -2961,6 +3309,7 @@ export const useFlowSurface = ({
           onUpdateHead={handleTimelineHeadUpdate}
           onUpdateBlock={handleTimelineBlockUpdate}
           onUpdateSpaceBlock={handleSpaceBlockUpdate}
+          onAddTimeBlock={handleTimelineBlockAdd}
           onAddSpaceBlock={handleSpaceBlockAdd}
           onSplitBlock={handleTimelineBlockSplit}
           onSplitSpaceBlock={handleSpaceBlockSplit}
@@ -2998,11 +3347,10 @@ export const useFlowSurface = ({
           onOpenVisualLab={onOpenVisualLab}
           onOpenMarkdownCard={onCollapseCanvasCards}
           onCloseMarkdownCard={onRestoreCanvasCards}
-          onFoundationGuideLinesChange={setFoundationGuideLines}
-          nodes={nodes}
-          viewport={canvasControls.viewport}
+          onFoundationProjectionChange={handleFoundationProjectionChange}
         />
       ) : null}
+
     </>
   );
 
@@ -3011,6 +3359,7 @@ export const useFlowSurface = ({
     nodes,
     edges,
     nodeTypes,
+    edgeTypes,
     onNodesChange: handleNodesChange as CanvasSurfaceConfig["onNodesChange"],
     onEdgesChange: handleEdgesChange as CanvasSurfaceConfig["onEdgesChange"],
     onConnect: handleConnect,
@@ -3023,7 +3372,7 @@ export const useFlowSurface = ({
     nodesDraggable: !isLocked,
     nodesConnectable: !isLocked,
     elementsSelectable: !isLocked,
-    underlays: foundationUnderlay,
+    onlyRenderVisibleElements: false,
     overlays,
     actions: {
       addNode: handleAddFlowNode,

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, ChevronLeft, ChevronRight, Download, Focus, Minimize2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { BarChart3, Download, Focus, Minimize2, MoreHorizontal, Trash2, X } from "lucide-react";
 import type { ProjectData } from "../../types";
 import type { NodeFlowNode } from "../types";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -17,19 +17,9 @@ type Props = {
   onSubmitToQalam?: (text: string) => void;
 };
 
-type WritingScene = {
-  id: string;
+type WritingDraft = {
   title: string;
-  timeOfDay: string;
-  location: string;
-  castLine: string;
   body: string;
-};
-
-type WritingEpisode = {
-  id: number;
-  title: string;
-  scenes: WritingScene[];
 };
 
 type AgentLineState = {
@@ -38,10 +28,6 @@ type AgentLineState = {
   text: string;
   phase: "active" | "sent";
 };
-
-const SCENE_BOUNDARY_OPTIONS = ["INT.", "EXT.", "INT./EXT.", "I/E"];
-const SCENE_TIME_OPTIONS = ["DAY", "NIGHT", "DAWN", "DUSK", "MORNING", "AFTERNOON", "EVENING", "LATER"];
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const buildCharacterDetail = (character?: Character) => {
   if (!character) return "";
@@ -56,123 +42,10 @@ const buildCharacterDetail = (character?: Character) => {
     .join("\n");
 };
 
-const buildCharacterMatcher = (characters: Character[]) => {
-  const names = characters
-    .map((character) => character.name?.trim())
-    .filter((name): name is string => !!name)
-    .sort((a, b) => b.length - a.length);
-  if (!names.length) return null;
-  return new RegExp(`(${names.map((name) => escapeRegExp(name)).join("|")})`, "g");
-};
-
-const createEmptyScene = (episodeId: number, sceneIndex: number): WritingScene => ({
-  id: `${episodeId}-${sceneIndex}`,
-  title: `SCENE ${sceneIndex}`,
-  timeOfDay: "",
-  location: "",
-  castLine: "",
-  body: "",
+const buildDraftFromDocument = (title: string, content: string): WritingDraft => ({
+  title: title.trim() || "剧本文档",
+  body: content || "",
 });
-
-const createEmptyEpisode = (episodeId: number, title = "剧本文档", body = ""): WritingEpisode => ({
-  id: episodeId,
-  title,
-  scenes: [{ ...createEmptyScene(episodeId, 1), id: "1", title: "SCRIPT", body }],
-});
-
-const buildDraftFromDocument = (title: string, content: string): WritingEpisode[] => [
-  createEmptyEpisode(1, title.trim() || "剧本文档", content || ""),
-];
-
-const exportDraftLine = (line: string) => {
-  const trimmed = line.trim();
-  if (!trimmed) return "";
-
-  const actionMatch = trimmed.match(/^#\s*(.+)$/);
-  if (actionMatch) {
-    return `△${actionMatch[1].trim()}`;
-  }
-
-  const qualifiedMatch = trimmed.match(/^@([^\s/:：]+)\s*\/\s*(os|vo)\s*[:：]?\s*(.+)$/i);
-  if (qualifiedMatch) {
-    const [, speaker, mode, body] = qualifiedMatch;
-    const label = mode.toUpperCase();
-    return `${speaker.trim()}（${label}）：${body.trim()}`;
-  }
-
-  const dialogueMatch = trimmed.match(/^@([^：:]+?)\s*[:：]\s*(.+)$/);
-  if (dialogueMatch) {
-    const [, speaker, body] = dialogueMatch;
-    return `${speaker.trim()}：${body.trim()}`;
-  }
-
-  return trimmed;
-};
-
-const exportScene = (scene: WritingScene) => {
-  const header = [scene.id.trim(), scene.title.trim(), scene.timeOfDay.trim(), scene.location.trim()]
-    .filter(Boolean)
-    .join(" ");
-  const bodyLines = scene.body
-    .split(/\r?\n/)
-    .map(exportDraftLine)
-    .filter(Boolean);
-  return [header, scene.castLine.trim() ? `人物：${scene.castLine.trim()}` : "", ...bodyLines]
-    .filter(Boolean)
-    .join("\n");
-};
-
-const exportEpisode = (episode: WritingEpisode) =>
-  [
-    episode.title.trim() || `Episode ${episode.id}`,
-    "",
-    ...episode.scenes.map((scene) => exportScene(scene)),
-  ]
-    .filter(Boolean)
-    .join("\n\n")
-    .trim();
-
-const buildSceneFountainHeader = (scene: WritingScene) => {
-  const heading = [scene.location.trim() || "INT.", scene.title.trim() || "SCENE", scene.timeOfDay.trim()]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return heading ? `.${heading}` : "";
-};
-
-const exportFountainDocument = (episodes: WritingEpisode[], title: string) =>
-  [
-    title.trim() ? `Title: ${title.trim()}` : "",
-    "",
-    ...episodes.flatMap((episode) => [
-      `# ${episode.title.trim() || `Episode ${episode.id}`}`,
-      "",
-      ...episode.scenes.flatMap((scene) => [
-        buildSceneFountainHeader(scene),
-        "",
-        scene.body.trim(),
-        "",
-      ]),
-    ]),
-  ]
-    .filter((line, index, lines) => line.trim() || (index > 0 && lines[index - 1]?.trim()))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-const serializeDraftDocument = (episodes: WritingEpisode[], title: string) => {
-  const onlyEpisode = episodes.length === 1 ? episodes[0] : null;
-  const onlyScene = onlyEpisode?.scenes.length === 1 ? onlyEpisode.scenes[0] : null;
-  const isPlainDocument =
-    !!onlyScene &&
-    onlyScene.id === "1" &&
-    (!onlyScene.title.trim() || onlyScene.title.trim().toUpperCase() === "SCRIPT") &&
-    !onlyScene.location.trim() &&
-    !onlyScene.timeOfDay.trim() &&
-    !onlyScene.castLine.trim();
-  return isPlainDocument ? onlyScene.body : exportFountainDocument(episodes, title);
-};
 
 const downloadTextFile = (filename: string, content: string, mimeType: string) => {
   const blob = new Blob([content], { type: mimeType });
@@ -186,18 +59,10 @@ const downloadTextFile = (filename: string, content: string, mimeType: string) =
   URL.revokeObjectURL(url);
 };
 
-const parseCastNames = (castLine: string) =>
-  castLine
-    .split(/[、，,／/|\s]+/)
-    .map((name) => name.trim().replace(/^@/, ""))
-    .filter(Boolean);
-
 const countCharactersInBody = (body: string) => {
   const matches = body.match(/@([\w\u4e00-\u9fa5-]+)/g) || [];
   return Array.from(new Set(matches.map((item) => item.slice(1))));
 };
-
-const joinNodes = (parts: React.ReactNode[]) => parts.flatMap((part, index) => (index === 0 ? [part] : [<br key={`br-${index}`} />, part]));
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -235,20 +100,20 @@ const FOUNTAIN_FORMAT_ORDER: FountainLineKind[] = [
 ];
 
 const FOUNTAIN_FORMAT_LABELS: Record<FountainLineKind, string> = {
-  action: "Action",
-  scene_heading: "Scene Heading",
-  character: "Character",
-  dual_dialogue: "Dual Dialogue",
-  dialogue: "Dialogue",
-  parenthetical: "Parenthetical",
-  lyric: "Lyric",
-  transition: "Transition",
-  centered: "Centered",
-  note: "Note",
-  boneyard: "Boneyard",
-  section: "Section",
-  synopsis: "Synopsis",
-  page_break: "Page Break",
+  action: "动作",
+  scene_heading: "场景",
+  character: "角色",
+  dual_dialogue: "双人对白",
+  dialogue: "对白",
+  parenthetical: "括注",
+  lyric: "歌词",
+  transition: "转场",
+  centered: "居中",
+  note: "注释",
+  boneyard: "隐藏",
+  section: "章节",
+  synopsis: "梗概",
+  page_break: "分页",
 };
 
 const FOUNTAIN_FORMAT_META: Record<FountainLineKind, { marker: string; sample: string }> = {
@@ -285,17 +150,13 @@ const FOUNTAIN_QUICK_FORMATS: FountainLineKind[] = [
   "page_break",
 ];
 
-const FOUNTAIN_VISUAL_TEMPLATE_INDENT: Partial<Record<FountainLineKind, string>> = {
-  transition: "                                ",
-  centered: "                    ",
-  dual_dialogue: "                         ",
-  character: "                  ",
-  parenthetical: "              ",
-};
+const SCENE_BOUNDARY_LABEL_OPTIONS = ["INT.", "EXT.", "INT./EXT.", "I/E"];
+const SCENE_TIME_LABEL_OPTIONS = ["DAY", "NIGHT", "DAWN", "DUSK", "MORNING", "AFTERNOON", "EVENING", "LATER"];
 
 const FOUNTAIN_EMPTY_TEMPLATE_LINES = new Set([
-  ".INT. APARTMENT - DAY",
+  ".INT. 场景名 - DAY",
   "@CHARACTER",
+  "@角色名",
   "@CHARACTER ^",
   "(beat)",
   "~Lyric line",
@@ -425,29 +286,28 @@ const analyzeFountainLines = (body: string): FountainLineAnalysis[] => {
 
 const formatFountainLine = (line: string, targetKind: FountainLineKind) => {
   const raw = getFountainRawContent(line);
-  const templateIndent = raw ? "" : FOUNTAIN_VISUAL_TEMPLATE_INDENT[targetKind] || "";
 
   switch (targetKind) {
     case "scene_heading":
-      return raw ? `.${raw.toUpperCase()}` : ".INT. APARTMENT - DAY";
+      return raw ? `.${raw.toUpperCase()}` : ".INT. 场景名 - DAY";
     case "character":
-      return raw ? `@${raw.toUpperCase()}` : `${templateIndent}@CHARACTER`;
+      return raw ? `@${raw.toUpperCase()}` : "@CHARACTER";
     case "dual_dialogue": {
       const cleaned = raw.replace(/\s*\^\s*$/, "").trim();
-      return cleaned ? `@${cleaned.toUpperCase()} ^` : `${templateIndent}@CHARACTER ^`;
+      return cleaned ? `@${cleaned.toUpperCase()} ^` : "@CHARACTER ^";
     }
     case "dialogue":
       return raw;
     case "parenthetical":
-      return raw ? `(${raw})` : `${templateIndent}(beat)`;
+      return raw ? `(${raw})` : "(beat)";
     case "lyric":
       return `~${raw || "Lyric line"}`;
     case "transition":
       return raw
         ? `> ${raw.toUpperCase().endsWith(":") ? raw.toUpperCase() : `${raw.toUpperCase()}:`}`
-        : `${templateIndent}> CUT TO:`;
+        : "> CUT TO:";
     case "centered":
-      return raw ? `> ${raw} <` : `${templateIndent}> CENTERED TEXT <`;
+      return raw ? `> ${raw} <` : "> CENTERED TEXT <";
     case "note":
       return `[[${raw || "Note"}]]`;
     case "boneyard":
@@ -468,7 +328,14 @@ const getFountainTemplateSelection = (formattedLine: string, targetKind: Fountai
   const leading = formattedLine.length - formattedLine.trimStart().length;
   const trimmed = formattedLine.trim();
   switch (targetKind) {
-    case "scene_heading":
+    case "scene_heading": {
+      const sceneNameStart = formattedLine.indexOf(" ") + 1;
+      const sceneNameEnd = formattedLine.lastIndexOf(" - ");
+      return {
+        start: Math.max(1, sceneNameStart),
+        end: sceneNameEnd > sceneNameStart ? sceneNameEnd : formattedLine.length,
+      };
+    }
     case "character":
       return { start: leading + 1, end: formattedLine.length };
     case "dual_dialogue":
@@ -528,6 +395,24 @@ const displayFountainLine = (line: string, kind: FountainLineKind) => {
   return stripFountainMarkup(line);
 };
 
+const getSceneHeadingSlots = (displayLine: string) => {
+  const clean = displayLine.replace(/\s+/g, " ").trim();
+  const boundaryMatch = clean.match(/^(INT\.\/EXT\.?|INT\/EXT\.?|INT\.|EXT\.|EST\.|I\/E)(?:\s+|$)/i);
+  const rawBoundary = boundaryMatch?.[1]?.toUpperCase();
+  const boundary = rawBoundary?.startsWith("INT/EXT") ? "INT./EXT." : rawBoundary || SCENE_BOUNDARY_LABEL_OPTIONS[0];
+  const remainder = boundaryMatch ? clean.slice(boundaryMatch[0].length).trim() : clean;
+  const chunks = remainder.split(/\s+-\s+/).map((item) => item.trim()).filter(Boolean);
+  const lastChunk = chunks[chunks.length - 1]?.toUpperCase();
+  const hasTime = !!lastChunk && SCENE_TIME_LABEL_OPTIONS.includes(lastChunk);
+  const time = hasTime ? lastChunk : SCENE_TIME_LABEL_OPTIONS[0];
+  const sceneName = hasTime ? chunks.slice(0, -1).join(" - ") : remainder;
+  return {
+    boundary,
+    sceneName,
+    time,
+  };
+};
+
 const ensureFlow = (flow: ProjectData["flow"]): NonNullable<ProjectData["flow"]> => ({
   flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
   links: Array.isArray(flow?.links) ? flow.links : [],
@@ -572,12 +457,7 @@ export const WritingPanel: React.FC<Props> = ({
   const scriptNodeTitle = useMemo(() => getScriptNodeTitle(scriptNode), [scriptNode]);
   const scriptNodeContent = useMemo(() => getScriptNodeContent(scriptNode), [scriptNode]);
   const [loadedScriptNodeId, setLoadedScriptNodeId] = useState<string | null>(() => scriptNode?.id || null);
-  const [draft, setDraft] = useState<WritingEpisode[]>(() => buildDraftFromDocument(scriptNodeTitle, scriptNodeContent));
-  const [selectedEpisodeId, setSelectedEpisodeId] = useState<number>(() => draft[0]?.id || 1);
-  const [selectedSceneId, setSelectedSceneId] = useState<string>(() => {
-    const initialEpisode = draft[0];
-    return initialEpisode?.scenes[0]?.id || "1-1";
-  });
+  const [draft, setDraft] = useState<WritingDraft>(() => buildDraftFromDocument(scriptNodeTitle, scriptNodeContent));
   const [cursorPos, setCursorPos] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
@@ -587,18 +467,12 @@ export const WritingPanel: React.FC<Props> = ({
       : { width: 1440, height: 960 }
   );
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
-  const [activeGuideIndex, setActiveGuideIndex] = useState(0);
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(true);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
   const agentComposerRef = useRef<HTMLTextAreaElement>(null);
   const writingRoomRef = useRef<HTMLDivElement>(null);
-  const paperStackRef = useRef<HTMLDivElement>(null);
-  const episodeRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const scenePaperRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const pendingSceneSelectionRef = useRef<string | null>(null);
   const agentLineTimerRef = useRef<number | null>(null);
 
   const knownCharacters = useMemo(
@@ -612,15 +486,13 @@ export const WritingPanel: React.FC<Props> = ({
     });
     return map;
   }, [knownCharacters]);
-  const characterMatcher = useMemo(() => buildCharacterMatcher(knownCharacters), [knownCharacters]);
+  const deferredDraft = useDeferredValue(draft);
 
   useEffect(() => {
     const nextNodeId = scriptNode?.id || null;
     if (nextNodeId === loadedScriptNodeId) return;
     const nextDraft = buildDraftFromDocument(scriptNodeTitle, scriptNodeContent);
     setDraft(nextDraft);
-    setSelectedEpisodeId(nextDraft[0]?.id || 1);
-    setSelectedSceneId(nextDraft[0]?.scenes[0]?.id || "1");
     setLoadedScriptNodeId(nextNodeId);
     setAgentLine(null);
   }, [loadedScriptNodeId, scriptNode?.id, scriptNodeContent, scriptNodeTitle]);
@@ -631,64 +503,6 @@ export const WritingPanel: React.FC<Props> = ({
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
-  const selectedEpisode =
-    draft.find((episode) => episode.id === selectedEpisodeId) || draft[0] || createEmptyEpisode(1);
-  const selectedScene =
-    selectedEpisode.scenes.find((scene) => scene.id === selectedSceneId) ||
-    selectedEpisode.scenes[0] ||
-    createEmptyScene(selectedEpisode.id, 1);
-
-  useEffect(() => {
-    if (!draft.some((episode) => episode.id === selectedEpisodeId)) {
-      setSelectedEpisodeId(draft[0]?.id || 1);
-    }
-  }, [draft, selectedEpisodeId]);
-
-  useEffect(() => {
-    if (selectedEpisode.scenes.some((scene) => scene.id === selectedSceneId)) {
-      if (pendingSceneSelectionRef.current === selectedSceneId) {
-        pendingSceneSelectionRef.current = null;
-      }
-      return;
-    }
-
-    if (pendingSceneSelectionRef.current === selectedSceneId) {
-      return;
-    }
-
-    if (!selectedEpisode.scenes.some((scene) => scene.id === selectedSceneId)) {
-      setSelectedSceneId(selectedEpisode.scenes[0]?.id || `${selectedEpisode.id}-1`);
-    }
-  }, [selectedEpisode, selectedSceneId]);
-
-  useEffect(() => {
-    setAgentLine(null);
-  }, [selectedEpisodeId, selectedSceneId]);
-
-  useEffect(() => {
-    const node = episodeRefs.current[selectedEpisodeId];
-    if (!node) return;
-    node.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-  }, [selectedEpisodeId]);
-
-  useEffect(() => {
-    const node = scenePaperRefs.current[selectedSceneId];
-    if (!node) return;
-    const paperStack = paperStackRef.current;
-    if (!paperStack) {
-      node.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-      return;
-    }
-
-    const roomRect = paperStack.getBoundingClientRect();
-    const nodeRect = node.getBoundingClientRect();
-    const headerOffset = viewportSize.width < 760 ? 70 : 76;
-    paperStack.scrollTo({
-      top: Math.max(0, paperStack.scrollTop + nodeRect.top - roomRect.top - headerOffset),
-      behavior: "smooth",
-    });
-  }, [selectedEpisode.scenes.length, selectedSceneId, viewportSize.width]);
 
   useEffect(() => {
     if (!agentLine) return;
@@ -712,157 +526,30 @@ export const WritingPanel: React.FC<Props> = ({
     };
   }, []);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setActiveGuideIndex((current) => (current + 1) % 4);
-    }, 2600);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (agentLine) {
-        event.preventDefault();
-        setAgentLine(null);
-        requestAnimationFrame(() => editorRef.current?.focus());
-        return;
-      }
-      onClose?.();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [agentLine, onClose]);
-
-  const patchEpisode = (episodeId: number, updater: (episode: WritingEpisode) => WritingEpisode) => {
-    setDraft((prev) => prev.map((episode) => (episode.id === episodeId ? updater(episode) : episode)));
-  };
-
-  const patchScene = (episodeId: number, sceneId: string, updater: (scene: WritingScene) => WritingScene) => {
-    patchEpisode(episodeId, (episode) => ({
-      ...episode,
-      scenes: episode.scenes.map((scene) => (scene.id === sceneId ? updater(scene) : scene)),
-    }));
-  };
-
-  const addScene = () => {
-    const nextSceneIndex = selectedEpisode.scenes.length + 1;
-    const nextScene = createEmptyScene(selectedEpisode.id, nextSceneIndex);
-    pendingSceneSelectionRef.current = nextScene.id;
-    patchEpisode(selectedEpisode.id, (episode) => ({
-      ...episode,
-      scenes: [...episode.scenes, nextScene],
-    }));
-    setSelectedSceneId(nextScene.id);
-    requestAnimationFrame(() => {
-      setSelectedSceneId(nextScene.id);
-    });
-  };
-
-  const deleteScene = (sceneId: string) => {
-    if (selectedEpisode.scenes.length <= 1) return;
-    const sceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === sceneId));
-    const sceneToDelete = selectedEpisode.scenes[sceneIndex];
-    const hasContent = !!sceneToDelete && (sceneToDelete.body.trim() || sceneToDelete.title.trim() || sceneToDelete.castLine.trim());
-    if (hasContent && !window.confirm(`删除场景 ${sceneToDelete.id || sceneIndex + 1}？`)) {
-      return;
-    }
-
-    const nextScenes = selectedEpisode.scenes.filter((scene) => scene.id !== sceneId);
-    const nextScene = nextScenes[Math.min(sceneIndex, nextScenes.length - 1)] || nextScenes[0];
-    patchEpisode(selectedEpisode.id, (episode) => ({
-      ...episode,
-      scenes: nextScenes,
-    }));
-    if (nextScene) setSelectedSceneId(nextScene.id);
-    setAgentLine(null);
-  };
-
   const handleExportFountain = useCallback(() => {
     const title = projectData.fileName?.replace(/\.[^/.]+$/, "") || "qalam-script";
     const filename = `${title || "qalam-script"}.fountain`;
-    downloadTextFile(filename, serializeDraftDocument(draft, title), "text/plain;charset=utf-8");
-  }, [draft, projectData.fileName]);
+    downloadTextFile(filename, draft.body, "text/plain;charset=utf-8");
+  }, [draft.body, projectData.fileName]);
 
   const parserIssues = useMemo(() => {
     const issues: string[] = [];
-    const sceneIdSet = new Set<string>();
 
-    draft.forEach((episode) => {
-      episode.scenes.forEach((scene, index) => {
-        const sceneKey = scene.id.trim();
-        if (sceneIdSet.has(sceneKey)) {
-          issues.push(`${sceneKey} appears more than once in the draft.`);
+    const lines = deferredDraft.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    lines.forEach((line, lineIndex) => {
+      const mentions = (line.match(/@([\w\u4e00-\u9fa5-]+)/g) || []).map((item) => item.slice(1));
+      mentions.forEach((name) => {
+        if (!["CHARACTER", "角色", "角色名"].includes(name) && !characterMap.has(name)) {
+          issues.push(`第 ${lineIndex + 1} 行引用了未绑定角色 @${name}`);
         }
-        sceneIdSet.add(sceneKey);
-        if (!scene.title.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing a slugline label.`);
-        if (!scene.timeOfDay.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing time of day.`);
-        if (!scene.location.trim()) issues.push(`${sceneKey || `${episode.id}-${index + 1}`} is missing INT./EXT. context.`);
-
-        parseCastNames(scene.castLine).forEach((name) => {
-          if (!characterMap.has(name)) {
-            issues.push(`${sceneKey || `${episode.id}-${index + 1}`} cast line includes an unbound character: ${name}`);
-          }
-        });
-
-        const lines = scene.body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-        if (!lines.length) {
-          issues.push(`${sceneKey || `${episode.id}-${index + 1}`} still has no screenplay lines.`);
-        }
-        lines.forEach((line, lineIndex) => {
-          const mentions = (line.match(/@([\w\u4e00-\u9fa5-]+)/g) || []).map((item) => item.slice(1));
-          mentions.forEach((name) => {
-            if (!characterMap.has(name)) {
-              issues.push(`${sceneKey || `${episode.id}-${index + 1}`} line ${lineIndex + 1} references unknown mention @${name}`);
-            }
-          });
-        });
       });
     });
 
     return Array.from(new Set(issues));
-  }, [characterMap, draft]);
-
-  const renderBoundText = useCallback(
-    (text: string) => {
-      if (!text) return "(Empty)";
-      if (!characterMatcher) return text;
-      const parts: React.ReactNode[] = [];
-      let lastIndex = 0;
-      let match: RegExpExecArray | null;
-      characterMatcher.lastIndex = 0;
-      while ((match = characterMatcher.exec(text))) {
-        const [matchedName] = match;
-        const start = match.index;
-        const end = start + matchedName.length;
-        if (start > lastIndex) {
-          parts.push(<React.Fragment key={`text-${lastIndex}`}>{text.slice(lastIndex, start)}</React.Fragment>);
-        }
-        const character = characterMap.get(matchedName);
-        parts.push(
-          <span
-            key={`${matchedName}-${start}`}
-            className="text-mention"
-            data-kind="character"
-            data-status={character ? "match" : "missing"}
-            data-tooltip={buildCharacterDetail(character) || undefined}
-          >
-            @{matchedName}
-          </span>
-        );
-        lastIndex = end;
-      }
-      if (lastIndex < text.length) {
-        parts.push(<React.Fragment key={`text-${lastIndex}`}>{text.slice(lastIndex)}</React.Fragment>);
-      }
-      return parts;
-    },
-    [characterMap, characterMatcher]
-  );
+  }, [characterMap, deferredDraft]);
 
   const mentionState = useMemo(() => {
-    const textBefore = selectedScene.body.slice(0, cursorPos);
+    const textBefore = draft.body.slice(0, cursorPos);
     const match = textBefore.match(/@([\w\u4e00-\u9fa5-]*)$/);
     if (!match) return null;
     const start = textBefore.lastIndexOf("@");
@@ -872,7 +559,7 @@ export const WritingPanel: React.FC<Props> = ({
       start,
       end: cursorPos,
     };
-  }, [cursorPos, dismissedMentionStart, selectedScene.body]);
+  }, [cursorPos, dismissedMentionStart, draft.body]);
 
   const filteredCharacters = useMemo(() => {
     if (!mentionState) return [];
@@ -889,7 +576,7 @@ export const WritingPanel: React.FC<Props> = ({
 
   useEffect(() => {
     setActiveMentionIndex(0);
-  }, [mentionState?.query, selectedScene.id]);
+  }, [mentionState?.query]);
 
   useEffect(() => {
     if (!mentionState) {
@@ -899,9 +586,9 @@ export const WritingPanel: React.FC<Props> = ({
 
   const insertMention = (characterName: string) => {
     if (!mentionState) return;
-    const nextText = `${selectedScene.body.slice(0, mentionState.start)}@${characterName}${selectedScene.body.slice(mentionState.end)}`;
+    const nextText = `${draft.body.slice(0, mentionState.start)}@${characterName}${draft.body.slice(mentionState.end)}`;
     const nextPos = mentionState.start + characterName.length + 1;
-    patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
+    setDraft((current) => ({ ...current, body: nextText }));
     setDismissedMentionStart(null);
     requestAnimationFrame(() => {
       const editor = editorRef.current;
@@ -923,146 +610,26 @@ export const WritingPanel: React.FC<Props> = ({
     return Math.max(paddingTop, Math.min(editor.clientHeight - paddingBottom - 96, anchorTop));
   }, []);
 
-  const syncEditorScroll = () => {
+  const handleEditorScroll = () => {
     const editor = editorRef.current;
-    const highlight = highlightRef.current;
-    if (!editor || !highlight) return;
-    highlight.scrollTop = editor.scrollTop;
-    highlight.scrollLeft = editor.scrollLeft;
+    if (!editor) return;
     setAgentLine((current) =>
       current ? { ...current, top: computeAgentLineTop(editor, current.anchor) } : current
     );
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const editor = editorRef.current;
-    const highlight = highlightRef.current;
     if (!editor) return;
 
     editor.style.height = "auto";
     const nextHeight = Math.max(640, editor.scrollHeight);
     editor.style.height = `${nextHeight}px`;
-    if (highlight) {
-      highlight.style.height = `${nextHeight}px`;
-    }
 
     setAgentLine((current) =>
       current ? { ...current, top: computeAgentLineTop(editor, current.anchor) } : current
     );
-  }, [computeAgentLineTop, selectedScene.body, selectedScene.id]);
-
-  const handleSceneIdChange = useCallback(
-    (previousId: string, nextId: string) => {
-      patchScene(selectedEpisode.id, previousId, (scene) => ({ ...scene, id: nextId }));
-      if (selectedSceneId === previousId) {
-        setSelectedSceneId(nextId);
-      }
-    },
-    [selectedEpisode.id, selectedSceneId]
-  );
-
-  const renderWritingLine = useCallback(
-    (line: string, lineIndex: number, kind: FountainLineKind) => {
-      if (!line) return <span className="writing-line-empty"> </span>;
-
-      const inlineRegex = /(\[\[[\s\S]*?\]\]|\*\*\*[^*\n]+?\*\*\*|\*\*[^*\n]+?\*\*|\*[^*\n]+?\*|_[^_\n]+?_|@[\w\u4e00-\u9fa5-]+)/g;
-      const parts: React.ReactNode[] = [];
-      const displayLine = displayFountainLine(line, kind);
-      let lastIndex = 0;
-      let match: RegExpExecArray | null;
-
-      const pushText = (text: string, key: string) => {
-        if (!text) return;
-        parts.push(<React.Fragment key={key}>{text}</React.Fragment>);
-      };
-
-      inlineRegex.lastIndex = 0;
-      while ((match = inlineRegex.exec(displayLine))) {
-        const [full] = match;
-        const start = match.index;
-        const end = start + full.length;
-        if (start > lastIndex) {
-          pushText(displayLine.slice(lastIndex, start), `text-${lineIndex}-${lastIndex}`);
-        }
-
-        if (full.startsWith("@")) {
-          const name = full.slice(1);
-          const character = characterMap.get(name);
-          parts.push(
-            <span
-              key={`mention-${lineIndex}-${name}-${start}`}
-              className="text-mention"
-              data-kind="character"
-              data-status={character ? "match" : "missing"}
-              data-tooltip={buildCharacterDetail(character) || undefined}
-            >
-              @{name}
-            </span>
-          );
-        } else if (full.startsWith("[[")) {
-          parts.push(
-            <span key={`note-${lineIndex}-${start}`} className="writing-inline-note">
-              {full.replace(/^\[\[/, "").replace(/\]\]$/, "").trim()}
-            </span>
-          );
-        } else if (full.startsWith("***")) {
-          parts.push(
-            <strong key={`bold-italic-${lineIndex}-${start}`} className="writing-inline-bold-italic">
-              {full.slice(3, -3)}
-            </strong>
-          );
-        } else if (full.startsWith("**")) {
-          parts.push(
-            <strong key={`bold-${lineIndex}-${start}`} className="writing-inline-bold">
-              {full.slice(2, -2)}
-            </strong>
-          );
-        } else if (full.startsWith("*")) {
-          parts.push(
-            <em key={`italic-${lineIndex}-${start}`} className="writing-inline-italic">
-              {full.slice(1, -1)}
-            </em>
-          );
-        } else if (full.startsWith("_")) {
-          parts.push(
-            <span key={`underline-${lineIndex}-${start}`} className="writing-inline-underline">
-              {full.slice(1, -1)}
-            </span>
-          );
-        }
-
-        lastIndex = end;
-      }
-
-      if (lastIndex < displayLine.length) {
-        pushText(displayLine.slice(lastIndex), `text-${lineIndex}-${lastIndex}`);
-      }
-
-      return <span className={`writing-fountain-line writing-fountain-line--${kind}`}>{parts}</span>;
-    },
-    [characterMap]
-  );
-
-  const highlightedDraftBody = useMemo(() => {
-    const lines = analyzeFountainLines(selectedScene.body);
-    return joinNodes(
-      lines.map(({ line, kind }, index) => {
-        return <React.Fragment key={`line-${index}`}>{renderWritingLine(line, index, kind)}</React.Fragment>;
-      })
-    );
-  }, [renderWritingLine, selectedScene.body]);
-
-  const renderSceneHighlight = useCallback(
-    (scene: WritingScene) => {
-      const lines = analyzeFountainLines(scene.body);
-      return joinNodes(
-        lines.map(({ line, kind }, index) => {
-          return <React.Fragment key={`${scene.id}-line-${index}`}>{renderWritingLine(line, index, kind)}</React.Fragment>;
-        })
-      );
-    },
-    [renderWritingLine]
-  );
+  }, [computeAgentLineTop, draft.body]);
 
   const openWritingQalam = useCallback(() => {
     onOpenQalam?.();
@@ -1088,10 +655,36 @@ export const WritingPanel: React.FC<Props> = ({
   );
 
   const currentFountainKind = useMemo(() => {
-    const bounds = getLineBoundsAt(selectedScene.body, cursorPos);
-    return analyzeFountainLines(selectedScene.body)[bounds.lineIndex]?.kind || "action";
-  }, [cursorPos, selectedScene.body]);
+    const bounds = getLineBoundsAt(draft.body, cursorPos);
+    return analyzeFountainLines(draft.body)[bounds.lineIndex]?.kind || "action";
+  }, [cursorPos, draft.body]);
   const currentFountainMeta = FOUNTAIN_FORMAT_META[currentFountainKind];
+  const currentSceneHeadingSlots = useMemo(() => {
+    if (currentFountainKind !== "scene_heading") return null;
+    const bounds = getLineBoundsAt(draft.body, cursorPos);
+    return getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
+  }, [currentFountainKind, cursorPos, draft.body]);
+
+  const updateCurrentSceneHeading = useCallback(
+    (patch: Partial<{ boundary: string; sceneName: string; time: string }>) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const bounds = getLineBoundsAt(editor.value, cursorPos);
+      const currentSlots = getSceneHeadingSlots(displayFountainLine(bounds.line, "scene_heading"));
+      const nextSlots = { ...currentSlots, ...patch };
+      const nextLine = `.${nextSlots.boundary} ${nextSlots.sceneName} - ${nextSlots.time}`;
+      const nextBody = `${editor.value.slice(0, bounds.lineStart)}${nextLine}${editor.value.slice(bounds.lineEnd)}`;
+      const relativeCursor = Math.max(0, cursorPos - bounds.lineStart);
+      const nextCursor = bounds.lineStart + Math.min(relativeCursor, nextLine.length);
+      setDraft((current) => ({ ...current, body: nextBody }));
+      setCursorPos(nextCursor);
+      requestAnimationFrame(() => {
+        editor.selectionStart = nextCursor;
+        editor.selectionEnd = nextCursor;
+      });
+    },
+    [cursorPos]
+  );
 
   const applyFountainLineFormat = useCallback(
     (editor: HTMLTextAreaElement, nextKind: FountainLineKind) => {
@@ -1117,7 +710,7 @@ export const WritingPanel: React.FC<Props> = ({
       };
 
       let nextText = `${text.slice(0, bounds.lineStart)}${formattedLine}${text.slice(bounds.lineEnd)}`;
-      let mappedSelection = mapSelection();
+      const mappedSelection = mapSelection();
       let nextSelectionStart = mappedSelection.start;
       let nextSelectionEnd = mappedSelection.end;
 
@@ -1129,30 +722,23 @@ export const WritingPanel: React.FC<Props> = ({
       if (nextKind === "dialogue") {
         const previousLine = getPreviousNonEmptyLine(lines, bounds.lineIndex);
         if (!isCharacterLine(previousLine)) {
-          const insert = `@角色\n${formattedLine}`;
-          const dialogueOffset = "@角色\n".length;
+          const characterCue = "@角色名";
+          const insert = rawLine ? `${characterCue}\n${formattedLine}` : characterCue;
           nextText = `${text.slice(0, bounds.lineStart)}${insert}${text.slice(bounds.lineEnd)}`;
-          if (!rawLine) {
-            nextSelectionStart = bounds.lineStart + dialogueOffset + templateSelection.start;
-            nextSelectionEnd = bounds.lineStart + dialogueOffset + templateSelection.end;
-          } else {
-            mappedSelection = mapSelection(dialogueOffset);
-            nextSelectionStart = mappedSelection.start;
-            nextSelectionEnd = mappedSelection.end;
-          }
+          nextSelectionStart = bounds.lineStart + 1;
+          nextSelectionEnd = bounds.lineStart + characterCue.length;
         }
       }
 
-      patchScene(selectedEpisode.id, selectedScene.id, (scene) => ({ ...scene, body: nextText }));
+      setDraft((current) => ({ ...current, body: nextText }));
       requestAnimationFrame(() => {
         editor.focus();
         editor.selectionStart = nextSelectionStart;
         editor.selectionEnd = nextSelectionEnd;
         setCursorPos(nextSelectionEnd);
-        syncEditorScroll();
       });
     },
-    [selectedEpisode.id, selectedScene.id]
+    []
   );
 
   const cycleFountainLineFormat = useCallback(
@@ -1206,22 +792,17 @@ export const WritingPanel: React.FC<Props> = ({
       return;
     }
 
-    if (event.key === "Enter" && !event.shiftKey && event.currentTarget.selectionStart === event.currentTarget.selectionEnd) {
-      const selectionStart = event.currentTarget.selectionStart || 0;
-      const textBefore = event.currentTarget.value.slice(0, selectionStart);
-      if (textBefore.endsWith("\n\n")) {
-        event.preventDefault();
-        activateAgentLine(event.currentTarget);
-        return;
-      }
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      activateAgentLine(event.currentTarget);
     }
   };
 
   const applyToProject = useCallback(() => {
     const nodeId = scriptNode?.id || initialScriptNodeId;
     if (!nodeId) return;
-    const title = selectedEpisode.title.trim() || scriptNodeTitle || "剧本文档";
-    const content = serializeDraftDocument(draft, title);
+    const title = draft.title.trim() || scriptNodeTitle || "剧本文档";
+    const content = draft.body;
     const preview = content.replace(/\s+/g, " ").slice(0, 180);
     setProjectData((previous) => {
       const flow = ensureFlow(previous.flow);
@@ -1260,12 +841,12 @@ export const WritingPanel: React.FC<Props> = ({
         },
       };
     });
-  }, [draft, initialScriptNodeId, scriptNode?.id, scriptNodeTitle, selectedEpisode.title, setProjectData]);
+  }, [draft.body, draft.title, initialScriptNodeId, scriptNode?.id, scriptNodeTitle, setProjectData]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       applyToProject();
-    }, 220);
+    }, 800);
     return () => window.clearTimeout(timer);
   }, [applyToProject]);
 
@@ -1286,43 +867,37 @@ export const WritingPanel: React.FC<Props> = ({
     }, 260);
   }, [agentLine, closeAgentLine, onSubmitToQalam]);
 
-  const selectedSceneIndex = Math.max(0, selectedEpisode.scenes.findIndex((scene) => scene.id === selectedScene.id));
   const isCompactLayout = viewportSize.width < 1180;
   const qalamPanelWidth = isCompactLayout
     ? Math.max(320, viewportSize.width - 32)
     : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
   const screenplayLineCount = useMemo(
-    () => Math.max(1, selectedScene.body.split(/\r?\n/).length),
-    [selectedScene.body]
+    () => Math.max(1, draft.body.split(/\r?\n/).length),
+    [draft.body]
   );
-  const scriptCharacterCount = selectedScene.body.trim().length;
-  const totalSceneCount = draft.reduce((sum, episode) => sum + episode.scenes.length, 0);
-  const sceneMentionCount = countCharactersInBody(selectedScene.body).length;
-  const locationCount = new Set(
-    draft.flatMap((episode) =>
-      episode.scenes.map((scene) => scene.title.trim() || scene.location.trim()).filter(Boolean)
-    )
-  ).size;
-  const writingGuides = useMemo(
-    () => [
-      "Fountain keeps the screenplay as plain text, with line prefixes carrying structure.",
-      "Use Tab, Shift+Tab, or the format bar to cycle line styles.",
-      "Scene metadata stays on the page and exports with the script.",
-    ],
-    []
+  const scriptCharacterCount = draft.body.trim().length;
+  const screenplaySceneCount = useMemo(
+    () => analyzeFountainLines(deferredDraft.body).filter(({ kind }) => kind === "scene_heading").length,
+    [deferredDraft]
+  );
+  const sceneMentionCount = countCharactersInBody(draft.body).length;
+  const locationCount = useMemo(
+    () =>
+      new Set(
+        analyzeFountainLines(deferredDraft.body)
+          .filter(({ kind }) => kind === "scene_heading")
+          .map(({ line }) => getSceneHeadingSlots(displayFountainLine(line, "scene_heading")).sceneName)
+          .filter((name) => name && name !== "场景名")
+      ).size,
+    [deferredDraft]
   );
   const scriptStats = [
-    { label: "场景", value: totalSceneCount },
+    { label: "场景", value: screenplaySceneCount },
     { label: "行数", value: screenplayLineCount },
     { label: "角色", value: sceneMentionCount },
     { label: "地点", value: locationCount },
     { label: "问题", value: parserIssues.length },
   ];
-  const navigateScene = (delta: number) => {
-    const nextIndex = selectedSceneIndex + delta;
-    if (nextIndex < 0 || nextIndex >= selectedEpisode.scenes.length) return;
-    setSelectedSceneId(selectedEpisode.scenes[nextIndex].id);
-  };
   const stageStyle = isQalamOpen
     ? isCompactLayout
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
@@ -1351,41 +926,11 @@ export const WritingPanel: React.FC<Props> = ({
                   <div className="writing-header-actions">
                     <button
                       type="button"
-                      onClick={() => navigateScene(-1)}
-                      className="writing-icon-button"
-                      disabled={selectedSceneIndex === 0}
-                      title="上一场"
-                    >
-                      <ChevronLeft size={17} strokeWidth={1.8} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigateScene(1)}
-                      className="writing-icon-button"
-                      disabled={selectedSceneIndex === selectedEpisode.scenes.length - 1}
-                      title="下一场"
-                    >
-                      <ChevronRight size={17} strokeWidth={1.8} />
-                    </button>
-                    <button type="button" onClick={addScene} className="writing-icon-button" title="新增场景">
-                      <Plus size={17} strokeWidth={1.8} />
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setIsInfoPanelOpen((current) => !current)}
                       className="writing-icon-button writing-more-button"
                       title={isInfoPanelOpen ? "隐藏信息" : "显示信息"}
                     >
                       {isInfoPanelOpen ? <X size={18} strokeWidth={1.8} /> : <MoreHorizontal size={18} strokeWidth={1.8} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteScene(selectedScene.id)}
-                      className="writing-icon-button writing-icon-button--danger"
-                      disabled={selectedEpisode.scenes.length <= 1}
-                      title={selectedEpisode.scenes.length <= 1 ? "至少保留一个场景" : "删除当前稿纸"}
-                    >
-                      <Trash2 size={17} strokeWidth={1.9} />
                     </button>
                     <button
                       type="button"
@@ -1400,126 +945,31 @@ export const WritingPanel: React.FC<Props> = ({
                     </button>
                   </div>
                 </header>
-                <datalist id="writing-scene-boundary-options">
-                  {SCENE_BOUNDARY_OPTIONS.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
-                <datalist id="writing-scene-time-options">
-                  {SCENE_TIME_OPTIONS.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
+                <div className="writing-paper-stack">
+                  <div className="writing-script-paper is-active">
+                    <div className="writing-paper-title-row">
+                      <input
+                        value={draft.title}
+                        onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+                        className="writing-card-title-input"
+                        placeholder="剧本文档"
+                        aria-label="剧本文档标题"
+                      />
+                    </div>
 
-                <div ref={paperStackRef} className="writing-paper-stack">
-                <div className="writing-paper-title-row">
-                  <input
-                    value={selectedEpisode.title}
-                    onChange={(event) =>
-                      patchEpisode(selectedEpisode.id, (current) => ({ ...current, title: event.target.value }))
-                    }
-                    className="writing-card-title-input"
-                    placeholder="剧本文档"
-                  />
-                </div>
-                  {selectedEpisode.scenes.map((scene) => {
-                    const isActiveScene = scene.id === selectedScene.id;
-                    return (
-                      <div
-                        key={scene.id}
-                        ref={(node) => {
-                          scenePaperRefs.current[scene.id] = node;
-                        }}
-                        className={`writing-script-paper ${isActiveScene ? "is-active" : ""}`}
-                        onMouseDown={() => {
-                          if (!isActiveScene) {
-                            setSelectedSceneId(scene.id);
-                            setAgentLine(null);
-                          }
-                        }}
-                      >
-                        <div className="writing-scene-strip">
-                          <label className="writing-scene-field writing-scene-field--id">
-                            <span className="writing-scene-field__label">Scene</span>
-                            <input
-                              value={scene.id}
-                              onFocus={() => setSelectedSceneId(scene.id)}
-                              onChange={(event) => handleSceneIdChange(scene.id, event.target.value)}
-                              className="writing-scene-input writing-scene-input--id"
-                              placeholder="1"
-                            />
-                          </label>
-                          <label className="writing-scene-field writing-scene-field--boundary">
-                            <span className="writing-scene-field__label">Type</span>
-                            <input
-                              value={scene.location}
-                              list="writing-scene-boundary-options"
-                              onFocus={() => setSelectedSceneId(scene.id)}
-                              onChange={(event) =>
-                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, location: event.target.value }))
-                              }
-                              className="writing-scene-input writing-scene-input--short"
-                              placeholder="INT."
-                            />
-                          </label>
-                          <label className="writing-scene-field writing-scene-field--location">
-                            <span className="writing-scene-field__label">Location</span>
-                            <input
-                              value={scene.title}
-                              onFocus={() => setSelectedSceneId(scene.id)}
-                              onChange={(event) =>
-                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, title: event.target.value }))
-                              }
-                              className="writing-scene-input"
-                              placeholder="APARTMENT"
-                            />
-                          </label>
-                          <label className="writing-scene-field writing-scene-field--time">
-                            <span className="writing-scene-field__label">Time</span>
-                            <input
-                              value={scene.timeOfDay}
-                              list="writing-scene-time-options"
-                              onFocus={() => setSelectedSceneId(scene.id)}
-                              onChange={(event) =>
-                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, timeOfDay: event.target.value }))
-                              }
-                              className="writing-scene-input writing-scene-input--short"
-                              placeholder="DAY"
-                            />
-                          </label>
-                          <label className="writing-scene-field writing-scene-field--cast">
-                            <span className="writing-scene-field__label">Cast</span>
-                            <input
-                              value={scene.castLine}
-                              onFocus={() => setSelectedSceneId(scene.id)}
-                              onChange={(event) =>
-                                patchScene(selectedEpisode.id, scene.id, (current) => ({ ...current, castLine: event.target.value }))
-                              }
-                              className="writing-scene-input writing-scene-input--cast"
-                              placeholder="CAST"
-                            />
-                          </label>
-                        </div>
-
-                        <div className="writing-paper-body relative flex-1">
-                          {isActiveScene ? (
-                            <>
-                              <div
-                                ref={highlightRef}
-                                aria-hidden="true"
-                                className="writing-editor-highlight pointer-events-none absolute left-0 right-0 top-0 z-0 overflow-hidden whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9"
-                              >
-                                {highlightedDraftBody}
-                              </div>
+                    <div className="writing-paper-body relative flex-1">
                               <textarea
                                 ref={editorRef}
-                                value={selectedScene.body}
+                                value={draft.body}
                                 onFocus={() => setIsEditorFocused(true)}
                                 onBlur={() => setIsEditorFocused(false)}
-                                onChange={(event) =>
-                                  patchScene(selectedEpisode.id, selectedScene.id, (current) => ({ ...current, body: event.target.value }))
-                                }
-                                onScroll={syncEditorScroll}
+                                onChange={(event) => {
+                                  const nextBody = event.target.value;
+                                  const nextCursor = event.target.selectionStart || 0;
+                                  setDraft((current) => ({ ...current, body: nextBody }));
+                                  setCursorPos(nextCursor);
+                                }}
+                                onScroll={handleEditorScroll}
                                 onMouseDown={() => {
                                   if (agentLine) setAgentLine(null);
                                 }}
@@ -1537,7 +987,9 @@ export const WritingPanel: React.FC<Props> = ({
                                 }}
                                 onKeyDown={handleEditorKeyDown}
                                 rows={18}
-                                placeholder={"INT. APARTMENT - NIGHT\n\nRain presses against the window. A typewriter sits beneath a dim practical lamp.\n\nMARA\nI thought the rewrite would save us.\n\n(beat)\n\nJONAH\nThen write the version that hurts.\n\n\n"}
+                                aria-label="剧本正文"
+                                spellCheck
+                                placeholder={".INT. 场景名 - DAY\n\n在这里开始写作。使用下方格式栏设置当前行。"}
                                 className="writing-editor relative z-10 w-full overflow-hidden border-none bg-transparent px-10 pb-10 pt-8 font-sans text-[17px] leading-9 outline-none"
                               />
 
@@ -1597,43 +1049,69 @@ export const WritingPanel: React.FC<Props> = ({
                                   </div>
                                 </div>
                               ) : null}
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              className="writing-paper-preview"
-                              onClick={() => setSelectedSceneId(scene.id)}
-                            >
-                              <span className="writing-editor-highlight whitespace-pre-wrap px-10 pb-10 pt-8 font-sans text-[17px] leading-9">
-                                {renderSceneHighlight(scene)}
-                              </span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="writing-format-dock">
-                  <div className="writing-format-bar">
-                    {FOUNTAIN_QUICK_FORMATS.map((kind) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        title={FOUNTAIN_FORMAT_META[kind].sample}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          const editor = editorRef.current;
-                          if (!editor) return;
-                          applyFountainLineFormat(editor, kind);
-                        }}
-                        className={`writing-format-button ${currentFountainKind === kind ? "is-active" : ""}`}
-                      >
-                        <span className="writing-format-button__marker">{FOUNTAIN_FORMAT_META[kind].marker}</span>
-                        <span>{FOUNTAIN_FORMAT_LABELS[kind]}</span>
-                      </button>
-                    ))}
+                  <div className="writing-format-dock__content">
+                    {currentSceneHeadingSlots ? (
+                      <div className="writing-scene-format-fields" aria-label="当前场景格式">
+                        <label className="writing-scene-format-field is-choice">
+                          <span>内/外景</span>
+                          <select
+                            value={currentSceneHeadingSlots.boundary}
+                            onChange={(event) => updateCurrentSceneHeading({ boundary: event.target.value })}
+                            aria-label="内外景"
+                          >
+                            {SCENE_BOUNDARY_LABEL_OPTIONS.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="writing-scene-format-field is-name">
+                          <span>场景名</span>
+                          <input
+                            value={currentSceneHeadingSlots.sceneName}
+                            onChange={(event) => updateCurrentSceneHeading({ sceneName: event.target.value })}
+                            aria-label="场景名"
+                            placeholder="场景名"
+                          />
+                        </label>
+                        <label className="writing-scene-format-field is-choice">
+                          <span>时间</span>
+                          <select
+                            value={currentSceneHeadingSlots.time}
+                            onChange={(event) => updateCurrentSceneHeading({ time: event.target.value })}
+                            aria-label="场景时间"
+                          >
+                            {SCENE_TIME_LABEL_OPTIONS.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    ) : null}
+
+                    <div className="writing-format-bar">
+                      {FOUNTAIN_QUICK_FORMATS.map((kind) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          title={FOUNTAIN_FORMAT_META[kind].sample}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            const editor = editorRef.current;
+                            if (!editor) return;
+                            applyFountainLineFormat(editor, kind);
+                          }}
+                          className={`writing-format-button ${currentFountainKind === kind ? "is-active" : ""}`}
+                        >
+                          <span className="writing-format-button__marker">{FOUNTAIN_FORMAT_META[kind].marker}</span>
+                          <span>{FOUNTAIN_FORMAT_LABELS[kind]}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1650,10 +1128,8 @@ export const WritingPanel: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const nextDraft = buildDraftFromDocument(selectedEpisode.title || "剧本文档", "");
-                        setDraft(nextDraft);
-                        setSelectedEpisodeId(nextDraft[0]?.id || 1);
-                        setSelectedSceneId(nextDraft[0]?.scenes[0]?.id || "1");
+                        if (!window.confirm("清空当前剧本文档？此操作会覆盖尚未导出的内容。")) return;
+                        setDraft((current) => ({ ...current, body: "" }));
                         setAgentLine(null);
                       }}
                       className="writing-side-action writing-side-action--danger"
@@ -1672,32 +1148,6 @@ export const WritingPanel: React.FC<Props> = ({
                       <span className="writing-format-summary__marker">{currentFountainMeta.marker}</span>
                       <span>{FOUNTAIN_FORMAT_LABELS[currentFountainKind]}</span>
                     </div>
-                    {writingGuides.map((guide, index) => (
-                      <div key={guide} className={`writing-guide-row ${index === activeGuideIndex % writingGuides.length ? "is-active" : ""}`}>
-                        <span>{String(index + 1).padStart(2, "0")}</span>
-                        <p>{guide}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="writing-side-section">
-                  <div className="writing-side-label">Document</div>
-                  <div className="writing-episode-list">
-                    {draft.map((episode) => (
-                      <button
-                        key={episode.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedEpisodeId(episode.id);
-                          setSelectedSceneId(episode.scenes[0]?.id || `${episode.id}-1`);
-                        }}
-                        className={`writing-episode-item ${episode.id === selectedEpisode.id ? "is-active" : ""}`}
-                      >
-                        <span>{episode.title || "剧本文档"}</span>
-                        <strong>{episode.scenes.length}</strong>
-                      </button>
-                    ))}
                   </div>
                 </div>
 
@@ -1716,7 +1166,7 @@ export const WritingPanel: React.FC<Props> = ({
                 <div className="writing-side-foot">
                   <BarChart3 size={16} strokeWidth={1.8} />
                   <span>
-                    场景 {selectedSceneIndex + 1}/{selectedEpisode.scenes.length} · {scriptCharacterCount} 字
+                    场景 {screenplaySceneCount} · {scriptCharacterCount} 字
                   </span>
                 </div>
               </aside>

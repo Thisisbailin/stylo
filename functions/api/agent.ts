@@ -16,6 +16,7 @@ import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
+import { DEFAULT_NODE_DIMENSIONS } from "../../node-workspace/nodeflow/placement";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 import { createNodeFlowGraphLink, removeNodeFlowGraphLink } from "../../node-workspace/nodeflow/graphLinks";
 import {
@@ -112,12 +113,7 @@ const createNodeFlowBridgeState = (
   const getViewport = () => currentNodeFlow.viewport || null;
   const addNode = (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => {
     const id = `${type}-${++nodeIdCounter}`;
-    const defaultDimensions: Partial<Record<NodeType, { width: number; height?: number }>> = {
-      scriptBoard: { width: 920 },
-      identityCard: { width: 760 },
-      seedanceVideoGen: { width: 380 },
-    };
-    const dim = defaultDimensions[type];
+    const dim = DEFAULT_NODE_DIMENSIONS[type];
     const newNode: NodeFlowNode = {
       id,
       type,

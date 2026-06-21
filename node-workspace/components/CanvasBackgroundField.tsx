@@ -1,11 +1,5 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
-
-type ViewportLike = {
-  x: number;
-  y: number;
-  zoom: number;
-};
+import React, { useId } from "react";
+import { useStore } from "@xyflow/react";
 
 type PatternKey = "dots" | "grid" | "cross" | "lines" | "diagonal" | "none";
 
@@ -15,25 +9,6 @@ type Props = {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
-  viewport: ViewportLike;
-  viewportRef?: React.RefObject<ViewportLike>;
-  alignmentGuide?: EdgeAlignmentGuide | null;
-  active?: boolean;
-};
-
-export type CanvasBackgroundFieldHandle = {
-  requestDraw: () => void;
-};
-
-type PointerState = {
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  strength: number;
-  targetStrength: number;
-  lastMoveAt: number;
-  inside: boolean;
 };
 
 const BASE_STEPS: Record<Exclude<PatternKey, "none">, number> = {
@@ -45,390 +20,192 @@ const BASE_STEPS: Record<Exclude<PatternKey, "none">, number> = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
 const positiveModulo = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
 
-const getStep = (pattern: PatternKey, zoom: number) => {
-  if (pattern === "none") return 28;
-  return clamp(BASE_STEPS[pattern] * Math.max(0.25, zoom || 1), 18, 92);
+const MinorPattern = ({
+  pattern,
+  step,
+  primaryColor,
+  secondaryColor,
+}: {
+  pattern: Exclude<PatternKey, "none">;
+  step: number;
+  primaryColor: string;
+  secondaryColor: string;
+}) => {
+  const center = step / 2;
+
+  if (pattern === "dots") {
+    return <circle cx={center} cy={center} r={clamp(step * 0.055, 0.8, 1.7)} fill={primaryColor} />;
+  }
+
+  if (pattern === "cross") {
+    const arm = clamp(step * 0.125, 4, 7);
+    return (
+      <path
+        d={`M ${center - arm} ${center} H ${center + arm} M ${center} ${center - arm} V ${center + arm}`}
+        fill="none"
+        stroke={primaryColor}
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
+  }
+
+  if (pattern === "lines") {
+    return (
+      <path
+        d={`M 0 ${step - 0.5} H ${step}`}
+        fill="none"
+        stroke={secondaryColor}
+        strokeWidth="0.7"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
+  }
+
+  if (pattern === "diagonal") {
+    return (
+      <path
+        d={`M 0 ${step} L ${step} 0`}
+        fill="none"
+        stroke={secondaryColor}
+        strokeWidth="0.75"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
+  }
+
+  return (
+    <path
+      d={`M ${step - 0.5} 0 V ${step} M 0 ${step - 0.5} H ${step}`}
+      fill="none"
+      stroke={secondaryColor}
+      strokeWidth="0.65"
+      vectorEffect="non-scaling-stroke"
+    />
+  );
 };
 
-const getMovedPoint = (
-  x: number,
-  y: number,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike,
-  radius: number
-) => {
-  let nextX = x;
-  let nextY = y;
-  const pointerStrength = pointer.strength;
-
-  if (pointerStrength > 0.01) {
-    const dx = pointer.x - x;
-    const dy = pointer.y - y;
-    const distance = Math.hypot(dx, dy);
-    if (distance > 64 && distance < radius) {
-      const falloff = Math.pow(1 - distance / radius, 2.6);
-      const push = 7.2 * falloff * pointerStrength;
-      nextX -= (dx / distance) * push;
-      nextY -= (dy / distance) * push;
-    }
+const MajorPattern = ({
+  pattern,
+  size,
+  primaryColor,
+  accentColor,
+}: {
+  pattern: Exclude<PatternKey, "none">;
+  size: number;
+  primaryColor: string;
+  accentColor: string;
+}) => {
+  if (pattern === "dots") {
+    return <circle cx={size / 2} cy={size / 2} r="1.8" fill={accentColor} />;
   }
 
-  if (guide?.x != null) {
-    const guideX = viewport.x + guide.x * viewport.zoom;
-    const distance = Math.abs(guideX - x);
-    if (distance < 132) {
-      const falloff = Math.pow(1 - distance / 132, 2);
-      nextX += (guideX - x) * falloff * 0.08 * (guide.xStrength ?? 1);
-    }
+  if (pattern === "cross") return null;
+
+  if (pattern === "lines") {
+    return (
+      <path
+        d={`M 0 ${size - 0.5} H ${size}`}
+        fill="none"
+        stroke={primaryColor}
+        strokeWidth="1.1"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
   }
 
-  if (guide?.y != null) {
-    const guideY = viewport.y + guide.y * viewport.zoom;
-    const distance = Math.abs(guideY - y);
-    if (distance < 132) {
-      const falloff = Math.pow(1 - distance / 132, 2);
-      nextY += (guideY - y) * falloff * 0.08 * (guide.yStrength ?? 1);
-    }
+  if (pattern === "diagonal") {
+    return (
+      <path
+        d={`M 0 ${size} L ${size} 0`}
+        fill="none"
+        stroke={primaryColor}
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
+    );
   }
 
-  return { x: nextX, y: nextY };
+  return (
+    <path
+      d={`M ${size - 0.5} 0 V ${size} M 0 ${size - 0.5} H ${size}`}
+      fill="none"
+      stroke={primaryColor}
+      strokeWidth="1"
+      vectorEffect="non-scaling-stroke"
+    />
+  );
 };
 
-const drawDotPattern = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  step: number,
-  offsetX: number,
-  offsetY: number,
-  primary: string,
-  secondary: string,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike
-) => {
-  const radius = Math.max(0.8, Math.min(1.7, step * 0.055));
-  let row = 0;
-  for (let y = offsetY - step; y <= height + step; y += step) {
-    let col = 0;
-    for (let x = offsetX - step; x <= width + step; x += step) {
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 360);
-      ctx.fillStyle = (row + col) % 4 === 0 ? secondary : primary;
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      col += 1;
-    }
-    row += 1;
-  }
-};
-
-const drawGridPattern = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  step: number,
-  offsetX: number,
-  offsetY: number,
-  primary: string,
-  secondary: string,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike
-) => {
-  const majorEvery = 5;
-  const sample = Math.max(18, step);
-
-  for (let x = offsetX - step; x <= width + step; x += step) {
-    const major = Math.round((x - offsetX) / step) % majorEvery === 0;
-    ctx.strokeStyle = major ? primary : secondary;
-    ctx.lineWidth = major ? 1.1 : 0.65;
-    ctx.beginPath();
-    for (let y = -sample; y <= height + sample; y += sample) {
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 340);
-      if (y <= -sample + 0.01) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    }
-    ctx.stroke();
-  }
-
-  for (let y = offsetY - step; y <= height + step; y += step) {
-    const major = Math.round((y - offsetY) / step) % majorEvery === 0;
-    ctx.strokeStyle = major ? primary : secondary;
-    ctx.lineWidth = major ? 1.1 : 0.65;
-    ctx.beginPath();
-    for (let x = -sample; x <= width + sample; x += sample) {
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 340);
-      if (x <= -sample + 0.01) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    }
-    ctx.stroke();
-  }
-};
-
-const drawCrossPattern = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  step: number,
-  offsetX: number,
-  offsetY: number,
-  primary: string,
-  secondary: string,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike
-) => {
-  const arm = clamp(step * 0.125, 4, 7);
-  let row = 0;
-  for (let y = offsetY - step; y <= height + step; y += step) {
-    let col = 0;
-    for (let x = offsetX - step; x <= width + step; x += step) {
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 360);
-      ctx.strokeStyle = (row + col) % 3 === 0 ? secondary : primary;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(point.x - arm, point.y);
-      ctx.lineTo(point.x + arm, point.y);
-      ctx.moveTo(point.x, point.y - arm);
-      ctx.lineTo(point.x, point.y + arm);
-      ctx.stroke();
-      col += 1;
-    }
-    row += 1;
-  }
-};
-
-const drawLinePattern = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  step: number,
-  offsetY: number,
-  primary: string,
-  secondary: string,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike
-) => {
-  const sample = Math.max(18, step);
-  for (let y = offsetY - step; y <= height + step; y += step) {
-    const major = Math.round((y - offsetY) / step) % 4 === 0;
-    ctx.strokeStyle = major ? primary : secondary;
-    ctx.lineWidth = major ? 1.2 : 0.7;
-    ctx.beginPath();
-    for (let x = -sample; x <= width + sample; x += sample) {
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 340);
-      if (x <= -sample + 0.01) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    }
-    ctx.stroke();
-  }
-};
-
-const drawDiagonalPattern = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  step: number,
-  offsetX: number,
-  offsetY: number,
-  primary: string,
-  secondary: string,
-  pointer: PointerState,
-  guide: EdgeAlignmentGuide | null | undefined,
-  viewport: ViewportLike
-) => {
-  const span = width + height;
-  const sample = Math.max(18, step);
-  for (let origin = -span; origin <= span; origin += step) {
-    const major = Math.round((origin - offsetX - offsetY) / step) % 4 === 0;
-    ctx.strokeStyle = major ? primary : secondary;
-    ctx.lineWidth = major ? 1.1 : 0.7;
-    ctx.beginPath();
-    for (let t = -sample; t <= span + sample; t += sample) {
-      const x = origin + t + positiveModulo(offsetX + offsetY, step);
-      const y = t;
-      const point = getMovedPoint(x, y, pointer, guide, viewport, 330);
-      if (t <= -sample + 0.01) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    }
-    ctx.stroke();
-  }
-};
-
-export const CanvasBackgroundField = forwardRef<CanvasBackgroundFieldHandle, Props>(({
+export const CanvasBackgroundField: React.FC<Props> = ({
   pattern,
   baseColor,
   primaryColor,
   secondaryColor,
   accentColor,
-  viewport,
-  viewportRef,
-  alignmentGuide,
-  active = true,
-}, ref) => {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameRef = useRef<number | null>(null);
-  const scheduleDrawRef = useRef<() => void>(() => {});
-  const reducedMotionRef = useRef(false);
-  const propsRef = useRef({ pattern, baseColor, primaryColor, secondaryColor, accentColor, viewport, alignmentGuide, active });
-  const pointerRef = useRef<PointerState>({
-    x: -1000,
-    y: -1000,
-    targetX: -1000,
-    targetY: -1000,
-    strength: 0,
-    targetStrength: 0,
-    lastMoveAt: 0,
-    inside: false,
-  });
+}) => {
+  const transform = useStore((state) => state.transform);
+  const patternId = useId().replace(/:/g, "");
 
-  propsRef.current = { pattern, baseColor, primaryColor, secondaryColor, accentColor, viewport, alignmentGuide, active };
+  if (pattern === "none") {
+    return <div className="canvas-background-field pointer-events-none absolute inset-0 z-0" style={{ background: baseColor }} aria-hidden="true" />;
+  }
 
-  useImperativeHandle(ref, () => ({
-    requestDraw: () => scheduleDrawRef.current(),
-  }), []);
-
-  useEffect(() => {
-    reducedMotionRef.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const host = hostRef.current;
-    if (!canvas || !host) return;
-
-    const draw = () => {
-      const ctx = canvas.getContext("2d", { alpha: false });
-      if (!ctx) return;
-
-      const rect = host.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      const width = Math.max(1, Math.floor(rect.width));
-      const height = Math.max(1, Math.floor(rect.height));
-      const nextWidth = Math.floor(width * dpr);
-      const nextHeight = Math.floor(height * dpr);
-      if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-        canvas.width = nextWidth;
-        canvas.height = nextHeight;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-      }
-
-      const current = propsRef.current;
-      const currentViewport = viewportRef?.current || current.viewport;
-      const pointer = pointerRef.current;
-      const now = performance.now();
-      const canAnimate = current.active && !reducedMotionRef.current;
-      pointer.targetStrength = canAnimate && pointer.inside && now - pointer.lastMoveAt < 1100 ? 0.86 : 0;
-      pointer.x += (pointer.targetX - pointer.x) * 0.13;
-      pointer.y += (pointer.targetY - pointer.y) * 0.13;
-      pointer.strength += (pointer.targetStrength - pointer.strength) * 0.075;
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = current.baseColor;
-      ctx.fillRect(0, 0, width, height);
-
-      if (current.pattern !== "none") {
-        const step = getStep(current.pattern, currentViewport.zoom);
-        const offsetX = positiveModulo(currentViewport.x, step);
-        const offsetY = positiveModulo(currentViewport.y, step);
-
-        ctx.save();
-        ctx.globalCompositeOperation = "source-over";
-        if (current.pattern === "dots") {
-          drawDotPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
-        } else if (current.pattern === "grid") {
-          drawGridPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
-        } else if (current.pattern === "cross") {
-          drawCrossPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
-        } else if (current.pattern === "lines") {
-          drawLinePattern(ctx, width, height, step, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
-        } else if (current.pattern === "diagonal") {
-          drawDiagonalPattern(ctx, width, height, step, offsetX, offsetY, current.primaryColor, current.secondaryColor, pointer, current.alignmentGuide, currentViewport);
-        }
-        ctx.restore();
-      }
-
-      const shouldContinue =
-        canAnimate &&
-        (pointer.strength > 0.02 ||
-          Math.abs(pointer.targetX - pointer.x) > 0.2 ||
-          Math.abs(pointer.targetY - pointer.y) > 0.2 ||
-          Boolean(current.alignmentGuide));
-      frameRef.current = shouldContinue ? window.requestAnimationFrame(draw) : null;
-    };
-
-    const scheduleDraw = () => {
-      if (frameRef.current != null) return;
-      frameRef.current = window.requestAnimationFrame(draw);
-    };
-    scheduleDrawRef.current = scheduleDraw;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const rect = host.getBoundingClientRect();
-      const inside =
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom;
-      const pointer = pointerRef.current;
-      pointer.inside = inside;
-      if (!inside) {
-        pointer.lastMoveAt = 0;
-        scheduleDraw();
-        return;
-      }
-      pointer.targetX = event.clientX - rect.left;
-      pointer.targetY = event.clientY - rect.top;
-      if (pointer.x < -100) {
-        pointer.x = pointer.targetX;
-        pointer.y = pointer.targetY;
-      }
-      pointer.lastMoveAt = performance.now();
-      scheduleDraw();
-    };
-
-    const handlePointerLeave = () => {
-      pointerRef.current.inside = false;
-      pointerRef.current.lastMoveAt = 0;
-      scheduleDraw();
-    };
-
-    const resizeObserver = new ResizeObserver(scheduleDraw);
-    resizeObserver.observe(host);
-    window.addEventListener("pointermove", handlePointerMove, { passive: true });
-    window.addEventListener("pointerleave", handlePointerLeave);
-    scheduleDraw();
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerleave", handlePointerLeave);
-      if (frameRef.current != null) {
-        window.cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
-      scheduleDrawRef.current = () => {};
-    };
-  }, []);
-
-  useEffect(() => {
-    scheduleDrawRef.current();
-  }, [pattern, baseColor, primaryColor, secondaryColor, accentColor, viewport, alignmentGuide, active]);
+  const [viewportX, viewportY, zoom] = transform;
+  const step = clamp(BASE_STEPS[pattern] * Math.max(0.25, zoom || 1), 18, 92);
+  const majorEvery = pattern === "dots" ? 4 : 5;
+  const majorSize = step * majorEvery;
+  const offsetX = positiveModulo(viewportX, step);
+  const offsetY = positiveModulo(viewportY, step);
+  const majorOffsetX = positiveModulo(viewportX + step * 0.5, majorSize);
+  const majorOffsetY = positiveModulo(viewportY + step * 0.5, majorSize);
+  const minorId = `${patternId}-minor`;
+  const majorId = `${patternId}-major`;
 
   return (
-    <div ref={hostRef} className="canvas-background-field pointer-events-none absolute inset-0 z-0" aria-hidden="true">
-      <canvas ref={canvasRef} className="block h-full w-full" />
+    <div
+      className="canvas-background-field pointer-events-none absolute inset-0 z-0"
+      style={{ background: baseColor }}
+      aria-hidden="true"
+    >
+      <svg className="block h-full w-full" width="100%" height="100%">
+        <defs>
+          <pattern
+            id={minorId}
+            x={offsetX}
+            y={offsetY}
+            width={step}
+            height={step}
+            patternUnits="userSpaceOnUse"
+          >
+            <MinorPattern
+              pattern={pattern}
+              step={step}
+              primaryColor={primaryColor}
+              secondaryColor={secondaryColor}
+            />
+          </pattern>
+          <pattern
+            id={majorId}
+            x={majorOffsetX}
+            y={majorOffsetY}
+            width={majorSize}
+            height={majorSize}
+            patternUnits="userSpaceOnUse"
+          >
+            <MajorPattern
+              pattern={pattern}
+              size={majorSize}
+              primaryColor={primaryColor}
+              accentColor={accentColor}
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#${minorId})`} />
+        {pattern !== "cross" ? <rect width="100%" height="100%" fill={`url(#${majorId})`} /> : null}
+      </svg>
     </div>
   );
-});
-
-CanvasBackgroundField.displayName = "CanvasBackgroundField";
+};
