@@ -62,6 +62,8 @@ import {
   SeedanceVideoGenNode,
 } from "../nodes";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+import { createEmptyNodeFlowApprovalState } from "../nodeflow/approvals";
+import { createIdleNodeFlowExecutionState } from "../nodeflow/sessionState";
 import { buildNodeFlowFile, downloadNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
@@ -1690,6 +1692,17 @@ export const useFlowSurface = ({
     () => flowProjects.find((project) => project.id === activeFlowProjectId) || flowProjects[0],
     [activeFlowProjectId, flowProjects]
   );
+  const hydratedQalamProjectRef = useRef(activeFlowProjectId);
+
+  useEffect(() => {
+    if (hydratedQalamProjectRef.current === activeFlowProjectId) return;
+    hydratedQalamProjectRef.current = activeFlowProjectId;
+    useNodeFlowStore.setState((state) => ({
+      ...state,
+      ...createIdleNodeFlowExecutionState(),
+      ...createEmptyNodeFlowApprovalState(),
+    }));
+  }, [activeFlowProjectId]);
   const foundationGraph = useMemo(
     () =>
       parseFoundationGraph(flow, {
@@ -2027,6 +2040,8 @@ export const useFlowSurface = ({
           ...previous,
           activeFlowProjectId: target.id,
           flow: ensureFlow(target.flow),
+          roles: target.roles || [],
+          designAssets: target.designAssets || [],
           flowProjects: projects,
         };
       });
@@ -2057,12 +2072,16 @@ export const useFlowSurface = ({
           rootNodeId,
           createdAt: now,
           updatedAt: now,
+          roles: [],
+          designAssets: [],
           flow: newFlow,
         };
         return {
           ...previous,
           activeFlowProjectId: id,
           flow: newFlow,
+          roles: [],
+          designAssets: [],
           flowProjects: [...projects, newProject],
         };
       });
@@ -2144,6 +2163,8 @@ export const useFlowSurface = ({
           ...previous,
           activeFlowProjectId: nextActiveProject.id,
           flow: ensureFlow(nextActiveProject.flow),
+          roles: nextActiveProject.roles || [],
+          designAssets: nextActiveProject.designAssets || [],
           flowProjects: remainingProjects,
         };
       });

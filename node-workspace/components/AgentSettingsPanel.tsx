@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Cloud,
   Code2,
+  Braces,
   Eye,
   FileText,
   Globe,
@@ -57,8 +58,14 @@ import { InfoPanel } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel } from "./SyncPanel";
 import type { ModuleKey } from "./ModuleBar";
+import {
+  buildQalamActivityStorageKey,
+  buildQalamConversationStorageKey,
+  buildQalamSessionId,
+} from "../../agents/runtime/projectScope";
 
 type Props = {
+  projectId: string;
   isOpen: boolean;
   onClose: () => void;
   leftOffset?: number;
@@ -78,7 +85,7 @@ type Props = {
   onOrganizeFoundationScaffold?: () => void;
   onSetFoundationNodeView?: (visible: boolean) => void;
   foundationNodeView?: boolean;
-  onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab">) => void;
+  onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab">) => void;
 };
 
 export type AgentSettingsPanelKey =
@@ -407,6 +414,7 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
 };
 
 export const AgentSettingsPanel: React.FC<Props> = ({
+  projectId,
   isOpen,
   onClose,
   leftOffset = 0,
@@ -428,6 +436,8 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   foundationNodeView = false,
   onOpenVisualLab,
 }) => {
+  const conversationStorageKey = buildQalamConversationStorageKey(projectId);
+  const activityStorageKey = buildQalamActivityStorageKey(projectId);
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
@@ -461,7 +471,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const [traceSpanFilter, setTraceSpanFilter] = useState<"all" | "error">("all");
   const [traceSearch, setTraceSearch] = useState("");
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
-    key: "qalam_conversations_v1",
+    key: conversationStorageKey,
     initialValue: { activeId: "", items: [] },
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
@@ -545,7 +555,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     if (traceSpanFilter === "error") return spans.filter((span) => span.error);
     return spans;
   }, [selectedCloudTrace?.spans, traceSpanFilter]);
-  const toolActivityMap = useMemo(() => readAgentToolActivity(), [runtimeMetaVersion]);
+  const toolActivityMap = useMemo(
+    () => readAgentToolActivity(activityStorageKey),
+    [activityStorageKey, runtimeMetaVersion]
+  );
   const imageAssetCount = useMemo(
     () => globalAssetHistory.filter((item) => item.type === "image").length,
     [globalAssetHistory]
@@ -588,7 +601,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     try {
       const token = await getAuthToken();
       if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
-      const params = new URLSearchParams({ sessionId: activeConversation.id });
+      const params = new URLSearchParams({
+        projectId,
+        sessionId: buildQalamSessionId(projectId, activeConversation.id),
+      });
       const traceId = (traceIdOverride || selectedTraceId || "").trim();
       if (traceId) params.set("traceId", traceId);
       const response = await fetch(`/api/agent-observability?${params.toString()}`, {
@@ -607,7 +623,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     } finally {
       setObservabilityLoading(false);
     }
-  }, [activeConversation?.id, getAuthToken, isSignedIn, selectedTraceId]);
+  }, [activeConversation?.id, getAuthToken, isSignedIn, projectId, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;
@@ -1133,6 +1149,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
           <button type="button" onClick={() => onOpenVisualLab?.("filmRollLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
             <ScanSearch size={12} />
             Film Lab
+          </button>
+          <button type="button" onClick={() => onOpenVisualLab?.("agentLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
+            <Braces size={12} />
+            Agent Lab
           </button>
         </>
       );

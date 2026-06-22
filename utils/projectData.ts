@@ -146,6 +146,8 @@ const normalizeFlowProjects = (
       rootNodeId: toSafeString(project?.rootNodeId || `project-root-${id}`),
       createdAt: typeof project?.createdAt === "number" ? project.createdAt : now,
       updatedAt: typeof project?.updatedAt === "number" ? project.updatedAt : now,
+      roles: Array.isArray(project?.roles) ? project.roles : undefined,
+      designAssets: Array.isArray(project?.designAssets) ? project.designAssets : undefined,
       flow,
     };
   });
@@ -460,6 +462,29 @@ export const normalizeProjectData = (data: any): ProjectData => {
   );
   base.flow = normalizedProjects.flow;
   base.activeFlowProjectId = normalizedProjects.activeFlowProjectId;
-  base.flowProjects = normalizedProjects.flowProjects;
+  base.flowProjects = normalizedProjects.flowProjects.map((project) => {
+    const isActiveProject = project.id === normalizedProjects.activeFlowProjectId;
+    const projectRoles = isActiveProject
+      ? roles
+      : Array.isArray(project.roles)
+        ? normalizeRoles({ roles: project.roles })
+        : [];
+    const projectDesignAssets = remapDesignAssets(
+      isActiveProject
+        ? base.designAssets
+        : Array.isArray(project.designAssets)
+          ? project.designAssets
+          : [],
+      projectRoles
+    );
+    return {
+      ...project,
+      roles: projectRoles,
+      designAssets: projectDesignAssets,
+    };
+  });
+  const activeProject = base.flowProjects.find((project) => project.id === base.activeFlowProjectId);
+  base.roles = activeProject?.roles || [];
+  base.designAssets = activeProject?.designAssets || [];
   return sanitizeValue(base) as ProjectData;
 };

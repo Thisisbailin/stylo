@@ -11,7 +11,9 @@ AC -> Evidence Mapping:
 Build:
 - `npm run build`: pass.
 - Vite emitted the existing large-chunk advisory only.
+- `tsc --noEmit`: blocked by existing repository-wide errors in Cloudflare WebSocket types, legacy node types, Film Roll dependencies, and unrelated UI files; no diagnostic points to files changed for this feature.
 
 Runtime:
 - No new browser console errors were observed.
 - Existing Clerk development-key warning remains outside this change.
+- A later browser pass was blocked by the local URL security policy, so no destructive project mutation was submitted during verification.

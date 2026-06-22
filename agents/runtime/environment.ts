@@ -105,6 +105,7 @@ export const buildAgentEnvironment = ({
 
   return {
     project: {
+      projectId: projectData.activeFlowProjectId || "flow-project-main",
       fileName: projectData.fileName?.trim() || undefined,
       episodeCount: 0,
       sceneCount: 0,

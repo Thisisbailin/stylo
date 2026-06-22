@@ -28,6 +28,10 @@ import {
   removeNodeFromNodeFlow,
   toggleNodeFlowLinkPauseInState,
 } from "../../node-workspace/nodeflow/mutations";
+import {
+  assertQalamProjectScope,
+  isQalamSessionInProject,
+} from "../../agents/runtime/projectScope";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -58,20 +62,28 @@ const isDebugEnabled = (env: Record<string, unknown>) => {
   return value === "1" || value === "true";
 };
 
-const createAgentProjectData = (projectData: ProjectData | undefined, nodeFlow?: NodeFlowFile): ProjectData => ({
-  fileName: projectData?.fileName?.trim() || nodeFlow?.name || "",
-  rawScript: "",
-  episodes: [],
-  roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
-  designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
-  canvas: projectData?.canvas || { viewport: null },
-  flow: {
-    flowNodes: [],
-    links: [],
-  },
-  phase5Usage: projectData?.phase5Usage,
-  stats: projectData?.stats || { context: { total: 0, success: 0, error: 0 } },
-});
+const createAgentProjectData = (
+  projectData: ProjectData | undefined,
+  nodeFlow: NodeFlowFile | undefined,
+  projectId: string
+): ProjectData => {
+  const activeProject = projectData?.flowProjects?.find((project) => project.id === projectId);
+  return {
+    fileName: activeProject?.title?.trim() || projectData?.fileName?.trim() || nodeFlow?.name || "",
+    rawScript: "",
+    episodes: [],
+    roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
+    designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
+    canvas: projectData?.canvas || { viewport: null },
+    flow: {
+      flowNodes: [],
+      links: [],
+    },
+    activeFlowProjectId: projectId,
+    phase5Usage: projectData?.phase5Usage,
+    stats: projectData?.stats || { context: { total: 0, success: 0, error: 0 } },
+  };
+};
 
 const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
   if (!enabled || typeof console === "undefined") return;
@@ -324,9 +336,24 @@ export const onRequestOptions = async () =>
 
 export const onRequestPost = async (context: any) => {
   const body = (await context.request.json().catch(() => null)) as AgentHttpRunRequest | null;
-  if (!body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.nodeFlow) {
-    return new Response(JSON.stringify({ error: "请求缺少 run.sessionId、run.userText、runtime.model 或 nodeFlow。" }), {
+  if (!body?.run?.projectId || !body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.nodeFlow) {
+    return new Response(JSON.stringify({ error: "请求缺少 run.projectId、run.sessionId、run.userText、runtime.model 或 nodeFlow。" }), {
       status: 400,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    });
+  }
+
+  try {
+    assertQalamProjectScope(body.run.projectId, body.projectData);
+    if (!isQalamSessionInProject(body.run.sessionId, body.run.projectId)) {
+      throw new Error("Qalam sessionId 不属于当前 projectId。");
+    }
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error?.message || "Qalam 项目作用域校验失败。" }), {
+      status: 409,
       headers: {
         ...CORS_HEADERS,
         "Content-Type": "application/json; charset=utf-8",
@@ -342,7 +369,7 @@ export const onRequestPost = async (context: any) => {
     if (error instanceof Response) return error;
     throw error;
   }
-  const sessionKey = createAgentSessionKey(body.run.sessionId, sessionOwner);
+  const sessionKey = createAgentSessionKey(body.run.projectId, body.run.sessionId, sessionOwner);
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
@@ -353,7 +380,7 @@ export const onRequestPost = async (context: any) => {
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Qalam Edge Agent";
       const groupId = sessionKey;
-      const agentProjectData = createAgentProjectData(body.projectData, body.nodeFlow);
+      const agentProjectData = createAgentProjectData(body.projectData, body.nodeFlow, body.run.projectId);
       const bridgeState = createNodeFlowBridgeState(agentProjectData, body.nodeFlow);
       const skillLoader = new StaticSkillLoader();
       const requestAbortSignal = context.request.signal;
@@ -372,10 +399,11 @@ export const onRequestPost = async (context: any) => {
       };
       requestAbortSignal?.addEventListener("abort", onAbort, { once: true });
       try {
-        emitWrapperTrace("runtime", "running", "Edge request accepted", `session=${body.run.sessionId}`);
+        emitWrapperTrace("runtime", "running", "Edge request accepted", `project=${body.run.projectId} · session=${body.run.sessionId}`);
         debugLog(debugEnabled, traceId, "request received", {
           provider,
           runtime: body.runtime,
+          projectId: body.run.projectId,
           sessionId: body.run.sessionId,
           userText: body.run.userText,
         });
@@ -457,6 +485,7 @@ export const onRequestPost = async (context: any) => {
           groupId,
           traceMetadata: {
             sessionId: body.run.sessionId,
+            projectId: body.run.projectId,
             sessionKey,
             provider,
             model: effectiveModel,
@@ -523,6 +552,7 @@ export const onRequestPost = async (context: any) => {
               groupId,
               metadata: {
                 sessionId: body.run.sessionId,
+                projectId: body.run.projectId,
                 sessionKey,
                 provider,
                 model: resolveProviderModel(provider, body.runtime.model),

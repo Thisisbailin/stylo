@@ -168,20 +168,27 @@ export const FloatingActionBar: React.FC<Props> = ({
   const palettePopoverStyle = useMemo(() => getPopoverStyle(nodesAnchorRect, 580), [nodesAnchorRect]);
   const fileMenuPopoverStyle = useMemo((): React.CSSProperties | undefined => {
     if (typeof window === "undefined") return undefined;
-    const viewportPadding = 16;
+    const viewportPadding = 12;
     const width = Math.min(fileMenuWidth, window.innerWidth - viewportPadding * 2);
     if (!accountAnchorRect) {
       return {
         position: "fixed",
-        right: viewportPadding,
+        left: viewportPadding,
         bottom: 72,
         width,
         maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
       };
     }
+    const left = Math.max(
+      viewportPadding,
+      Math.min(
+        accountAnchorRect.left + accountAnchorRect.width / 2 - width / 2,
+        window.innerWidth - viewportPadding - width
+      )
+    );
     return {
       position: "fixed",
-      right: Math.max(viewportPadding, window.innerWidth - accountAnchorRect.right),
+      left,
       bottom: Math.max(viewportPadding + accountAnchorRect.height + 10, window.innerHeight - accountAnchorRect.top + 10),
       width,
       maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,

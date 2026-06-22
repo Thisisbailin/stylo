@@ -193,8 +193,10 @@ export const resolveAgentSessionOwner = async (request: Request, env: EnvWithDb)
   return await getUserId(request, env as Required<Pick<EnvWithDb, "CLERK_SECRET_KEY">> & EnvWithDb);
 };
 
-export const createAgentSessionKey = (sessionId: string, userId?: string | null) =>
-  userId ? `user:${userId}:${sessionId}` : `anon:${sessionId}`;
+export const createAgentSessionKey = (projectId: string, sessionId: string, userId?: string | null) => {
+  const owner = userId ? `user:${userId}` : "anon";
+  return `${owner}:project:${encodeURIComponent(projectId)}:session:${sessionId}`;
+};
 
 export class D1EdgeSession implements Session {
   constructor(

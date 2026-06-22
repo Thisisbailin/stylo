@@ -35,6 +35,7 @@ import type {
   ScriptDocumentCommit,
 } from "./qalam/interactionTypes";
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
+import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
 
 interface CreativeWorkspaceProps {
   projectData: ProjectData;
@@ -328,6 +329,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   onSignOut,
   accountInfo,
 }) => {
+  const qalamProjectId = resolveQalamProjectId(projectData);
+  const allowLegacyQalamMigration = qalamProjectId === (projectData.flowProjects?.[0]?.id || qalamProjectId);
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -347,6 +350,12 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
   const [composerInput, setComposerInput] = useState("");
   const isQalamFirstMode = isQalamFirstManual;
+  useEffect(() => {
+    setQalamSubmitRequest(null);
+    setAgentScriptEditProposals(null);
+    setComposerInput("");
+    setIsQalamSending(false);
+  }, [qalamProjectId]);
   const handleAgentScriptEditProposals = useCallback((batch: AgentScriptEditProposalBatch) => {
     setAgentScriptEditProposals((current) => {
       const nextNodeIds = new Set(batch.proposals.map((proposal) => proposal.nodeId));
@@ -552,8 +561,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       return;
     }
     setComposerInput("");
-    setQalamSubmitRequest({ id: Date.now(), text });
-  }, [composerInput, isQalamSending, toggleQalamFirstMode]);
+    setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text });
+  }, [composerInput, isQalamSending, qalamProjectId, toggleQalamFirstMode]);
 
   useEffect(() => {
     if (didInitFitRef.current) return;
@@ -657,7 +666,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     onCollapseCanvasCards: handleCollapseCanvasCards,
     onRestoreCanvasCards: handleRestoreCanvasCards,
     onOpenAgent: () => setQalamOpenRequest((count) => count + 1),
-    onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), text }),
+    onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text }),
     agentComposerValue: composerInput,
     onAgentComposerChange: setComposerInput,
     onAgentComposerAction: handleQalamComposerAction,
@@ -915,6 +924,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
   const qalamGlobalHeader = (
     <QalamAgent
+      key={qalamProjectId}
+      projectId={qalamProjectId}
       projectData={projectData}
       setProjectData={setProjectData}
       getAuthToken={getAuthToken}
@@ -937,6 +948,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onScriptEditProposals={handleAgentScriptEditProposals}
       renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
+      allowLegacyConversationMigration={allowLegacyQalamMigration}
     />
   );
 
@@ -1047,6 +1059,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       />
 
       <AgentSettingsPanel
+        key={qalamProjectId}
+        projectId={qalamProjectId}
         isOpen={showAgentSettings}
         onClose={() => setShowAgentSettings(false)}
         leftOffset={agentDockWidth}
@@ -1079,7 +1093,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
-          onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), text, uiContext })}
+          onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
           onClose={() => setEditingScriptNodeId(null)}
         />
       ) : null}

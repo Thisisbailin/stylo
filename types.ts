@@ -118,6 +118,8 @@ export interface FlowProject {
   createdAt: number;
   updatedAt: number;
   flow: FlowState;
+  roles?: ProjectRoleIdentity[];
+  designAssets?: DesignAssetItem[];
 }
 
 // --- Unified Role Identity Types ---

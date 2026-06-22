@@ -24,6 +24,13 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 import { projectRolesToCharacters, projectRolesToLocations } from "../../utils/projectRoles";
 import type { AgentUiContext } from "../../agents/runtime/types";
+import {
+  buildQalamActivityStorageKey,
+  buildQalamConversationStorageKey,
+  buildQalamScopedProjectData,
+  buildQalamSessionId,
+  resolveQalamProjectId,
+} from "../../agents/runtime/projectScope";
 import type {
   AgentScriptEditProposal,
   AgentScriptEditProposalBatch,
@@ -31,6 +38,7 @@ import type {
 } from "./qalam/interactionTypes";
 
 type Props = {
+  projectId: string;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
@@ -46,6 +54,7 @@ type Props = {
   renderCollapsedTrigger?: boolean;
   agentFirstMode?: boolean;
   conversationStorageKey?: string;
+  allowLegacyConversationMigration?: boolean;
   conversationResetToken?: number;
   panelStyleOverride?: React.CSSProperties;
   showUsageBadge?: boolean;
@@ -183,7 +192,13 @@ const mergeNodeFlowIntoProjectData = (base: ProjectData, nodeFlow: NodeFlowFile)
     flow: nextFlow,
     flowProjects: base.flowProjects?.map((project) =>
       project.id === activeProjectId
-        ? { ...project, flow: nextFlow, updatedAt: Date.now() }
+        ? {
+            ...project,
+            flow: nextFlow,
+            roles: base.roles || [],
+            designAssets: base.designAssets || [],
+            updatedAt: Date.now(),
+          }
         : project
     ),
   };
@@ -425,6 +440,7 @@ const createConversationRecord = (messages: Message[] = []): ConversationRecord 
 };
 
 export const QalamAgent: React.FC<Props> = ({
+  projectId,
   projectData,
   setProjectData,
   getAuthToken,
@@ -439,7 +455,8 @@ export const QalamAgent: React.FC<Props> = ({
   onSendingChange,
   renderCollapsedTrigger = true,
   agentFirstMode = false,
-  conversationStorageKey = "qalam_conversations_v1",
+  conversationStorageKey,
+  allowLegacyConversationMigration = false,
   conversationResetToken,
   panelStyleOverride,
   showUsageBadge = true,
@@ -447,6 +464,8 @@ export const QalamAgent: React.FC<Props> = ({
 }) => {
   const PANEL_ANIMATION_MS = 460;
   const { config } = useConfig("qalam_config_v1");
+  const effectiveConversationStorageKey = conversationStorageKey || buildQalamConversationStorageKey(projectId);
+  const activityStorageKey = buildQalamActivityStorageKey(projectId);
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
   const moveNode = useNodeFlowStore((state) => state.moveNode);
@@ -477,7 +496,7 @@ export const QalamAgent: React.FC<Props> = ({
   const [isRevealing, setIsRevealing] = useState(false);
   const [panelPhase, setPanelPhase] = useState<"collapsed" | "opening" | "open" | "closing">("collapsed");
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
-    key: conversationStorageKey,
+    key: effectiveConversationStorageKey,
     initialValue: { activeId: "", items: [] },
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
@@ -613,7 +632,7 @@ export const QalamAgent: React.FC<Props> = ({
           qalamTools: config.textConfig?.qalamTools,
         }),
         getAuthToken,
-        getProjectDataSnapshot: () => projectData,
+        getProjectDataSnapshot: () => buildQalamScopedProjectData(projectData, projectId),
         getNodeFlowSnapshot: () =>
           buildNodeFlowFileFromProjectData(projectData, {
             revision,
@@ -654,6 +673,7 @@ export const QalamAgent: React.FC<Props> = ({
       nodeFlowContext,
       nodes,
       projectData,
+      projectId,
       viewport,
     ]
   );
@@ -712,7 +732,12 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useQalamAgent({
     runtime,
-    sessionId: activeConversation?.id || conversationState.activeId || "qalam-default",
+    projectId,
+    sessionId: buildQalamSessionId(
+      projectId,
+      activeConversation?.id || conversationState.activeId || "qalam-default"
+    ),
+    activityStorageKey,
     setMessages,
   });
   useEffect(() => {
@@ -763,8 +788,22 @@ export const QalamAgent: React.FC<Props> = ({
   useEffect(() => {
     if (conversationState.items.length) return;
     try {
+      if (allowLegacyConversationMigration) {
+        const legacyConversations = localStorage.getItem("qalam_conversations_v1");
+        if (legacyConversations) {
+          const parsed = JSON.parse(legacyConversations);
+          if (parsed && typeof parsed === "object" && Array.isArray(parsed.items) && parsed.items.length) {
+            setConversationState({
+              activeId: typeof parsed.activeId === "string" ? parsed.activeId : parsed.items[0]?.id || "",
+              items: parsed.items,
+            });
+            localStorage.removeItem("qalam_conversations_v1");
+            return;
+          }
+        }
+      }
       const stored = localStorage.getItem("qalam_messages_v1");
-      if (stored) {
+      if (allowLegacyConversationMigration && stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length) {
           const migrated = createConversationRecord(clampMessages(parsed));
@@ -778,7 +817,7 @@ export const QalamAgent: React.FC<Props> = ({
       const created = createConversationRecord();
       setConversationState({ activeId: created.id, items: [created] });
     }
-  }, [conversationState.items.length, setConversationState, clampMessages]);
+  }, [allowLegacyConversationMigration, conversationState.items.length, setConversationState, clampMessages]);
 
   useEffect(() => {
     if (!conversationState.items.length) return;
@@ -963,6 +1002,7 @@ export const QalamAgent: React.FC<Props> = ({
   const submitText = useCallback(async (rawText: string, submittedUiContext?: AgentUiContext) => {
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
+    const runProjectId = projectId;
     setMessages((prev) => {
       const nextOrder = prev.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
       const userMsg: Message = { role: "user", text: cleanedInput, kind: "chat", order: nextOrder };
@@ -978,6 +1018,12 @@ export const QalamAgent: React.FC<Props> = ({
           mentionTags: resolveMentionTags(cleanedInput),
         },
       });
+      if (
+        runResult.projectId !== runProjectId ||
+        resolveQalamProjectId(projectDataRef.current) !== runProjectId
+      ) {
+        return;
+      }
       if (runResult.updatedProjectData || runResult.updatedNodeFlow) {
         const latestProjectData = projectDataRef.current;
         const currentFlow = buildNodeFlowFileFromProjectData(latestProjectData, {
@@ -1061,7 +1107,7 @@ export const QalamAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
+  }, [activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto qalam-panel";
   const dockInset = 16;
@@ -1222,11 +1268,12 @@ export const QalamAgent: React.FC<Props> = ({
 
   useEffect(() => {
     if (!submitRequest?.id || !submitRequest.text.trim()) return;
+    if (submitRequest.projectId && submitRequest.projectId !== projectId) return;
     if (handledSubmitRequestRef.current === submitRequest.id) return;
     handledSubmitRequestRef.current = submitRequest.id;
     openPanel();
     void submitText(submitRequest.text, submitRequest.uiContext);
-  }, [openPanel, submitRequest, submitText]);
+  }, [openPanel, projectId, submitRequest, submitText]);
 
   const isOpenPhase = panelPhase === "open";
   const qalamGlassOverlay =

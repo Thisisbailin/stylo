@@ -141,6 +141,7 @@ export const createHttpQalamAgentRuntime = ({
     browserAgentDebug("httpClient request", {
       endpoint,
       runtime: requestBody.runtime,
+      projectId: requestBody.run.projectId,
       sessionId: requestBody.run.sessionId,
       userText: requestBody.run.userText,
     });
@@ -219,6 +220,7 @@ export const createHttpQalamAgentRuntime = ({
     if (!finalResult) {
       if (lastMessageCompletedText.trim()) {
         finalResult = {
+          projectId: input.projectId,
           finalText: lastMessageCompletedText,
           sessionId: input.sessionId,
           outputItems: [{ kind: "text", text: lastMessageCompletedText }],
@@ -245,6 +247,11 @@ export const createHttpQalamAgentRuntime = ({
         lastEventType
           ? `远端 Agent 在 ${lastEventType} 阶段后异常结束，未返回最终结果。`
           : "远端 Agent 没有返回最终结果。"
+      );
+    }
+    if (finalResult.projectId !== input.projectId) {
+      throw new Error(
+        `Qalam 返回了其它项目的结果：expected ${input.projectId}, received ${finalResult.projectId || "missing"}。`
       );
     }
     browserAgentDebug("httpClient completed", {

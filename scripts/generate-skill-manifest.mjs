@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 
 const repoRoot = process.cwd();
 const skillsRoot = path.join(repoRoot, ".agents", "skills");
 const outputPath = path.join(repoRoot, "agents", "runtime", "skillManifest.generated.ts");
+const promptCatalogOutputPath = path.join(repoRoot, "agents", "runtime", "promptCatalog.generated.ts");
 
 const parseScalar = (raw) => {
   const value = raw.trim();
@@ -143,11 +145,209 @@ const loadSkillEntries = async () => {
   return entries.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 };
 
+const listTypeScriptFiles = async (root) => {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const target = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await listTypeScriptFiles(target));
+    else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".generated.ts")) files.push(target);
+  }
+  return files;
+};
+
+const staticText = (node, sourceFile) => {
+  if (!node) return "";
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (ts.isTemplateExpression(node)) {
+    return node.head.text + node.templateSpans
+      .map((span) => `\${${span.expression.getText(sourceFile)}}${span.literal.text}`)
+      .join("");
+  }
+  if (ts.isParenthesizedExpression(node)) return staticText(node.expression, sourceFile);
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = staticText(node.left, sourceFile);
+    const right = staticText(node.right, sourceFile);
+    return left || right ? `${left}${right}` : "";
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.map((element) => staticText(element, sourceFile)).filter(Boolean).join("\n");
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "join" &&
+    ts.isArrayLiteralExpression(node.expression.expression)
+  ) {
+    const separator = staticText(node.arguments[0], sourceFile) || ",";
+    return node.expression.expression.elements
+      .map((element) => staticText(element, sourceFile))
+      .filter(Boolean)
+      .join(separator);
+  }
+  return "";
+};
+
+const propertyName = (node) => {
+  if (!node?.name) return "";
+  if (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) return node.name.text;
+  return "";
+};
+
+const nearestObjectLabel = (node) => {
+  let current = node.parent;
+  while (current) {
+    if (ts.isObjectLiteralExpression(current)) {
+      const nameProperty = current.properties.find(
+        (property) => ts.isPropertyAssignment(property) && propertyName(property) === "name"
+      );
+      const name = nameProperty && ts.isPropertyAssignment(nameProperty) ? staticText(nameProperty.initializer, current.getSourceFile()) : "";
+      if (name) return name;
+      const parentProperty = current.parent;
+      if (ts.isPropertyAssignment(parentProperty)) {
+        const label = propertyName(parentProperty);
+        if (label) return label;
+      }
+    }
+    current = current.parent;
+  }
+  return "";
+};
+
+const isInsideSystemMessage = (node) => {
+  let current = node.parent;
+  while (current) {
+    if (ts.isObjectLiteralExpression(current)) {
+      const roleProperty = current.properties.find(
+        (property) => ts.isPropertyAssignment(property) && propertyName(property) === "role"
+      );
+      if (
+        roleProperty &&
+        ts.isPropertyAssignment(roleProperty) &&
+        staticText(roleProperty.initializer, current.getSourceFile()) === "system"
+      ) return true;
+    }
+    current = current.parent;
+  }
+  return false;
+};
+
+const promptCategoryForPath = (sourcePath) => {
+  if (sourcePath.includes("/tools/")) return "tool";
+  if (sourcePath.includes("guardrail")) return "guardrail";
+  if (sourcePath.includes("_agentSessions") || sourcePath.includes("session") || sourcePath.startsWith("services/")) return "runtime";
+  return "system";
+};
+
+const loadPromptCatalogEntries = async (skillEntries) => {
+  const agentFiles = await listTypeScriptFiles(path.join(repoRoot, "agents"));
+  const sourceFiles = [
+    ...agentFiles,
+    path.join(repoRoot, "functions", "api", "_agentSessions.ts"),
+    path.join(repoRoot, "services", "responsesTextService.ts"),
+  ];
+  const prompts = [];
+  const seen = new Set();
+  const addPrompt = ({ title, category, sourcePath, line, content, kind }) => {
+    const normalized = String(content || "").trim();
+    if (normalized.length < 8) return;
+    const signature = `${sourcePath}:${line}:${kind}:${normalized}`;
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    prompts.push({
+      id: createSkillVersion(signature),
+      title,
+      category,
+      sourcePath,
+      sourceLine: line,
+      content: normalized,
+      kind,
+      chars: normalized.length,
+    });
+  };
+
+  for (const filePath of sourceFiles) {
+    const source = await readFile(filePath, "utf8");
+    const sourcePath = path.relative(repoRoot, filePath).split(path.sep).join("/");
+    const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && /(instruction|prompt|guidance)/i.test(node.name.text)) {
+        const content = staticText(node.initializer, sourceFile);
+        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        addPrompt({
+          title: node.name.text,
+          category: /(guardrail|guidance)/i.test(node.name.text) ? "guardrail" : promptCategoryForPath(sourcePath),
+          sourcePath,
+          line: line + 1,
+          content,
+          kind: "instruction",
+        });
+      }
+      if (ts.isPropertyAssignment(node)) {
+        const name = propertyName(node);
+        const systemMessagePayload = (name === "content" || name === "text") && isInsideSystemMessage(node);
+        const shouldCapture = name === "description" || name === "guidance" || name === "instructions" || systemMessagePayload;
+        if (shouldCapture) {
+          const content = staticText(node.initializer, sourceFile);
+          const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          const label = nearestObjectLabel(node);
+          addPrompt({
+            title: label ? `${label} · ${name}` : `${name} · L${line + 1}`,
+            category: name === "guidance" ? "guardrail" : promptCategoryForPath(sourcePath),
+            sourcePath,
+            line: line + 1,
+            content,
+            kind: name === "description" ? "tool-schema" : name === "guidance" ? "guardrail" : "instruction",
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  skillEntries.forEach((entry) => {
+    addPrompt({
+      title: entry.title,
+      category: "skill",
+      sourcePath: entry.sourcePath,
+      line: 1,
+      content: entry.guidanceMarkdown,
+      kind: "skill-overlay",
+    });
+  });
+
+  return prompts.sort((a, b) =>
+    a.category.localeCompare(b.category) || a.sourcePath.localeCompare(b.sourcePath) || a.sourceLine - b.sourceLine
+  );
+};
+
+const buildPromptCatalogFile = (entries) => `/* eslint-disable */
+// Generated by scripts/generate-skill-manifest.mjs
+export type AgentPromptCatalogCategory = "system" | "runtime" | "tool" | "guardrail" | "skill";
+
+export type AgentPromptCatalogEntry = {
+  id: string;
+  title: string;
+  category: AgentPromptCatalogCategory;
+  sourcePath: string;
+  sourceLine: number;
+  content: string;
+  kind: string;
+  chars: number;
+};
+
+export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = ${JSON.stringify(entries, null, 2)};
+`;
+
 const main = async () => {
   const entries = await loadSkillEntries();
+  const promptEntries = await loadPromptCatalogEntries(entries);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, buildFile(entries), "utf8");
+  await writeFile(promptCatalogOutputPath, buildPromptCatalogFile(promptEntries), "utf8");
   console.log(`Generated ${path.relative(repoRoot, outputPath)} with ${entries.length} skill(s).`);
+  console.log(`Generated ${path.relative(repoRoot, promptCatalogOutputPath)} with ${promptEntries.length} prompt entries.`);
 };
 
 main().catch((error) => {

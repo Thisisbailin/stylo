@@ -2,6 +2,7 @@ import type { AgentUiContext } from "../../../agents/runtime/types";
 
 export type QalamSubmitRequest = {
   id: number;
+  projectId?: string;
   text: string;
   uiContext?: AgentUiContext;
 };

@@ -17,7 +17,9 @@ import { browserAgentDebug, browserAgentDebugError } from "../runtime/debug";
 
 type Options = {
   runtime: QalamAgentRuntime;
+  projectId: string;
   sessionId: string;
+  activityStorageKey?: string;
   setMessages: (updater: Message[] | ((prev: Message[]) => Message[])) => void;
 };
 
@@ -167,7 +169,7 @@ const completeStatusMessage = (
     };
   });
 
-export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
+export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKey, setMessages }: Options) => {
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
@@ -492,7 +494,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "tool_called") {
-        recordAgentToolCalled(event.call);
+        recordAgentToolCalled(event.call, activityStorageKey);
         const actionLabel = humanizeToolName(event.call.name);
         const runId = activeRunIdRef.current;
         setMessages((prev) => {
@@ -517,7 +519,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "tool_completed") {
-        recordAgentToolCompleted(event.call);
+        recordAgentToolCompleted(event.call, activityStorageKey);
         const runId = activeRunIdRef.current;
         setMessages((prev) => [
           ...upsertToolStatus(prev, event.call.callId, "success", event.call.summary),
@@ -539,7 +541,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
       }
 
       if (event.type === "tool_failed") {
-        recordAgentToolFailed(event.call, event.error);
+        recordAgentToolFailed(event.call, event.error, activityStorageKey);
         const runId = activeRunIdRef.current;
         if (runId) {
           const currentFailures = toolFailureCountsRef.current[runId] || {};
@@ -675,12 +677,13 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         });
       }
     },
-    [clearRevealTimers, createStatusId, ensureActiveStatusId, finalizeActiveReasoningStatus, finalizeActiveResponseStatus, finalizeDanglingToolCalls, revealAssistantMessage, setMessages]
+    [activityStorageKey, clearRevealTimers, createStatusId, ensureActiveStatusId, finalizeActiveReasoningStatus, finalizeActiveResponseStatus, finalizeDanglingToolCalls, revealAssistantMessage, setMessages]
   );
 
   const sendMessage = useCallback(
-    async (input: Omit<QalamRunInput, "sessionId">): Promise<QalamRunResult> => {
+    async (input: Omit<QalamRunInput, "projectId" | "sessionId">): Promise<QalamRunResult> => {
       browserAgentDebug("useQalamAgent sendMessage", {
+        projectId,
         sessionId,
         userText: input.userText,
         attachments: input.attachments?.length || 0,
@@ -693,6 +696,7 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         const result = await runtime.run(
           {
             ...input,
+            projectId,
             sessionId,
           },
           {
@@ -707,6 +711,11 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
           outputItems: result.outputItems.length,
           usage: result.usage,
         });
+        if (result.projectId !== projectId) {
+          throw new Error(
+            `Qalam 项目作用域失配：expected ${projectId}, received ${result.projectId || "missing"}。`
+          );
+        }
         return result;
       } catch (error: any) {
         const activeRunId = activeRunIdRef.current;
@@ -723,12 +732,17 @@ export const useQalamAgent = ({ runtime, sessionId, setMessages }: Options) => {
         setIsRunning(false);
       }
     },
-    [handleEvent, runtime, sessionId]
+    [handleEvent, projectId, runtime, sessionId]
   );
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    clearRevealTimers();
+  }, [clearRevealTimers]);
 
   return { isRunning, sendMessage, cancel };
 };

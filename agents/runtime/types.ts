@@ -28,6 +28,7 @@ export type AgentUiContext = {
 };
 
 export type AgentEnvironmentProjectDigest = {
+  projectId: string;
   fileName?: string;
   episodeCount: number;
   sceneCount: number;
@@ -192,6 +193,7 @@ export type AgentTraceEntry = {
 };
 
 export type QalamRunInput = {
+  projectId: string;
   sessionId: string;
   userText: string;
   attachments?: AgentAttachment[];
@@ -200,6 +202,7 @@ export type QalamRunInput = {
 };
 
 export type QalamRunResult = {
+  projectId: string;
   finalText: string;
   sessionId: string;
   outputItems: AgentOutputItem[];

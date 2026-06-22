@@ -468,9 +468,20 @@ export const getFlowProjectDuration = (flow?: FlowState, fallback = DEFAULT_TIME
 export const getFlowProjectsForState = (projectData: ProjectData) => {
   const currentFlow = ensureFlow(projectData.flow);
   if (Array.isArray(projectData.flowProjects) && projectData.flowProjects.length) {
+    const activeId = projectData.activeFlowProjectId || projectData.flowProjects[0]?.id;
     return projectData.flowProjects.slice(0, FLOW_PROJECT_LIMIT).map((project) => ({
       ...project,
       rootNodeId: project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`,
+      roles: Array.isArray(project.roles)
+        ? project.roles
+        : project.id === activeId
+          ? projectData.roles || []
+          : [],
+      designAssets: Array.isArray(project.designAssets)
+        ? project.designAssets
+        : project.id === activeId
+          ? projectData.designAssets || []
+          : [],
     }));
   }
   const now = Date.now();
@@ -485,6 +496,8 @@ export const getFlowProjectsForState = (projectData: ProjectData) => {
       rootNodeId,
       createdAt: now,
       updatedAt: now,
+      roles: projectData.roles || [],
+      designAssets: projectData.designAssets || [],
       flow: currentFlow.flowNodes?.some((node) => node.id === rootNodeId)
         ? currentFlow
         : createEmptyProjectFlow(DEFAULT_TIMELINE_DURATION, projectData.fileName || "主项目", rootNodeId),
@@ -503,6 +516,8 @@ export const saveActiveFlowIntoProjects = (projectData: ProjectData, now = Date.
           durationMin: getFlowProjectDuration(activeFlow, project.durationMin),
           updatedAt: now,
           rootNodeId: project.rootNodeId || `${FOUNDATION_ROOT_NODE_PREFIX}${project.id}`,
+          roles: projectData.roles || [],
+          designAssets: projectData.designAssets || [],
           flow: activeFlow,
         }
       : project
@@ -1358,6 +1373,14 @@ export const applyFoundationTimelineToGraph = (
     ));
     if (parsed.spaceAxisNodeId) addLink(createFoundationLink(parsed.spaceAxisNodeId, block.id));
     addLink(createFoundationLink(block.id, archiveId));
+  });
+
+  [...nextTimeline.blocks, ...nextSpaceBlocks].forEach((block) => {
+    block.boundaryNodeIds.forEach((targetNodeId) => {
+      if (existingNodeIds.has(targetNodeId)) {
+        addLink(createFoundationLink(block.id, targetNodeId));
+      }
+    });
   });
 
   return layoutFoundationGraph(

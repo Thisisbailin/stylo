@@ -1,4 +1,5 @@
 import { getUserId, jsonResponse } from "./_auth";
+import { buildQalamSessionPrefix, isQalamSessionInProject } from "../../agents/runtime/projectScope";
 
 type Env = {
   DB: any;
@@ -92,13 +93,21 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
     const url = new URL(context.request.url);
+    const projectId = (url.searchParams.get("projectId") || "").trim();
     const sessionId = (url.searchParams.get("sessionId") || "").trim();
     const traceId = (url.searchParams.get("traceId") || "").trim();
+    if (!projectId) {
+      return jsonResponse({ error: "Missing projectId" }, { status: 400 });
+    }
+    if (sessionId && !isQalamSessionInProject(sessionId, projectId)) {
+      return jsonResponse({ error: "Session does not belong to this project" }, { status: 409 });
+    }
+    const sessionPrefix = buildQalamSessionPrefix(projectId);
 
     const sessionRows = await context.env.DB.prepare(
-      "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 30"
+      "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND instr(session_id, ?2) = 1 ORDER BY updated_at DESC LIMIT 30"
     )
-      .bind(userId)
+      .bind(userId, sessionPrefix)
       .all();
     const sessions = ((sessionRows.results || []) as any[]).map(toSessionSummary);
 
@@ -124,11 +133,11 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         FROM agent_spans
         GROUP BY trace_id
       ) s ON s.trace_id = t.trace_id
-      WHERE t.user_id = ?1
+      WHERE t.user_id = ?1 AND instr(t.session_id, ?2) = 1
       ORDER BY t.updated_at DESC
       LIMIT 40`
     )
-      .bind(userId)
+      .bind(userId, sessionPrefix)
       .all();
     const traces = ((traceRows.results || []) as any[]).map(toTraceSummary);
 
@@ -182,10 +191,10 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
           FROM agent_spans
           GROUP BY trace_id
         ) s ON s.trace_id = t.trace_id
-        WHERE t.user_id = ?1 AND t.trace_id = ?2
+        WHERE t.user_id = ?1 AND t.trace_id = ?2 AND instr(t.session_id, ?3) = 1
         LIMIT 1`
       )
-        .bind(userId, resolvedTraceId)
+        .bind(userId, resolvedTraceId, sessionPrefix)
         .first();
       if (traceRow) {
         const spanRows = await context.env.DB.prepare(

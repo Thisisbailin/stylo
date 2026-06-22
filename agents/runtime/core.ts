@@ -281,6 +281,7 @@ export const runQalamAgentCore = async ({
   }
 
   onDebug?.("run input", {
+    projectId: input.projectId,
     sessionId: input.sessionId,
     userText: input.userText,
     enabledSkillIds: input.enabledSkillIds || [],
@@ -505,6 +506,7 @@ export const runQalamAgentCore = async ({
       synthesizedToolText;
 
     const runResult: QalamRunResult = {
+      projectId: input.projectId,
       finalText,
       sessionId: input.sessionId,
       outputItems: [
@@ -570,6 +572,7 @@ export const runQalamAgentCore = async ({
     if (shouldRecover) {
       const recoveredText = fallbackText;
       const runResult: QalamRunResult = {
+        projectId: input.projectId,
         finalText: recoveredText,
         sessionId: input.sessionId,
         outputItems: [

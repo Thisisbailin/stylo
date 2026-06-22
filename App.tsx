@@ -23,6 +23,10 @@ import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 
+const AgentLab = React.lazy(() =>
+  import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
+);
+
 type LabModalKey = ModuleKey;
 
 const PROJECT_STORAGE_KEY = 'qalam_project_v1';
@@ -615,6 +619,11 @@ const App: React.FC = () => {
         {renderMainContent()}
         <GlassEffectLab isOpen={openLabModal === "glassLab"} onClose={closeLabModal} />
         <FilmRollLab isOpen={openLabModal === "filmRollLab"} onClose={closeLabModal} />
+        {openLabModal === "agentLab" ? (
+          <React.Suspense fallback={null}>
+            <AgentLab isOpen onClose={closeLabModal} />
+          </React.Suspense>
+        ) : null}
       </AppShell>
     </>
   );
