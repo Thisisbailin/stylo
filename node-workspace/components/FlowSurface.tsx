@@ -29,6 +29,7 @@ import {
   Layers,
   Map as MapIcon,
   Network,
+  Pencil,
   Plus,
   ScanSearch,
   Scissors,
@@ -70,6 +71,11 @@ import {
 } from "../utils/edgeAlignment";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection } from "../utils/handles";
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
+import {
+  MAX_FLOW_PROJECT_DURATION,
+  MIN_FLOW_PROJECT_DURATION,
+  normalizeFlowProjectDuration,
+} from "../../utils/flowProject";
 import { appendUniqueFlowLink, removeFlowLinksById } from "../nodeflow/flowLinks";
 import { ConnectionDropMenu, type ConnectionDropMenuOption } from "./ConnectionDropMenu";
 import type { CanvasSurfaceConfig, SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
@@ -161,7 +167,6 @@ const FOUNDATION_EDGE_OVERSCAN_RATIO = 0.4;
 const FOUNDATION_EDGE_MIN_OVERSCAN = 360;
 
 const FLOW_PROJECT_LIMIT = 3;
-const FLOW_PROJECT_DURATIONS = [60, 90, 120, 150, 180] as const;
 const FLOW_PROJECT_COLOR_STYLES = [
   {
     color: "amber",
@@ -563,7 +568,9 @@ type ScriptFoundationProps = {
   flowProjects: NonNullable<ProjectData["flowProjects"]>;
   activeFlowProjectId: string;
   onSwitchFlowProject: (projectId: string) => void;
-  onCreateFlowProject: (durationMin: number) => void;
+  onCreateFlowProject: (input: { title: string; durationMin: number }) => void;
+  onUpdateFlowProject: (projectId: string, patch: { title: string; durationMin: number }) => void;
+  onDeleteFlowProject: (projectId: string) => void;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
   agentComposerValue?: string;
@@ -590,6 +597,13 @@ type ScriptFoundationEditTarget =
   | { type: "head" }
   | { type: "time"; id: string }
   | { type: "space"; id: string };
+
+type ScriptFoundationProjectDraft = {
+  mode: "create" | "edit";
+  projectId?: string;
+  title: string;
+  durationMin: number;
+};
 
 const getFoundationMenuStyle = (x: number, y: number, menuWidth = 390): CSSProperties => {
   const viewportWidth = typeof window === "undefined" ? 1280 : window.innerWidth;
@@ -694,6 +708,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   activeFlowProjectId,
   onSwitchFlowProject,
   onCreateFlowProject,
+  onUpdateFlowProject,
+  onDeleteFlowProject,
   onOpenAgent,
   onSubmitAgentMessage,
   agentComposerValue = "",
@@ -717,8 +733,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [menuState, setMenuState] = useState<ScriptFoundationMenuState | null>(null);
   const [editingTarget, setEditingTarget] = useState<ScriptFoundationEditTarget | null>(null);
   const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
-  const [newProjectDuration, setNewProjectDuration] = useState<number>(DEFAULT_TIMELINE_DURATION);
+  const [projectDraft, setProjectDraft] = useState<ScriptFoundationProjectDraft | null>(null);
+  const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
@@ -747,7 +763,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const closeMarkdownCard = useCallback(() => {
     setEditingTarget(null);
     setIsFoundationGatewayOpen(false);
-    setIsCreatingProject(false);
+    setProjectDraft(null);
+    setPendingDeleteProjectId(null);
     onCloseMarkdownCard?.();
   }, [onCloseMarkdownCard]);
 
@@ -774,7 +791,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setMenuState(null);
     setEditingTarget(null);
     setIsFoundationGatewayOpen(false);
-    setIsCreatingProject(false);
+    setProjectDraft(null);
+    setPendingDeleteProjectId(null);
     const nextAxis = activeAxis === "time" ? "space" : "time";
     axisSwitchTimerRef.current = window.setTimeout(() => {
       setActiveAxis(nextAxis);
@@ -901,7 +919,8 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setNodeCreateMenu(null);
     setEditingTarget(null);
     setIsAgentTailOpen(false);
-    setIsCreatingProject(false);
+    setProjectDraft(null);
+    setPendingDeleteProjectId(null);
     setIsFoundationGatewayOpen(true);
   };
 
@@ -930,14 +949,14 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   ) => {
     onOpenAgentSettingsPanel?.(panel, assetsSection);
     setIsFoundationGatewayOpen(false);
-    setIsCreatingProject(false);
+    setProjectDraft(null);
     onCloseMarkdownCard?.();
   };
 
   const openGatewayVisualLab = (key: "glassLab" | "filmRollLab") => {
     onOpenVisualLab?.(key);
     setIsFoundationGatewayOpen(false);
-    setIsCreatingProject(false);
+    setProjectDraft(null);
     onCloseMarkdownCard?.();
   };
 
@@ -947,9 +966,16 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     closeMarkdownCard();
   };
 
-  const handleCreateProject = () => {
-    onCreateFlowProject(newProjectDuration);
-    setNewProjectDuration(DEFAULT_TIMELINE_DURATION);
+  const handleProjectDraftSubmit = () => {
+    if (!projectDraft) return;
+    const title = projectDraft.title.trim();
+    if (!title) return;
+    const durationMin = normalizeFlowProjectDuration(projectDraft.durationMin);
+    if (projectDraft.mode === "create") {
+      onCreateFlowProject({ title, durationMin });
+    } else if (projectDraft.projectId) {
+      onUpdateFlowProject(projectDraft.projectId, { title, durationMin });
+    }
     closeMarkdownCard();
   };
 
@@ -1017,6 +1043,12 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         className={`script-foundation-dock script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
         aria-label="剧本基地"
       >
+        <div
+          id="script-foundation-account-host"
+          className="script-foundation-account-host"
+          aria-label="Account control"
+        />
+
         <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
           <div className="script-foundation-ribbon-background" aria-hidden="true" />
           <button
@@ -1370,23 +1402,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               <button
                 type="button"
                 className="script-foundation-gateway-card"
-                onClick={() => openGatewaySettingsPanel("identity")}
-              >
-                <span className="script-foundation-gateway-card__title">
-                  <span className="script-foundation-gateway-card__icon">
-                    <Layers size={18} strokeWidth={1.9} />
-                  </span>
-                  <span>
-                    <span>Project</span>
-                    <strong>Identity System</strong>
-                  </span>
-                </span>
-                <span className="script-foundation-gateway-card__copy">角色、场景与身份系统入口。</span>
-              </button>
-
-              <button
-                type="button"
-                className="script-foundation-gateway-card"
                 onClick={() => openGatewaySettingsPanel("skills")}
               >
                 <span className="script-foundation-gateway-card__title">
@@ -1433,21 +1448,55 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               {flowProjects.map((project) => {
                 const isActiveProject = project.id === activeFlowProjectId;
                 return (
-                  <button
+                  <div
                     key={project.id}
-                    type="button"
                     className={`script-foundation-project-roll is-${project.color} ${isActiveProject ? "is-active" : ""}`}
-                    onClick={() => handleSwitchProject(project.id)}
-                    title={project.title}
                   >
-                    <span className="script-foundation-project-roll__mark" aria-hidden="true">
-                      <Folder size={18} strokeWidth={1.8} />
+                    <button
+                      type="button"
+                      className="script-foundation-project-roll__select"
+                      onClick={() => handleSwitchProject(project.id)}
+                      title={project.title}
+                    >
+                      <span className="script-foundation-project-roll__mark" aria-hidden="true">
+                        <Folder size={18} strokeWidth={1.8} />
+                      </span>
+                      <span className="script-foundation-project-roll__body">
+                        <strong>{project.title}</strong>
+                        <small>{project.durationMin} min</small>
+                      </span>
+                    </button>
+                    <span className="script-foundation-project-roll__actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingDeleteProjectId(null);
+                          setProjectDraft({
+                            mode: "edit",
+                            projectId: project.id,
+                            title: project.title,
+                            durationMin: project.durationMin,
+                          });
+                        }}
+                        aria-label={`编辑 ${project.title}`}
+                        title="编辑项目"
+                      >
+                        <Pencil size={13} strokeWidth={1.9} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProjectDraft(null);
+                          setPendingDeleteProjectId(project.id);
+                        }}
+                        disabled={flowProjects.length <= 1}
+                        aria-label={`删除 ${project.title}`}
+                        title={flowProjects.length <= 1 ? "至少保留一个项目" : "删除项目"}
+                      >
+                        <Trash2 size={13} strokeWidth={1.9} />
+                      </button>
                     </span>
-                    <span className="script-foundation-project-roll__body">
-                      <strong>{project.title}</strong>
-                      <small>{project.durationMin} min</small>
-                    </span>
-                  </button>
+                  </div>
                 );
               })}
 
@@ -1455,7 +1504,14 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 <button
                   type="button"
                   className="script-foundation-project-roll script-foundation-project-roll--add"
-                  onClick={() => setIsCreatingProject((current) => !current)}
+                  onClick={() => {
+                    setPendingDeleteProjectId(null);
+                    setProjectDraft({
+                      mode: "create",
+                      title: `项目 ${flowProjects.length + 1}`,
+                      durationMin: DEFAULT_TIMELINE_DURATION,
+                    });
+                  }}
                   title="新建项目"
                   aria-label="新建项目"
                 >
@@ -1464,28 +1520,86 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               ) : null}
             </div>
 
-            {isCreatingProject ? (
+            {projectDraft ? (
               <div className="script-foundation-project-create">
-                <label>
-                  <span>预估时长</span>
-                  <select
-                    value={newProjectDuration}
-                    onChange={(event) => setNewProjectDuration(Number(event.target.value))}
-                  >
-                    {FLOW_PROJECT_DURATIONS.map((duration) => (
-                      <option key={duration} value={duration}>
-                        {duration} min
-                      </option>
-                    ))}
-                  </select>
+                <label className="script-foundation-project-create__name">
+                  <span>项目名称</span>
+                  <input
+                    type="text"
+                    value={projectDraft.title}
+                    maxLength={80}
+                    autoFocus
+                    onChange={(event) => setProjectDraft((current) => current ? { ...current, title: event.target.value } : current)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") handleProjectDraftSubmit();
+                    }}
+                    placeholder="未命名项目"
+                  />
                 </label>
-                <button type="button" onClick={handleCreateProject}>
-                  <Plus size={14} strokeWidth={1.9} />
-                  创建
-                </button>
+                <label className="script-foundation-project-create__duration">
+                  <span>预估时长</span>
+                  <span className="script-foundation-project-create__duration-value">
+                    <input
+                      type="number"
+                      min={MIN_FLOW_PROJECT_DURATION}
+                      max={MAX_FLOW_PROJECT_DURATION}
+                      value={projectDraft.durationMin}
+                      onChange={(event) => setProjectDraft((current) => current ? { ...current, durationMin: Number(event.target.value) } : current)}
+                    />
+                    <small>min</small>
+                  </span>
+                  <input
+                    type="range"
+                    min={MIN_FLOW_PROJECT_DURATION}
+                    max={MAX_FLOW_PROJECT_DURATION}
+                    value={normalizeFlowProjectDuration(projectDraft.durationMin)}
+                    onChange={(event) => setProjectDraft((current) => current ? { ...current, durationMin: Number(event.target.value) } : current)}
+                  />
+                </label>
+                <div className="script-foundation-project-create__actions">
+                  <button type="button" className="is-quiet" onClick={() => setProjectDraft(null)}>
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleProjectDraftSubmit}
+                    disabled={!projectDraft.title.trim()}
+                  >
+                    {projectDraft.mode === "create" ? <Plus size={14} strokeWidth={1.9} /> : <Pencil size={14} strokeWidth={1.9} />}
+                    {projectDraft.mode === "create" ? "创建" : "保存"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
+
+          {pendingDeleteProjectId ? (() => {
+            const pendingProject = flowProjects.find((project) => project.id === pendingDeleteProjectId);
+            if (!pendingProject) return null;
+            return (
+              <div className="script-foundation-project-confirm" role="alertdialog" aria-modal="true" aria-labelledby="delete-project-title">
+                <div className="script-foundation-project-confirm__surface">
+                  <span>Delete project</span>
+                  <strong id="delete-project-title">删除“{pendingProject.title}”？</strong>
+                  <p>项目画布、节点与 Foundation 结构会一并移除，此操作无法撤销。</p>
+                  <div>
+                    <button type="button" onClick={() => setPendingDeleteProjectId(null)}>取消</button>
+                    <button
+                      type="button"
+                      className="is-danger"
+                      onClick={() => {
+                        onDeleteFlowProject(pendingProject.id);
+                        closeMarkdownCard();
+                      }}
+                    >
+                      <Trash2 size={14} strokeWidth={1.9} />
+                      确认删除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })() : null}
         </section>
       ) : null}
 
@@ -1921,7 +2035,7 @@ export const useFlowSurface = ({
   );
 
   const handleCreateFlowProject = useCallback(
-    (durationMin: number) => {
+    ({ title, durationMin }: { title: string; durationMin: number }) => {
       setSelectedNodeIds(new Set());
       setConnectionDrop(null);
       setProjectData((previous) => {
@@ -1930,14 +2044,14 @@ export const useFlowSurface = ({
         if (projects.length >= FLOW_PROJECT_LIMIT) return previous;
         const nextIndex = projects.length;
         const color = FLOW_PROJECT_COLOR_STYLES[nextIndex % FLOW_PROJECT_COLOR_STYLES.length].color;
-        const safeDuration = Math.max(30, Math.min(300, Math.round(durationMin) || DEFAULT_TIMELINE_DURATION));
+        const safeDuration = normalizeFlowProjectDuration(durationMin);
+        const safeTitle = title.trim() || `项目 ${nextIndex + 1}`;
         const id = `flow-project-${now.toString(36)}`;
         const rootNodeId = `${FOUNDATION_ROOT_NODE_PREFIX}${id}`;
-        const title = `项目 ${nextIndex + 1}`;
-        const newFlow = createEmptyProjectFlow(safeDuration, title, rootNodeId);
+        const newFlow = createEmptyProjectFlow(safeDuration, safeTitle, rootNodeId);
         const newProject = {
           id,
-          title,
+          title: safeTitle,
           color,
           durationMin: safeDuration,
           rootNodeId,
@@ -1950,6 +2064,87 @@ export const useFlowSurface = ({
           activeFlowProjectId: id,
           flow: newFlow,
           flowProjects: [...projects, newProject],
+        };
+      });
+    },
+    [setProjectData]
+  );
+
+  const handleUpdateFlowProject = useCallback(
+    (projectId: string, patch: { title: string; durationMin: number }) => {
+      setProjectData((previous) => {
+        const now = Date.now();
+        const projects = saveActiveFlowIntoProjects(previous, now);
+        const currentProject = projects.find((project) => project.id === projectId);
+        if (!currentProject) return previous;
+
+        const title = patch.title.trim() || currentProject.title;
+        const durationMin = normalizeFlowProjectDuration(patch.durationMin, currentProject.durationMin);
+        const currentDescriptor = {
+          rootNodeId: currentProject.rootNodeId,
+          title: currentProject.title,
+          durationMin: currentProject.durationMin,
+        };
+        const nextDescriptor = {
+          rootNodeId: currentProject.rootNodeId,
+          title,
+          durationMin,
+        };
+        const currentFlow = ensureFoundationGraphSkeleton(ensureFlow(currentProject.flow), currentDescriptor);
+        const currentTimeline = parseFoundationGraph(currentFlow, currentDescriptor).timeline;
+        const nextTimeline = {
+          ...currentTimeline,
+          durationMin,
+          blocks: recalculateTimelineBlocks(currentTimeline.blocks, durationMin),
+        };
+        const nextFlow = ensureFoundationGraphSkeleton(
+          applyFoundationTimelineToGraph(currentFlow, nextDescriptor, nextTimeline),
+          nextDescriptor
+        );
+        const nextProjects = projects.map((project) =>
+          project.id === projectId
+            ? {
+                ...project,
+                title,
+                durationMin,
+                updatedAt: now,
+                flow: nextFlow,
+              }
+            : project
+        );
+        const activeId = previous.activeFlowProjectId || projects[0]?.id;
+
+        return {
+          ...previous,
+          flow: activeId === projectId ? nextFlow : previous.flow,
+          flowProjects: nextProjects,
+        };
+      });
+    },
+    [setProjectData]
+  );
+
+  const handleDeleteFlowProject = useCallback(
+    (projectId: string) => {
+      setSelectedNodeIds(new Set());
+      setConnectionDrop(null);
+      setProjectData((previous) => {
+        const projects = saveActiveFlowIntoProjects(previous);
+        if (projects.length <= 1) return previous;
+        const deletedIndex = projects.findIndex((project) => project.id === projectId);
+        if (deletedIndex < 0) return previous;
+
+        const remainingProjects = projects.filter((project) => project.id !== projectId);
+        const currentActiveId = previous.activeFlowProjectId || projects[0]?.id;
+        const nextActiveProject = currentActiveId === projectId
+          ? remainingProjects[Math.min(deletedIndex, remainingProjects.length - 1)]
+          : remainingProjects.find((project) => project.id === currentActiveId) || remainingProjects[0];
+
+        return {
+          ...previous,
+          activeFlowProjectId: nextActiveProject.id,
+          flow: ensureFlow(nextActiveProject.flow),
+          flowProjects: remainingProjects,
         };
       });
     },
@@ -3220,6 +3415,8 @@ export const useFlowSurface = ({
           activeFlowProjectId={activeFlowProjectId}
           onSwitchFlowProject={handleSwitchFlowProject}
           onCreateFlowProject={handleCreateFlowProject}
+          onUpdateFlowProject={handleUpdateFlowProject}
+          onDeleteFlowProject={handleDeleteFlowProject}
           onOpenAgent={onOpenAgent}
           onSubmitAgentMessage={onSubmitAgentMessage}
           agentComposerValue={agentComposerValue}

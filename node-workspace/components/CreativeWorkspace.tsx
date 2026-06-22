@@ -1041,6 +1041,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         accountInfo={accountInfo}
         accountThemeControls={accountThemeControls}
         showGlobalAccountTrigger
+        globalAccountHostId="script-foundation-account-host"
         showToolbar={false}
         variant="embedded"
       />

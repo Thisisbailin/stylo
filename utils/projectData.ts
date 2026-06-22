@@ -18,6 +18,7 @@ import {
   slugifyIdentityKey,
 } from "./projectRoles";
 import { normalizeNodeFlowNode } from "../node-workspace/nodeflow/state";
+import { normalizeFlowProjectDuration } from "./flowProject";
 
 const HANDLE_TYPES = new Set(["image", "text", "audio", "video", "multi"]);
 
@@ -124,9 +125,6 @@ const normalizeFlow = (value: any): ProjectData["flow"] => {
 
 const FLOW_PROJECT_COLORS = ["amber", "moss", "blue", "rose", "violet", "slate"];
 const MAX_FLOW_PROJECTS = 3;
-
-const normalizeFlowProjectDuration = (value: unknown, fallback = 120) =>
-  Math.max(30, Math.min(300, Math.round(Number(value) || fallback)));
 
 const normalizeFlowProjects = (
   value: unknown,

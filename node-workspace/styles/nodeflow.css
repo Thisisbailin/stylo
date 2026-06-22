@@ -6231,6 +6231,219 @@ button.script-foundation-gateway-card:hover,
   }
 }
 
+.script-foundation-project-roll {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.script-foundation-project-roll__select {
+  display: grid;
+  width: 100%;
+  min-height: 62px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  padding: 8px 62px 8px 8px;
+  color: inherit;
+  text-align: left;
+}
+
+.script-foundation-project-roll__actions {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: flex;
+  gap: 3px;
+  transform: translateY(-50%);
+}
+
+.script-foundation-project-roll__actions button {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--app-text-muted);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.script-foundation-project-roll__actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--project-roll-color) 18%, var(--app-panel-soft));
+  color: var(--app-text-primary);
+}
+
+.script-foundation-project-roll__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.28;
+}
+
+.script-foundation-project-create {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(250px, 1.25fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 12px;
+}
+
+.script-foundation-project-create label {
+  display: grid;
+  align-items: initial;
+  gap: 7px;
+}
+
+.script-foundation-project-create label > span:first-child {
+  color: var(--app-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.script-foundation-project-create input[type="text"],
+.script-foundation-project-create input[type="number"] {
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--app-bg) 52%, transparent);
+  color: var(--app-text-primary);
+  font: inherit;
+  outline: none;
+  padding: 0 10px;
+}
+
+.script-foundation-project-create input:focus-visible {
+  border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 12%, transparent);
+}
+
+.script-foundation-project-create__duration {
+  grid-template-columns: auto 76px;
+}
+
+.script-foundation-project-create__duration > input[type="range"] {
+  width: 100%;
+  grid-column: 1 / -1;
+  accent-color: var(--app-accent);
+}
+
+.script-foundation-project-create__duration-value {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.script-foundation-project-create__duration-value input {
+  width: 54px;
+  padding-inline: 7px;
+}
+
+.script-foundation-project-create__duration-value small {
+  color: var(--app-text-muted);
+  font-size: 10px;
+}
+
+.script-foundation-project-create__actions {
+  display: flex;
+  gap: 7px;
+  padding-bottom: 1px;
+}
+
+.script-foundation-project-create__actions button.is-quiet {
+  border-color: var(--app-border);
+  background: transparent;
+  color: var(--app-text-secondary);
+}
+
+.script-foundation-project-create__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.script-foundation-project-confirm {
+  pointer-events: auto;
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--app-bg) 42%, transparent);
+  padding: 18px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.script-foundation-project-confirm__surface {
+  display: grid;
+  width: min(390px, 100%);
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent);
+  box-shadow: 0 24px 70px -36px rgba(0, 0, 0, 0.82);
+  padding: 18px;
+}
+
+.script-foundation-project-confirm__surface > span {
+  color: var(--app-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.script-foundation-project-confirm__surface strong {
+  color: var(--app-text-primary);
+  font-size: 16px;
+}
+
+.script-foundation-project-confirm__surface p {
+  margin: 0;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.script-foundation-project-confirm__surface > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.script-foundation-project-confirm__surface button {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-panel-soft);
+  padding: 0 12px;
+  color: var(--app-text-primary);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.script-foundation-project-confirm__surface button.is-danger {
+  border-color: color-mix(in srgb, #ef4444 42%, var(--app-border));
+  background: color-mix(in srgb, #ef4444 12%, var(--app-panel-soft));
+  color: color-mix(in srgb, #ef4444 72%, var(--app-text-primary));
+}
+
+@media (max-width: 760px) {
+  .script-foundation-project-create {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .script-foundation-project-create__actions {
+    justify-content: flex-end;
+  }
+}
+
 @keyframes scriptFoundationEditIn {
   from {
     opacity: 0;
@@ -7905,6 +8118,32 @@ button.script-foundation-gateway-card:hover,
   box-shadow: none;
 }
 
+.script-foundation-account-host {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.script-foundation-account-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.script-foundation-account-control [data-account-trigger] {
+  height: 42px;
+  gap: 4px;
+  padding-inline: 6px;
+  box-shadow: none;
+}
+
 .script-foundation-tail::before {
   display: none;
 }
@@ -7932,7 +8171,7 @@ button.script-foundation-gateway-card:hover,
 }
 
 .script-foundation-tail.is-agent-open {
-  width: min(560px, calc(100vw - 166px));
+  width: min(560px, calc(100vw - 224px));
   height: 50px;
   min-height: 50px;
   border: 0;
@@ -8182,7 +8421,7 @@ button.script-foundation-gateway-card:hover,
   }
 
   .script-foundation-tail.is-agent-open {
-    width: min(340px, calc(100vw - 92px));
+    width: min(340px, calc(100vw - 150px));
     height: 46px;
     min-height: 46px;
   }

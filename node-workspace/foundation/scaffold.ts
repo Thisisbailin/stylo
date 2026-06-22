@@ -1,6 +1,10 @@
 import type { ProjectData, FlowProject, FlowState } from "../../types";
 import type { NodeFlowNode, NodeFlowNodeData } from "../types";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
+import {
+  DEFAULT_FLOW_PROJECT_DURATION,
+  normalizeFlowProjectDuration,
+} from "../../utils/flowProject";
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
   revision: typeof flow?.revision === "number" ? flow.revision : 0,
@@ -63,8 +67,8 @@ export const TIMELINE_COLORS = [
   { name: "紫藤", value: "violet" },
 ];
 
-export const MIN_TIMELINE_BLOCK_MINUTES = 3;
-export const DEFAULT_TIMELINE_DURATION = 120;
+export const MIN_TIMELINE_BLOCK_MINUTES = 1;
+export const DEFAULT_TIMELINE_DURATION = DEFAULT_FLOW_PROJECT_DURATION;
 const FOUNDATION_ARCHIVE_NODE_SIZE = { width: 320, height: 252 };
 const FOLDER_NODE_SIZE = { width: 230, height: 128 };
 const FOUNDATION_LAYOUT = {
@@ -146,11 +150,10 @@ export const createSpaceBlock = (
 });
 
 export const createDefaultSpaceBlocks = (): FoundationSpaceBlock[] => [
-  createSpaceBlock("space-spec", "规格", 0, 0.72, "slate", "项目类型、画幅、总时长、作者、版本时间戳与基础制作规格。"),
-  createSpaceBlock("space-world", "世界观", 1, 1, "moss", "影片整体背景、规则与设定。"),
-  createSpaceBlock("space-characters", "角色档案", 2, 1.15, "amber", "主要角色、动机、关系与小传。"),
-  createSpaceBlock("space-locations", "场景地图", 3, 0.9, "blue", "空间、地点、动线与场景关系。"),
-  createSpaceBlock("space-style", "风格备忘录", 4, 0.95, "rose", "影像、语气、对白、节奏和参考。"),
+  createSpaceBlock("space-spec", "规格", 0, 1, "slate", "项目类型、画幅、总时长、作者、版本与基础制作规格。"),
+  createSpaceBlock("space-style", "风格", 1, 1, "rose", "影像、语气、对白、节奏与视觉参考。"),
+  createSpaceBlock("space-characters", "角色", 2, 1, "amber", "角色、动机、关系与人物档案。"),
+  createSpaceBlock("space-scenes", "场景", 3, 1, "blue", "地点、空间、动线与场景关系。"),
 ];
 
 const distributeRemainder = (blocks: FoundationTimeBlock[], targetDuration: number) => {
@@ -178,16 +181,34 @@ const distributeRemainder = (blocks: FoundationTimeBlock[], targetDuration: numb
 };
 
 export const recalculateTimelineBlocks = (blocks: FoundationTimeBlock[], durationMin: number) => {
+  const targetDuration = normalizeFlowProjectDuration(durationMin);
+  const sortedBlocks = blocks
+    .slice()
+    .sort((a, b) => a.order - b.order);
+  const maxBlockCount = Math.max(1, Math.floor(targetDuration / MIN_TIMELINE_BLOCK_MINUTES));
+  const fittedBlocks = sortedBlocks.slice(0, maxBlockCount);
+  const overflowBlocks = sortedBlocks.slice(maxBlockCount);
+  if (overflowBlocks.length && fittedBlocks.length) {
+    const lastIndex = fittedBlocks.length - 1;
+    const lastBlock = fittedBlocks[lastIndex];
+    fittedBlocks[lastIndex] = {
+      ...lastBlock,
+      content: [lastBlock.content, ...overflowBlocks.map((block) => block.content)].filter(Boolean).join("\n\n"),
+      durationMin: lastBlock.durationMin + overflowBlocks.reduce((sum, block) => sum + block.durationMin, 0),
+      boundaryNodeIds: Array.from(new Set([
+        ...lastBlock.boundaryNodeIds,
+        ...overflowBlocks.flatMap((block) => block.boundaryNodeIds),
+      ])),
+    };
+  }
   const ordered = distributeRemainder(
-    blocks
-      .slice()
-      .sort((a, b) => a.order - b.order)
+    fittedBlocks
       .map((block, index) => ({
         ...block,
         order: index,
         boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? Array.from(new Set(block.boundaryNodeIds)) : [],
       })),
-    durationMin
+    targetDuration
   );
   let cursor = 0;
   return ordered.map((block, index) => {
@@ -409,18 +430,19 @@ export const buildFoundationGraphSeed = (
 export const createDefaultTimeline = (durationMin = DEFAULT_TIMELINE_DURATION): FoundationScaffold => ({
   id: "film-structure",
   title: "影片时间轴",
-  durationMin,
+  durationMin: normalizeFlowProjectDuration(durationMin),
   head: DEFAULT_TIMELINE_HEAD,
   spaceAxisBlocks: createDefaultSpaceBlocks(),
-  blocks: recalculateTimelineBlocks(
-    [
-      createTimelineBlock("timeline-opening", "开场设定", 15, 0, "amber", "建立世界、语气和主人公最初的缺口。"),
-      createTimelineBlock("timeline-turn", "第一转折", 25, 1, "moss", "让人物做出无法回头的选择，故事进入真正的推进。"),
-      createTimelineBlock("timeline-pressure", "中段压力", 50, 2, "blue", "关系、目标和代价持续升级，核心问题被逼到台前。"),
-      createTimelineBlock("timeline-finale", "结尾回收", 30, 3, "rose", "完成选择、代价和主题回声。"),
-    ],
-    durationMin
-  ),
+  blocks: [
+    createTimelineBlock(
+      "timeline-full",
+      "完整时间轴",
+      normalizeFlowProjectDuration(durationMin),
+      0,
+      "amber",
+      "这是项目的完整时间范围。按创作需求拆分、命名并调整区块边界。"
+    ),
+  ],
 });
 
 export const createEmptyProjectFlow = (
@@ -441,7 +463,7 @@ export const createEmptyProjectFlow = (
 };
 
 export const getFlowProjectDuration = (flow?: FlowState, fallback = DEFAULT_TIMELINE_DURATION) =>
-  Math.max(30, Math.min(300, Math.round(Number(fallback) || DEFAULT_TIMELINE_DURATION)));
+  normalizeFlowProjectDuration(fallback);
 
 export const getFlowProjectsForState = (projectData: ProjectData) => {
   const currentFlow = ensureFlow(projectData.flow);
@@ -489,7 +511,7 @@ export const saveActiveFlowIntoProjects = (projectData: ProjectData, now = Date.
 
 export const ensureTimeline = (timeline?: FoundationScaffold): FoundationScaffold => {
   if (!timeline || !Array.isArray(timeline.blocks) || !timeline.blocks.length) return createDefaultTimeline();
-  const durationMin = Math.max(30, Math.min(300, Math.round(Number(timeline.durationMin) || DEFAULT_TIMELINE_DURATION)));
+  const durationMin = normalizeFlowProjectDuration(timeline.durationMin);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   return {
     id: timeline.id || "film-structure",
@@ -761,7 +783,7 @@ export const parseFoundationGraph = (
         archiveNodeId: archive?.id,
       };
     });
-    return recalculateTimelineBlocks(blocks, Math.max(30, project.durationMin)) as ParsedFoundationBlock[];
+    return recalculateTimelineBlocks(blocks, normalizeFlowProjectDuration(project.durationMin)) as ParsedFoundationBlock[];
   };
 
   const parseSpaceBlocks = (axisId?: string): ParsedFoundationSpaceBlock[] => {
@@ -793,7 +815,7 @@ export const parseFoundationGraph = (
   const timeline: FoundationScaffold = {
     id: "foundation-view",
     title: getNodeTitle(timeAxis) || "时间轴",
-    durationMin: Math.max(30, project.durationMin),
+    durationMin: normalizeFlowProjectDuration(project.durationMin),
     head: {
       title: getNodeTitle(projectIndex) || "项目索引.md",
       content: getMarkdownContent(projectIndex),
@@ -865,8 +887,19 @@ export const ensureFoundationGraphSkeleton = (
     return keep;
   });
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const ids = getFoundationSeedIds(project.rootNodeId);
+  const axisHasBlock = {
+    time: flow.links.some((link) => link.source === ids.timeAxisId && nodeById.get(link.target)?.type === "folder"),
+    space: flow.links.some((link) => link.source === ids.spaceAxisId && nodeById.get(link.target)?.type === "folder"),
+  };
+  const seedNodesToEnsure = seed.nodes.filter((template) => {
+    const meta = getFoundationNodeMeta(template);
+    if (meta.foundationRole !== "block-folder" && meta.foundationRole !== "block-document") return true;
+    return meta.foundationAxis ? !axisHasBlock[meta.foundationAxis] : true;
+  });
+  const seedNodeIdsToEnsure = new Set(seedNodesToEnsure.map((node) => node.id));
 
-  seed.nodes.forEach((template) => {
+  seedNodesToEnsure.forEach((template) => {
     const existing = nodeById.get(template.id);
     if (!existing) {
       nodes.push(template);
@@ -884,7 +917,6 @@ export const ensureFoundationGraphSkeleton = (
     }
   });
 
-  const ids = getFoundationSeedIds(project.rootNodeId);
   const rootTargets = new Set([ids.projectIndexId, ids.timeAxisId, ids.spaceAxisId]);
   const axisById = new Map<string, FoundationAxis>([
     [ids.timeAxisId, "time"],
@@ -907,11 +939,13 @@ export const ensureFoundationGraphSkeleton = (
     return true;
   });
 
-  seed.links.forEach((requiredLink) => {
-    if (links.some((link) => sameFoundationLink(link, requiredLink))) return;
-    links.push(requiredLink);
-    changed = true;
-  });
+  seed.links
+    .filter((link) => seedNodeIdsToEnsure.has(link.source) && seedNodeIdsToEnsure.has(link.target))
+    .forEach((requiredLink) => {
+      if (links.some((link) => sameFoundationLink(link, requiredLink))) return;
+      links.push(requiredLink);
+      changed = true;
+    });
 
   axisById.forEach((axis, axisId) => {
     const blockIds = Array.from(

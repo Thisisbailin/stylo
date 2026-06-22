@@ -52,6 +52,7 @@ type Props = {
   variant?: "dock" | "embedded";
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   showGlobalAccountTrigger?: boolean;
+  globalAccountHostId?: string;
   showToolbar?: boolean;
   accountThemeControls?: React.ReactNode;
 };
@@ -79,6 +80,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   variant = "dock",
   onAssetLoad,
   showGlobalAccountTrigger = false,
+  globalAccountHostId,
   showToolbar = true,
   accountThemeControls,
 }) => {
@@ -97,6 +99,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   const palettePanelRef = useRef<HTMLDivElement>(null);
   const fileMenuResizeRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null);
   const [accountAnchorRect, setAccountAnchorRect] = useState<DOMRect | null>(null);
+  const [globalAccountHost, setGlobalAccountHost] = useState<HTMLElement | null>(null);
   const [nodesAnchorRect, setNodesAnchorRect] = useState<DOMRect | null>(null);
   const legacyScriptImportDisabled = true;
   const rootClass = !showToolbar
@@ -194,6 +197,16 @@ export const FloatingActionBar: React.FC<Props> = ({
       window.removeEventListener("resize", syncViewportWidth);
     };
   }, []);
+
+  useEffect(() => {
+    if (!showGlobalAccountTrigger || !globalAccountHostId || typeof document === "undefined") {
+      setGlobalAccountHost(null);
+      return;
+    }
+
+    const nextHost = document.getElementById(globalAccountHostId);
+    setGlobalAccountHost((current) => (current === nextHost ? current : nextHost));
+  });
 
   useEffect(() => {
     const maxWidth = Math.max(320, viewportWidth - 24);
@@ -481,6 +494,46 @@ export const FloatingActionBar: React.FC<Props> = ({
     </div>
   );
 
+  const globalAccountTrigger = showGlobalAccountTrigger ? (
+    <div
+      className={
+        globalAccountHostId
+          ? "script-foundation-account-control"
+          : "pointer-events-none fixed right-4 bottom-4 z-[60]"
+      }
+    >
+      <button
+        ref={accountButtonRef}
+        data-account-trigger
+        type="button"
+        onClick={(event) => {
+          setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
+          setShowFileMenu((v) => !v);
+          setShowPalette(false);
+        }}
+        className={`${globalAccountButtonClass} pointer-events-auto ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
+        title="Account"
+        aria-label="Account"
+      >
+        {accountInfo?.avatarUrl ? (
+          <img
+            src={accountInfo.avatarUrl}
+            alt={accountName}
+            className="h-7 w-7 rounded-full border border-[var(--app-border)] object-cover"
+          />
+        ) : (
+          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)]">
+            <User size={14} />
+          </span>
+        )}
+        <span
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: syncIndicator?.color || "rgba(142, 142, 147, 0.82)" }}
+        />
+      </button>
+    </div>
+  ) : null;
+
 
   return (
     <div className={rootClass}>
@@ -489,38 +542,11 @@ export const FloatingActionBar: React.FC<Props> = ({
         : null}
 
       <div className="relative z-20 flex justify-center">
-        {showGlobalAccountTrigger ? (
-          <div className="pointer-events-none fixed right-4 bottom-4 z-[60]">
-            <button
-              ref={accountButtonRef}
-              data-account-trigger
-              type="button"
-              onClick={(event) => {
-                setAccountAnchorRect(event.currentTarget.getBoundingClientRect());
-                setShowFileMenu((v) => !v);
-                setShowPalette(false);
-              }}
-              className={`${globalAccountButtonClass} pointer-events-auto ${showFileMenu ? "border-[var(--app-border-strong)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]" : ""}`}
-              title="Account"
-            >
-              {accountInfo?.avatarUrl ? (
-                <img
-                  src={accountInfo.avatarUrl}
-                  alt={accountName}
-                  className="h-7 w-7 rounded-full border border-[var(--app-border)] object-cover"
-                />
-              ) : (
-                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)]">
-                  <User size={14} />
-                </span>
-              )}
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: syncIndicator?.color || "rgba(142, 142, 147, 0.82)" }}
-              />
-            </button>
-          </div>
-        ) : null}
+        {globalAccountHostId
+          ? globalAccountHost && globalAccountTrigger
+            ? createPortal(globalAccountTrigger, globalAccountHost)
+            : null
+          : globalAccountTrigger}
 
         {/* Plus Palette */}
         {typeof document !== "undefined" && showPalette ? (
