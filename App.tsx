@@ -8,6 +8,7 @@ import { FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
 import { getDeviceId } from './utils/device';
 import { hashToBucket, isInRollout, normalizeRolloutPercent } from './utils/rollout';
 import { buildApiUrl } from './utils/api';
+import { setApiAuthTokenProvider } from './utils/authToken';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useConfig } from './hooks/useConfig';
@@ -77,6 +78,10 @@ const App: React.FC = () => {
       return null;
     }
   }, [getToken]);
+  useEffect(() => {
+    setApiAuthTokenProvider(authSignedIn ? getAuthToken : null);
+    return () => setApiAuthTokenProvider(null);
+  }, [authSignedIn, getAuthToken]);
   const projectDataRef = useRef<ProjectData>(INITIAL_PROJECT_DATA);
 
   // Initialize state with Persisted hooks
@@ -357,7 +362,7 @@ const App: React.FC = () => {
 
   // --- Handlers ---
 
-  const handleResetProject = () => {
+  const handleResetProject = async () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
       localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
       setProjectData(INITIAL_PROJECT_DATA);
@@ -365,6 +370,17 @@ const App: React.FC = () => {
       localStorage.removeItem(LOCAL_BACKUP_KEY);
       localStorage.removeItem(REMOTE_BACKUP_KEY);
       setAvatarUrl('');
+      try {
+        const token = await getAuthToken();
+        if (token) {
+          await fetch(buildApiUrl('/api/account-data-reset'), {
+            method: 'DELETE',
+            headers: { authorization: `Bearer ${token}` },
+          });
+        }
+      } catch (error) {
+        console.warn('Cloud project reset failed', error);
+      }
     }
   };
 
@@ -383,9 +399,13 @@ const App: React.FC = () => {
         bucket: 'public-assets',
         contentType: file.type
       };
+      const token = await getAuthToken();
+      if (!token) {
+        throw new Error('请先登录后再上传头像。');
+      }
       const res = await fetch(buildApiUrl('/api/upload-url'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
@@ -412,14 +432,11 @@ const App: React.FC = () => {
       setAvatarUrl(storedUrl);
       // Save to profile for multi-device sync
       try {
-        const token = await getAuthToken();
-        if (token) {
-          await fetch(buildApiUrl('/api/profile'), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
-            body: JSON.stringify({ avatarUrl: storedUrl })
-          });
-        }
+        await fetch(buildApiUrl('/api/profile'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ avatarUrl: storedUrl })
+        });
       } catch (e) {
         console.warn('Save profile avatar failed', e);
       }

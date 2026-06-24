@@ -17,6 +17,7 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { buildProjectIdentities, resolveLegacyIdentity, type ProjectIdentity } from "../../utils/identityCards";
 import { applyRolePortraits } from "../../utils/projectRoles";
 import { resolveIdentityCardNodeTitle } from "../nodeflow/titles";
+import type { ProjectRoleIdentity } from "../../types";
 
 type Props = {
   id: string;
@@ -60,8 +61,8 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
 
   const identities = useMemo(
-    () => buildProjectIdentities(nodeFlowContext.context, nodeFlowContext.designAssets || []),
-    [nodeFlowContext.context, nodeFlowContext.designAssets]
+    () => buildProjectIdentities(nodeFlowContext.roles || [], nodeFlowContext.designAssets || []),
+    [nodeFlowContext.roles, nodeFlowContext.designAssets]
   );
 
   const activeIdentity = useMemo(
@@ -83,9 +84,9 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
   );
 
   const applyRoleUpdate = useCallback(
-    (updater: (identity: ProjectIdentity) => ProjectIdentity) => {
+    (updater: (identity: ProjectRoleIdentity) => ProjectRoleIdentity) => {
       if (!activeIdentity) return;
-      mutateProjectRole(activeIdentity.id, (role) => updater(role as ProjectIdentity));
+      mutateProjectRole(activeIdentity.id, updater);
     },
     [activeIdentity, mutateProjectRole]
   );

@@ -97,6 +97,11 @@ export interface FlowLink {
   target: string;
   sourceHandle?: HandleType;
   targetHandle?: HandleType;
+  data?: {
+    hasPause?: boolean;
+    relation?: "foundation-membership";
+    [key: string]: unknown;
+  };
 }
 
 export interface FlowState {

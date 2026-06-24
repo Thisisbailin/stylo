@@ -1,7 +1,8 @@
 import type { NodeFlowFile, NodeFlowNode } from "../../node-workspace/types";
 import { getNodeFlowRef, normalizeNodeRef } from "../runtime/nodeFlowRefs";
+import { isFoundationAxis, type FoundationAxis } from "../../node-workspace/foundation/axes";
 
-export type FoundationAxis = "time" | "space";
+export type { FoundationAxis } from "../../node-workspace/foundation/axes";
 export type FoundationRole =
   | "project-root"
   | "project-index"
@@ -30,7 +31,7 @@ export const getFoundationRole = (node?: NodeFlowNode | null): FoundationRole | 
 
 export const getFoundationAxis = (node?: NodeFlowNode | null): FoundationAxis | "" => {
   const axis = typeof node?.data?.foundationAxis === "string" ? node.data.foundationAxis : "";
-  return axis === "time" || axis === "space" ? axis : "";
+  return isFoundationAxis(axis) ? axis : "";
 };
 
 export const isFoundationNode = (node?: NodeFlowNode | null) => Boolean(getFoundationRole(node));

@@ -12,7 +12,12 @@ export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; 
   videoInput: { width: 360, height: 220 },
   scriptBoard: { width: 920 },
   identityCard: { width: 760 },
+  imageGen: { width: 380, height: 520 },
+  nanoBananaImageGen: { width: 380, height: 520 },
+  wanImageGen: { width: 380, height: 520 },
+  wanReferenceVideoGen: { width: 380, height: 560 },
   seedanceVideoGen: { width: 380 },
+  viduVideoGen: { width: 380, height: 560 },
 };
 
 const DEFAULT_NODE_WIDTH = 320;
@@ -21,7 +26,8 @@ const SAFE_NODE_GAP = 48;
 const SEARCH_STEP_X = 392;
 const SEARCH_STEP_Y = 320;
 const ALIGN_THRESHOLD = 48;
-const SEARCH_LIMIT = 80;
+const SEARCH_LIMIT = 160;
+const GRID_SIZE = 16;
 
 const parseSize = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -72,7 +78,12 @@ const intersectsWithGap = (
   active.top < target.bottom + gap &&
   active.bottom > target.top - gap;
 
-const roundToGrid = (value: number, grid = 8) => Math.round(value / grid) * grid;
+export const roundNodeFlowPositionToGrid = (position: XYPosition, grid = GRID_SIZE): XYPosition => ({
+  x: Math.round(position.x / grid) * grid,
+  y: Math.round(position.y / grid) * grid,
+});
+
+const roundToGrid = (value: number, grid = GRID_SIZE) => Math.round(value / grid) * grid;
 
 const getBasePlacement = (
   nodes: NodeFlowNode[],
@@ -119,6 +130,7 @@ export const findSafeNodeFlowPosition = ({
   parentId,
   viewport,
   gap = SAFE_NODE_GAP,
+  node,
 }: {
   nodes: NodeFlowNode[];
   type: NodeType;
@@ -126,14 +138,16 @@ export const findSafeNodeFlowPosition = ({
   parentId?: string;
   viewport?: NodeFlowViewport | null;
   gap?: number;
+  node?: Pick<NodeFlowNode, "id" | "type" | "position" | "style" | "measured">;
 }): XYPosition => {
   const comparableNodes = nodes.filter((node) => (node.parentId || undefined) === (parentId || undefined));
   const base = getBasePlacement(comparableNodes, viewport, requestedPosition);
   const candidateNode = {
-    id: "__placement_candidate__",
+    id: node?.id || "__placement_candidate__",
     type,
     position: base,
-    style: DEFAULT_NODE_DIMENSIONS[type],
+    style: node?.style || DEFAULT_NODE_DIMENSIONS[type],
+    measured: node?.measured,
   } as NodeFlowNode;
 
   for (const offset of SEARCH_OFFSETS) {
@@ -157,4 +171,36 @@ export const findSafeNodeFlowPosition = ({
     x: roundToGrid(base.x + fallbackColumn * SEARCH_STEP_X),
     y: roundToGrid(base.y + (fallbackRow + 1) * SEARCH_STEP_Y),
   };
+};
+
+export const normalizeNodeFlowNodePositions = ({
+  existingNodes,
+  nodes,
+  gap = SAFE_NODE_GAP,
+  viewport,
+}: {
+  existingNodes: NodeFlowNode[];
+  nodes: NodeFlowNode[];
+  gap?: number;
+  viewport?: NodeFlowViewport | null;
+}) => {
+  const stagedNodes: NodeFlowNode[] = [];
+  return nodes.map((node) => {
+    const requestedPosition = roundNodeFlowPositionToGrid(node.position || { x: 0, y: 0 });
+    const safePosition = findSafeNodeFlowPosition({
+      nodes: [...existingNodes, ...stagedNodes],
+      type: node.type,
+      requestedPosition,
+      parentId: node.parentId,
+      viewport,
+      gap,
+      node,
+    });
+    const nextNode = {
+      ...node,
+      position: safePosition,
+    };
+    stagedNodes.push(nextNode);
+    return nextNode;
+  });
 };

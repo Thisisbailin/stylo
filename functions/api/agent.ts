@@ -85,6 +85,29 @@ const createAgentProjectData = (
   };
 };
 
+const createAgentProjectPatch = (
+  projectData: ProjectData,
+  projectId: string
+): QalamRunResult["updatedProjectPatch"] => {
+  const activeProject = projectData.flowProjects?.find((project) => project.id === projectId);
+  return {
+    activeFlowProjectId: projectId,
+    roles: Array.isArray(projectData.roles) ? projectData.roles : [],
+    designAssets: Array.isArray(projectData.designAssets) ? projectData.designAssets : [],
+    flow: projectData.flow,
+    flowProjects: activeProject ? [activeProject] : undefined,
+  };
+};
+
+const hasMeaningfulProjectPatch = (patch: QalamRunResult["updatedProjectPatch"]) =>
+  Boolean(
+    patch &&
+      (Array.isArray(patch.roles) ||
+        Array.isArray(patch.designAssets) ||
+        patch.flow ||
+        (Array.isArray(patch.flowProjects) && patch.flowProjects.length > 0))
+  );
+
 const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
   if (!enabled || typeof console === "undefined") return;
   const prefix = `[Qalam][edge][${runId}] ${label}`;
@@ -499,7 +522,12 @@ export const onRequestPost = async (context: any) => {
           tracingDisabled: false,
           traceIncludeSensitiveData: false,
           getExtraResult: () => ({
-            updatedProjectData: bridgeState.hasUpdatedProjectData() ? bridgeState.getProjectData() : undefined,
+            updatedProjectPatch: bridgeState.hasUpdatedProjectData()
+              ? (() => {
+                  const patch = createAgentProjectPatch(bridgeState.getProjectData(), body.run.projectId);
+                  return hasMeaningfulProjectPatch(patch) ? patch : undefined;
+                })()
+              : undefined,
             updatedNodeFlow: bridgeState.hasUpdatedNodeFlow() ? bridgeState.getNodeFlow() : undefined,
             updatedExecutionApprovals: bridgeState.hasUpdatedExecutionApprovals()
               ? bridgeState.getExecutionApprovals()

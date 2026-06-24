@@ -1,6 +1,6 @@
 import type { Connection } from "@xyflow/react";
 import type { ProjectData } from "../../types";
-import type { NodeFlowFile, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
+import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeFlowViewport, NodeType } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
 import { findGraphNode } from "../../node-workspace/nodeflow/projectGraph";
@@ -13,6 +13,13 @@ import {
 import { findSafeNodeFlowPosition } from "../../node-workspace/nodeflow/placement";
 import { getNodeHandles, isValidConnection } from "../../node-workspace/utils/handles";
 import { ensureUniqueNodeRef, getNodeFlowRef, normalizeNodeRef, setNodeFlowRef } from "../runtime/nodeFlowRefs";
+import {
+  assertPatchDoesNotTouchFoundationMeta,
+  describeFoundationNode,
+  getFoundationRole,
+  isFoundationNode,
+  isProtectedFoundationNode,
+} from "../tools/foundationAccess";
 import { createNodeFlowMapWithBridge } from "./nodeFlowBuilder";
 import type {
   CreateNodeFlowGraphLinkInput,
@@ -154,6 +161,49 @@ const buildNodeExtraData = (
   } as Partial<NodeFlowNodeData>;
 };
 
+const assertBridgeCreateParentAllowed = (snapshot: NodeFlowFile, parentId?: string) => {
+  if (!parentId) return;
+  const parent = snapshot.nodes.find((node) => node.id === parentId) || null;
+  if (parent && isFoundationNode(parent)) {
+    throw new Error(`不能在 Foundation 节点 ${describeFoundationNode(parent)} 内创建普通节点；请使用受限 Foundation 操作。`);
+  }
+};
+
+const assertBridgeUpdateAllowed = (node: NodeFlowNode, patch: Record<string, unknown>) => {
+  const role = getFoundationRole(node);
+  if (!role) return;
+  if (role === "block-document") {
+    assertPatchDoesNotTouchFoundationMeta(patch);
+    return;
+  }
+  throw new Error(`不能通过通用 bridge 更新 Foundation 节点 ${describeFoundationNode(node)}。`);
+};
+
+const assertBridgeMoveAllowed = (node: NodeFlowNode) => {
+  if (!isFoundationNode(node)) return;
+  throw new Error(`不能通过通用 bridge 移动 Foundation 节点 ${describeFoundationNode(node)}。`);
+};
+
+const assertBridgeRemoveAllowed = (node: NodeFlowNode) => {
+  if (!isProtectedFoundationNode(node)) return;
+  throw new Error(`不能删除受保护的 Foundation 节点 ${describeFoundationNode(node)}。`);
+};
+
+const assertBridgeConnectionAllowed = (
+  sourceNode: NodeFlowNode,
+  targetNode: NodeFlowNode
+) => {
+  const sourceRole = getFoundationRole(sourceNode);
+  const targetRole = getFoundationRole(targetNode);
+  if (!sourceRole && !targetRole) return;
+  if (sourceRole === "axis-folder" && targetRole === "block-folder") return;
+  if (sourceRole === "block-folder" && targetRole === "block-document") return;
+  if (sourceRole === "block-folder" && !targetRole) return;
+  throw new Error(
+    `Foundation 连接只能使用受限结构连接或由 block folder 指向普通节点；当前连接为 ${describeFoundationNode(sourceNode)} -> ${describeFoundationNode(targetNode)}。`
+  );
+};
+
 export const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
   if (typeof expectedRevision !== "number") return;
   if (expectedRevision !== currentRevision) {
@@ -210,6 +260,7 @@ const createNodeFlowNode = (
 ): CreateNodeFlowNodeResult & Record<string, unknown> => {
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
+  assertBridgeCreateParentAllowed(snapshot, input.parentId);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
     throw new Error("createNodeFlowNode currently supports scriptPage, mdText, folder, text, imageInput, audioInput, and videoInput.");
   }
@@ -268,6 +319,7 @@ const updateNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   const { resolved, node } = resolveNodeFlowNode(snapshot, input, "updateNodeFlowNode");
+  assertBridgeUpdateAllowed(node, input.patch);
   deps.updateNodeData(resolved.nodeId, input.patch as Partial<NodeFlowNodeData>);
   const nextTitle =
     typeof input.patch.title === "string" && input.patch.title.trim()
@@ -299,6 +351,7 @@ const moveNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   const { resolved, node } = resolveNodeFlowNode(snapshot, input, "moveNodeFlowNode");
+  assertBridgeMoveAllowed(node);
   deps.moveNode(resolved.nodeId, { x: input.x, y: input.y });
   return {
     nodeId: resolved.nodeId,
@@ -323,6 +376,7 @@ const removeNodeFlowNode = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   const { resolved, node } = resolveNodeFlowNode(snapshot, input, "removeNodeFlowNode");
+  assertBridgeRemoveAllowed(node);
   deps.removeNode(resolved.nodeId);
   return {
     nodeId: resolved.nodeId,
@@ -380,6 +434,12 @@ const connectNodeFlowNodes = (
   if (!sourceNode || !targetNode) {
     throw new Error("connectNodeFlowNodes 引用了不存在的节点。请确认 source_ref/target_ref 指向已创建的 nodeflow node。");
   }
+  const sourceEntity = snapshot.nodes.find((node) => node.id === sourceNode.nodeId);
+  const targetEntity = snapshot.nodes.find((node) => node.id === targetNode.nodeId);
+  if (!sourceEntity || !targetEntity) {
+    throw new Error("connectNodeFlowNodes 找到了节点标识，但快照中缺少节点实体。");
+  }
+  assertBridgeConnectionAllowed(sourceEntity, targetEntity);
   const sourceHandles = sourceNode.outputHandles;
   const targetHandles = targetNode.inputHandles;
   if (sourceHandles.length === 0 || targetHandles.length === 0) {

@@ -70,18 +70,18 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
   const timingRows = useMemo(() => buildTimingRows(data, now), [data, now]);
 
   const identityOptions = useMemo(() => {
-    const roles = nodeFlowContext?.context?.roles || [];
+    const roles = nodeFlowContext?.roles || [];
     return roles.map((role) => ({
       id: role.id,
       mention: role.mention,
       label: getRoleDisplayLabel(role),
     }));
-  }, [nodeFlowContext?.context?.roles]);
+  }, [nodeFlowContext?.roles]);
 
   const activeIdentityId = connectedIdentity?.identityId || data.identityId;
   const activeIdentity = useMemo(
-    () => (nodeFlowContext?.context?.roles || []).find((role) => role.id === activeIdentityId),
-    [activeIdentityId, nodeFlowContext?.context?.roles]
+    () => (nodeFlowContext?.roles || []).find((role) => role.id === activeIdentityId),
+    [activeIdentityId, nodeFlowContext?.roles]
   );
   const versionHistory = useMemo(
     () =>

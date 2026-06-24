@@ -6,6 +6,7 @@ import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { RefreshCw, Film, AlertCircle, Download, X, Video, Image as ImageIcon, AudioLines, Mic } from "lucide-react";
 import { QWEN_WAN_REFERENCE_VIDEO_MODEL } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
+import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
 
 type Props = {
   id: string;
@@ -238,7 +239,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     };
     const res = await fetch(buildApiUrl("/api/upload-url"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await buildAuthorizedJsonHeaders(),
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -263,7 +264,7 @@ export const WanReferenceVideoGenNode: React.FC<Props & { selected?: boolean }> 
     if (!url && dataRes.path) {
       const signedRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: dataRes.path, bucket: dataRes.bucket || "assets" }),
       });
       if (signedRes.ok) {

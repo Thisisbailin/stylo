@@ -154,9 +154,9 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     }, [data.text, storedScriptPreview]);
 
     const mentionTargets = useMemo(() => {
-        const roles = nodeFlowContext?.context?.roles || [];
+        const roles = nodeFlowContext?.roles || [];
         return buildMentionTargets(roles);
-    }, [nodeFlowContext?.context?.roles]);
+    }, [nodeFlowContext?.roles]);
 
     const mentionIndex = useMemo(() => {
         return buildMentionIndex(mentionTargets.all);

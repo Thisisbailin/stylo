@@ -27,6 +27,7 @@ export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
   qalamNodeRef?: string;
+  foundationContainerId?: string;
 }
 
 export interface ImageInputNodeData extends BaseNodeData {
@@ -58,6 +59,8 @@ export interface AudioInputNodeData extends BaseNodeData {
 export interface VideoInputNodeData extends BaseNodeData {
   video: string | null;
   filename: string | null;
+  storageBucket?: string | null;
+  storagePath?: string | null;
   mimeType?: string | null;
   durationMs?: number | null;
   dimensions?: { width: number; height: number } | null;
@@ -370,6 +373,7 @@ export interface NodeFlowNode {
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
+  relation?: "foundation-membership";
 }
 
 export interface NodeFlowLink {

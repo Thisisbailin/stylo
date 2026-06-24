@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getUserId } from './_auth';
 
 const ALLOWED_BUCKETS = new Set(['assets', 'public-assets']);
 const PUBLIC_BUCKETS = new Set(['public-assets']);
@@ -34,11 +35,12 @@ const normalizeContentType = (value: unknown) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    const userId = await getUserId(request, env);
     const payload = await request.json();
-    const fileName = sanitizePath(payload?.fileName);
+    const requestedFileName = sanitizePath(payload?.fileName);
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
     const contentType = normalizeContentType(payload?.contentType);
-    if (!fileName) {
+    if (!requestedFileName) {
       return new Response('fileName required', { status: 400 });
     }
     if (!bucket) {
@@ -58,9 +60,13 @@ export const onRequestPost = async ({ request, env }) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRole);
+    const userPrefix = `users/${userId}/`;
+    const fileName = requestedFileName.startsWith(userPrefix)
+      ? requestedFileName
+      : `${userPrefix}${requestedFileName}`;
     const { data, error } = await supabase.storage
       .from(bucket)
-      .createSignedUploadUrl(fileName, { upsert: false, contentType });
+      .createSignedUploadUrl(fileName, { upsert: false });
 
     if (error) {
       return new Response(error.message, { status: 400 });
@@ -79,8 +85,15 @@ export const onRequestPost = async ({ request, env }) => {
       path: data.path,
       bucket,
       publicUrl,
+      storageRef: {
+        provider: 'supabase',
+        bucket,
+        path: data.path,
+        isPublic: PUBLIC_BUCKETS.has(bucket),
+      },
     });
   } catch (e: any) {
+    if (e instanceof Response) return e;
     return new Response(e?.message || 'Unexpected error', { status: 500 });
   }
 };

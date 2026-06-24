@@ -103,6 +103,7 @@ const normalizeFlow = (value: any): ProjectData["flow"] => {
           target: toSafeString(link?.target),
           sourceHandle: normalizeHandleType(link?.sourceHandle),
           targetHandle: normalizeHandleType(link?.targetHandle),
+          data: link?.data && typeof link.data === "object" ? sanitizeValue(link.data) as Record<string, unknown> : undefined,
         }))
         .filter((link: any) => nodeIds.has(link.source) && nodeIds.has(link.target))
     : [];
@@ -164,7 +165,7 @@ const normalizeFlowProjects = (
               ...project,
               durationMin: activeDuration,
               rootNodeId: project.rootNodeId || `project-root-${project.id}`,
-              updatedAt: now,
+              updatedAt: project.updatedAt,
               flow: normalizedActiveFlow,
             }
           : project

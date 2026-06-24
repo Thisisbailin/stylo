@@ -16,8 +16,8 @@ type AlignmentResult = {
 
 const DEFAULT_NODE_WIDTH = 320;
 const DEFAULT_NODE_HEIGHT = 180;
-const ALIGN_THRESHOLD = 36;
-const ALIGN_LOCK_THRESHOLD = 10;
+const ALIGN_THRESHOLD = 52;
+const ALIGN_LOCK_THRESHOLD = 18;
 
 type Bounds = ReturnType<typeof getAlignableNodeBounds>;
 
@@ -27,7 +27,7 @@ const isHorizontalNeighbor = (active: Bounds, target: Bounds) => target.right <=
 
 const getMagneticPosition = (current: number, aligned: number, distance: number, threshold: number) => {
   if (distance <= ALIGN_LOCK_THRESHOLD) return aligned;
-  const pull = Math.pow(1 - distance / threshold, 1.2) * 0.9;
+  const pull = Math.pow(1 - distance / threshold, 0.85) * 0.96;
   return current + (aligned - current) * pull;
 };
 
@@ -130,7 +130,7 @@ export const getEdgeAlignedPosition = (
   };
 };
 
-export const alignPositionChangesToNodeEdges = <TNode extends AlignableNode>(
+export const alignPositionChangesToNodeEdges = <TNode extends Node & AlignableNode>(
   changes: NodeChange<TNode>[],
   nodes: TNode[],
   enabled: boolean
@@ -144,9 +144,6 @@ export const alignPositionChangesToNodeEdges = <TNode extends AlignableNode>(
     if (!node) return change;
     const result = getEdgeAlignedPosition(node, nodes, change.position);
     lastGuide = result.guide;
-    if (change.dragging) {
-      return change;
-    }
     return {
       ...change,
       position: result.position,

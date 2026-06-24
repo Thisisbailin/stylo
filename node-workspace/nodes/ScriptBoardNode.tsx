@@ -3,7 +3,7 @@ import { BookOpen } from "lucide-react";
 import { BaseNode } from "./BaseNode";
 import { ScriptBoardNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { Character } from "../../types";
+import type { ProjectRoleIdentity } from "../../types";
 import { resolveScriptBoardNodeTitle } from "../nodeflow/titles";
 
 type Props = {
@@ -13,20 +13,19 @@ type Props = {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const buildCharacterDetail = (character?: Character) => {
+const buildCharacterDetail = (character?: ProjectRoleIdentity) => {
   if (!character) return "";
   return [
     character.name ? `角色：${character.name}` : "",
-    character.role ? `身份：${character.role}` : "",
-    typeof character.appearanceCount === "number" ? `出现次数：${character.appearanceCount}` : "",
+    character.summary ? `身份：${character.summary}` : "",
     character.episodeUsage ? `出现区间：${character.episodeUsage}` : "",
-    character.bio || "",
+    character.description || "",
   ]
     .filter(Boolean)
     .join("\n");
 };
 
-const buildCharacterMatcher = (characters: Character[]) => {
+const buildCharacterMatcher = (characters: ProjectRoleIdentity[]) => {
   const names = characters
     .map((character) => character.name?.trim())
     .filter((name): name is string => !!name)
@@ -40,11 +39,11 @@ export const ScriptBoardNode: React.FC<Props & { selected?: boolean }> = ({ id, 
   const nodeTitle = useMemo(() => resolveScriptBoardNodeTitle(data, nodeFlowContext), [data, nodeFlowContext]);
   const episodes = nodeFlowContext.episodes || [];
   const characters = useMemo(
-    () => (nodeFlowContext.context?.characters || []).filter((character) => !!character?.name?.trim()),
-    [nodeFlowContext.context?.characters]
+    () => (nodeFlowContext.roles || []).filter((role) => role.kind === "person" && !!role?.name?.trim()),
+    [nodeFlowContext.roles]
   );
   const characterMap = useMemo(() => {
-    const map = new Map<string, Character>();
+    const map = new Map<string, ProjectRoleIdentity>();
     characters.forEach((character) => {
       if (character.name?.trim()) {
         map.set(character.name.trim(), character);

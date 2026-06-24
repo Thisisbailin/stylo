@@ -207,6 +207,7 @@ export type QalamRunResult = {
   sessionId: string;
   outputItems: AgentOutputItem[];
   toolCalls: AgentExecutedToolCall[];
+  updatedProjectPatch?: Partial<Pick<ProjectData, "activeFlowProjectId" | "roles" | "designAssets" | "flow" | "flowProjects">>;
   updatedProjectData?: ProjectData;
   updatedNodeFlow?: NodeFlowFile;
   updatedExecutionApprovals?: NodeFlowExecutionApprovalProposal[];

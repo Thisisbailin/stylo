@@ -5,6 +5,17 @@ import {
   DEFAULT_FLOW_PROJECT_DURATION,
   normalizeFlowProjectDuration,
 } from "../../utils/flowProject";
+import {
+  FOUNDATION_AXES,
+  FOUNDATION_AXIS_DEFINITIONS,
+  FOUNDATION_WEIGHTED_AXES,
+  getFoundationAxisDefinition,
+  type FoundationAxis,
+  type FoundationWeightedAxis,
+} from "./axes";
+import { createFoundationMembershipLink, normalizeFoundationMemberships } from "./membership";
+
+export type { FoundationAxis, FoundationWeightedAxis } from "./axes";
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
   revision: typeof flow?.revision === "number" ? flow.revision : 0,
@@ -45,6 +56,7 @@ export type FoundationScaffold = {
   durationMin: number;
   head?: FoundationProjectHead;
   spaceAxisBlocks?: FoundationSpaceBlock[];
+  axisBlocks?: Partial<Record<FoundationWeightedAxis, FoundationSpaceBlock[]>>;
   blocks: FoundationTimeBlock[];
 };
 
@@ -76,16 +88,21 @@ const FOUNDATION_LAYOUT = {
   projectIndex: { x: 360, y: 24 },
   timeAxis: { x: 80, y: 260 },
   spaceAxis: { x: 80, y: 780 },
+  characterAxis: { x: 80, y: 1300 },
+  sceneAxis: { x: 80, y: 1820 },
   blockStartX: 360,
   blockArchiveOffsetX: 270,
-  timeBlockY: 500,
-  spaceBlockY: 1020,
   blockColumnWidth: 620,
   blockRowHeight: 220,
 } as const;
+const FOUNDATION_AXIS_POSITIONS: Record<FoundationAxis, { x: number; y: number }> = {
+  time: FOUNDATION_LAYOUT.timeAxis,
+  space: FOUNDATION_LAYOUT.spaceAxis,
+  character: FOUNDATION_LAYOUT.characterAxis,
+  scene: FOUNDATION_LAYOUT.sceneAxis,
+};
 export const FOUNDATION_ROOT_NODE_PREFIX = "project-root-";
 export const FOUNDATION_PROJECT_INDEX_DEPTH = 3;
-export type FoundationAxis = "time" | "space";
 export type FoundationNodeRole =
   | "project-root"
   | "project-index"
@@ -111,7 +128,7 @@ type FoundationNodeMeta = {
 
 export const DEFAULT_TIMELINE_HEAD: FoundationProjectHead = {
   title: "项目索引",
-  content: "项目根文档，组织空间轴与时间轴的文件树。",
+  content: "项目根文档，组织时间、空间、角色与场景四条轴的文件树。",
 };
 
 const createTimelineBlock = (
@@ -155,6 +172,21 @@ export const createDefaultSpaceBlocks = (): FoundationSpaceBlock[] => [
   createSpaceBlock("space-characters", "角色", 2, 1, "amber", "角色、动机、关系与人物档案。"),
   createSpaceBlock("space-scenes", "场景", 3, 1, "blue", "地点、空间、动线与场景关系。"),
 ];
+
+export const createDefaultWeightedAxisBlocks = (axis: FoundationWeightedAxis): FoundationSpaceBlock[] => {
+  if (axis === "space") return createDefaultSpaceBlocks();
+  const definition = getFoundationAxisDefinition(axis);
+  return [
+    createSpaceBlock(
+      `${axis}-block-1`,
+      `${definition.blockLabel} 1`,
+      0,
+      1,
+      axis === "character" ? "amber" : "blue",
+      ""
+    ),
+  ];
+};
 
 const distributeRemainder = (blocks: FoundationTimeBlock[], targetDuration: number) => {
   const next = blocks.map((block) => ({ ...block, durationMin: Math.max(MIN_TIMELINE_BLOCK_MINUTES, Math.round(block.durationMin)) }));
@@ -237,6 +269,52 @@ export const normalizeSpaceBlocks = (blocks?: FoundationSpaceBlock[]) =>
       boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? Array.from(new Set(block.boundaryNodeIds)) : [],
     }));
 
+export const normalizeWeightedAxisBlocks = (
+  axis: FoundationWeightedAxis,
+  blocks?: FoundationSpaceBlock[]
+) => {
+  const base = Array.isArray(blocks) && blocks.length ? blocks : createDefaultWeightedAxisBlocks(axis);
+  const withRequiredSpaceSpec =
+    axis === "space" && !base.some((block) => block.id === "space-spec" || block.title === "规格")
+      ? [createDefaultSpaceBlocks()[0], ...base]
+      : base;
+  const definition = getFoundationAxisDefinition(axis);
+  return withRequiredSpaceSpec
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((block, index) => ({
+      ...block,
+      id: block.id || `${axis}-block-${index + 1}`,
+      title: block.title || `${definition.blockLabel} ${index + 1}`,
+      content: block.content || "",
+      color: block.color || TIMELINE_COLORS[index % TIMELINE_COLORS.length].value,
+      order: index,
+      width: Math.max(0.45, Number(block.width) || 1),
+      boundaryNodeIds: Array.isArray(block.boundaryNodeIds) ? Array.from(new Set(block.boundaryNodeIds)) : [],
+    }));
+};
+
+export const getWeightedAxisBlocks = (
+  timeline: FoundationScaffold,
+  axis: FoundationWeightedAxis
+) => normalizeWeightedAxisBlocks(
+  axis,
+  timeline.axisBlocks?.[axis] ?? (axis === "space" ? timeline.spaceAxisBlocks : undefined)
+);
+
+export const setWeightedAxisBlocks = (
+  timeline: FoundationScaffold,
+  axis: FoundationWeightedAxis,
+  blocks: FoundationSpaceBlock[]
+): FoundationScaffold => {
+  const normalized = normalizeWeightedAxisBlocks(axis, blocks);
+  return {
+    ...timeline,
+    ...(axis === "space" ? { spaceAxisBlocks: normalized } : {}),
+    axisBlocks: { ...timeline.axisBlocks, [axis]: normalized },
+  };
+};
+
 const createFoundationFolderNode = (
   id: string,
   title: string,
@@ -296,6 +374,8 @@ const getFoundationSeedIds = (rootNodeId: string) => ({
   projectIndexId: `${rootNodeId}--project-index`,
   timeAxisId: `${rootNodeId}--time-axis`,
   spaceAxisId: `${rootNodeId}--space-axis`,
+  characterAxisId: `${rootNodeId}--character-axis`,
+  sceneAxisId: `${rootNodeId}--scene-axis`,
 });
 
 const getLegacyAxisIndexIds = (rootNodeId: string) =>
@@ -303,7 +383,7 @@ const getLegacyAxisIndexIds = (rootNodeId: string) =>
 
 const createBlockArchiveMarkdown = (
   title: string,
-  axis: "时间轴" | "空间轴",
+  axis: string,
   fields: string[],
   content: string
 ) => [`# ${title}`, "", `- 轴：${axis}`, ...fields, "", "## 用户记录", "", content || "未记录"].join("\n");
@@ -315,7 +395,9 @@ export const buildFoundationGraphSeed = (
 ): { nodes: NodeFlowNode[]; links: FlowState["links"] } => {
   const ids = getFoundationSeedIds(rootNodeId);
   const timeBlocks = createDefaultTimeline(durationMin).blocks;
-  const spaceAxisBlocks = createDefaultSpaceBlocks();
+  const weightedAxisBlocks = new Map(
+    FOUNDATION_WEIGHTED_AXES.map((axis) => [axis, createDefaultWeightedAxisBlocks(axis)])
+  );
   const nodes: NodeFlowNode[] = [
     createFoundationFolderNode(rootNodeId, projectTitle || "项目", FOUNDATION_LAYOUT.root, {
       foundationRole: "project-root",
@@ -334,6 +416,8 @@ export const buildFoundationGraphSeed = (
         "",
         "- 时间轴",
         "- 空间轴",
+        "- 角色轴",
+        "- 场景轴",
       ].join("\n"),
       FOUNDATION_LAYOUT.projectIndex,
       {
@@ -352,11 +436,23 @@ export const buildFoundationGraphSeed = (
       foundationAxis: "space",
       foundationParentId: rootNodeId,
     }),
+    createFoundationFolderNode(ids.characterAxisId, "角色轴", FOUNDATION_LAYOUT.characterAxis, {
+      foundationRole: "axis-folder",
+      foundationAxis: "character",
+      foundationParentId: rootNodeId,
+    }),
+    createFoundationFolderNode(ids.sceneAxisId, "场景轴", FOUNDATION_LAYOUT.sceneAxis, {
+      foundationRole: "axis-folder",
+      foundationAxis: "scene",
+      foundationParentId: rootNodeId,
+    }),
   ];
   const links: FlowState["links"] = [
     createFoundationLink(rootNodeId, ids.projectIndexId),
     createFoundationLink(rootNodeId, ids.timeAxisId),
     createFoundationLink(rootNodeId, ids.spaceAxisId),
+    createFoundationLink(rootNodeId, ids.characterAxisId),
+    createFoundationLink(rootNodeId, ids.sceneAxisId),
   ];
 
   timeBlocks.forEach((block, index) => {
@@ -366,7 +462,7 @@ export const buildFoundationGraphSeed = (
       createFoundationFolderNode(
         folderId,
         block.title,
-        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: getFoundationAxisDefinition("time").layoutY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
         {
           foundationRole: "block-folder",
           foundationAxis: "time",
@@ -381,7 +477,7 @@ export const buildFoundationGraphSeed = (
           `- 时长：${block.durationMin} min`,
           `- 颜色：${block.color}`,
         ], block.content),
-        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: getFoundationAxisDefinition("time").layoutY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
         {
           foundationRole: "block-document",
           foundationAxis: "time",
@@ -392,37 +488,39 @@ export const buildFoundationGraphSeed = (
     links.push(createFoundationLink(ids.timeAxisId, folderId), createFoundationLink(folderId, archiveId));
   });
 
-  spaceAxisBlocks.forEach((block, index) => {
-    const folderId = `${rootNodeId}--space-block-${index + 1}`;
+  FOUNDATION_WEIGHTED_AXES.forEach((axis) => weightedAxisBlocks.get(axis)!.forEach((block, index) => {
+    const definition = getFoundationAxisDefinition(axis);
+    const axisId = ids[`${axis}AxisId` as keyof typeof ids];
+    const folderId = `${rootNodeId}--${axis}-block-${index + 1}`;
     const archiveId = `${folderId}--archive`;
     nodes.push(
       createFoundationFolderNode(
         folderId,
         block.title,
-        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: definition.layoutY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
         {
           foundationRole: "block-folder",
-          foundationAxis: "space",
-          foundationParentId: ids.spaceAxisId,
+          foundationAxis: axis,
+          foundationParentId: axisId,
         }
       ),
       createFoundationArchiveNode(
         archiveId,
         `${block.title}档案.md`,
-        createBlockArchiveMarkdown(block.title, "空间轴", [
+        createBlockArchiveMarkdown(block.title, definition.label, [
           `- 宽度权重：${block.width}`,
           `- 颜色：${block.color}`,
         ], block.content),
-        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
+        { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: definition.layoutY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
         {
           foundationRole: "block-document",
-          foundationAxis: "space",
+          foundationAxis: axis,
           foundationParentId: folderId,
         }
       )
     );
-    links.push(createFoundationLink(ids.spaceAxisId, folderId), createFoundationLink(folderId, archiveId));
-  });
+    links.push(createFoundationLink(axisId, folderId), createFoundationLink(folderId, archiveId));
+  }));
 
   return { nodes, links };
 };
@@ -433,6 +531,9 @@ export const createDefaultTimeline = (durationMin = DEFAULT_TIMELINE_DURATION): 
   durationMin: normalizeFlowProjectDuration(durationMin),
   head: DEFAULT_TIMELINE_HEAD,
   spaceAxisBlocks: createDefaultSpaceBlocks(),
+  axisBlocks: Object.fromEntries(
+    FOUNDATION_WEIGHTED_AXES.map((axis) => [axis, createDefaultWeightedAxisBlocks(axis)])
+  ) as Partial<Record<FoundationWeightedAxis, FoundationSpaceBlock[]>>,
   blocks: [
     createTimelineBlock(
       "timeline-full",
@@ -536,7 +637,10 @@ export const ensureTimeline = (timeline?: FoundationScaffold): FoundationScaffol
       title: head.title || DEFAULT_TIMELINE_HEAD.title,
       content: head.content || "",
     },
-    spaceAxisBlocks: normalizeSpaceBlocks(timeline.spaceAxisBlocks),
+    spaceAxisBlocks: getWeightedAxisBlocks(timeline, "space"),
+    axisBlocks: Object.fromEntries(
+      FOUNDATION_WEIGHTED_AXES.map((axis) => [axis, getWeightedAxisBlocks(timeline, axis)])
+    ) as Partial<Record<FoundationWeightedAxis, FoundationSpaceBlock[]>>,
     blocks: recalculateTimelineBlocks(
       timeline.blocks.map((block, index) => ({
         id: block.id || `timeline-block-${index + 1}`,
@@ -561,10 +665,17 @@ export const formatTimelineTime = (minute: number) => {
 };
 
 export const buildTimelineMarkdown = (timeline: FoundationScaffold) => {
-  const spaceAxisBlocks = normalizeSpaceBlocks(timeline.spaceAxisBlocks);
+  const weightedAxes = FOUNDATION_WEIGHTED_AXES.map((axis) => ({
+    axis,
+    definition: getFoundationAxisDefinition(axis),
+    blocks: getWeightedAxisBlocks(timeline, axis),
+  }));
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const boundaryConnectionCount =
-    spaceAxisBlocks.reduce((sum, block) => sum + block.boundaryNodeIds.length, 0) +
+    weightedAxes.reduce(
+      (sum, entry) => sum + entry.blocks.reduce((axisSum, block) => axisSum + block.boundaryNodeIds.length, 0),
+      0
+    ) +
     timeline.blocks.reduce((sum, block) => sum + block.boundaryNodeIds.length, 0);
 
   return [
@@ -572,17 +683,21 @@ export const buildTimelineMarkdown = (timeline: FoundationScaffold) => {
     "",
     `- 根：${head.title}`,
     `- 总时长：${timeline.durationMin} min`,
-    `- 空间区块：${spaceAxisBlocks.length}`,
+    ...weightedAxes.map((entry) => `- ${entry.definition.label}区块：${entry.blocks.length}`),
     `- 时间区块：${timeline.blocks.length}`,
     `- 块边界连接：${boundaryConnectionCount}`,
     "",
     `## ${head.title} / 全局层`,
     "",
-    ...spaceAxisBlocks.flatMap((block) => [
-      `### ${block.title}`,
+    ...weightedAxes.flatMap((entry) => [
+      `## ${entry.definition.label}`,
       "",
-      `- 边界连接：${block.boundaryNodeIds.length}`,
-      "",
+      ...entry.blocks.flatMap((block) => [
+        `### ${block.title}`,
+        "",
+        `- 边界连接：${block.boundaryNodeIds.length}`,
+        "",
+      ]),
     ]),
     `## 时间轴`,
     "",
@@ -611,6 +726,7 @@ export type ParsedFoundationSpaceBlock = FoundationSpaceBlock & {
 
 export type ParsedFoundationGraph = {
   rootNodeId: string;
+  axisNodeIds: Record<FoundationAxis, string>;
   timeAxisNodeId: string;
   spaceAxisNodeId: string;
   headArchiveNodeId?: string;
@@ -699,7 +815,6 @@ const findFirstArchiveChild = (
 const buildFoundationMarkdownIndex = (
   projectTitle: string,
   timeline: FoundationScaffold,
-  spaceAxisBlocks: FoundationSpaceBlock[],
   nodeById: Map<string, NodeFlowNode>
 ) => [
   "# 项目索引",
@@ -723,20 +838,23 @@ const buildFoundationMarkdownIndex = (
     ];
   }),
   "",
-  "## 空间轴",
-  "",
-  ...spaceAxisBlocks.flatMap((block) => {
-    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
-    const archiveTitle = archiveNodeId ? getNodeTitle(nodeById.get(archiveNodeId)) : "未生成块文档";
-    const relatedTitles = block.boundaryNodeIds
-      .map((nodeId) => getNodeTitle(nodeById.get(nodeId)))
-      .filter(Boolean);
-    return [
-      `- ${block.title}`,
-      `  - 块文档：${archiveTitle}`,
-      `  - 其它连接：${relatedTitles.length ? relatedTitles.join("、") : "无"}`,
-    ];
-  }),
+  ...FOUNDATION_WEIGHTED_AXES.flatMap((axis) => [
+    "",
+    `## ${getFoundationAxisDefinition(axis).label}`,
+    "",
+    ...getWeightedAxisBlocks(timeline, axis).flatMap((block) => {
+      const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
+      const archiveTitle = archiveNodeId ? getNodeTitle(nodeById.get(archiveNodeId)) : "未生成块文档";
+      const relatedTitles = block.boundaryNodeIds
+        .map((nodeId) => getNodeTitle(nodeById.get(nodeId)))
+        .filter(Boolean);
+      return [
+        `- ${block.title}`,
+        `  - 块文档：${archiveTitle}`,
+        `  - 归属节点：${relatedTitles.length ? relatedTitles.join("、") : "无"}`,
+      ];
+    }),
+  ]),
 ].join("\n");
 
 export const parseFoundationGraph = (
@@ -749,6 +867,7 @@ export const parseFoundationGraph = (
   if (!rootNode) {
     return {
       rootNodeId: project.rootNodeId,
+      axisNodeIds: { time: "", space: "", character: "", scene: "" },
       timeAxisNodeId: "",
       spaceAxisNodeId: "",
       timeline: createDefaultTimeline(project.durationMin),
@@ -759,18 +878,22 @@ export const parseFoundationGraph = (
     .map((id) => nodeById.get(id))
     .filter((node): node is NodeFlowNode => Boolean(node));
   const childFolders = rootChildren.filter((node) => node.type === "folder");
-  const timeAxis = childFolders.find(
-    (node) =>
-      getFoundationNodeMeta(node).foundationAxis === "time" ||
-      node.id.endsWith("--time-axis") ||
-      getNodeTitle(node).includes("时间")
-  ) || childFolders[0];
-  const spaceAxis = childFolders.find(
-    (node) =>
-      getFoundationNodeMeta(node).foundationAxis === "space" ||
-      node.id.endsWith("--space-axis") ||
-      getNodeTitle(node).includes("空间")
-  ) || childFolders.find((node) => node.id !== timeAxis?.id) || childFolders[1];
+  const axisNodes = Object.fromEntries(
+    FOUNDATION_AXES.map((axis) => {
+      const definition = getFoundationAxisDefinition(axis);
+      const node = childFolders.find(
+        (item) =>
+          getFoundationNodeMeta(item).foundationAxis === axis ||
+          item.id.endsWith(`--${axis}-axis`) ||
+          getNodeTitle(item).includes(definition.label.replace(/轴$/, ""))
+      );
+      return [axis, node];
+    })
+  ) as Record<FoundationAxis, NodeFlowNode | undefined>;
+  const timeAxis = axisNodes.time || childFolders[0];
+  const spaceAxis = axisNodes.space || childFolders.find((node) => node.id !== timeAxis?.id) || childFolders[1];
+  axisNodes.time = timeAxis;
+  axisNodes.space = spaceAxis;
   const projectIndex = rootChildren.find(
     (node) => node.type === "mdText" && getFoundationNodeMeta(node).foundationRole === "project-index"
   ) || rootChildren.find((node) => node.type === "mdText");
@@ -801,20 +924,21 @@ export const parseFoundationGraph = (
     return recalculateTimelineBlocks(blocks, normalizeFlowProjectDuration(project.durationMin)) as ParsedFoundationBlock[];
   };
 
-  const parseSpaceBlocks = (axisId?: string): ParsedFoundationSpaceBlock[] => {
-    if (!axisId) return createDefaultSpaceBlocks();
+  const parseWeightedBlocks = (axis: FoundationWeightedAxis, axisId?: string): ParsedFoundationSpaceBlock[] => {
+    if (!axisId) return createDefaultWeightedAxisBlocks(axis);
     const folderChildren = sortFoundationChildren(
       getOutgoingTargets(flow.links, axisId)
         .map((id) => nodeById.get(id))
         .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "folder")
     );
-    if (!folderChildren.length) return createDefaultSpaceBlocks();
+    if (!folderChildren.length) return createDefaultWeightedAxisBlocks(axis);
+    const definition = getFoundationAxisDefinition(axis);
     return folderChildren.map((folder, index) => {
       const archive = findFirstArchiveChild(nodeById, flow.links, folder.id);
       const content = getMarkdownContent(archive);
       return {
         id: folder.id,
-        title: getNodeTitle(folder) || `全局视角 ${index + 1}`,
+        title: getNodeTitle(folder) || `${definition.blockLabel} ${index + 1}`,
         content: parseMarkdownUserContent(content),
         color: parseMarkdownColor(content, TIMELINE_COLORS[index % TIMELINE_COLORS.length].value),
         order: index,
@@ -826,7 +950,10 @@ export const parseFoundationGraph = (
   };
 
   const timeBlocks = parseTimeBlocks(timeAxis?.id);
-  const spaceAxisBlocks = parseSpaceBlocks(spaceAxis?.id);
+  const axisBlocks = Object.fromEntries(
+    FOUNDATION_WEIGHTED_AXES.map((axis) => [axis, parseWeightedBlocks(axis, axisNodes[axis]?.id)])
+  ) as Partial<Record<FoundationWeightedAxis, FoundationSpaceBlock[]>>;
+  const spaceAxisBlocks = axisBlocks.space;
   const timeline: FoundationScaffold = {
     id: "foundation-view",
     title: getNodeTitle(timeAxis) || "时间轴",
@@ -836,11 +963,15 @@ export const parseFoundationGraph = (
       content: getMarkdownContent(projectIndex),
     },
     spaceAxisBlocks,
+    axisBlocks,
     blocks: timeBlocks,
   };
 
   return {
     rootNodeId: rootNode.id,
+    axisNodeIds: Object.fromEntries(
+      FOUNDATION_AXES.map((axis) => [axis, axisNodes[axis]?.id || ""])
+    ) as Record<FoundationAxis, string>,
     timeAxisNodeId: timeAxis?.id || "",
     spaceAxisNodeId: spaceAxis?.id || "",
     headArchiveNodeId: projectIndex?.id,
@@ -903,10 +1034,12 @@ export const ensureFoundationGraphSkeleton = (
   });
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const ids = getFoundationSeedIds(project.rootNodeId);
-  const axisHasBlock = {
-    time: flow.links.some((link) => link.source === ids.timeAxisId && nodeById.get(link.target)?.type === "folder"),
-    space: flow.links.some((link) => link.source === ids.spaceAxisId && nodeById.get(link.target)?.type === "folder"),
-  };
+  const axisHasBlock = Object.fromEntries(
+    FOUNDATION_AXES.map((axis) => {
+      const axisId = ids[`${axis}AxisId` as keyof typeof ids];
+      return [axis, flow.links.some((link) => link.source === axisId && nodeById.get(link.target)?.type === "folder")];
+    })
+  ) as Record<FoundationAxis, boolean>;
   const seedNodesToEnsure = seed.nodes.filter((template) => {
     const meta = getFoundationNodeMeta(template);
     if (meta.foundationRole !== "block-folder" && meta.foundationRole !== "block-document") return true;
@@ -932,11 +1065,10 @@ export const ensureFoundationGraphSkeleton = (
     }
   });
 
-  const rootTargets = new Set([ids.projectIndexId, ids.timeAxisId, ids.spaceAxisId]);
-  const axisById = new Map<string, FoundationAxis>([
-    [ids.timeAxisId, "time"],
-    [ids.spaceAxisId, "space"],
-  ]);
+  const axisById = new Map<string, FoundationAxis>(
+    FOUNDATION_AXES.map((axis) => [ids[`${axis}AxisId` as keyof typeof ids], axis])
+  );
+  const rootTargets = new Set([ids.projectIndexId, ...axisById.keys()]);
   let links = flow.links.filter((link) => {
     if (legacyAxisIndexIds.has(link.source) || legacyAxisIndexIds.has(link.target)) {
       changed = true;
@@ -1001,7 +1133,7 @@ export const ensureFoundationGraphSkeleton = (
       const isTime = axis === "time";
       const content = createBlockArchiveMarkdown(
         getNodeTitle(block),
-        isTime ? "时间轴" : "空间轴",
+        getFoundationAxisDefinition(axis).label,
         isTime
           ? ["- 起点：0 min", "- 时长：12 min", `- 颜色：${TIMELINE_COLORS[blockIndex % TIMELINE_COLORS.length].value}`]
           : ["- 宽度权重：1", `- 颜色：${TIMELINE_COLORS[blockIndex % TIMELINE_COLORS.length].value}`],
@@ -1013,7 +1145,7 @@ export const ensureFoundationGraphSkeleton = (
         content,
         {
           x: (block.position?.x || FOUNDATION_LAYOUT.blockStartX) + FOUNDATION_LAYOUT.blockArchiveOffsetX,
-          y: (block.position?.y || (isTime ? FOUNDATION_LAYOUT.timeBlockY : FOUNDATION_LAYOUT.spaceBlockY)) - 18,
+          y: (block.position?.y || getFoundationAxisDefinition(axis).layoutY) - 18,
         },
         {
           foundationRole: "block-document",
@@ -1070,16 +1202,22 @@ export const ensureFoundationGraphSkeleton = (
     return true;
   });
 
-  const normalizedFlow: FlowState = {
+  let normalizedFlow: FlowState = {
     ...flow,
     flowNodes: nodes,
     links,
   };
+  const membershipNormalizedFlow = normalizeFoundationMemberships(normalizedFlow);
+  if (membershipNormalizedFlow !== normalizedFlow) {
+    normalizedFlow = membershipNormalizedFlow;
+    links = normalizedFlow.links;
+    normalizedFlow.flowNodes.forEach((node) => nodeById.set(node.id, node));
+    changed = true;
+  }
   const parsed = parseFoundationGraph(normalizedFlow, project);
   const projectIndexContent = buildFoundationMarkdownIndex(
     project.title,
     parsed.timeline,
-    normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks),
     nodeById
   );
   const projectIndex = nodeById.get(ids.projectIndexId);
@@ -1103,10 +1241,14 @@ export const ensureFoundationGraphSkeleton = (
   }
 
   if (!changed) return flow;
-  return {
+  const finalFlow = normalizeFoundationMemberships({
     ...normalizedFlow,
-    revision: (flow.revision || 0) + 1,
     flowNodes: nodes,
+    links,
+  });
+  return {
+    ...finalFlow,
+    revision: (flow.revision || 0) + 1,
   };
 };
 
@@ -1118,8 +1260,9 @@ export const getFoundationScaffoldNodeIds = (
   const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
   const ids = new Set<string>();
   if (parsed.rootNodeId) ids.add(parsed.rootNodeId);
-  if (parsed.timeAxisNodeId) ids.add(parsed.timeAxisNodeId);
-  if (parsed.spaceAxisNodeId) ids.add(parsed.spaceAxisNodeId);
+  FOUNDATION_AXES.forEach((axis) => {
+    if (parsed.axisNodeIds[axis]) ids.add(parsed.axisNodeIds[axis]);
+  });
   if (parsed.headArchiveNodeId) ids.add(parsed.headArchiveNodeId);
 
   parsed.timeline.blocks.forEach((block) => {
@@ -1127,10 +1270,12 @@ export const getFoundationScaffoldNodeIds = (
     const archiveNodeId = (block as ParsedFoundationBlock).archiveNodeId;
     if (archiveNodeId) ids.add(archiveNodeId);
   });
-  normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks).forEach((block) => {
-    ids.add(block.id);
-    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
-    if (archiveNodeId) ids.add(archiveNodeId);
+  FOUNDATION_WEIGHTED_AXES.forEach((axis) => {
+    getWeightedAxisBlocks(parsed.timeline, axis).forEach((block) => {
+      ids.add(block.id);
+      const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
+      if (archiveNodeId) ids.add(archiveNodeId);
+    });
   });
   return ids;
 };
@@ -1141,30 +1286,30 @@ export const layoutFoundationGraph = (
 ): FlowState => {
   const parsed = parseFoundationGraph(flow, project);
   const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
-  const timeBlocks = parsed.timeline.blocks;
-  const spaceAxisBlocks = normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks);
   const positionById = new Map<string, { x: number; y: number }>([
     [parsed.rootNodeId, FOUNDATION_LAYOUT.root],
     ...(parsed.headArchiveNodeId ? [[parsed.headArchiveNodeId, FOUNDATION_LAYOUT.projectIndex] as const] : []),
-    ...(parsed.timeAxisNodeId ? [[parsed.timeAxisNodeId, FOUNDATION_LAYOUT.timeAxis] as const] : []),
-    ...(parsed.spaceAxisNodeId ? [[parsed.spaceAxisNodeId, FOUNDATION_LAYOUT.spaceAxis] as const] : []),
+    ...FOUNDATION_AXES.flatMap((axis) => {
+      const axisNodeId = parsed.axisNodeIds[axis];
+      return axisNodeId ? [[axisNodeId, FOUNDATION_AXIS_POSITIONS[axis]] as const] : [];
+    }),
   ]);
 
-  timeBlocks.forEach((block, index) => {
-    positionById.set(block.id, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
-    const archiveNodeId = (block as ParsedFoundationBlock).archiveNodeId;
-    if (archiveNodeId) positionById.set(archiveNodeId, { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
-  });
-  spaceAxisBlocks.forEach((block, index) => {
-    positionById.set(block.id, { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
-    const archiveNodeId = (block as ParsedFoundationSpaceBlock).archiveNodeId;
-    if (archiveNodeId) positionById.set(archiveNodeId, { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight });
+  FOUNDATION_AXES.forEach((axis) => {
+    const blocks = axis === "time" ? parsed.timeline.blocks : getWeightedAxisBlocks(parsed.timeline, axis);
+    const layoutY = getFoundationAxisDefinition(axis).layoutY;
+    blocks.forEach((block, index) => {
+      const x = FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth;
+      const y = layoutY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight;
+      positionById.set(block.id, { x, y });
+      const archiveNodeId = (block as ParsedFoundationBlock | ParsedFoundationSpaceBlock).archiveNodeId;
+      if (archiveNodeId) positionById.set(archiveNodeId, { x: x + FOUNDATION_LAYOUT.blockArchiveOffsetX, y: y - 18 });
+    });
   });
 
   const projectIndexContent = buildFoundationMarkdownIndex(
     project.title,
     parsed.timeline,
-    spaceAxisBlocks,
     nodeById
   );
 
@@ -1200,17 +1345,24 @@ export const applyFoundationTimelineToGraph = (
 ): FlowState => {
   const parsed = parseFoundationGraph(flow, project);
   const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
-  const currentTimeIds = new Set(parsed.timeline.blocks.map((block) => block.id));
-  const currentSpaceIds = new Set(normalizeSpaceBlocks(parsed.timeline.spaceAxisBlocks).map((block) => block.id));
-  const nextTimeIds = new Set(nextTimeline.blocks.map((block) => block.id));
-  const nextSpaceBlocks = normalizeSpaceBlocks(nextTimeline.spaceAxisBlocks);
-  const nextSpaceIds = new Set(nextSpaceBlocks.map((block) => block.id));
+  const currentBlocksByAxis = Object.fromEntries(
+    FOUNDATION_AXES.map((axis) => [
+      axis,
+      axis === "time" ? parsed.timeline.blocks : getWeightedAxisBlocks(parsed.timeline, axis),
+    ])
+  ) as Record<FoundationAxis, Array<FoundationTimeBlock | FoundationSpaceBlock>>;
+  const nextBlocksByAxis = Object.fromEntries(
+    FOUNDATION_AXES.map((axis) => [
+      axis,
+      axis === "time" ? nextTimeline.blocks : getWeightedAxisBlocks(nextTimeline, axis),
+    ])
+  ) as Record<FoundationAxis, Array<FoundationTimeBlock | FoundationSpaceBlock>>;
   const removedIds = new Set<string>();
-  currentTimeIds.forEach((id) => {
-    if (!nextTimeIds.has(id)) removedIds.add(id);
-  });
-  currentSpaceIds.forEach((id) => {
-    if (!nextSpaceIds.has(id)) removedIds.add(id);
+  FOUNDATION_AXES.forEach((axis) => {
+    const nextIds = new Set(nextBlocksByAxis[axis].map((block) => block.id));
+    currentBlocksByAxis[axis].forEach((block) => {
+      if (!nextIds.has(block.id)) removedIds.add(block.id);
+    });
   });
 
   const removedArchiveIds = new Set<string>();
@@ -1222,26 +1374,23 @@ export const applyFoundationTimelineToGraph = (
   const nextNodes = (flow.flowNodes || [])
     .filter((node) => !removedIds.has(node.id) && !removedArchiveIds.has(node.id))
     .map((node) => {
-      const timeBlock = nextTimeline.blocks.find((block) => block.id === node.id);
-      const spaceBlock = nextSpaceBlocks.find((block) => block.id === node.id);
-      if (timeBlock || spaceBlock) {
-        const timeIndex = timeBlock ? nextTimeline.blocks.findIndex((block) => block.id === node.id) : -1;
-        const spaceIndex = spaceBlock ? nextSpaceBlocks.findIndex((block) => block.id === node.id) : -1;
-        const orderedPosition = timeBlock
-          ? {
-              x: FOUNDATION_LAYOUT.blockStartX + (timeIndex % 2) * FOUNDATION_LAYOUT.blockColumnWidth,
-              y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(timeIndex / 2) * FOUNDATION_LAYOUT.blockRowHeight,
-            }
-          : {
-              x: FOUNDATION_LAYOUT.blockStartX + (spaceIndex % 2) * FOUNDATION_LAYOUT.blockColumnWidth,
-              y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(spaceIndex / 2) * FOUNDATION_LAYOUT.blockRowHeight,
-            };
+      const blockEntry = FOUNDATION_AXES.map((axis) => ({
+        axis,
+        block: nextBlocksByAxis[axis].find((block) => block.id === node.id),
+        index: nextBlocksByAxis[axis].findIndex((block) => block.id === node.id),
+      })).find((entry) => entry.block);
+      if (blockEntry?.block) {
+        const layoutY = getFoundationAxisDefinition(blockEntry.axis).layoutY;
+        const orderedPosition = {
+          x: FOUNDATION_LAYOUT.blockStartX + (blockEntry.index % 2) * FOUNDATION_LAYOUT.blockColumnWidth,
+          y: layoutY + Math.floor(blockEntry.index / 2) * FOUNDATION_LAYOUT.blockRowHeight,
+        };
         return {
           ...node,
           position: orderedPosition,
           data: {
             ...node.data,
-            title: (timeBlock || spaceBlock)?.title || getNodeTitle(node),
+            title: blockEntry.block.title || getNodeTitle(node),
           },
         };
       }
@@ -1252,35 +1401,32 @@ export const applyFoundationTimelineToGraph = (
           (nodeMeta.foundationRole === "block-document" || node.id === `${link.source}--archive`)
       );
       const parentBlockId = parentLink?.source || "";
-      const parentTimeBlock = nextTimeline.blocks.find((block) => block.id === parentBlockId);
-      const parentSpaceBlock = nextSpaceBlocks.find((block) => block.id === parentBlockId);
-      if (node.type === "mdText" && parentTimeBlock && parentLink) {
-        const content = createBlockArchiveMarkdown(parentTimeBlock.title, "时间轴", [
-          `- 起点：${parentTimeBlock.startMin} min`,
-          `- 时长：${parentTimeBlock.durationMin} min`,
-          `- 颜色：${parentTimeBlock.color}`,
-        ], parentTimeBlock.content);
+      const parentEntry = FOUNDATION_AXES.map((axis) => ({
+        axis,
+        block: nextBlocksByAxis[axis].find((block) => block.id === parentBlockId),
+      })).find((entry) => entry.block);
+      if (node.type === "mdText" && parentEntry?.block && parentLink) {
+        const fields = parentEntry.axis === "time"
+          ? [
+              `- 起点：${(parentEntry.block as FoundationTimeBlock).startMin} min`,
+              `- 时长：${(parentEntry.block as FoundationTimeBlock).durationMin} min`,
+              `- 颜色：${parentEntry.block.color}`,
+            ]
+          : [
+              `- 宽度权重：${(parentEntry.block as FoundationSpaceBlock).width}`,
+              `- 颜色：${parentEntry.block.color}`,
+            ];
+        const content = createBlockArchiveMarkdown(
+          parentEntry.block.title,
+          getFoundationAxisDefinition(parentEntry.axis).label,
+          fields,
+          parentEntry.block.content
+        );
         return {
           ...node,
           data: {
             ...node.data,
-            title: `${parentTimeBlock.title}档案.md`,
-            text: content,
-            content,
-            preview: compactMarkdownPreview(content),
-          },
-        };
-      }
-      if (node.type === "mdText" && parentSpaceBlock && parentLink) {
-        const content = createBlockArchiveMarkdown(parentSpaceBlock.title, "空间轴", [
-          `- 宽度权重：${parentSpaceBlock.width}`,
-          `- 颜色：${parentSpaceBlock.color}`,
-        ], parentSpaceBlock.content);
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            title: `${parentSpaceBlock.title}档案.md`,
+            title: `${parentEntry.block.title}档案.md`,
             text: content,
             content,
             preview: compactMarkdownPreview(content),
@@ -1312,84 +1458,54 @@ export const applyFoundationTimelineToGraph = (
     }
   };
 
-  nextTimeline.blocks.forEach((block, index) => {
-    if (currentTimeIds.has(block.id)) return;
-    const archiveId = `${block.id}--archive`;
-    addNode(createFoundationFolderNode(
-      block.id,
-      block.title,
-      { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
-      {
-        foundationRole: "block-folder",
-        foundationAxis: "time",
-        foundationParentId: parsed.timeAxisNodeId,
+  FOUNDATION_AXES.forEach((axis) => {
+    const currentIds = new Set(currentBlocksByAxis[axis].map((block) => block.id));
+    const definition = getFoundationAxisDefinition(axis);
+    nextBlocksByAxis[axis].forEach((block, index) => {
+      if (!currentIds.has(block.id)) {
+        const archiveId = `${block.id}--archive`;
+        const x = FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth;
+        const y = definition.layoutY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight;
+        const fields = axis === "time"
+          ? [
+              `- 起点：${(block as FoundationTimeBlock).startMin} min`,
+              `- 时长：${(block as FoundationTimeBlock).durationMin} min`,
+              `- 颜色：${block.color}`,
+            ]
+          : [`- 宽度权重：${(block as FoundationSpaceBlock).width}`, `- 颜色：${block.color}`];
+        addNode(createFoundationFolderNode(block.id, block.title, { x, y }, {
+          foundationRole: "block-folder",
+          foundationAxis: axis,
+          foundationParentId: parsed.axisNodeIds[axis],
+        }));
+        addNode(createFoundationArchiveNode(
+          archiveId,
+          `${block.title}档案.md`,
+          createBlockArchiveMarkdown(block.title, definition.label, fields, block.content),
+          { x: x + FOUNDATION_LAYOUT.blockArchiveOffsetX, y: y - 18 },
+          {
+            foundationRole: "block-document",
+            foundationAxis: axis,
+            foundationParentId: block.id,
+          }
+        ));
+        if (parsed.axisNodeIds[axis]) addLink(createFoundationLink(parsed.axisNodeIds[axis], block.id));
+        addLink(createFoundationLink(block.id, archiveId));
       }
-    ));
-    addNode(createFoundationArchiveNode(
-      archiveId,
-      `${block.title}档案.md`,
-      createBlockArchiveMarkdown(block.title, "时间轴", [
-        `- 起点：${block.startMin} min`,
-        `- 时长：${block.durationMin} min`,
-        `- 颜色：${block.color}`,
-      ], block.content),
-      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.timeBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
-      {
-        foundationRole: "block-document",
-        foundationAxis: "time",
-        foundationParentId: block.id,
-      }
-    ));
-    if (parsed.timeAxisNodeId) addLink(createFoundationLink(parsed.timeAxisNodeId, block.id));
-    addLink(createFoundationLink(block.id, archiveId));
-  });
-
-  nextSpaceBlocks.forEach((block, index) => {
-    if (currentSpaceIds.has(block.id)) return;
-    const archiveId = `${block.id}--archive`;
-    addNode(createFoundationFolderNode(
-      block.id,
-      block.title,
-      { x: FOUNDATION_LAYOUT.blockStartX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
-      {
-        foundationRole: "block-folder",
-        foundationAxis: "space",
-        foundationParentId: parsed.spaceAxisNodeId,
-      }
-    ));
-    addNode(createFoundationArchiveNode(
-      archiveId,
-      `${block.title}档案.md`,
-      createBlockArchiveMarkdown(block.title, "空间轴", [
-        `- 宽度权重：${block.width}`,
-        `- 颜色：${block.color}`,
-      ], block.content),
-      { x: FOUNDATION_LAYOUT.blockStartX + FOUNDATION_LAYOUT.blockArchiveOffsetX + (index % 2) * FOUNDATION_LAYOUT.blockColumnWidth, y: FOUNDATION_LAYOUT.spaceBlockY - 18 + Math.floor(index / 2) * FOUNDATION_LAYOUT.blockRowHeight },
-      {
-        foundationRole: "block-document",
-        foundationAxis: "space",
-        foundationParentId: block.id,
-      }
-    ));
-    if (parsed.spaceAxisNodeId) addLink(createFoundationLink(parsed.spaceAxisNodeId, block.id));
-    addLink(createFoundationLink(block.id, archiveId));
-  });
-
-  [...nextTimeline.blocks, ...nextSpaceBlocks].forEach((block) => {
-    block.boundaryNodeIds.forEach((targetNodeId) => {
-      if (existingNodeIds.has(targetNodeId)) {
-        addLink(createFoundationLink(block.id, targetNodeId));
-      }
+      block.boundaryNodeIds.forEach((targetNodeId) => {
+        if (existingNodeIds.has(targetNodeId)) addLink(createFoundationMembershipLink(block.id, targetNodeId));
+      });
     });
   });
 
+  const normalizedMembershipFlow = normalizeFoundationMemberships({
+    ...flow,
+    revision: (flow.revision || 0) + 1,
+    flowNodes: nextNodes,
+    links: nextLinks,
+  });
   return layoutFoundationGraph(
-    {
-      ...flow,
-      revision: (flow.revision || 0) + 1,
-      flowNodes: nextNodes,
-      links: nextLinks,
-    },
+    normalizedMembershipFlow,
     project
   );
 };

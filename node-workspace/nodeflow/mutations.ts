@@ -1,6 +1,7 @@
 import type { Connection } from "@xyflow/react";
 import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeFlowNodeStyle } from "../types";
 import { createNodeFlowLink, removeNodeFlowLink, toggleNodeFlowLinkPause } from "./links";
+import { normalizeNodeFlowNodePositions } from "./placement";
 import { ensureUniqueNodeRef, normalizeNodeRef, setNodeFlowRef } from "./refs";
 
 export type NodeFlowMutableState = {
@@ -108,7 +109,11 @@ export const appendNodesAndLinksToNodeFlow = (
   links: NodeFlowLink[]
 ) => {
   const stagedNodes: NodeFlowNode[] = [];
-  const nextNodes = nodes.map((node) => {
+  const placedNodes = normalizeNodeFlowNodePositions({
+    existingNodes: state.nodes,
+    nodes,
+  });
+  const nextNodes = placedNodes.map((node) => {
     const requestedRef = normalizeNodeRef((node.data as Record<string, unknown> | undefined)?.qalamNodeRef as string | undefined);
     const uniqueRef = requestedRef
       ? ensureUniqueNodeRef({

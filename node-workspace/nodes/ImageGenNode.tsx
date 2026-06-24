@@ -26,13 +26,13 @@ export const ImageGenNode: React.FC<Props & { selected?: boolean }> = ({ id, dat
   const isLoading = data.status === "loading";
 
   const identityOptions = useMemo(() => {
-    const roles = nodeFlowContext?.context?.roles || [];
+    const roles = nodeFlowContext?.roles || [];
     return roles.map((role) => ({
       id: role.id,
       mention: role.mention,
       label: getRoleDisplayLabel(role),
     }));
-  }, [nodeFlowContext?.context?.roles]);
+  }, [nodeFlowContext?.roles]);
 
   // Derive display model name
   const globalModel = appConfig?.multimodalConfig?.model;

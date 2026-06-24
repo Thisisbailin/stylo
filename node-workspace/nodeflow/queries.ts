@@ -58,8 +58,8 @@ const buildScriptBoardText = (data: ScriptBoardNodeData, episodes: Episode[]) =>
 };
 
 const buildIdentityCardText = (data: IdentityCardNodeData, nodeFlowContext: NodeFlowContextSnapshot) => {
-  const { context, designAssets } = nodeFlowContext;
-  const identities = buildProjectIdentities(context, designAssets);
+  const { roles, designAssets } = nodeFlowContext;
+  const identities = buildProjectIdentities(roles || [], designAssets || []);
   const identity = resolveLegacyIdentity(identities, {
     identityId: data.identityId,
   });
@@ -173,7 +173,7 @@ export const buildConnectedInputs = ({
         } else if (sourceNode.type === "identityCard") {
           const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, nodeFlowContext);
           if (value) texts.push(value);
-          const identities = buildProjectIdentities(nodeFlowContext.context, nodeFlowContext.designAssets || []);
+          const identities = buildProjectIdentities(nodeFlowContext.roles || [], nodeFlowContext.designAssets || []);
           const identity = resolveLegacyIdentity(identities, {
             identityId: (sourceNode.data as IdentityCardNodeData).identityId,
           });

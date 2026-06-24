@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getUserId } from './_auth';
 
 const ALLOWED_BUCKETS = new Set(['assets', 'public-assets']);
 
@@ -33,6 +34,7 @@ const normalizeExpiresIn = (value: unknown) => {
 
 export const onRequestPost = async ({ request, env }) => {
   try {
+    const userId = await getUserId(request, env);
     const payload = await request.json();
     const path = sanitizePath(payload?.path);
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
@@ -42,6 +44,10 @@ export const onRequestPost = async ({ request, env }) => {
     }
     if (!bucket) {
       return new Response('bucket not allowed', { status: 400 });
+    }
+    const userPrefix = `users/${userId}/`;
+    if (!path.startsWith(userPrefix)) {
+      return new Response('path forbidden', { status: 403 });
     }
     const supabaseUrl = env.SUPABASE_URL;
     const serviceRole =
@@ -70,6 +76,7 @@ export const onRequestPost = async ({ request, env }) => {
       expiresIn,
     });
   } catch (e: any) {
+    if (e instanceof Response) return e;
     return new Response(e?.message || 'Unexpected error', { status: 500 });
   }
 };

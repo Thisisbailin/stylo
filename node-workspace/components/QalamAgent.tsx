@@ -204,6 +204,60 @@ const mergeNodeFlowIntoProjectData = (base: ProjectData, nodeFlow: NodeFlowFile)
   };
 };
 
+type AgentProjectPatch = Partial<Pick<ProjectData, "activeFlowProjectId" | "roles" | "designAssets" | "flow" | "flowProjects">>;
+
+const normalizeAgentProjectPatch = (
+  patch: AgentProjectPatch | ProjectData | undefined,
+  projectId: string
+): AgentProjectPatch | null => {
+  if (!patch || typeof patch !== "object") return null;
+  if (typeof patch.activeFlowProjectId === "string" && patch.activeFlowProjectId.trim() && patch.activeFlowProjectId !== projectId) {
+    return null;
+  }
+  const activeProjectPatch = Array.isArray(patch.flowProjects)
+    ? patch.flowProjects.find((project) => project.id === projectId)
+    : undefined;
+  return {
+    activeFlowProjectId: projectId,
+    roles: Array.isArray(patch.roles) ? patch.roles : undefined,
+    designAssets: Array.isArray(patch.designAssets) ? patch.designAssets : undefined,
+    flow: patch.flow || activeProjectPatch?.flow,
+    flowProjects: activeProjectPatch ? [activeProjectPatch] : undefined,
+  };
+};
+
+const applyAgentProjectPatch = (
+  base: ProjectData,
+  patch: AgentProjectPatch | null,
+  projectId: string
+): ProjectData => {
+  if (!patch) return base;
+  const activeProjectPatch = patch.flowProjects?.find((project) => project.id === projectId);
+  const nextFlow = patch.flow || activeProjectPatch?.flow || base.flow;
+  const nextRoles = Array.isArray(patch.roles) ? patch.roles : base.roles;
+  const nextDesignAssets = Array.isArray(patch.designAssets) ? patch.designAssets : base.designAssets;
+  return {
+    ...base,
+    activeFlowProjectId: projectId,
+    roles: nextRoles,
+    designAssets: nextDesignAssets,
+    flow: nextFlow,
+    flowProjects: base.flowProjects?.map((project) =>
+      project.id === projectId
+        ? {
+            ...project,
+            ...(activeProjectPatch || {}),
+            id: project.id,
+            flow: nextFlow || project.flow,
+            roles: nextRoles,
+            designAssets: nextDesignAssets,
+            updatedAt: Date.now(),
+          }
+        : project
+    ),
+  };
+};
+
 const parseMentions = (text: string) => {
   const matches: string[] = text.match(/@([\w\u4e00-\u9fa5\-\/]+)/g) || [];
   const names: string[] = [];
@@ -1024,7 +1078,11 @@ export const QalamAgent: React.FC<Props> = ({
       ) {
         return;
       }
-      if (runResult.updatedProjectData || runResult.updatedNodeFlow) {
+      const agentProjectPatch = normalizeAgentProjectPatch(
+        runResult.updatedProjectPatch || runResult.updatedProjectData,
+        runProjectId
+      );
+      if (agentProjectPatch || runResult.updatedNodeFlow) {
         const latestProjectData = projectDataRef.current;
         const currentFlow = buildNodeFlowFileFromProjectData(latestProjectData, {
           revision,
@@ -1035,8 +1093,8 @@ export const QalamAgent: React.FC<Props> = ({
         });
         const candidateFlow =
           runResult.updatedNodeFlow ||
-          (runResult.updatedProjectData
-            ? buildNodeFlowFileFromProjectData(runResult.updatedProjectData, {
+          (agentProjectPatch?.flow
+            ? buildNodeFlowFileFromProjectData({ ...latestProjectData, flow: agentProjectPatch.flow }, {
                 revision,
                 linkStyle,
                 nodeFlowContext,
@@ -1052,16 +1110,14 @@ export const QalamAgent: React.FC<Props> = ({
           candidateFlow && currentFlow
             ? preserveProposedScriptEdits(candidateFlow, currentFlow.nodes, proposals)
             : candidateFlow;
-        const resultBase = runResult.updatedProjectData
-          ? { ...latestProjectData, ...runResult.updatedProjectData }
-          : latestProjectData;
+        const resultBase = applyAgentProjectPatch(latestProjectData, agentProjectPatch, runProjectId);
 
         if (committedFlow) {
           const nextProjectData = mergeNodeFlowIntoProjectData(resultBase, committedFlow);
           setProjectData(nextProjectData);
           projectDataRef.current = nextProjectData;
           importNodeFlow(committedFlow);
-        } else if (runResult.updatedProjectData) {
+        } else if (agentProjectPatch) {
           setProjectData(resultBase);
           projectDataRef.current = resultBase;
         }

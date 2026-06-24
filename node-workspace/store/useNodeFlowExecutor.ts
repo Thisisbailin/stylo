@@ -20,6 +20,7 @@ import {
 import { useCallback } from "react";
 import { DesignAssetItem, ProjectRoleIdentity, SeedanceContentItem, SeedanceModel } from "../../types";
 import { buildApiUrl } from "../../utils/api";
+import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
 
@@ -178,7 +179,7 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
 
   const signedRes = await fetch(buildApiUrl("/api/upload-url"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await buildAuthorizedJsonHeaders(),
     body: JSON.stringify({ fileName, bucket, contentType }),
   });
   if (!signedRes.ok) {
@@ -204,7 +205,7 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
   if (signedData.path) {
     const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await buildAuthorizedJsonHeaders(),
       body: JSON.stringify({ path: signedData.path, bucket: signedData.bucket || bucket }),
     });
     if (!downloadRes.ok) {
@@ -245,7 +246,7 @@ const normalizeWanAudio = async (source?: string) => {
   try {
     const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await buildAuthorizedJsonHeaders(),
       body: JSON.stringify({ path: source, bucket: "assets" }),
     });
     if (!downloadRes.ok) {
@@ -310,7 +311,7 @@ const normalizeSeedanceImages = async (sources: string[]) => {
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: src, bucket: "assets" }),
       });
       if (downloadRes.ok) {
@@ -343,7 +344,7 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: src, bucket: "assets" }),
       });
       if (downloadRes.ok) {
@@ -376,7 +377,7 @@ const normalizeViduImages = async (sources: string[]) => {
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: src, bucket: "assets" }),
       });
       if (downloadRes.ok) {
@@ -409,7 +410,7 @@ const normalizeViduVideos = async (sources: string[]) => {
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: src, bucket: "assets" }),
       });
       if (downloadRes.ok) {

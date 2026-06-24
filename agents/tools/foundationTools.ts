@@ -2,6 +2,13 @@ import type { NodeFlowFile, NodeFlowNode } from "../../node-workspace/types";
 import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import {
+  FOUNDATION_AXES,
+  getFoundationAxisDefinition,
+  isFoundationAxis,
+  isNodeTypeAllowedInFoundationAxis,
+} from "../../node-workspace/foundation/axes";
+import { createUniqueFoundationMemberName } from "../../node-workspace/foundation/membership";
+import {
   assertPatchDoesNotTouchFoundationMeta,
   describeFoundationNode,
   findNodeByIdOrRef,
@@ -23,8 +30,6 @@ type Action = (typeof ACTIONS)[number];
 const BLOCK_LAYOUT = {
   blockStartX: 360,
   blockArchiveOffsetX: 270,
-  timeBlockY: 500,
-  spaceBlockY: 1020,
   columnWidth: 620,
   rowHeight: 220,
 } as const;
@@ -40,12 +45,12 @@ const foundationParameters = {
     },
     axis: {
       type: "string",
-      enum: ["time", "space"],
-      description: "Foundation axis for block operations.",
+      enum: [...FOUNDATION_AXES],
+      description: "Foundation axis for block operations: time, space, character, or scene.",
     },
     block_node_id: {
       type: "string",
-      description: "Foundation time/space block folder node id.",
+      description: "Foundation block folder node id.",
     },
     block_title: {
       type: "string",
@@ -147,7 +152,7 @@ const blockMarkdown = ({
     axis === "time"
       ? [`- 起点：0 min`, `- 时长：${Math.max(3, Math.round(durationMin || 12))} min`, `- 颜色：${color || "slate"}`]
       : [`- 宽度权重：${Math.max(0.45, widthWeight || 1)}`, `- 颜色：${color || "slate"}`];
-  return [`# ${title}`, "", `- 轴：${axis === "time" ? "时间轴" : "空间轴"}`, ...fields, "", "## 用户记录", "", content || "未记录"].join("\n");
+  return [`# ${title}`, "", `- 轴：${getFoundationAxisDefinition(axis).label}`, ...fields, "", "## 用户记录", "", content || "未记录"].join("\n");
 };
 
 const parseArgs = (input: unknown) => {
@@ -160,12 +165,12 @@ const parseArgs = (input: unknown) => {
     throw new Error(`operate_foundation 不支持 action=${trim(raw.action)}`);
   }
   const axis = trim(raw.axis) as FoundationAxis;
-  if ((action === "create_block" || trim(raw.axis)) && axis !== "time" && axis !== "space") {
-    throw new Error("Foundation block 操作需要 axis=time 或 axis=space。");
+  if ((action === "create_block" || trim(raw.axis)) && !isFoundationAxis(axis)) {
+    throw new Error(`Foundation block 操作需要 axis=${FOUNDATION_AXES.join("、")} 之一。`);
   }
   return {
     action,
-    axis: axis === "time" || axis === "space" ? axis : undefined,
+    axis: isFoundationAxis(axis) ? axis : undefined,
     blockNodeId: trim(raw.block_node_id ?? raw.blockNodeId),
     blockTitle: trim(raw.block_title ?? raw.blockTitle),
     title: trim(raw.title),
@@ -187,7 +192,7 @@ const findAxisNode = (workflow: NodeFlowFile, axis: FoundationAxis) => {
   const node = foundationNodes(workflow).find(
     (item) => getFoundationRole(item) === "axis-folder" && getFoundationAxis(item) === axis
   );
-  if (!node) throw new Error(`找不到 Foundation ${axis === "time" ? "时间轴" : "空间轴"} 文件夹。`);
+  if (!node) throw new Error(`找不到 Foundation ${getFoundationAxisDefinition(axis).label}文件夹。`);
   return node;
 };
 
@@ -230,12 +235,28 @@ const findBlockArchive = (workflow: NodeFlowFile, blockNodeId: string) => {
   return structuralArchive || linkedArchive || null;
 };
 
-const assertExternalNodeAllowed = (node: NodeFlowNode | null) => {
+const assertExternalNodeAllowed = (node: NodeFlowNode | null, axis?: FoundationAxis) => {
   if (!node) throw new Error("找不到要连接的外部 Flow 节点。");
   if (getFoundationRole(node)) {
     throw new Error(`Foundation boundary 只能连接普通 Flow 节点，不能连接 ${describeFoundationNode(node)}。`);
   }
+  if (axis && !isNodeTypeAllowedInFoundationAxis(axis, node.type)) {
+    const definition = getFoundationAxisDefinition(axis);
+    throw new Error(`${definition.label}只接受${definition.accepts === "document" ? "文档" : "多媒体"}节点。`);
+  }
 };
+
+const isBoundaryLink = (workflow: NodeFlowFile, link: NodeFlowFile["links"][number]) => {
+  const source = workflow.nodes.find((node) => node.id === link.source);
+  const target = workflow.nodes.find((node) => node.id === link.target);
+  return getFoundationRole(source) === "block-folder" && !getFoundationRole(target);
+};
+
+const nodeStorageName = (node: NodeFlowNode) =>
+  (typeof node.data?.filename === "string" && node.data.filename.trim()) ||
+  (typeof node.data?.title === "string" && node.data.title.trim()) ||
+  (typeof node.data?.label === "string" && node.data.label.trim()) ||
+  node.id;
 
 const reindexAxisOrders = (bridge: QalamAgentBridge, axis: FoundationAxis, preferredOrder?: string[]) => {
   const workflow = bridge.getNodeFlowSnapshot();
@@ -257,9 +278,10 @@ const createBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs
   const axisNode = findAxisNode(workflow, args.axis);
   const currentBlocks = axisBlockFolders(workflow, args.axis);
   const order = Math.max(0, Math.min(args.order ?? currentBlocks.length, currentBlocks.length));
-  const title = args.title || args.blockTitle || (args.axis === "time" ? `时间区块 ${currentBlocks.length + 1}` : `空间区块 ${currentBlocks.length + 1}`);
+  const definition = getFoundationAxisDefinition(args.axis);
+  const title = args.title || args.blockTitle || `${definition.blockLabel} ${currentBlocks.length + 1}`;
   const x = BLOCK_LAYOUT.blockStartX + (order % 2) * BLOCK_LAYOUT.columnWidth;
-  const y = (args.axis === "time" ? BLOCK_LAYOUT.timeBlockY : BLOCK_LAYOUT.spaceBlockY) + Math.floor(order / 2) * BLOCK_LAYOUT.rowHeight;
+  const y = definition.layoutY + Math.floor(order / 2) * BLOCK_LAYOUT.rowHeight;
   const archiveContent = blockMarkdown({
     axis: args.axis,
     title,
@@ -337,6 +359,9 @@ const deleteBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs
   const block = findBlockFolder(workflow, args);
   const axis = getFoundationAxis(block);
   const archive = findBlockArchive(workflow, block.id);
+  workflow.links
+    .filter((link) => link.source === block.id && isBoundaryLink(workflow, link))
+    .forEach((link) => bridge.updateNodeFlowNodeData(link.target, { foundationContainerId: undefined }));
   if (archive) bridge.removeNodeFlowNode({ nodeId: archive.id });
   bridge.removeNodeFlowNode({ nodeId: block.id });
   if (axis) reindexAxisOrders(bridge, axis);
@@ -357,7 +382,7 @@ const updateBlockDocument = (bridge: QalamAgentBridge, args: ReturnType<typeof p
   const workflow = bridge.getNodeFlowSnapshot();
   const block = findBlockFolder(workflow, args);
   const axis = getFoundationAxis(block);
-  if (!axis) throw new Error("目标不是 Foundation 时间/空间 block。");
+  if (!axis) throw new Error("目标不是 Foundation block。");
   const archive = findBlockArchive(workflow, block.id);
   if (!archive) throw new Error("Foundation block 缺少可编辑的块文档。");
   const currentContent =
@@ -407,7 +432,7 @@ const updateBlockDocument = (bridge: QalamAgentBridge, args: ReturnType<typeof p
       title: nextTitle,
       order: typeof args.order === "number" ? args.order : block.data?.foundationOrder ?? null,
       duration_min: axis === "time" ? parseMarkdownNumber(nextContent, "时长", 12) : null,
-      width_weight: axis === "space" ? parseMarkdownNumber(nextContent, "宽度权重", 1) : null,
+      width_weight: axis !== "time" ? parseMarkdownNumber(nextContent, "宽度权重", 1) : null,
     },
   };
 };
@@ -419,7 +444,26 @@ const connectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof parse
     nodeId: args.externalNodeId,
     nodeRef: args.externalNodeRef,
   });
-  assertExternalNodeAllowed(external);
+  const axis = getFoundationAxis(block);
+  if (!axis) throw new Error("目标 Foundation block 缺少轴类型。");
+  assertExternalNodeAllowed(external, axis);
+  workflow.links
+    .filter((link) => link.target === external!.id && isBoundaryLink(workflow, link))
+    .forEach((link) => bridge.removeNodeFlowLink({ linkId: link.id, linkKind: "canvas" }));
+  const destinationNames = workflow.links
+    .filter((link) => link.source === block.id && link.target !== external!.id && isBoundaryLink(workflow, link))
+    .map((link) => workflow.nodes.find((node) => node.id === link.target))
+    .filter((node): node is NodeFlowNode => Boolean(node))
+    .map(nodeStorageName);
+  const currentName = nodeStorageName(external!);
+  const nextName = createUniqueFoundationMemberName(currentName, destinationNames);
+  const renamePatch: Record<string, unknown> = { foundationContainerId: block.id };
+  if (nextName !== currentName) {
+    if (typeof external!.data?.filename === "string" && external!.data.filename.trim()) renamePatch.filename = nextName;
+    else if (typeof external!.data?.title === "string") renamePatch.title = nextName;
+    else renamePatch.label = nextName;
+  }
+  bridge.updateNodeFlowNodeData(external!.id, renamePatch);
   const connected = bridge.connectNodeFlowNodes({
     sourceNodeId: block.id,
     targetNodeId: external!.id,
@@ -431,7 +475,7 @@ const connectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof parse
     action: "connect_boundary",
     updated: true,
     item: {
-      axis: getFoundationAxis(block) || null,
+      axis,
       block_node_id: block.id,
       external_node_id: external!.id,
       link_id: connected.linkId,
@@ -445,7 +489,7 @@ const disconnectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof pa
   const external = args.externalNodeId || args.externalNodeRef
     ? findNodeByIdOrRef(workflow, { nodeId: args.externalNodeId, nodeRef: args.externalNodeRef })
     : null;
-  if (external) assertExternalNodeAllowed(external);
+  if (external) assertExternalNodeAllowed(external, getFoundationAxis(block) || undefined);
   const linkId =
     args.linkId ||
     (external
@@ -457,8 +501,9 @@ const disconnectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof pa
     throw new Error("只能断开从 Foundation block 指向普通节点的 boundary link。");
   }
   const target = workflow.nodes.find((node) => node.id === link.target) || null;
-  assertExternalNodeAllowed(target);
+  assertExternalNodeAllowed(target, getFoundationAxis(block) || undefined);
   bridge.removeNodeFlowLink({ linkId, linkKind: "canvas" });
+  bridge.updateNodeFlowNodeData(target!.id, { foundationContainerId: undefined });
   return {
     target: "foundation:block_boundary",
     action: "disconnect_boundary",
@@ -475,7 +520,7 @@ const disconnectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof pa
 export const operateFoundationToolDef = {
   name: "operate_foundation",
   description:
-    "Operate the Foundation container with strict permissions: create/delete time or space block folders, update block documents, and connect/disconnect ordinary nodes to block folders. Project root and project index are read-only.",
+    "Operate the four-axis Foundation container: create/delete blocks, update block documents, and assign document or media nodes to one block folder. Project root and project index are read-only.",
   parameters: foundationParameters,
   execute: (input: unknown, bridge: QalamAgentBridge) => {
     const args = parseArgs(input);

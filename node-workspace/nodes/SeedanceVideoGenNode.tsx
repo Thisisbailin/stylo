@@ -19,6 +19,7 @@ import {
   SEEDANCE_FAST_MODEL,
 } from "../../constants";
 import { buildApiUrl } from "../../utils/api";
+import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
 
 type Props = {
   id: string;
@@ -81,7 +82,7 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
     };
     const res = await fetch(buildApiUrl("/api/upload-url"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await buildAuthorizedJsonHeaders(),
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -105,7 +106,7 @@ export const SeedanceVideoGenNode: React.FC<Props> = ({ id, data, selected }) =>
     if (!url && dataRes.path) {
       const signedRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await buildAuthorizedJsonHeaders(),
         body: JSON.stringify({ path: dataRes.path, bucket: dataRes.bucket || "assets" }),
       });
       if (signedRes.ok) {

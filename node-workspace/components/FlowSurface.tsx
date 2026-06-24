@@ -36,6 +36,8 @@ import {
   Sparkles,
   Trash2,
   Video,
+  UserRound,
+  Clapperboard,
 } from "lucide-react";
 import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import type {
@@ -73,6 +75,7 @@ import {
 } from "../utils/edgeAlignment";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection } from "../utils/handles";
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
+import { findSafeNodeFlowPosition, normalizeNodeFlowNodePositions } from "../nodeflow/placement";
 import {
   MAX_FLOW_PROJECT_DURATION,
   MIN_FLOW_PROJECT_DURATION,
@@ -92,7 +95,6 @@ import {
   compactMarkdownPreview,
   createDefaultSpaceBlocks,
   createEmptyProjectFlow,
-  createFoundationLink,
   createSpaceBlock,
   formatTimelineTime,
   getFlowProjectDuration,
@@ -104,7 +106,8 @@ import {
   isFoundationStructuralLink,
   isFoundationStructuralNode,
   layoutFoundationGraph,
-  normalizeSpaceBlocks,
+  getWeightedAxisBlocks,
+  setWeightedAxisBlocks,
   parseFoundationGraph,
   recalculateTimelineBlocks,
   saveActiveFlowIntoProjects,
@@ -113,6 +116,20 @@ import {
   type FoundationSpaceBlock,
   type FoundationTimeBlock,
 } from "../foundation/scaffold";
+import {
+  getFoundationAxisDefinition,
+  getNextFoundationAxis,
+  isFoundationAxis,
+  isNodeTypeAllowedInFoundationAxis,
+  type FoundationAxis,
+  type FoundationWeightedAxis,
+} from "../foundation/axes";
+import {
+  assignFoundationMembership,
+  createFoundationMembershipLink,
+  isFoundationMembershipLink,
+  removeFoundationMembership,
+} from "../foundation/membership";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -357,8 +374,7 @@ const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeI
 
 type ScriptAxisTarget =
   | { type: "head"; id: "head" }
-  | { type: "time"; id: string }
-  | { type: "space"; id: string };
+  | { type: FoundationAxis; id: string };
 
 const getScriptAxisTargetHitAtPoint = (clientX: number, clientY: number): ScriptAxisTarget | null => {
   if (typeof document === "undefined") return null;
@@ -368,7 +384,7 @@ const getScriptAxisTargetHitAtPoint = (clientX: number, clientY: number): Script
   document.querySelectorAll<HTMLElement>("[data-axis-target-type]").forEach((element) => {
     const type = element.getAttribute("data-axis-target-type");
     const id = element.getAttribute("data-axis-target-id");
-    if (!id || (type !== "head" && type !== "time" && type !== "space")) return;
+    if (!id || (type !== "head" && !isFoundationAxis(type))) return;
     const rect = element.getBoundingClientRect();
     const inside =
       clientX >= rect.left - magneticPadding &&
@@ -405,6 +421,31 @@ const getDefaultFlowNodePosition = (index: number) => ({
 
 const createScriptFlowNodeId = (type: NodeType) => `script-flow-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+const getSafeScriptNodePosition = (
+  nodes: NodeFlowNode[],
+  type: NodeType,
+  requestedPosition: { x: number; y: number },
+  node?: Pick<NodeFlowNode, "id" | "type" | "position" | "style" | "measured">
+) =>
+  findSafeNodeFlowPosition({
+    nodes,
+    type,
+    requestedPosition,
+    node,
+  });
+
+const normalizeRegularNodePositions = <TNode extends NodeFlowNode>(nodes: TNode[]): TNode[] => {
+  const structuralNodes = nodes.filter((node) => !!getFoundationNodeRole(node));
+  const regularNodes = nodes.filter((node) => !getFoundationNodeRole(node));
+  if (!regularNodes.length) return nodes;
+  const normalizedRegularNodes = normalizeNodeFlowNodePositions({
+    existingNodes: structuralNodes,
+    nodes: regularNodes,
+  }) as TNode[];
+  const normalizedById = new Map(normalizedRegularNodes.map((node) => [node.id, node]));
+  return nodes.map((node) => normalizedById.get(node.id) || node);
+};
+
 const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextSnapshot => ({
   rawScript: "",
   episodes: [],
@@ -432,6 +473,7 @@ const toRuntimeScriptLink = (link: FlowState["links"][number]): NodeFlowLink => 
   target: link.target,
   sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : null,
   targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : null,
+  data: link.data,
 });
 
 const getScriptNodeHandlesForType = (type?: FlowRenderNode["type"] | null) => {
@@ -552,17 +594,17 @@ type ScriptFoundationProps = {
   onActiveBlockChange: (blockId: string) => void;
   onUpdateHead: (patch: Partial<FoundationProjectHead>) => void;
   onUpdateBlock: (blockId: string, patch: Partial<FoundationTimeBlock>) => void;
-  onUpdateSpaceBlock: (blockId: string, patch: Partial<FoundationSpaceBlock>) => void;
+  onUpdateWeightedBlock: (axis: FoundationWeightedAxis, blockId: string, patch: Partial<FoundationSpaceBlock>) => void;
   onAddTimeBlock: (afterBlockId?: string) => void;
-  onAddSpaceBlock: (afterBlockId?: string) => void;
+  onAddWeightedBlock: (axis: FoundationWeightedAxis, afterBlockId?: string) => void;
   onSplitBlock: (blockId: string) => void;
-  onSplitSpaceBlock: (blockId: string) => void;
+  onSplitWeightedBlock: (axis: FoundationWeightedAxis, blockId: string) => void;
   onDeleteBlock: (blockId: string) => void;
-  onDeleteSpaceBlock: (blockId: string) => void;
+  onDeleteWeightedBlock: (axis: FoundationWeightedAxis, blockId: string) => void;
   onReorderBlock: (sourceBlockId: string, targetBlockId: string) => void;
-  onReorderSpaceBlock: (sourceBlockId: string, targetBlockId: string) => void;
+  onReorderWeightedBlock: (axis: FoundationWeightedAxis, sourceBlockId: string, targetBlockId: string) => void;
   onResizeStart: (blockId: string, edge: "left" | "right", clientX: number, trackWidth: number) => void;
-  onSpaceResizeStart: (blockId: string, edge: "left" | "right", clientX: number, trackWidth: number) => void;
+  onWeightedResizeStart: (axis: FoundationWeightedAxis, blockId: string, edge: "left" | "right", clientX: number, trackWidth: number) => void;
   axisRevealRequest: number;
   onCreateArchiveNode: () => void;
   onCreateScriptNode: () => void;
@@ -587,7 +629,7 @@ type ScriptFoundationProps = {
   onFoundationProjectionChange?: (projection: ScriptFoundationProjection) => void;
 };
 
-type ScriptAxisMode = "time" | "space";
+type ScriptAxisMode = FoundationAxis;
 
 type ScriptFoundationMenuState =
   | { type: "head"; x: number; y: number }
@@ -597,8 +639,7 @@ type ScriptFoundationCreateMenuState = { x: number; y: number } | null;
 
 type ScriptFoundationEditTarget =
   | { type: "head" }
-  | { type: "time"; id: string }
-  | { type: "space"; id: string };
+  | { type: FoundationAxis; id: string };
 
 type ScriptFoundationProjectDraft = {
   mode: "create" | "edit";
@@ -691,17 +732,17 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onActiveBlockChange,
   onUpdateHead,
   onUpdateBlock,
-  onUpdateSpaceBlock,
+  onUpdateWeightedBlock,
   onAddTimeBlock,
-  onAddSpaceBlock,
+  onAddWeightedBlock,
   onSplitBlock,
-  onSplitSpaceBlock,
+  onSplitWeightedBlock,
   onDeleteBlock,
-  onDeleteSpaceBlock,
+  onDeleteWeightedBlock,
   onReorderBlock,
-  onReorderSpaceBlock,
+  onReorderWeightedBlock,
   onResizeStart,
-  onSpaceResizeStart,
+  onWeightedResizeStart,
   axisRevealRequest,
   onCreateArchiveNode,
   onCreateScriptNode,
@@ -740,27 +781,32 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
-  const spaceAxisBlocks = useMemo(() => normalizeSpaceBlocks(timeline.spaceAxisBlocks), [timeline.spaceAxisBlocks]);
+  const weightedBlocksByAxis = useMemo(
+    () => ({
+      space: getWeightedAxisBlocks(timeline, "space"),
+      character: getWeightedAxisBlocks(timeline, "character"),
+      scene: getWeightedAxisBlocks(timeline, "scene"),
+    }),
+    [timeline]
+  );
+  const activeAxisBlocks = activeAxis === "time" ? timeline.blocks : weightedBlocksByAxis[activeAxis];
   const activeBlock =
-    activeAxis === "time"
-      ? timeline.blocks.find((block) => block.id === activeBlockId) || timeline.blocks[0]
-      : spaceAxisBlocks.find((block) => block.id === activeBlockId) || spaceAxisBlocks[0];
+    activeAxisBlocks.find((block) => block.id === activeBlockId) || activeAxisBlocks[0];
   const actionBlock =
     menuState?.type === "block"
-      ? activeAxis === "time"
-        ? timeline.blocks.find((block) => block.id === menuState.blockId) || null
-        : spaceAxisBlocks.find((block) => block.id === menuState.blockId) || null
+      ? activeAxisBlocks.find((block) => block.id === menuState.blockId) || null
       : null;
   const editingBlock =
-    editingTarget?.type === "time"
-      ? timeline.blocks.find((block) => block.id === editingTarget.id) || null
-      : editingTarget?.type === "space"
-        ? spaceAxisBlocks.find((block) => block.id === editingTarget.id) || null
-        : null;
+    editingTarget?.type && editingTarget.type !== "head"
+      ? (editingTarget.type === "time" ? timeline.blocks : weightedBlocksByAxis[editingTarget.type])
+          .find((block) => block.id === editingTarget.id) || null
+      : null;
   const projectIndexMarkdown = useMemo(
     () => head.content?.trim() || buildTimelineMarkdown(timeline),
     [head.content, timeline]
   );
+  const activeAxisDefinition = getFoundationAxisDefinition(activeAxis);
+  const nextAxisDefinition = getFoundationAxisDefinition(getNextFoundationAxis(activeAxis));
 
   const closeMarkdownCard = useCallback(() => {
     setEditingTarget(null);
@@ -795,15 +841,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setIsFoundationGatewayOpen(false);
     setProjectDraft(null);
     setPendingDeleteProjectId(null);
-    const nextAxis = activeAxis === "time" ? "space" : "time";
+    const nextAxis = getNextFoundationAxis(activeAxis);
     axisSwitchTimerRef.current = window.setTimeout(() => {
       setActiveAxis(nextAxis);
-      const nextActiveBlockId = nextAxis === "time" ? timeline.blocks[0]?.id : spaceAxisBlocks[0]?.id;
+      const nextActiveBlockId = nextAxis === "time" ? timeline.blocks[0]?.id : weightedBlocksByAxis[nextAxis][0]?.id;
       if (nextActiveBlockId) onActiveBlockChange(nextActiveBlockId);
       setIsAxisSwitching(false);
       axisSwitchTimerRef.current = null;
     }, 180);
-  }, [activeAxis, onActiveBlockChange, spaceAxisBlocks, timeline.blocks]);
+  }, [activeAxis, onActiveBlockChange, timeline.blocks, weightedBlocksByAxis]);
 
   useEffect(() => {
     if (!axisRevealRequest) return;
@@ -887,7 +933,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       window.removeEventListener("scroll", scheduleMeasure, true);
       document.removeEventListener("transitionend", scheduleMeasure, true);
     };
-  }, [activeAxis, isAgentTailOpen, onFoundationProjectionChange, spaceAxisBlocks, timeline.blocks]);
+  }, [activeAxis, activeAxisBlocks, isAgentTailOpen, onFoundationProjectionChange]);
 
   const handleResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
@@ -900,7 +946,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     onResizeStart(blockId, edge, event.clientX, trackWidth);
   };
 
-  const handleSpaceResizePointerDown = (
+  const handleWeightedResizePointerDown = (
     event: React.PointerEvent<HTMLButtonElement>,
     blockId: string,
     edge: "left" | "right"
@@ -908,7 +954,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     event.preventDefault();
     event.stopPropagation();
     const trackWidth = trackRef.current?.getBoundingClientRect().width || 1;
-    onSpaceResizeStart(blockId, edge, event.clientX, trackWidth);
+    if (activeAxis !== "time") onWeightedResizeStart(activeAxis, blockId, edge, event.clientX, trackWidth);
   };
 
   const openFoundationGateway = () => {
@@ -1061,21 +1107,31 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             data-axis-active={activeAxis}
             onClick={handleHeadClick}
             onDoubleClick={handleHeadDoubleClick}
-            title={activeAxis === "time" ? "切换到空间轴" : "切换到时间轴"}
+            title={`切换到${nextAxisDefinition.label}`}
           >
             <span className="script-foundation-head-icon" aria-hidden="true">
-              {activeAxis === "time" ? <Clock3 size={17} strokeWidth={1.9} /> : <MapIcon size={17} strokeWidth={1.9} />}
+              {activeAxis === "time" ? (
+                <Clock3 size={17} strokeWidth={1.9} />
+              ) : activeAxis === "space" ? (
+                <MapIcon size={17} strokeWidth={1.9} />
+              ) : activeAxis === "character" ? (
+                <UserRound size={17} strokeWidth={1.9} />
+              ) : (
+                <Clapperboard size={17} strokeWidth={1.9} />
+              )}
             </span>
           </button>
 
           {!isAgentTailOpen ? (
             <div ref={trackRef} className="script-foundation-track">
-              {(activeAxis === "time" ? timeline.blocks : spaceAxisBlocks).map((block, axisIndex, axisBlocks) => {
-                const spaceWidthTotal = spaceAxisBlocks.reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
+              {activeAxisBlocks.map((block, axisIndex, axisBlocks) => {
+                const weightedWidthTotal = activeAxis === "time"
+                  ? 1
+                  : weightedBlocksByAxis[activeAxis].reduce((sum, item) => sum + Math.max(0.45, item.width), 0) || 1;
                 const width =
                   activeAxis === "time"
                     ? Math.max(6, ((block as FoundationTimeBlock).durationMin / timeline.durationMin) * 100)
-                    : Math.max(8, ((block as FoundationSpaceBlock).width / spaceWidthTotal) * 100);
+                    : Math.max(8, ((block as FoundationSpaceBlock).width / weightedWidthTotal) * 100);
                 const timeBlock = block as FoundationTimeBlock;
                 const previousBlock = axisBlocks[axisIndex - 1];
                 const nextBlock = axisBlocks[axisIndex + 1];
@@ -1107,7 +1163,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                         const sourceId = event.dataTransfer.getData("text/plain") || draggingBlockId;
                         if (sourceId && sourceId !== block.id) {
                           if (activeAxis === "time") onReorderBlock(sourceId, block.id);
-                          else onReorderSpaceBlock(sourceId, block.id);
+                          else onReorderWeightedBlock(activeAxis, sourceId, block.id);
                         }
                         setDraggingBlockId(null);
                       }}
@@ -1126,14 +1182,14 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                           <span>
                             {activeAxis === "time"
                               ? `${formatTimelineTime(timeBlock.startMin)}-${formatTimelineTime(timeBlock.startMin + timeBlock.durationMin)}`
-                              : "全局视角"}
+                              : activeAxisDefinition.label}
                           </span>
                           <span>
                             {boundaryCount
                               ? `${boundaryCount} 连接`
                               : activeAxis === "time"
                                 ? `${timeBlock.durationMin} min`
-                                : "空间"}
+                                : activeAxisDefinition.blockLabel}
                           </span>
                         </div>
                       </div>
@@ -1145,11 +1201,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                         <button
                           type="button"
                           className="script-foundation-resize"
-                          aria-label={activeAxis === "time" ? "调整相邻区间边界" : "调整相邻空间块边界"}
+                          aria-label={activeAxis === "time" ? "调整相邻区间边界" : `调整相邻${activeAxisDefinition.blockLabel}边界`}
                           onPointerDown={(event) =>
                             activeAxis === "time"
                               ? handleResizePointerDown(event, block.id, "right")
-                              : handleSpaceResizePointerDown(event, block.id, "right")
+                              : handleWeightedResizePointerDown(event, block.id, "right")
                           }
                         />
                       </span>
@@ -1301,27 +1357,27 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 onClick={() =>
                   activeAxis === "time"
                     ? onAddTimeBlock(actionBlock.id)
-                    : onAddSpaceBlock(actionBlock.id)
+                    : onAddWeightedBlock(activeAxis, actionBlock.id)
                 }
                 disabled={activeAxis === "time" && (actionBlock as FoundationTimeBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
-                title={activeAxis === "time" ? "新增时间块" : "新增空间块"}
+                title={`新增${activeAxisDefinition.blockLabel}`}
               >
                 <Plus size={14} strokeWidth={1.8} />
               </button>
               <button
                 type="button"
-                onClick={() => (activeAxis === "time" ? onSplitBlock(actionBlock.id) : onSplitSpaceBlock(actionBlock.id))}
+                onClick={() => (activeAxis === "time" ? onSplitBlock(actionBlock.id) : onSplitWeightedBlock(activeAxis, actionBlock.id))}
                 disabled={activeAxis === "time" && (actionBlock as FoundationTimeBlock).durationMin < MIN_TIMELINE_BLOCK_MINUTES * 2}
-                title={activeAxis === "time" ? "拆分区间" : "拆分全局块"}
+                title={`拆分${activeAxisDefinition.blockLabel}`}
               >
                 <Scissors size={14} strokeWidth={1.8} />
               </button>
               <button
                 type="button"
-                onClick={() => (activeAxis === "time" ? onDeleteBlock(actionBlock.id) : onDeleteSpaceBlock(actionBlock.id))}
-                disabled={activeAxis === "time" ? timeline.blocks.length <= 1 : spaceAxisBlocks.length <= 1}
+                onClick={() => (activeAxis === "time" ? onDeleteBlock(actionBlock.id) : onDeleteWeightedBlock(activeAxis, actionBlock.id))}
+                disabled={activeAxisBlocks.length <= 1}
                 className="is-danger"
-                title={activeAxis === "time" ? "删除区间" : "删除全局块"}
+                title={`删除${activeAxisDefinition.blockLabel}`}
               >
                 <Trash2 size={14} strokeWidth={1.8} />
               </button>
@@ -1335,7 +1391,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                   onClick={() =>
                     activeAxis === "time"
                       ? onUpdateBlock(actionBlock.id, { color: color.value })
-                      : onUpdateSpaceBlock(actionBlock.id, { color: color.value })
+                      : onUpdateWeightedBlock(activeAxis, actionBlock.id, { color: color.value })
                   }
                   title={color.name}
                 />
@@ -1609,7 +1665,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
         <section
           className="script-foundation-md-card"
           role="dialog"
-          aria-label={editingTarget?.type === "time" ? "编辑时间块档案" : "编辑空间块档案"}
+          aria-label={`编辑${editingTarget?.type && editingTarget.type !== "head" ? getFoundationAxisDefinition(editingTarget.type).blockLabel : "块"}档案`}
         >
             <input
               className="script-foundation-md-title"
@@ -1617,11 +1673,13 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               onChange={(event) =>
                 editingTarget?.type === "time"
                   ? onUpdateBlock(editingBlock.id, { title: event.target.value })
-                  : onUpdateSpaceBlock(editingBlock.id, { title: event.target.value })
+                  : editingTarget?.type && editingTarget.type !== "head"
+                    ? onUpdateWeightedBlock(editingTarget.type, editingBlock.id, { title: event.target.value })
+                    : undefined
               }
             />
           <div className="script-foundation-md-meta">
-            <span>{editingTarget?.type === "time" ? "时间块档案" : "空间块档案"}</span>
+            <span>{editingTarget?.type && editingTarget.type !== "head" ? `${getFoundationAxisDefinition(editingTarget.type).blockLabel}档案` : "块档案"}</span>
             <strong>
               {editingTarget?.type === "time"
                 ? `${formatTimelineTime((editingBlock as FoundationTimeBlock).startMin)}-${formatTimelineTime((editingBlock as FoundationTimeBlock).startMin + (editingBlock as FoundationTimeBlock).durationMin)}`
@@ -1635,7 +1693,9 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               onChange={(event) =>
                 editingTarget?.type === "time"
                   ? onUpdateBlock(editingBlock.id, { content: event.target.value })
-                  : onUpdateSpaceBlock(editingBlock.id, { content: event.target.value })
+                  : editingTarget?.type && editingTarget.type !== "head"
+                    ? onUpdateWeightedBlock(editingTarget.type, editingBlock.id, { content: event.target.value })
+                    : undefined
               }
               placeholder="Markdown"
             />
@@ -1713,9 +1773,17 @@ export const useFlowSurface = ({
     [activeFlowProject?.durationMin, activeFlowProject?.rootNodeId, activeFlowProject?.title, activeFlowProjectId, flow, projectData.fileName]
   );
   const timeline = foundationGraph.timeline;
-  const foundationSpaceBlocks = useMemo(
-    () => normalizeSpaceBlocks(timeline.spaceAxisBlocks),
-    [timeline.spaceAxisBlocks]
+  const foundationWeightedBlocksByAxis = useMemo(
+    () => ({
+      space: getWeightedAxisBlocks(timeline, "space"),
+      character: getWeightedAxisBlocks(timeline, "character"),
+      scene: getWeightedAxisBlocks(timeline, "scene"),
+    }),
+    [timeline]
+  );
+  const allFoundationBlocks = useMemo(
+    () => [...timeline.blocks, ...foundationWeightedBlocksByAxis.space, ...foundationWeightedBlocksByAxis.character, ...foundationWeightedBlocksByAxis.scene],
+    [foundationWeightedBlocksByAxis, timeline.blocks]
   );
   const foundationScaffoldNodeIds = useMemo(
     () =>
@@ -1790,9 +1858,11 @@ export const useFlowSurface = ({
   const foundationBlockVisuals = useMemo(() => {
     const visuals = new Map<string, { axis: ScriptAxisMode; color: string }>();
     timeline.blocks.forEach((block) => visuals.set(block.id, { axis: "time", color: block.color }));
-    foundationSpaceBlocks.forEach((block) => visuals.set(block.id, { axis: "space", color: block.color }));
+    (Object.entries(foundationWeightedBlocksByAxis) as Array<[FoundationWeightedAxis, FoundationSpaceBlock[]]>).forEach(
+      ([axis, blocks]) => blocks.forEach((block) => visuals.set(block.id, { axis, color: block.color }))
+    );
     return visuals;
-  }, [foundationSpaceBlocks, timeline.blocks]);
+  }, [foundationWeightedBlocksByAxis, timeline.blocks]);
 
   const flowNodeById = useMemo(
     () => new Map((flow.flowNodes || []).map((node) => [node.id, node])),
@@ -1878,7 +1948,7 @@ export const useFlowSurface = ({
   }, [canvasControls.viewport, foundationBlockVisuals, foundationProjection, isWritingEditorOpen, showFoundationNodes]);
 
   const baseNodes = useMemo<FlowRenderNode[]>(() => {
-    return (flow.flowNodes || [])
+    return normalizeRegularNodePositions(flow.flowNodes || [])
       .filter((node) => !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
       .filter((node) => showFoundationNodes || !getFoundationNodeRole(node))
       .map((node, index) => ({
@@ -1935,7 +2005,7 @@ export const useFlowSurface = ({
 
   const nodeTypeById = useMemo(() => new Map(baseNodes.map((node) => [node.id, node.type])), [baseNodes]);
   const flowRuntimeNodes = useMemo<NodeFlowNode[]>(
-    () => (flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index)),
+    () => normalizeRegularNodePositions((flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index))),
     [flow.flowNodes]
   );
   const flowRuntimeNodeIdSet = useMemo(
@@ -2302,6 +2372,7 @@ export const useFlowSurface = ({
               target: link.target,
               sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : undefined,
               targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : undefined,
+              data: link.data,
             })),
         };
       });
@@ -2311,12 +2382,11 @@ export const useFlowSurface = ({
   useEffect(() => {
     if (!timeline.blocks.length) return;
     const hasActiveBlock =
-      timeline.blocks.some((block) => block.id === activeTimelineBlockId) ||
-      foundationSpaceBlocks.some((block) => block.id === activeTimelineBlockId);
+      allFoundationBlocks.some((block) => block.id === activeTimelineBlockId);
     if (!activeTimelineBlockId || !hasActiveBlock) {
       setActiveTimelineBlockId(timeline.blocks[0].id);
     }
-  }, [activeTimelineBlockId, foundationSpaceBlocks, timeline.blocks]);
+  }, [activeTimelineBlockId, allFoundationBlocks, timeline.blocks]);
 
   const persistTimeline = useCallback(
     (updater: (timeline: FoundationScaffold) => FoundationScaffold) => {
@@ -2371,14 +2441,15 @@ export const useFlowSurface = ({
     [persistTimeline]
   );
 
-  const handleSpaceBlockUpdate = useCallback(
-    (blockId: string, patch: Partial<FoundationSpaceBlock>) => {
-      persistTimeline((current) => ({
-        ...current,
-        spaceAxisBlocks: normalizeSpaceBlocks(current.spaceAxisBlocks).map((block) =>
+  const handleWeightedBlockUpdate = useCallback(
+    (axis: FoundationWeightedAxis, blockId: string, patch: Partial<FoundationSpaceBlock>) => {
+      persistTimeline((current) => setWeightedAxisBlocks(
+        current,
+        axis,
+        getWeightedAxisBlocks(current, axis).map((block) =>
           block.id === blockId ? { ...block, ...patch } : block
-        ),
-      }));
+        )
+      ));
     },
     [persistTimeline]
   );
@@ -2421,15 +2492,16 @@ export const useFlowSurface = ({
     [persistTimeline]
   );
 
-  const handleSpaceBlockAdd = useCallback(
-    (afterBlockId?: string) => {
+  const handleWeightedBlockAdd = useCallback(
+    (axis: FoundationWeightedAxis, afterBlockId?: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
+        const blocks = getWeightedAxisBlocks(current, axis);
         const insertIndex = afterBlockId ? blocks.findIndex((block) => block.id === afterBlockId) + 1 : blocks.length;
         const safeIndex = insertIndex > 0 ? insertIndex : blocks.length;
+        const definition = getFoundationAxisDefinition(axis);
         const nextBlock = createSpaceBlock(
-          `space-block-${Date.now()}`,
-          "新的全局视角",
+          `${axis}-block-${Date.now()}`,
+          `新${definition.blockLabel}`,
           safeIndex,
           0.9,
           TIMELINE_COLORS[blocks.length % TIMELINE_COLORS.length].value,
@@ -2437,7 +2509,7 @@ export const useFlowSurface = ({
         );
         const nextBlocks = blocks.slice();
         nextBlocks.splice(safeIndex, 0, nextBlock);
-        return { ...current, spaceAxisBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+        return setWeightedAxisBlocks(current, axis, nextBlocks.map((block, order) => ({ ...block, order })));
       });
     },
     [persistTimeline]
@@ -2471,17 +2543,17 @@ export const useFlowSurface = ({
     [persistTimeline]
   );
 
-  const handleSpaceBlockSplit = useCallback(
-    (blockId: string) => {
+  const handleWeightedBlockSplit = useCallback(
+    (axis: FoundationWeightedAxis, blockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
+        const blocks = getWeightedAxisBlocks(current, axis);
         const index = blocks.findIndex((block) => block.id === blockId);
         if (index < 0) return current;
         const block = blocks[index];
         const firstWidth = Math.max(0.45, block.width / 2);
         const nextBlock: FoundationSpaceBlock = {
           ...block,
-          id: `space-block-${Date.now()}`,
+          id: `${axis}-block-${Date.now()}`,
           title: `${block.title} · 延展`,
           content: "",
           width: firstWidth,
@@ -2490,7 +2562,7 @@ export const useFlowSurface = ({
         };
         blocks[index] = { ...block, width: firstWidth };
         blocks.splice(index + 1, 0, nextBlock);
-        return { ...current, spaceAxisBlocks: blocks.map((item, order) => ({ ...item, order })) };
+        return setWeightedAxisBlocks(current, axis, blocks.map((item, order) => ({ ...item, order })));
       });
     },
     [persistTimeline]
@@ -2514,10 +2586,10 @@ export const useFlowSurface = ({
     [persistTimeline]
   );
 
-  const handleSpaceBlockDelete = useCallback(
-    (blockId: string) => {
+  const handleWeightedBlockDelete = useCallback(
+    (axis: FoundationWeightedAxis, blockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
+        const blocks = getWeightedAxisBlocks(current, axis);
         if (blocks.length <= 1) return current;
         const removed = blocks.find((block) => block.id === blockId);
         const nextBlocks = blocks.filter((block) => block.id !== blockId);
@@ -2527,7 +2599,7 @@ export const useFlowSurface = ({
             width: nextBlocks[nextBlocks.length - 1].width + removed.width,
           };
         }
-        return { ...current, spaceAxisBlocks: nextBlocks.map((block, order) => ({ ...block, order })) };
+        return setWeightedAxisBlocks(current, axis, nextBlocks.map((block, order) => ({ ...block, order })));
       });
     },
     [persistTimeline]
@@ -2540,21 +2612,15 @@ export const useFlowSurface = ({
         setAxisRevealRequest(Date.now());
         return true;
       }
-      persistFlow((currentFlow) => {
-        const id = `link-${target.id}-${nodeId}-text-text`;
-        if (currentFlow.links.some((link) => link.id === id || (link.source === target.id && link.target === nodeId))) {
-          return currentFlow;
-        }
-        return {
-          ...currentFlow,
-          revision: (currentFlow.revision || 0) + 1,
-          links: [...currentFlow.links, createFoundationLink(target.id, nodeId)],
-        };
-      });
+      const block = (flow.flowNodes || []).find((node) => node.id === target.id);
+      const member = (flow.flowNodes || []).find((node) => node.id === nodeId);
+      const axis = block?.data?.foundationAxis;
+      if (!block || !member || !isFoundationAxis(axis) || !isNodeTypeAllowedInFoundationAxis(axis, member.type)) return false;
+      persistFlow((currentFlow) => assignFoundationMembership(currentFlow, target.id, nodeId));
       setActiveTimelineBlockId(target.id);
       return true;
     },
-    [nodeIdSet, persistFlow]
+    [flow.flowNodes, nodeIdSet, persistFlow]
   );
 
   const handleTimelineBlockReorder = useCallback(
@@ -2575,16 +2641,16 @@ export const useFlowSurface = ({
     [persistTimeline]
   );
 
-  const handleSpaceBlockReorder = useCallback(
-    (sourceBlockId: string, targetBlockId: string) => {
+  const handleWeightedBlockReorder = useCallback(
+    (axis: FoundationWeightedAxis, sourceBlockId: string, targetBlockId: string) => {
       persistTimeline((current) => {
-        const blocks = normalizeSpaceBlocks(current.spaceAxisBlocks);
+        const blocks = getWeightedAxisBlocks(current, axis);
         const sourceIndex = blocks.findIndex((block) => block.id === sourceBlockId);
         const targetIndex = blocks.findIndex((block) => block.id === targetBlockId);
         if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return current;
         const [moved] = blocks.splice(sourceIndex, 1);
         blocks.splice(targetIndex, 0, moved);
-        return { ...current, spaceAxisBlocks: blocks.map((block, order) => ({ ...block, order })) };
+        return setWeightedAxisBlocks(current, axis, blocks.map((block, order) => ({ ...block, order })));
       });
     },
     [persistTimeline]
@@ -2665,9 +2731,9 @@ export const useFlowSurface = ({
     [persistTimeline, timeline]
   );
 
-  const handleSpaceResizeStart = useCallback(
-    (blockId: string, edge: "left" | "right", startX: number, trackWidth: number) => {
-      const originalBlocks = normalizeSpaceBlocks(timeline.spaceAxisBlocks).map((block) => ({ ...block }));
+  const handleWeightedResizeStart = useCallback(
+    (axis: FoundationWeightedAxis, blockId: string, edge: "left" | "right", startX: number, trackWidth: number) => {
+      const originalBlocks = getWeightedAxisBlocks(timeline, axis).map((block) => ({ ...block }));
       const blockIndex = originalBlocks.findIndex((block) => block.id === blockId);
       const neighborIndex = edge === "left" ? blockIndex - 1 : blockIndex + 1;
       if (blockIndex < 0 || neighborIndex < 0 || neighborIndex >= originalBlocks.length) return;
@@ -2685,7 +2751,7 @@ export const useFlowSurface = ({
           blocks[blockIndex].width = nextWidth;
           blocks[neighborIndex].width = pairTotal - nextWidth;
         }
-        persistTimeline((current) => ({ ...current, spaceAxisBlocks: blocks }));
+        persistTimeline((current) => setWeightedAxisBlocks(current, axis, blocks));
       };
 
       const stopPointerMove = () => {
@@ -2696,7 +2762,7 @@ export const useFlowSurface = ({
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", stopPointerMove, { once: true });
     },
-    [persistTimeline, timeline.spaceAxisBlocks]
+    [persistTimeline, timeline]
   );
 
   const buildLinkForCreatedNode = useCallback(
@@ -2716,6 +2782,12 @@ export const useFlowSurface = ({
         (foundationRole && foundationRole !== "block-folder")
       ) {
         return currentLinks;
+      }
+      if (foundationRole === "block-folder" && dropState.connectionType === "source") {
+        const axis = existingNode?.data?.foundationAxis;
+        if (!isFoundationAxis(axis) || !isNodeTypeAllowedInFoundationAxis(axis, createdNodeType as NodeType)) return currentLinks;
+        const membership = createFoundationMembershipLink(existingNode!.id, createdNodeId);
+        return [...currentLinks.filter((link) => link.id !== membership.id), membership];
       }
       const existingNodeHandles = getScriptNodeHandlesForType(existingNodeType);
       const createdNodeHandles = getScriptNodeHandlesForType(createdNodeType);
@@ -2771,10 +2843,16 @@ export const useFlowSurface = ({
       const nextFlow = ensureFlow(previous.flow);
       const documentId = `script-${Date.now().toString(36)}`;
       createdNodeId = `script-${documentId}`;
+      const requestedPosition = position || getDefaultScriptPosition(nextFlow.flowNodes?.length || 0);
       const nextNode: NodeFlowNode = {
         id: createdNodeId,
         type: "scriptPage",
-        position: position || getDefaultScriptPosition(nextFlow.flowNodes?.length || 0),
+        position: getSafeScriptNodePosition(nextFlow.flowNodes || [], "scriptPage", requestedPosition, {
+          id: createdNodeId,
+          type: "scriptPage",
+          position: requestedPosition,
+          style: SCRIPT_PAGE_NODE_SIZE,
+        }),
         style: SCRIPT_PAGE_NODE_SIZE,
         data: {
           ...createDefaultNodeFlowNodeData("scriptPage"),
@@ -2807,10 +2885,16 @@ export const useFlowSurface = ({
       const now = Date.now();
       setProjectData((previous) => {
         const nextFlow = ensureFlow(previous.flow);
+        const requestedPosition = position || getDefaultMarkdownPosition(nextFlow.flowNodes?.length || 0);
         const nextNode: NodeFlowNode = {
           id: createdNodeId,
           type: "mdText",
-          position: position || getDefaultMarkdownPosition(nextFlow.flowNodes?.length || 0),
+          position: getSafeScriptNodePosition(nextFlow.flowNodes || [], "mdText", requestedPosition, {
+            id: createdNodeId,
+            type: "mdText",
+            position: requestedPosition,
+            style: MARKDOWN_TEXT_NODE_SIZE,
+          }),
           style: MARKDOWN_TEXT_NODE_SIZE,
           data: {
             ...createDefaultNodeFlowNodeData("mdText"),
@@ -2964,7 +3048,11 @@ export const useFlowSurface = ({
             } as NodeFlowNodeData,
           };
         });
-        const importedNodeIds = new Set(importedNodes.map((node) => node.id));
+        const placedImportedNodes = normalizeNodeFlowNodePositions({
+          existingNodes: currentFlow.flowNodes || [],
+          nodes: importedNodes,
+        });
+        const importedNodeIds = new Set(placedImportedNodes.map((node) => node.id));
         const importedLinks = hydrated.links
           .map((link, index): FlowState["links"][number] | null => {
             const source = idMap.get(link.source);
@@ -2976,6 +3064,7 @@ export const useFlowSurface = ({
               target,
               sourceHandle: isScriptRuntimeHandle(link.sourceHandle) ? link.sourceHandle : undefined,
               targetHandle: isScriptRuntimeHandle(link.targetHandle) ? link.targetHandle : undefined,
+              data: link.data,
             };
           })
           .filter((link): link is FlowState["links"][number] => {
@@ -2988,7 +3077,7 @@ export const useFlowSurface = ({
           flow: {
             ...currentFlow,
             revision: Math.max((currentFlow.revision || 0) + 1, hydrated.revision || 1),
-            flowNodes: [...(currentFlow.flowNodes || []), ...importedNodes],
+            flowNodes: [...(currentFlow.flowNodes || []), ...placedImportedNodes],
             links: [...currentFlow.links, ...importedLinks],
             graphLinks: [...(currentFlow.graphLinks || []), ...(hydrated.graphLinks || [])],
             globalAssetHistory: [
@@ -3131,11 +3220,19 @@ export const useFlowSurface = ({
           .map((change) => change.id)
       );
       if (!removedIds.size) return;
-      persistFlow((currentFlow) => ({
-        ...currentFlow,
-        revision: (currentFlow.revision || 0) + 1,
-        links: removeFlowLinksById(currentFlow.links, removedIds),
-      }));
+      persistFlow((currentFlow) => {
+        const removedMemberships = currentFlow.links.filter(
+          (link) => removedIds.has(link.id) && isFoundationMembershipLink(currentFlow.flowNodes || [], link)
+        );
+        let nextFlow = currentFlow;
+        removedMemberships.forEach((link) => {
+          nextFlow = removeFoundationMembership(nextFlow, link.target, link.source);
+        });
+        const links = removeFlowLinksById(nextFlow.links, removedIds);
+        return links === nextFlow.links
+          ? nextFlow
+          : { ...nextFlow, revision: (nextFlow.revision || 0) + 1, links };
+      });
     },
     [flow, persistFlow]
   );
@@ -3149,6 +3246,12 @@ export const useFlowSurface = ({
       const targetFoundationRole = getFoundationNodeRole(targetNode);
       if (targetFoundationRole || (sourceFoundationRole && sourceFoundationRole !== "block-folder")) {
         return false;
+      }
+      if (sourceFoundationRole === "block-folder") {
+        const axis = sourceNode?.data?.foundationAxis;
+        if (!targetNode || !isFoundationAxis(axis) || !isNodeTypeAllowedInFoundationAxis(axis, targetNode.type)) return false;
+        persistFlow((currentFlow) => assignFoundationMembership(currentFlow, sourceNode!.id, targetNode.id));
+        return true;
       }
       const sourceType = nodeTypeById.get(connection.source);
       const targetType = nodeTypeById.get(connection.target);
@@ -3365,7 +3468,7 @@ export const useFlowSurface = ({
 
   const handleScriptNodeClick = useCallback(
     (node: FlowRenderNode) => {
-      const boundaryBlock = [...timeline.blocks, ...foundationSpaceBlocks].find((block) =>
+      const boundaryBlock = allFoundationBlocks.find((block) =>
         block.boundaryNodeIds.includes(node.id)
       );
       if (boundaryBlock) setActiveTimelineBlockId(boundaryBlock.id);
@@ -3373,7 +3476,7 @@ export const useFlowSurface = ({
         onOpenScriptDocument(node.id);
       }
     },
-    [foundationSpaceBlocks, onOpenScriptDocument, timeline.blocks]
+    [allFoundationBlocks, onOpenScriptDocument]
   );
 
   const overlays = (
@@ -3408,17 +3511,17 @@ export const useFlowSurface = ({
           onActiveBlockChange={setActiveTimelineBlockId}
           onUpdateHead={handleTimelineHeadUpdate}
           onUpdateBlock={handleTimelineBlockUpdate}
-          onUpdateSpaceBlock={handleSpaceBlockUpdate}
+          onUpdateWeightedBlock={handleWeightedBlockUpdate}
           onAddTimeBlock={handleTimelineBlockAdd}
-          onAddSpaceBlock={handleSpaceBlockAdd}
+          onAddWeightedBlock={handleWeightedBlockAdd}
           onSplitBlock={handleTimelineBlockSplit}
-          onSplitSpaceBlock={handleSpaceBlockSplit}
+          onSplitWeightedBlock={handleWeightedBlockSplit}
           onDeleteBlock={handleTimelineBlockDelete}
-          onDeleteSpaceBlock={handleSpaceBlockDelete}
+          onDeleteWeightedBlock={handleWeightedBlockDelete}
           onReorderBlock={handleTimelineBlockReorder}
-          onReorderSpaceBlock={handleSpaceBlockReorder}
+          onReorderWeightedBlock={handleWeightedBlockReorder}
           onResizeStart={handleTimelineResizeStart}
-          onSpaceResizeStart={handleSpaceResizeStart}
+          onWeightedResizeStart={handleWeightedResizeStart}
           axisRevealRequest={axisRevealRequest}
           onCreateArchiveNode={handleAddMarkdownNodeFromTail}
           onCreateScriptNode={handleAddScriptPageFromTail}

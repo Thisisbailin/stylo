@@ -121,7 +121,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
   const timingRows = useMemo(() => buildTimingRows(data, now), [data, now]);
 
   const resolvedIdentityMentions = useMemo(() => {
-    const roles = nodeFlowContext?.context?.roles || [];
+    const roles = nodeFlowContext?.roles || [];
     const results: Array<{ name: string; status: "match" | "missing"; identityId?: string }> = [];
     const pushUnique = (item: { name: string; status: "match" | "missing"; identityId?: string }) => {
       if (results.find((entry) => entry.name === item.name && entry.identityId === item.identityId)) return;
@@ -138,7 +138,7 @@ export const ViduVideoGenNode: React.FC<Props> = ({ id, data, selected }) => {
     return (atMentions || [])
       .filter((m) => !m.kind || m.kind === "identity")
       .map((m) => ({ name: m.mention || m.name, status: m.status, identityId: m.identityId }));
-  }, [atMentions, entityBindings, nodeFlowContext?.context?.roles]);
+  }, [atMentions, entityBindings, nodeFlowContext?.roles]);
 
   const derivedSubjects = useMemo(() => {
     if (data.subjects && data.subjects.length) {

@@ -5,6 +5,7 @@ import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AtSign, CheckCircle2, ImagePlus, ShieldAlert, ShieldCheck, Upload } from "lucide-react";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import { buildApiUrl } from "../../utils/api";
+import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
 import {
   buildMentionIndex,
   buildMentionTargets,
@@ -149,7 +150,7 @@ const uploadImageForAssetReview = async (source: string, filename?: string | nul
 
   const signedRes = await fetch(buildApiUrl("/api/upload-url"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await buildAuthorizedJsonHeaders(),
     body: JSON.stringify({ fileName, bucket: "public-assets", contentType }),
   });
   if (!signedRes.ok) {
@@ -199,7 +200,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const nodeTitle = data.title && data.title !== "Visual Input" ? data.title : "image";
 
   const mentionTargets = useMemo(() => {
-    const roles = nodeFlowContext?.context?.roles || [];
+    const roles = nodeFlowContext?.roles || [];
     const targets = buildMentionTargets(roles);
     return {
       persons: targets.persons,
@@ -207,7 +208,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       identities: targets.identities,
       all: targets.all,
     };
-  }, [nodeFlowContext?.context?.roles]);
+  }, [nodeFlowContext?.roles]);
 
   const mentionIndex = useMemo(() => {
     return buildMentionIndex(mentionTargets.all);
