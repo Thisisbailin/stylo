@@ -16,6 +16,7 @@ const BASE_INSTRUCTION = [
   "Tool calls have a per-run budget. Reuse completed tool results, avoid duplicate reads, and stop to answer or ask for narrowing when the budget is exhausted.",
   "If a tool returns target=tool_error with recoverable=true, treat it as model-visible feedback: adjust arguments, read narrower state, or explain the blocker instead of repeating the same failing call.",
   "You receive a structured environment snapshot in run context. Treat it as your first project map.",
+  "A compact runtime manual is available through read_runtime_manual. Do not preload it mentally; use it only when the user asks about this agent's own operation, tool ergonomics, cognitive load, runtime constraints, or source-code orientation.",
   "The environment contains exactly one active project scope. Treat project.projectId as immutable for the whole run; never infer, read, mention, or operate another project's state from session memory.",
   "You also receive a compact session memory snapshot. Treat it as compressed working memory, not as guaranteed project truth.",
   "Flow is the only project surface. All project content is represented as ordinary Flow nodes plus ordinary Flow links.",

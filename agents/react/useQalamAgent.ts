@@ -121,6 +121,18 @@ const upsertStreamingAssistantMessage = (
 const nextMessageOrder = (messages: Message[]) =>
   messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
 
+const runAssistantMessageOrder = (messages: Message[], runId: string) => {
+  const message = messages.find(
+    (item) => item.role === "assistant" && isChatMessage(item) && item.meta?.runId === runId
+  );
+  return typeof message?.order === "number" ? message.order : null;
+};
+
+const nextStatusOrderForRun = (messages: Message[], runId: string, offsetBeforeAnswer: number) => {
+  const answerOrder = runAssistantMessageOrder(messages, runId);
+  return answerOrder === null ? nextMessageOrder(messages) : answerOrder - offsetBeforeAnswer;
+};
+
 const humanizeToolName = (name: string) => {
   switch (name) {
     case "list_project_resources":
@@ -381,10 +393,9 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         const statusId = ensureActiveStatusId(event.runId, "reasoning");
         const preflightStatusId = preflightStatusIdRef.current;
         preflightStatusIdRef.current = null;
-        setMessages((prev) =>
-          upsertStatusMessage(
-            preflightStatusId
-              ? upsertStatusMessage(prev, preflightStatusId, (current) => ({
+        setMessages((prev) => {
+          const withPreflight = preflightStatusId
+            ? upsertStatusMessage(prev, preflightStatusId, (current) => ({
                   role: "assistant",
                   kind: "status",
                   order: current?.order || nextMessageOrder(prev),
@@ -401,26 +412,29 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
                     isThinking: false,
                   },
                 }))
-              : prev,
+            : prev;
+          return upsertStatusMessage(
+            withPreflight,
             statusId,
             (current) => ({
-            role: "assistant",
-            kind: "status",
-            order: current?.order || nextMessageOrder(prev),
-            statusCard: {
-              id: statusId,
-              runId: event.runId,
-              status: current?.statusCard.status || "running",
-              headline: "思考",
-              detail: "Agent 已进入工作状态，正在准备本轮分析。",
-              summary: current?.statusCard.summary,
-              steps: current?.statusCard.steps || [],
-              startedAt: current?.statusCard.startedAt || Date.now(),
-              updatedAt: Date.now(),
-              isThinking: true,
-            },
-          }))
-        );
+              role: "assistant",
+              kind: "status",
+              order: current?.order || nextMessageOrder(withPreflight),
+              statusCard: {
+                id: statusId,
+                runId: event.runId,
+                status: current?.statusCard.status || "running",
+                headline: "思考",
+                detail: "Agent 已进入工作状态，正在准备本轮分析。",
+                summary: current?.statusCard.summary,
+                steps: current?.statusCard.steps || [],
+                startedAt: current?.statusCard.startedAt || Date.now(),
+                updatedAt: Date.now(),
+                isThinking: true,
+              },
+            })
+          );
+        });
         return;
       }
 
@@ -457,7 +471,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || nextMessageOrder(prev),
+            order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.75),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -481,7 +495,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || nextMessageOrder(prev),
+            order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.75),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -503,24 +517,14 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       if (event.type === "message_delta") {
         streamedMessageSeenRef.current[event.runId] = true;
         const responseStatusId = ensureActiveStatusId(event.runId, "response");
-        setMessages((prev) =>
-          upsertStatusMessage(
-            upsertStreamingAssistantMessage(prev, event.runId, (current) => ({
-              role: "assistant",
-              kind: "chat",
-              order: current?.order || nextMessageOrder(prev),
-              text: event.accumulatedText,
-              meta: {
-                ...current?.meta,
-                runId: event.runId,
-                isStreaming: true,
-              },
-            })),
+        setMessages((prev) => {
+          const withResponseStatus = upsertStatusMessage(
+            prev,
             responseStatusId,
             (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || nextMessageOrder(prev),
+              order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.25),
               statusCard: {
                 id: responseStatusId,
                 runId: event.runId,
@@ -534,8 +538,19 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
                 isThinking: false,
               },
             })
-          )
-        );
+          );
+          return upsertStreamingAssistantMessage(withResponseStatus, event.runId, (current) => ({
+            role: "assistant",
+            kind: "chat",
+            order: current?.order || nextMessageOrder(withResponseStatus),
+            text: event.accumulatedText,
+            meta: {
+              ...current?.meta,
+              runId: event.runId,
+              isStreaming: true,
+            },
+          }));
+        });
         setMessages((prev) => finalizeActiveReasoningStatus(prev, event.runId, "success"));
         return;
       }

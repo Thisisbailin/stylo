@@ -21,6 +21,7 @@ import { readProjectResourceToolDef } from "./readProjectResource";
 import { searchProjectResourceToolDef } from "./searchProjectResource";
 import { prepareGenerationExecutionToolDef } from "./prepareGenerationExecution";
 import { cancelGenerationExecutionToolDef } from "./cancelGenerationExecution";
+import { readRuntimeManualToolDef } from "./readRuntimeManual";
 
 const LOOKUP_TOOL_NAMES = new Set([
   "find_documents",
@@ -28,6 +29,7 @@ const LOOKUP_TOOL_NAMES = new Set([
   "list_project_resources",
   "read_project_resource",
   "search_project_resource",
+  "read_runtime_manual",
 ]);
 const MUTATING_TOOL_NAMES = new Set([
   "create_document",
@@ -52,6 +54,7 @@ const TOOL_DEFS = [
   listProjectResourcesToolDef,
   readProjectResourceToolDef,
   searchProjectResourceToolDef,
+  readRuntimeManualToolDef,
   operateProjectResourceToolDef,
   prepareGenerationExecutionToolDef,
   cancelGenerationExecutionToolDef,
