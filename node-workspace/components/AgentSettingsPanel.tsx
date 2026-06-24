@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
   AlertCircle,
@@ -15,6 +15,7 @@ import {
   Loader2,
   ScanSearch,
   Sparkles,
+  Trash2,
   Video,
   X,
 } from "lucide-react";
@@ -90,13 +91,19 @@ type Props = {
 
 export type AgentSettingsPanelKey =
   | "provider"
+  | "ability"
   | "tools"
   | "skills"
   | "identity"
   | "history"
   | "assets"
+  | "lab"
   | "sync"
   | "info";
+
+type AgentSettingsPrimaryPanelKey = Exclude<AgentSettingsPanelKey, "tools" | "skills" | "identity">;
+type AbilitySectionKey = "tools" | "skills";
+type AssetsUnitKey = MaterialsSectionKey | "identity";
 
 type ConversationRecord = {
   id: string;
@@ -413,6 +420,19 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
   return text.length > 20 ? `${text.slice(0, 20)}...` : text;
 };
 
+const clampAgentSettingsWidth = (width: number, leftOffset: number) => {
+  if (typeof window === "undefined") return width;
+  const availableWidth = Math.max(360, window.innerWidth - leftOffset - 6);
+  const minWidth = Math.min(520, availableWidth);
+  return Math.min(availableWidth, Math.max(minWidth, width));
+};
+
+const getDefaultAgentSettingsWidth = (leftOffset: number) => {
+  if (typeof window === "undefined") return 720;
+  const availableWidth = Math.max(360, window.innerWidth - leftOffset - 6);
+  return clampAgentSettingsWidth(Math.round(availableWidth / 2), leftOffset);
+};
+
 export const AgentSettingsPanel: React.FC<Props> = ({
   projectId,
   isOpen,
@@ -441,8 +461,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
-  const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPanelKey>("provider");
+  const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPrimaryPanelKey>("provider");
+  const [abilitySection, setAbilitySection] = useState<AbilitySectionKey>("tools");
   const [assetsSection, setAssetsSection] = useState<MaterialsSectionKey>("images");
+  const [assetsUnit, setAssetsUnit] = useState<AssetsUnitKey>("images");
+  const [panelWidth, setPanelWidth] = useState(() => getDefaultAgentSettingsWidth(leftOffset));
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const panelResizeRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null);
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
   const [isLoadingTextModels, setIsLoadingTextModels] = useState(false);
   const [textModelFetchMessage, setTextModelFetchMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
@@ -589,6 +614,59 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       window.removeEventListener(AGENT_ACTIVITY_STORAGE_UPDATED_EVENT, onUpdated);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const syncPanelWidth = () => {
+      setPanelWidth((current) => clampAgentSettingsWidth(current, leftOffset));
+    };
+    syncPanelWidth();
+    window.addEventListener("resize", syncPanelWidth);
+    return () => {
+      window.removeEventListener("resize", syncPanelWidth);
+    };
+  }, [leftOffset]);
+
+  useEffect(() => {
+    const activeResize = panelResizeRef.current;
+    if (!isResizingPanel || !activeResize || typeof window === "undefined") return undefined;
+
+    const stopResizing = (event?: PointerEvent) => {
+      if (event && event.pointerId !== activeResize.pointerId) return;
+      panelResizeRef.current = null;
+      setIsResizingPanel(false);
+      document.body.classList.remove("qalam-resizing");
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== activeResize.pointerId) return;
+      const nextWidth = activeResize.startWidth + (activeResize.startX - event.clientX);
+      setPanelWidth(clampAgentSettingsWidth(nextWidth, leftOffset));
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+    document.body.classList.add("qalam-resizing");
+
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+      document.body.classList.remove("qalam-resizing");
+    };
+  }, [isResizingPanel, leftOffset]);
+
+  useEffect(
+    () => () => {
+      panelResizeRef.current = null;
+      document.body.classList.remove("qalam-resizing");
+    },
+    []
+  );
 
   const loadObservability = useCallback(async (traceIdOverride?: string) => {
     if (!isSignedIn || !activeConversation?.id || !getAuthToken) {
@@ -742,12 +820,23 @@ export const AgentSettingsPanel: React.FC<Props> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    if (requestedPanel === "tools" || requestedPanel === "skills") {
+      setSelectedPanel("ability");
+      setAbilitySection(requestedPanel);
+      return;
+    }
+    if (requestedPanel === "identity") {
+      setSelectedPanel("assets");
+      setAssetsUnit("identity");
+      return;
+    }
     setSelectedPanel(requestedPanel);
   }, [isOpen, requestedPanel]);
 
   useEffect(() => {
     if (!isOpen || requestedPanel !== "assets" || !requestedAssetsSection) return;
     setAssetsSection(requestedAssetsSection);
+    setAssetsUnit(requestedAssetsSection);
   }, [isOpen, requestedAssetsSection, requestedPanel]);
 
   const setProvider = (p: AgentTextProvider) => {
@@ -844,6 +933,20 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       }
       return { ...prev, activeId: nextActive, items: remaining };
     });
+  };
+
+  const handlePanelResizePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panelResizeRef.current = {
+      startX: event.clientX,
+      startWidth: panelWidth,
+      pointerId: event.pointerId,
+    };
+    setIsResizingPanel(true);
+    document.body.classList.add("qalam-resizing");
   };
 
   const handleFetchTextModels = async () => {
@@ -1034,30 +1137,31 @@ export const AgentSettingsPanel: React.FC<Props> = ({
           title: "Providers",
           description: "统一管理 Agent 路线、模型和 runtime 基线，不再单独悬浮成居中弹窗。",
         }
-      : selectedPanel === "tools"
+      : selectedPanel === "ability"
         ? {
-            label: "Tools",
-            title: "Tools",
-            description: "",
+            label: "Ability",
+            title: abilitySection === "tools" ? "Tools" : "Skills",
+            description: "Agent 能力统一放在 Ability 下，Tools 是真实 runtime 操作面，Skills 是按需读取的方法层。",
           }
-        : selectedPanel === "skills"
-          ? {
-              label: "Skills",
-              title: "Skills",
-              description: "",
-            }
-          : selectedPanel === "identity"
-            ? {
-                label: "Project",
-                title: "Identity System",
-                description: "临时承载角色 / 场景身份库，用于检查旧身份系统面板的当前状态。",
-              }
-            : selectedPanel === "assets"
+        : selectedPanel === "assets"
               ? {
                   label: "Assets",
-                  title: assetsSection === "images" ? "Images" : assetsSection === "videos" ? "Videos" : "Prompts",
-                  description: "素材资产已经并入总设置面板，不再保留独立 workspace 模块。",
+                  title:
+                    assetsUnit === "identity"
+                      ? "Identity Assets"
+                      : assetsSection === "images"
+                        ? "Images"
+                        : assetsSection === "videos"
+                          ? "Videos"
+                          : "Prompts",
+                  description: "素材、提示词与身份系统统一归入 Assets；身份系统作为身份资产继续保留查看与编辑入口。",
                 }
+              : selectedPanel === "lab"
+                ? {
+                    label: "Lab",
+                    title: "Labs",
+                    description: "实验入口从 Identity 中独立出来，避免与身份资产继续混在一起。",
+                  }
               : selectedPanel === "sync"
                 ? {
                     label: "Sync",
@@ -1075,13 +1179,12 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       title: "Conversation & Trace",
                       description: "",
                     };
-  const primaryTabs: Array<{ key: AgentSettingsPanelKey; label: string; Icon: React.ComponentType<{ size?: number; className?: string }>; meta?: string }> = [
+  const primaryTabs: Array<{ key: AgentSettingsPrimaryPanelKey; label: string; Icon: React.ComponentType<{ size?: number; className?: string }>; meta?: string }> = [
     { key: "provider", label: "Provider", Icon: Sparkles, meta: "3" },
-    { key: "tools", label: "Tools", Icon: Code2, meta: `${TOOL_ITEMS.length}` },
-    { key: "skills", label: "Skills", Icon: Sparkles, meta: `${availableAgentSkills.length || 0}` },
-    { key: "identity", label: "Identity", Icon: Layers, meta: `${projectData.roles?.length || 0}` },
+    { key: "ability", label: "Ability", Icon: Code2, meta: `${TOOL_ITEMS.length + availableAgentSkills.length}` },
+    { key: "assets", label: "Assets", Icon: Boxes, meta: `${imageAssetCount + videoAssetCount + promptAssetCount + (projectData.roles?.length || 0)}` },
+    { key: "lab", label: "Lab", Icon: ScanSearch, meta: "3" },
     { key: "history", label: "History", Icon: Cloud, meta: `${conversationState.items.length}` },
-    { key: "assets", label: "Assets", Icon: Boxes, meta: `${imageAssetCount + videoAssetCount + promptAssetCount}` },
     { key: "sync", label: "Sync", Icon: Cloud, meta: syncState?.project.status || "local" },
     { key: "info", label: "Info", Icon: FileText },
   ];
@@ -1094,6 +1197,22 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     }`;
 
   const renderSecondaryTabs = () => {
+    if (selectedPanel === "ability") {
+      return (
+        <>
+          {[
+            { key: "tools" as const, label: "Tools", count: TOOL_ITEMS.length, Icon: Code2 },
+            { key: "skills" as const, label: "Skills", count: availableAgentSkills.length || 0, Icon: Sparkles },
+          ].map((item) => (
+            <button key={item.key} type="button" onClick={() => setAbilitySection(item.key)} className={subTabClass(abilitySection === item.key)}>
+              <item.Icon size={12} />
+              {item.label}
+              <span className="text-[10px] text-[var(--app-text-muted)]">{item.count}</span>
+            </button>
+          ))}
+        </>
+      );
+    }
     if (selectedPanel === "assets") {
       return (
         <>
@@ -1101,9 +1220,18 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             { key: "images" as const, label: "Images", count: imageAssetCount },
             { key: "videos" as const, label: "Videos", count: videoAssetCount },
             { key: "prompts" as const, label: "Prompts", count: promptAssetCount },
+            { key: "identity" as const, label: "Identity", count: projectData.roles?.length || 0 },
           ].map((item) => (
-            <button key={item.key} type="button" onClick={() => setAssetsSection(item.key)} className={subTabClass(assetsSection === item.key)}>
-              <Boxes size={12} />
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                setAssetsUnit(item.key);
+                if (item.key !== "identity") setAssetsSection(item.key);
+              }}
+              className={subTabClass(assetsUnit === item.key)}
+            >
+              {item.key === "identity" ? <Layers size={12} /> : <Boxes size={12} />}
               {item.label}
               <span className="text-[10px] text-[var(--app-text-muted)]">{item.count}</span>
             </button>
@@ -1125,21 +1253,33 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               const active = item.id === conversationState.activeId;
               const title = item.title || buildConversationTitle(item.messages || []) || "新对话";
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleSelectConversation(item.id)}
-                  className={subTabClass(active)}
-                  title={title}
-                >
-                  <span className="max-w-[160px] truncate">{title}</span>
-                </button>
+                <span key={item.id} className={`${subTabClass(active)} max-w-[220px] pr-1`} title={title}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConversation(item.id)}
+                    className="min-w-0 truncate text-left"
+                  >
+                    <span className="block max-w-[150px] truncate">{title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleClearConversation(item.id);
+                    }}
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[var(--app-text-muted)] transition hover:bg-rose-500/10 hover:text-rose-300"
+                    title="删除该对话"
+                    aria-label={`删除对话 ${title}`}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </span>
               );
             })}
         </>
       );
     }
-    if (selectedPanel === "identity") {
+    if (selectedPanel === "lab") {
       return (
         <>
           <button type="button" onClick={() => onOpenVisualLab?.("glassLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
@@ -1165,10 +1305,16 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     <div
       className="fixed right-[3px] top-[3px] bottom-[3px] z-[80] min-w-0 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel)] text-[var(--app-text-primary)] shadow-[0_30px_80px_rgba(0,0,0,0.24)]"
       style={{
-        width: "min(1040px, calc(100vw - 6px))",
+        width: panelWidth,
         maxWidth: "calc(100vw - 6px)",
       }}
     >
+      <button
+        type="button"
+        aria-label="Resize settings panel"
+        onPointerDown={handlePanelResizePointerDown}
+        className="absolute left-0 top-0 z-20 h-full w-3 cursor-col-resize bg-transparent touch-none"
+      />
       <div className="flex h-full min-w-0 flex-col">
         <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-panel)] px-5 py-4">
           <div className="flex items-start justify-between gap-4">
@@ -1186,10 +1332,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 text-[12px] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text-primary)]"
               title="Close"
+              aria-label="Close settings"
             >
-              <span>关闭</span>
               <X size={14} />
             </button>
           </div>
@@ -1220,13 +1366,13 @@ export const AgentSettingsPanel: React.FC<Props> = ({
         <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {secondaryTabs ? (
             <div className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-panel-muted)] px-6 py-3">
-              <div className="flex gap-2 overflow-x-auto pb-0.5">
+              <div className="scrollbar-none flex gap-2 overflow-x-auto pb-0.5">
                 {secondaryTabs}
               </div>
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-4">
               <div className="border-b border-[var(--app-border)] pb-4">
                 <div className="flex items-center gap-2 text-[20px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
@@ -1861,7 +2007,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "tools" && (
+              {selectedPanel === "ability" && abilitySection === "tools" && (
                 <div className="space-y-6">
                   {TOOL_ITEMS.map((activeToolItem) => {
                     const ActiveToolIcon = activeToolItem.Icon;
@@ -2183,7 +2329,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "skills" && (
+              {selectedPanel === "ability" && abilitySection === "skills" && (
                 <div className="space-y-4">
                   {availableAgentSkills.length ? (
                     <>
@@ -2234,7 +2380,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "identity" && (
+              {selectedPanel === "assets" && assetsUnit === "identity" && (
                 <CharacterSceneLibraryPanel
                   projectData={projectData}
                   setProjectData={setProjectData}
@@ -2725,13 +2871,42 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "assets" && (
+              {selectedPanel === "assets" && assetsUnit !== "identity" && (
                 <div className="space-y-4">
                   <MaterialsPanel
                     activeSection={assetsSection}
                     onActiveSectionChange={setAssetsSection}
                     showSidebar={false}
                   />
+                </div>
+              )}
+
+              {selectedPanel === "lab" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { key: "glassLab" as const, title: "Glass Lab", detail: "调试玻璃、折射与悬浮面板的视觉参数。", Icon: ScanSearch },
+                    { key: "filmRollLab" as const, title: "Film Lab", detail: "校准胶卷盒、leader、阴影和胶片实验室视觉系统。", Icon: ScanSearch },
+                    { key: "agentLab" as const, title: "Agent Lab", detail: "检查 Agent runtime、工具调用与实验性能力面板。", Icon: Braces },
+                  ].map((lab) => (
+                    <button
+                      key={lab.key}
+                      type="button"
+                      onClick={() => onOpenVisualLab?.(lab.key)}
+                      disabled={!onOpenVisualLab}
+                      className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)]">
+                          <lab.Icon size={16} />
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">{lab.title}</div>
+                          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">independent lab</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">{lab.detail}</div>
+                    </button>
+                  ))}
                 </div>
               )}
 

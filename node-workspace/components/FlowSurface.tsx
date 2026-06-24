@@ -66,7 +66,8 @@ import {
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
 import { createEmptyNodeFlowApprovalState } from "../nodeflow/approvals";
 import { createIdleNodeFlowExecutionState } from "../nodeflow/sessionState";
-import { buildNodeFlowFile, downloadNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
+import { buildNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
+import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import {
@@ -3093,8 +3094,8 @@ export const useFlowSurface = ({
     [flowRuntimeContext, setProjectData]
   );
 
-  const handleExportScriptNodeFlow = useCallback(() => {
-    downloadNodeFlowFile(
+  const handleExportScriptNodeFlow = useCallback(async () => {
+    await downloadNodeFlowPackage(
       buildNodeFlowFile({
         revision: flow.revision || 0,
         nodes: flowRuntimeNodes,

@@ -12,7 +12,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { NodeFlowFile, NodeType, VideoGenNodeData } from "../types";
+import { NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
@@ -36,6 +36,7 @@ import type {
 } from "./qalam/interactionTypes";
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
+import { readNodeFlowImportFile } from "../nodeflow/package";
 
 interface CreativeWorkspaceProps {
   projectData: ProjectData;
@@ -697,7 +698,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   );
 
   const handleFlowExport = useCallback(() => {
-    flowSurface.actions?.exportNodeFlow?.();
+    void flowSurface.actions?.exportNodeFlow?.();
   }, [flowSurface.actions]);
 
   const handleFlowRunAll = useCallback(() => {
@@ -708,16 +709,14 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const data = JSON.parse(evt.target?.result as string) as NodeFlowFile;
+      readNodeFlowImportFile(file)
+        .then((data) => {
           flowSurface.actions?.importNodeFlow?.(data);
-        } catch (err) {
-          alert("Failed to import Flow JSON");
-        }
-      };
-      reader.readAsText(file);
+        })
+        .catch((err) => {
+          console.error("Failed to import Flow package", err);
+          alert("Failed to import Qalam project package");
+        });
       event.target.value = "";
     },
     [flowSurface.actions]
@@ -1229,7 +1228,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           </div>
         </>
       )}
-      <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleFileImport} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".qalam.zip,.zip,.json,application/json,application/zip"
+        className="hidden"
+        onChange={handleFileImport}
+      />
     </div>
   );
 };

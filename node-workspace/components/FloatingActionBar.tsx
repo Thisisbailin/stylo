@@ -89,15 +89,11 @@ export const FloatingActionBar: React.FC<Props> = ({
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [ioPane, setIoPane] = useState<"project" | "export">("project");
   const [nodePaletteMode, setNodePaletteMode] = useState<"panels" | "workflow">("workflow");
-  const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1440));
-  const [fileMenuWidth, setFileMenuWidth] = useState(360);
-  const [isResizingFileMenu, setIsResizingFileMenu] = useState(false);
   const scriptInputRef = useRef<HTMLInputElement>(null);
   const accountButtonRef = useRef<HTMLButtonElement>(null);
   const nodesButtonRef = useRef<HTMLButtonElement>(null);
   const fileMenuPanelRef = useRef<HTMLDivElement>(null);
   const palettePanelRef = useRef<HTMLDivElement>(null);
-  const fileMenuResizeRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null);
   const [accountAnchorRect, setAccountAnchorRect] = useState<DOMRect | null>(null);
   const [globalAccountHost, setGlobalAccountHost] = useState<HTMLElement | null>(null);
   const [nodesAnchorRect, setNodesAnchorRect] = useState<DOMRect | null>(null);
@@ -169,7 +165,8 @@ export const FloatingActionBar: React.FC<Props> = ({
   const fileMenuPopoverStyle = useMemo((): React.CSSProperties | undefined => {
     if (typeof window === "undefined") return undefined;
     const viewportPadding = 12;
-    const width = Math.min(fileMenuWidth, window.innerWidth - viewportPadding * 2);
+    const fixedWidth = 360;
+    const width = Math.min(fixedWidth, window.innerWidth - viewportPadding * 2);
     if (!accountAnchorRect) {
       return {
         position: "fixed",
@@ -193,17 +190,7 @@ export const FloatingActionBar: React.FC<Props> = ({
       width,
       maxWidth: `calc(100vw - ${viewportPadding * 2}px)`,
     };
-  }, [accountAnchorRect, fileMenuWidth]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const syncViewportWidth = () => setViewportWidth(window.innerWidth);
-    syncViewportWidth();
-    window.addEventListener("resize", syncViewportWidth);
-    return () => {
-      window.removeEventListener("resize", syncViewportWidth);
-    };
-  }, []);
+  }, [accountAnchorRect]);
 
   useEffect(() => {
     if (!showGlobalAccountTrigger || !globalAccountHostId || typeof document === "undefined") {
@@ -214,54 +201,6 @@ export const FloatingActionBar: React.FC<Props> = ({
     const nextHost = document.getElementById(globalAccountHostId);
     setGlobalAccountHost((current) => (current === nextHost ? current : nextHost));
   });
-
-  useEffect(() => {
-    const maxWidth = Math.max(320, viewportWidth - 24);
-    setFileMenuWidth((current) => Math.min(maxWidth, Math.max(320, current)));
-  }, [viewportWidth]);
-
-  useEffect(() => {
-    const activeResize = fileMenuResizeRef.current;
-    if (!isResizingFileMenu || !activeResize || typeof window === "undefined") return;
-
-    const maxWidth = Math.max(320, viewportWidth - 24);
-
-    const stopResizing = (event?: PointerEvent) => {
-      if (event && event.pointerId !== activeResize.pointerId) return;
-      fileMenuResizeRef.current = null;
-      setIsResizingFileMenu(false);
-      document.body.classList.remove("qalam-resizing");
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", stopResizing);
-      window.removeEventListener("pointercancel", stopResizing);
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      if (event.pointerId !== activeResize.pointerId) return;
-      const nextWidth = activeResize.startWidth + (activeResize.startX - event.clientX);
-      setFileMenuWidth(Math.min(maxWidth, Math.max(320, nextWidth)));
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", stopResizing);
-    window.addEventListener("pointercancel", stopResizing);
-    document.body.classList.add("qalam-resizing");
-
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", stopResizing);
-      window.removeEventListener("pointercancel", stopResizing);
-      document.body.classList.remove("qalam-resizing");
-    };
-  }, [isResizingFileMenu, viewportWidth]);
-
-  useEffect(
-    () => () => {
-      fileMenuResizeRef.current = null;
-      document.body.classList.remove("qalam-resizing");
-    },
-    []
-  );
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -337,20 +276,6 @@ export const FloatingActionBar: React.FC<Props> = ({
   const closeMenus = () => {
     setShowPalette(false);
     setShowFileMenu(false);
-  };
-
-  const handleFileMenuResizePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    fileMenuResizeRef.current = {
-      startX: event.clientX,
-      startWidth: fileMenuWidth,
-      pointerId: event.pointerId,
-    };
-    setIsResizingFileMenu(true);
-    document.body.classList.add("qalam-resizing");
   };
 
   const handleAssetFileChange = (
@@ -443,8 +368,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <SquareStack size={16} />
               </span>
               <span className="min-w-0">
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Project</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目包</span>
               </span>
             </div>
           </button>
@@ -491,8 +416,8 @@ export const FloatingActionBar: React.FC<Props> = ({
                 <Share size={16} />
               </span>
               <span>
-                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Node</span>
-                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">节点快照</span>
+                <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Project</span>
+                <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">项目包</span>
               </span>
             </div>
           </button>
@@ -682,15 +607,6 @@ export const FloatingActionBar: React.FC<Props> = ({
             className={`fixed z-[59] animate-in fade-in duration-200 overflow-hidden ${panelClass}`}
             style={{ ...panelStyle, ...fileMenuPopoverStyle }}
           >
-            <button
-              type="button"
-              aria-label="Resize account panel"
-              title="Drag to resize"
-              onPointerDown={handleFileMenuResizePointerDown}
-              className="absolute left-0 top-0 z-10 h-full w-3 cursor-col-resize border-r border-[var(--app-border)] bg-transparent transition hover:bg-[var(--app-panel-soft)] touch-none"
-            >
-              <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--app-border-strong)] opacity-60" />
-            </button>
             <div className="max-h-[min(74vh,640px)] space-y-4 overflow-y-auto p-4">
               <div className="space-y-3">
                 {!accountLoaded ? (
@@ -720,8 +636,40 @@ export const FloatingActionBar: React.FC<Props> = ({
                         </div>
                       )}
                           <div className="min-w-0 flex-1 space-y-1.5">
-                            <div className="text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
-                            {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
+                            <div className="flex min-w-0 items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{accountName}</div>
+                                {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                {handleUploadAvatar ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUploadAvatar();
+                                      closeMenus();
+                                    }}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+                                    title="Upload avatar"
+                                    aria-label="Upload avatar"
+                                  >
+                                    <Upload size={14} />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleSignOut?.();
+                                    closeMenus();
+                                  }}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+                                  title="Sign out"
+                                  aria-label="Sign out"
+                                >
+                                  <LogOut size={14} />
+                                </button>
+                              </div>
+                            </div>
                             <div className="flex flex-wrap gap-2 pt-1">
                           {["Global account", "Workspace"].map((chip) => (
                                 <span
@@ -739,42 +687,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                         {accountThemeControls}
                       </div>
                     ) : null}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {handleUploadAvatar ? (
-                        <button
-                          type="button"
-                          className={utilityButtonClass}
-                          onClick={() => {
-                            handleUploadAvatar();
-                            closeMenus();
-                          }}
-                        >
-                          <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]">
-                            <Upload size={16} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Avatar</span>
-                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">上传账户头像</span>
-                          </span>
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={utilityButtonClass}
-                        onClick={() => {
-                          handleSignOut?.();
-                          closeMenus();
-                        }}
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-primary)]">
-                          <LogOut size={16} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[12px] font-semibold text-[var(--app-text-primary)]">Sign Out</span>
-                          <span className="mt-0.5 block text-[10px] text-[var(--app-text-secondary)]">退出当前账户</span>
-                        </span>
-                      </button>
-                    </div>
                     </div>
                   ) : (
                     <div className="space-y-3">

@@ -39,10 +39,10 @@ import { type NodeFlowCanvasLink, type NodeFlowCanvasNode } from "../nodeflow/re
 import { buildViduReferenceDemoState } from "../nodeflow/compositions";
 import {
   buildNodeFlowFile,
-  downloadNodeFlowFile,
   getMaxNodeFlowNodeSuffix,
   hydrateImportedNodeFlow,
 } from "../nodeflow/serialization";
+import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { buildConnectedInputs, type NodeFlowConnectedInputs, validateNodeFlowState } from "../nodeflow/queries";
 import {
   createEmptyNodeFlowCanvasState,
@@ -142,7 +142,7 @@ interface NodeFlowStore {
   setPausedNode: (nodeId: string | null) => void;
 
   // Save/Load
-  exportNodeFlow: (name?: string) => void;
+  exportNodeFlow: (name?: string) => Promise<void>;
   importNodeFlow: (nodeFlow: NodeFlowFile) => void;
   clearNodeFlow: () => void;
   applyViduReferenceDemo: (offset?: XYPosition, options?: RevisionGuardOptions) => { ok: boolean; error?: string };
@@ -398,7 +398,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
 
   validateNodeFlow: () => validateNodeFlowState({ nodes: get().nodes, links: get().links }),
 
-  exportNodeFlow: (name) => {
+  exportNodeFlow: async (name) => {
     const { revision, nodes, links, graphLinks, linkStyle, globalAssetHistory, nodeFlowContext, viewport, activeView } = get();
     const nodeFlow = buildNodeFlowFile({
       revision,
@@ -412,7 +412,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
       activeView,
       name,
     });
-    downloadNodeFlowFile(nodeFlow);
+    await downloadNodeFlowPackage(nodeFlow);
   },
 
   importNodeFlow: (nodeFlow) => {
