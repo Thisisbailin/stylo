@@ -288,7 +288,7 @@ export interface QalamSkillLoader {
 
 export type AgentSessionMessage =
   | {
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "reasoning";
       text: string;
       createdAt: number;
     }

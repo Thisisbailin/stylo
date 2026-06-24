@@ -44,6 +44,32 @@ const extractTextParts = (content: unknown): string[] => {
     .filter(Boolean);
 };
 
+const extractReasoningText = (item: any) => {
+  const rawContent = Array.isArray(item?.rawContent) ? item.rawContent : [];
+  const rawText = rawContent
+    .map((part: any) => {
+      if (!part || typeof part !== "object") return "";
+      if (typeof part.text === "string") return part.text;
+      if (typeof part.reasoning_content === "string") return part.reasoning_content;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (rawText) return rawText;
+  const content = Array.isArray(item?.content) ? item.content : [];
+  return content
+    .map((part: any) => {
+      if (!part || typeof part !== "object") return "";
+      if (typeof part.text === "string") return part.text;
+      if (typeof part.reasoning_content === "string") return part.reasoning_content;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+};
+
 const summarizeToolOutput = (output: unknown) => {
   if (typeof output === "string") {
     try {
@@ -82,6 +108,11 @@ const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBa
       return text ? [{ role: "assistant" as const, text, createdAt }] : [];
     }
 
+    if ((item as any).type === "reasoning") {
+      const text = extractReasoningText(item);
+      return text ? [{ role: "reasoning" as const, text, createdAt }] : [];
+    }
+
     if ((item as any).type === "function_call_result") {
       return [
         {
@@ -114,7 +145,7 @@ const normalizeSessionMessage = (message: any): AgentSessionMessage | null => {
       toolOutput: message.toolOutput,
     };
   }
-  if (message.role === "user" || message.role === "assistant") {
+  if (message.role === "user" || message.role === "assistant" || message.role === "reasoning") {
     return {
       role: message.role,
       text: typeof message.text === "string" ? message.text : "",

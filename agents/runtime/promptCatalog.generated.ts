@@ -25,21 +25,21 @@ export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
     "chars": 141
   },
   {
-    "id": "b76167e62861",
-    "title": "content · L396",
+    "id": "7743dfa31023",
+    "title": "content · L427",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 396,
+    "sourceLine": 427,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise durable summary. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and latest tool outcomes. Do not invent facts. Prefer short bullet-like lines.",
     "kind": "instruction",
     "chars": 264
   },
   {
-    "id": "b89fa026b84b",
-    "title": "text · L573",
+    "id": "415865dd6b50",
+    "title": "text · L604",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 573,
+    "sourceLine": 604,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise, durable summary of prior context. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and the latest successful/failed tool outcomes. Do not invent facts. Prefer bullet-like short lines over prose.",
     "kind": "instruction",
     "chars": 315
