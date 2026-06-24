@@ -236,7 +236,7 @@ The project sync endpoints create and evolve the required D1 tables in code, so 
 - `App.tsx`: top-level application shell
 - `node-workspace/components/CreativeWorkspace.tsx`: central `Flow` workspace
 - `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
-- `node-workspace/components/AgentSettingsPanel.tsx`: provider, tool, and runtime settings
+- `node-workspace/components/ProjectSettingsPanel.tsx`: project settings, assets, ability, sync, labs, and runtime configuration
 - `agents/`: Qalam agent runtime, unified graph tools, memory, bridge, and guardrails
 
 ## Repo Status

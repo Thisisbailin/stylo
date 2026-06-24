@@ -177,6 +177,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
   const statusSequenceRef = useRef<Record<string, number>>({});
   const activeReasoningStatusIdRef = useRef<Record<string, string | undefined>>({});
   const activeResponseStatusIdRef = useRef<Record<string, string | undefined>>({});
+  const preflightStatusIdRef = useRef<string | null>(null);
   const streamedMessageSeenRef = useRef<Record<string, boolean>>({});
   const toolFailureCountsRef = useRef<Record<string, Record<string, number>>>({});
   const runAbortMessageRef = useRef<Record<string, string | undefined>>({});
@@ -378,8 +379,31 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         toolFailureCountsRef.current[event.runId] = {};
         runAbortMessageRef.current[event.runId] = undefined;
         const statusId = ensureActiveStatusId(event.runId, "reasoning");
+        const preflightStatusId = preflightStatusIdRef.current;
+        preflightStatusIdRef.current = null;
         setMessages((prev) =>
-          upsertStatusMessage(prev, statusId, (current) => ({
+          upsertStatusMessage(
+            preflightStatusId
+              ? upsertStatusMessage(prev, preflightStatusId, (current) => ({
+                  role: "assistant",
+                  kind: "status",
+                  order: current?.order || nextMessageOrder(prev),
+                  statusCard: {
+                    id: preflightStatusId,
+                    runId: event.runId,
+                    status: "success",
+                    headline: "Agent 已连接",
+                    detail: "模型运行已启动。",
+                    summary: current?.statusCard.summary,
+                    steps: current?.statusCard.steps || [],
+                    startedAt: current?.statusCard.startedAt || Date.now(),
+                    updatedAt: Date.now(),
+                    isThinking: false,
+                  },
+                }))
+              : prev,
+            statusId,
+            (current) => ({
             role: "assistant",
             kind: "status",
             order: current?.order || nextMessageOrder(prev),
@@ -401,6 +425,29 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       }
 
       if (event.type === "trace") {
+        if (!activeRunIdRef.current && preflightStatusIdRef.current) {
+          const statusId = preflightStatusIdRef.current;
+          const status = event.entry.status === "error" ? "error" : "running";
+          setMessages((prev) =>
+            upsertStatusMessage(prev, statusId, (current) => ({
+              role: "assistant",
+              kind: "status",
+              order: current?.order || nextMessageOrder(prev),
+              statusCard: {
+                id: statusId,
+                runId: event.runId,
+                status,
+                headline: "连接 Agent",
+                detail: event.entry.detail || event.entry.title,
+                summary: event.entry.title,
+                steps: current?.statusCard.steps || [],
+                startedAt: current?.statusCard.startedAt || Date.now(),
+                updatedAt: Date.now(),
+                isThinking: true,
+              },
+            }))
+          );
+        }
         return;
       }
 
@@ -631,6 +678,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         });
         activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
+        preflightStatusIdRef.current = null;
         delete activeReasoningStatusIdRef.current[event.runId];
         delete activeResponseStatusIdRef.current[event.runId];
         delete statusSequenceRef.current[event.runId];
@@ -691,6 +739,27 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       });
       const controller = new AbortController();
       abortRef.current = controller;
+      const preflightStatusId = `preflight-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      preflightStatusIdRef.current = preflightStatusId;
+      setMessages((prev) =>
+        upsertStatusMessage(prev, preflightStatusId, (current) => ({
+          role: "assistant",
+          kind: "status",
+          order: current?.order || nextMessageOrder(prev),
+          statusCard: {
+            id: preflightStatusId,
+            runId: preflightStatusId,
+            status: "running",
+            headline: "连接 Agent",
+            detail: "请求已提交，正在连接 Edge runtime。",
+            summary: undefined,
+            steps: current?.statusCard.steps || [],
+            startedAt: current?.statusCard.startedAt || Date.now(),
+            updatedAt: Date.now(),
+            isThinking: true,
+          },
+        }))
+      );
       setIsRunning(true);
       try {
         const result = await runtime.run(
@@ -723,12 +792,36 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         if (displayedError && String(error?.message || error || "") === displayedError) {
           (error as DisplayAwareError).qalamAlreadyDisplayed = true;
         }
+        if (preflightStatusIdRef.current) {
+          const statusId = preflightStatusIdRef.current;
+          preflightStatusIdRef.current = null;
+          setMessages((prev) =>
+            upsertStatusMessage(prev, statusId, (current) => ({
+              role: "assistant",
+              kind: "status",
+              order: current?.order || nextMessageOrder(prev),
+              statusCard: {
+                id: statusId,
+                runId: statusId,
+                status: "error",
+                headline: "连接失败",
+                detail: String(error?.message || error || "Agent 请求失败。"),
+                summary: current?.statusCard.summary,
+                steps: current?.statusCard.steps || [],
+                startedAt: current?.statusCard.startedAt || Date.now(),
+                updatedAt: Date.now(),
+                isThinking: false,
+              },
+            }))
+          );
+        }
         browserAgentDebugError("useQalamAgent runtime error", error);
         throw error;
       } finally {
         abortRef.current = null;
         activeRunIdRef.current = null;
         activeRunStartedAtRef.current = null;
+        preflightStatusIdRef.current = null;
         setIsRunning(false);
       }
     },

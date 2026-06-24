@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { usePersistedState } from "../../hooks/usePersistedState";
+import { buildApiUrl } from "../../utils/api";
 import { AgentTextProvider, AppConfig, ProjectData, SyncState, type SeedanceKeyProbeResult } from "../../types";
 import {
   ARK_DEFAULT_MODEL,
@@ -81,7 +82,7 @@ type Props = {
   onForceSync?: () => void;
   onResetProject?: () => void;
   onOpenLanding?: () => void;
-  requestedPanel?: AgentSettingsPanelKey;
+  requestedPanel?: ProjectSettingsPanelKey;
   requestedAssetsSection?: MaterialsSectionKey;
   onOrganizeFoundationScaffold?: () => void;
   onSetFoundationNodeView?: (visible: boolean) => void;
@@ -89,7 +90,7 @@ type Props = {
   onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab">) => void;
 };
 
-export type AgentSettingsPanelKey =
+export type ProjectSettingsPanelKey =
   | "provider"
   | "ability"
   | "tools"
@@ -101,8 +102,7 @@ export type AgentSettingsPanelKey =
   | "sync"
   | "info";
 
-type AgentSettingsPrimaryPanelKey = Exclude<AgentSettingsPanelKey, "tools" | "skills" | "identity">;
-type AbilitySectionKey = "tools" | "skills";
+type ProjectSettingsPrimaryPanelKey = Exclude<ProjectSettingsPanelKey, "tools" | "skills" | "identity">;
 type AssetsUnitKey = MaterialsSectionKey | "identity";
 
 type ConversationRecord = {
@@ -420,20 +420,20 @@ const buildConversationTitle = (messages: Array<{ role?: string; text?: string }
   return text.length > 20 ? `${text.slice(0, 20)}...` : text;
 };
 
-const clampAgentSettingsWidth = (width: number, leftOffset: number) => {
+const clampProjectSettingsWidth = (width: number, leftOffset: number) => {
   if (typeof window === "undefined") return width;
   const availableWidth = Math.max(360, window.innerWidth - leftOffset - 6);
   const minWidth = Math.min(520, availableWidth);
   return Math.min(availableWidth, Math.max(minWidth, width));
 };
 
-const getDefaultAgentSettingsWidth = (leftOffset: number) => {
+const getDefaultProjectSettingsWidth = (leftOffset: number) => {
   if (typeof window === "undefined") return 720;
   const availableWidth = Math.max(360, window.innerWidth - leftOffset - 6);
-  return clampAgentSettingsWidth(Math.round(availableWidth / 2), leftOffset);
+  return clampProjectSettingsWidth(Math.round(availableWidth / 2), leftOffset);
 };
 
-export const AgentSettingsPanel: React.FC<Props> = ({
+export const ProjectSettingsPanel: React.FC<Props> = ({
   projectId,
   isOpen,
   onClose,
@@ -461,11 +461,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
-  const [selectedPanel, setSelectedPanel] = useState<AgentSettingsPrimaryPanelKey>("provider");
-  const [abilitySection, setAbilitySection] = useState<AbilitySectionKey>("tools");
+  const [selectedPanel, setSelectedPanel] = useState<ProjectSettingsPrimaryPanelKey>("provider");
   const [assetsSection, setAssetsSection] = useState<MaterialsSectionKey>("images");
   const [assetsUnit, setAssetsUnit] = useState<AssetsUnitKey>("images");
-  const [panelWidth, setPanelWidth] = useState(() => getDefaultAgentSettingsWidth(leftOffset));
+  const [panelWidth, setPanelWidth] = useState(() => getDefaultProjectSettingsWidth(leftOffset));
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const panelResizeRef = useRef<{ startX: number; startWidth: number; pointerId: number } | null>(null);
   const [historyFilter, setHistoryFilter] = useState<"all" | "user" | "assistant" | "tool">("all");
@@ -618,7 +617,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const syncPanelWidth = () => {
-      setPanelWidth((current) => clampAgentSettingsWidth(current, leftOffset));
+      setPanelWidth((current) => clampProjectSettingsWidth(current, leftOffset));
     };
     syncPanelWidth();
     window.addEventListener("resize", syncPanelWidth);
@@ -644,7 +643,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     const onPointerMove = (event: PointerEvent) => {
       if (event.pointerId !== activeResize.pointerId) return;
       const nextWidth = activeResize.startWidth + (activeResize.startX - event.clientX);
-      setPanelWidth(clampAgentSettingsWidth(nextWidth, leftOffset));
+      setPanelWidth(clampProjectSettingsWidth(nextWidth, leftOffset));
     };
 
     window.addEventListener("pointermove", onPointerMove);
@@ -685,7 +684,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       });
       const traceId = (traceIdOverride || selectedTraceId || "").trim();
       if (traceId) params.set("traceId", traceId);
-      const response = await fetch(`/api/agent-observability?${params.toString()}`, {
+      const response = await fetch(buildApiUrl(`/api/agent-observability?${params.toString()}`), {
         headers: {
           authorization: `Bearer ${token}`,
         },
@@ -822,7 +821,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     if (!isOpen) return;
     if (requestedPanel === "tools" || requestedPanel === "skills") {
       setSelectedPanel("ability");
-      setAbilitySection(requestedPanel);
       return;
     }
     if (requestedPanel === "identity") {
@@ -1135,12 +1133,12 @@ export const AgentSettingsPanel: React.FC<Props> = ({
       ? {
           label: "Provider",
           title: "Providers",
-          description: "统一管理 Agent 路线、模型和 runtime 基线，不再单独悬浮成居中弹窗。",
+          description: "统一管理项目级模型路线、Agent runtime 基线和多模态服务配置。",
         }
       : selectedPanel === "ability"
         ? {
             label: "Ability",
-            title: abilitySection === "tools" ? "Tools" : "Skills",
+            title: "Ability",
             description: "Agent 能力统一放在 Ability 下，Tools 是真实 runtime 操作面，Skills 是按需读取的方法层。",
           }
         : selectedPanel === "assets"
@@ -1179,11 +1177,11 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                       title: "Conversation & Trace",
                       description: "",
                     };
-  const primaryTabs: Array<{ key: AgentSettingsPrimaryPanelKey; label: string; Icon: React.ComponentType<{ size?: number; className?: string }>; meta?: string }> = [
+  const primaryTabs: Array<{ key: ProjectSettingsPrimaryPanelKey; label: string; Icon: React.ComponentType<{ size?: number; className?: string }>; meta?: string }> = [
     { key: "provider", label: "Provider", Icon: Sparkles, meta: "3" },
     { key: "ability", label: "Ability", Icon: Code2, meta: `${TOOL_ITEMS.length + availableAgentSkills.length}` },
     { key: "assets", label: "Assets", Icon: Boxes, meta: `${imageAssetCount + videoAssetCount + promptAssetCount + (projectData.roles?.length || 0)}` },
-    { key: "lab", label: "Lab", Icon: ScanSearch, meta: "3" },
+    { key: "lab", label: "Lab", Icon: ScanSearch, meta: "5" },
     { key: "history", label: "History", Icon: Cloud, meta: `${conversationState.items.length}` },
     { key: "sync", label: "Sync", Icon: Cloud, meta: syncState?.project.status || "local" },
     { key: "info", label: "Info", Icon: FileText },
@@ -1197,22 +1195,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
     }`;
 
   const renderSecondaryTabs = () => {
-    if (selectedPanel === "ability") {
-      return (
-        <>
-          {[
-            { key: "tools" as const, label: "Tools", count: TOOL_ITEMS.length, Icon: Code2 },
-            { key: "skills" as const, label: "Skills", count: availableAgentSkills.length || 0, Icon: Sparkles },
-          ].map((item) => (
-            <button key={item.key} type="button" onClick={() => setAbilitySection(item.key)} className={subTabClass(abilitySection === item.key)}>
-              <item.Icon size={12} />
-              {item.label}
-              <span className="text-[10px] text-[var(--app-text-muted)]">{item.count}</span>
-            </button>
-          ))}
-        </>
-      );
-    }
     if (selectedPanel === "assets") {
       return (
         <>
@@ -1279,24 +1261,6 @@ export const AgentSettingsPanel: React.FC<Props> = ({
         </>
       );
     }
-    if (selectedPanel === "lab") {
-      return (
-        <>
-          <button type="button" onClick={() => onOpenVisualLab?.("glassLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
-            <ScanSearch size={12} />
-            Glass Lab
-          </button>
-          <button type="button" onClick={() => onOpenVisualLab?.("filmRollLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
-            <ScanSearch size={12} />
-            Film Lab
-          </button>
-          <button type="button" onClick={() => onOpenVisualLab?.("agentLab")} disabled={!onOpenVisualLab} className={subTabClass(false)}>
-            <Braces size={12} />
-            Agent Lab
-          </button>
-        </>
-      );
-    }
     return null;
   };
   const secondaryTabs = renderSecondaryTabs();
@@ -1319,14 +1283,10 @@ export const AgentSettingsPanel: React.FC<Props> = ({
         <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-panel)] px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">Setting</div>
-              <div className="mt-1 flex min-w-0 items-center gap-3">
-                <div className="truncate text-[18px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
-                  Qalam Agent
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="truncate text-[22px] font-semibold tracking-[-0.03em] text-[var(--app-text-primary)]">
+                  Setting
                 </div>
-                <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2.5 py-1 text-[10px] text-[var(--app-text-secondary)]">
-                  {panelMeta.label}
-                </span>
               </div>
             </div>
             <button
@@ -1391,7 +1351,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                     <div className="order-[10] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
                       <div className="text-[11px] uppercase tracking-widest app-text-muted">Chat Providers</div>
                       <div className="text-[11px] text-[var(--app-text-muted)]">
-                        Qalam Agent 已切换到 OpenAI Agents SDK runtime。当前支持 `Qwen`、`Seed / Ark` 与 `OpenRouter` 三条常规 API 路线。
+                        项目设置统一承载模型、Agent runtime 与多模态服务。当前支持 `Qwen`、`Seed / Ark` 与 `OpenRouter` 三条常规 API 路线。
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {[
@@ -1493,7 +1453,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                Uses the same Qalam Agent core through the OpenAI Agents SDK Chat Completions transport. Configure DEEPSEEK_API_KEY in Edge, or VITE_DEEPSEEK_API_KEY for local browser runtime.
+                Uses the same project agent core through the OpenAI Agents SDK Chat Completions transport. Configure DEEPSEEK_API_KEY in Edge, or VITE_DEEPSEEK_API_KEY for local browser runtime.
               </div>
               <div className="space-y-4">
                 <div>
@@ -2007,8 +1967,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "ability" && abilitySection === "tools" && (
+              {selectedPanel === "ability" && (
                 <div className="space-y-6">
+                  <div className="border-b border-[var(--app-border)] pb-3">
+                    <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">Tools</div>
+                    <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
+                      Runtime 操作面，负责读取事实、沉淀资产并写回 Flow。
+                    </div>
+                  </div>
                   {TOOL_ITEMS.map((activeToolItem) => {
                     const ActiveToolIcon = activeToolItem.Icon;
                     const activeTool = activeToolItem.key;
@@ -2329,8 +2295,14 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {selectedPanel === "ability" && abilitySection === "skills" && (
-                <div className="space-y-4">
+              {selectedPanel === "ability" && (
+                <div className="space-y-4 border-t border-[var(--app-border)] pt-6">
+                  <div>
+                    <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">Skills</div>
+                    <div className="mt-1 text-[11px] leading-5 text-[var(--app-text-secondary)]">
+                      按需读取的方法层，作为 Agent 能力的工作方式说明。
+                    </div>
+                  </div>
                   {availableAgentSkills.length ? (
                     <>
                       {availableAgentSkills.map((activeSkill) => (
@@ -2882,17 +2854,21 @@ export const AgentSettingsPanel: React.FC<Props> = ({
               )}
 
               {selectedPanel === "lab" && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                   {[
-                    { key: "glassLab" as const, title: "Glass Lab", detail: "调试玻璃、折射与悬浮面板的视觉参数。", Icon: ScanSearch },
-                    { key: "filmRollLab" as const, title: "Film Lab", detail: "校准胶卷盒、leader、阴影和胶片实验室视觉系统。", Icon: ScanSearch },
-                    { key: "agentLab" as const, title: "Agent Lab", detail: "检查 Agent runtime、工具调用与实验性能力面板。", Icon: Braces },
+                    { key: "glassLab", actionKey: "glassLab" as const, title: "Glass Lab", detail: "调试玻璃、折射与悬浮面板的视觉参数。", Icon: ScanSearch, status: "independent lab" },
+                    { key: "filmRollLab", actionKey: "filmRollLab" as const, title: "Film Lab", detail: "校准胶卷盒、leader、阴影和胶片实验室视觉系统。", Icon: ScanSearch, status: "independent lab" },
+                    { key: "agentLab", actionKey: "agentLab" as const, title: "Agent Lab", detail: "检查 Agent runtime、工具调用与实验性能力面板。", Icon: Braces, status: "independent lab" },
+                    { key: "lookbookLab", title: "Lookbook Lab", detail: "前期美术设定占位：把角色或场景相关内容组织成类似时尚行业 lookbook 的视觉册。", Icon: FileText, status: "placeholder" },
+                    { key: "cinewor", title: "Cinewor", detail: "后期镜头调度占位：未来探索以 3D 空间预览 AI 演员、机位和电影镜头调度。", Icon: Video, status: "placeholder" },
                   ].map((lab) => (
                     <button
                       key={lab.key}
                       type="button"
-                      onClick={() => onOpenVisualLab?.(lab.key)}
-                      disabled={!onOpenVisualLab}
+                      onClick={() => {
+                        if (lab.actionKey) onOpenVisualLab?.(lab.actionKey);
+                      }}
+                      disabled={!lab.actionKey || !onOpenVisualLab}
                       className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <div className="flex items-center gap-3">
@@ -2901,7 +2877,7 @@ export const AgentSettingsPanel: React.FC<Props> = ({
                         </div>
                         <div>
                           <div className="text-[13px] font-semibold text-[var(--app-text-primary)]">{lab.title}</div>
-                          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">independent lab</div>
+                          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">{lab.status}</div>
                         </div>
                       </div>
                       <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">{lab.detail}</div>

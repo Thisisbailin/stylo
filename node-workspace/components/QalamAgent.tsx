@@ -5,6 +5,7 @@ import { usePersistedState } from "../../hooks/usePersistedState";
 import { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode } from "../types";
 import { createStableId } from "../../utils/id";
+import { buildApiUrl } from "../../utils/api";
 import { ARK_DEFAULT_MODEL, DEEPSEEK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import {
   GLASS_DIFFUSION_PRESETS,
@@ -678,7 +679,7 @@ export const QalamAgent: React.FC<Props> = ({
   const edgeRuntime = useMemo(
     () =>
       createHttpQalamAgentRuntime({
-        endpoint: "/api/agent",
+        endpoint: buildApiUrl("/api/agent"),
         getRuntimeConfig: () => ({
           provider: config.textConfig?.agentProvider || config.textConfig?.provider,
           model: resolveAgentRuntimeModel(config.textConfig),

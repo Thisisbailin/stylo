@@ -18,7 +18,7 @@ import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
-import type { AgentSettingsPanelKey } from './node-workspace/components/AgentSettingsPanel';
+import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import { LandingPage } from './components/LandingPage';
@@ -137,7 +137,7 @@ const App: React.FC = () => {
   const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
 
   const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
-  const [agentSettingsRequest, setAgentSettingsRequest] = useState<{ panel: AgentSettingsPanelKey; nonce: number } | null>(null);
+  const [projectSettingsRequest, setProjectSettingsRequest] = useState<{ panel: ProjectSettingsPanelKey; nonce: number } | null>(null);
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
@@ -163,8 +163,8 @@ const App: React.FC = () => {
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
 
-  const openAgentSettings = useCallback((panel: AgentSettingsPanelKey = "provider") => {
-    setAgentSettingsRequest({ panel, nonce: Date.now() });
+  const openProjectSettings = useCallback((panel: ProjectSettingsPanelKey = "provider") => {
+    setProjectSettingsRequest({ panel, nonce: Date.now() });
   }, []);
   useEffect(() => {
     const syncAppView = () => setAppView(readAppViewFromLocation());
@@ -195,15 +195,15 @@ const App: React.FC = () => {
 
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
-      openAgentSettings("assets");
+      openProjectSettings("assets");
       return;
     }
     if (key === 'scenes') {
-      openAgentSettings("assets");
+      openProjectSettings("assets");
       return;
     }
     setOpenLabModal(key);
-  }, [openAgentSettings]);
+  }, [openProjectSettings]);
 
   const closeLabModal = useCallback(() => {
     setOpenLabModal(null);
@@ -573,7 +573,7 @@ const App: React.FC = () => {
         syncRollout={syncRollout}
         onForceSync={forceCloudPull}
         onOpenLanding={openLandingPage}
-        externalAgentSettingsRequest={agentSettingsRequest}
+        externalProjectSettingsRequest={projectSettingsRequest}
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
         onResetProject={handleResetProject}
@@ -608,7 +608,7 @@ const App: React.FC = () => {
               isOnline={isOnline}
               isSignedIn={!!authSignedIn}
               syncRollout={syncRollout}
-              onOpenDetails={() => openAgentSettings("sync")}
+              onOpenDetails={() => openProjectSettings("sync")}
               onForceSync={forceCloudPull}
               onClose={() => setIsSyncBannerDismissed(true)}
             />

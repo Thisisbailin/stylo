@@ -13,6 +13,7 @@ import {
 import OpenAI from "openai";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import { createQalamTools } from "../tools";
+import { installDeepSeekChatCompletionsCompatibility } from "./deepseekCompat";
 import { buildAgentEnvironment } from "./environment";
 import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guardrails";
 import { composeAgentInstructions } from "./instructions";
@@ -305,6 +306,9 @@ export const runQalamAgentCore = async ({
     defaultHeaders: config.defaultHeaders,
     dangerouslyAllowBrowser: runtimeMode === "browser",
   });
+  if (config.provider === "deepseek" && apiMode === "chat_completions") {
+    installDeepSeekChatCompletionsCompatibility(client);
+  }
   if (apiMode === "responses") {
     instrumentOpenAIResponsesClient(client, {
       emitTrace,
@@ -390,6 +394,15 @@ export const runQalamAgentCore = async ({
     modelSettings: {
       toolChoice: resolvedToolChoice,
       parallelToolCalls: false,
+      ...(config.provider === "deepseek"
+        ? {
+            reasoning: { effort: "high" },
+            providerData: {
+              thinking: { type: "enabled" },
+              reasoning_effort: "high",
+            },
+          }
+        : {}),
     },
     inputGuardrails: createQalamInputGuardrails(),
     outputGuardrails: createQalamOutputGuardrails(),
@@ -439,6 +452,22 @@ export const runQalamAgentCore = async ({
         if (value.type !== "raw_model_stream_event") continue;
         const providerEvent = unwrapProviderEvent((value as any).data);
         const rawType = providerEvent?.type || (value as any)?.data?.type;
+        const chatDelta = Array.isArray(providerEvent?.choices) ? providerEvent.choices[0]?.delta : null;
+        const chatReasoningDelta =
+          typeof chatDelta?.reasoning_content === "string"
+            ? chatDelta.reasoning_content
+            : typeof chatDelta?.reasoning === "string"
+              ? chatDelta.reasoning
+              : "";
+        if (chatReasoningDelta) {
+          streamedReasoningText += chatReasoningDelta;
+          onEvent?.({
+            type: "reasoning_delta",
+            runId,
+            delta: chatReasoningDelta,
+            accumulatedText: streamedReasoningText,
+          });
+        }
         if (rawType === "output_text_delta" && typeof providerEvent?.delta === "string") {
           streamedTextDelta += providerEvent.delta;
           onEvent?.({

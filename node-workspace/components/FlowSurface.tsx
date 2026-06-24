@@ -268,7 +268,7 @@ type Props = {
   onAgentComposerAction?: () => void;
   isAgentSending?: boolean;
   isAgentFirstMode?: boolean;
-  onOpenAgentSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
+  onOpenProjectSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
   onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
   pendingScriptReviewNodeIds?: ReadonlySet<string>;
 };
@@ -623,7 +623,7 @@ type ScriptFoundationProps = {
   onAgentComposerAction?: () => void;
   isAgentSending?: boolean;
   isAgentFirstMode?: boolean;
-  onOpenAgentSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
+  onOpenProjectSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
   onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
   onOpenMarkdownCard?: () => void;
   onCloseMarkdownCard?: () => void;
@@ -663,6 +663,27 @@ const sanitizeScriptMeasured = (measured?: { width?: unknown; height?: unknown }
   const width = typeof measured.width === "number" && Number.isFinite(measured.width) && measured.width > 0 ? measured.width : undefined;
   const height = typeof measured.height === "number" && Number.isFinite(measured.height) && measured.height > 0 ? measured.height : undefined;
   return width || height ? { width, height } : undefined;
+};
+
+const remapImportedFoundationNodeData = (
+  data: NodeFlowNodeData,
+  idMap: Map<string, string>
+): NodeFlowNodeData => {
+  const nextData = { ...data } as NodeFlowNodeData & {
+    foundationParentId?: string;
+    foundationContainerId?: string;
+    boundaryNodeIds?: string[];
+  };
+  if (typeof nextData.foundationParentId === "string") {
+    nextData.foundationParentId = idMap.get(nextData.foundationParentId) || nextData.foundationParentId;
+  }
+  if (typeof nextData.foundationContainerId === "string") {
+    nextData.foundationContainerId = idMap.get(nextData.foundationContainerId) || nextData.foundationContainerId;
+  }
+  if (Array.isArray(nextData.boundaryNodeIds)) {
+    nextData.boundaryNodeIds = nextData.boundaryNodeIds.map((nodeId) => idMap.get(nodeId) || nodeId);
+  }
+  return nextData;
 };
 
 const getFlowNodeVirtualSize = (node: Pick<NodeFlowNode, "type" | "style" | "measured">) => {
@@ -761,7 +782,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onAgentComposerAction,
   isAgentSending = false,
   isAgentFirstMode = false,
-  onOpenAgentSettingsPanel,
+  onOpenProjectSettingsPanel,
   onOpenVisualLab,
   onOpenMarkdownCard,
   onCloseMarkdownCard,
@@ -996,7 +1017,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     panel: FoundationGatewaySettingsPanel,
     assetsSection?: FoundationGatewayAssetsSection
   ) => {
-    onOpenAgentSettingsPanel?.(panel, assetsSection);
+    onOpenProjectSettingsPanel?.(panel, assetsSection);
     setIsFoundationGatewayOpen(false);
     setProjectDraft(null);
     onCloseMarkdownCard?.();
@@ -1440,7 +1461,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                     <Boxes size={18} strokeWidth={1.9} />
                   </span>
                   <div>
-                    <span>Qalam Setting</span>
+                    <span>Project Setting</span>
                     <strong>Assets</strong>
                   </div>
                 </div>
@@ -1468,7 +1489,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                     <Sparkles size={18} strokeWidth={1.9} />
                   </span>
                   <span>
-                    <span>Qalam Setting</span>
+                    <span>Project Setting</span>
                     <strong>Skills</strong>
                   </span>
                 </span>
@@ -1724,7 +1745,7 @@ export const useFlowSurface = ({
   onAgentComposerAction,
   isAgentSending,
   isAgentFirstMode,
-  onOpenAgentSettingsPanel,
+  onOpenProjectSettingsPanel,
   onOpenVisualLab,
   pendingScriptReviewNodeIds,
 }: Props): CanvasSurfaceConfig => {
@@ -3027,13 +3048,23 @@ export const useFlowSurface = ({
         ]);
         const idMap = new Map<string, string>();
         const now = Date.now();
-        const importedNodes = hydrated.nodes.map((node, index) => {
+        hydrated.nodes.forEach((node, index) => {
           let nextId = node.id;
           if (existingIds.has(nextId) || isScriptPageNodeId(nextId) || isMarkdownNodeId(nextId)) {
             nextId = `script-flow-${node.type}-${now}-${index}`;
           }
           existingIds.add(nextId);
           idMap.set(node.id, nextId);
+        });
+        const importedNodes = hydrated.nodes.map((node, index) => {
+          const nextId = idMap.get(node.id) || node.id;
+          const remappedData = remapImportedFoundationNodeData(
+            {
+              ...createDefaultNodeFlowNodeData(node.type),
+              ...(node.data || {}),
+            } as NodeFlowNodeData,
+            idMap
+          );
           return {
             ...node,
             id: nextId,
@@ -3043,10 +3074,7 @@ export const useFlowSurface = ({
               y: (node.position?.y || 0) + 80,
             },
             selected: false,
-            data: {
-              ...createDefaultNodeFlowNodeData(node.type),
-              ...(node.data || {}),
-            } as NodeFlowNodeData,
+            data: remappedData,
           };
         });
         const placedImportedNodes = normalizeNodeFlowNodePositions({
@@ -3549,7 +3577,7 @@ export const useFlowSurface = ({
           onAgentComposerAction={onAgentComposerAction}
           isAgentSending={isAgentSending}
           isAgentFirstMode={isAgentFirstMode}
-          onOpenAgentSettingsPanel={onOpenAgentSettingsPanel}
+          onOpenProjectSettingsPanel={onOpenProjectSettingsPanel}
           onOpenVisualLab={onOpenVisualLab}
           onOpenMarkdownCard={onCollapseCanvasCards}
           onCloseMarkdownCard={onRestoreCanvasCards}

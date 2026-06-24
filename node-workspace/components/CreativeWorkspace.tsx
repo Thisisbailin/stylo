@@ -14,7 +14,7 @@ import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
-import { AgentSettingsPanel, type AgentSettingsPanelKey } from "./AgentSettingsPanel";
+import { ProjectSettingsPanel, type ProjectSettingsPanelKey } from "./ProjectSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
 import { QalamAgent } from "./QalamAgent";
 import { useFlowSurface } from "./FlowSurface";
@@ -49,7 +49,7 @@ interface CreativeWorkspaceProps {
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onOpenLanding?: () => void;
-  externalAgentSettingsRequest?: { panel: AgentSettingsPanelKey; nonce: number } | null;
+  externalProjectSettingsRequest?: { panel: ProjectSettingsPanelKey; nonce: number } | null;
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
@@ -322,7 +322,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   syncRollout,
   onForceSync,
   onOpenLanding,
-  externalAgentSettingsRequest,
+  externalProjectSettingsRequest,
   onAssetLoad,
   onOpenModule,
   syncIndicator,
@@ -337,9 +337,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
-  const [showAgentSettings, setShowAgentSettings] = useState(false);
-  const [agentSettingsPanel, setAgentSettingsPanel] = useState<AgentSettingsPanelKey>("provider");
-  const [agentSettingsAssetsSection, setAgentSettingsAssetsSection] = useState<MaterialsSectionKey | undefined>();
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [projectSettingsPanel, setProjectSettingsPanel] = useState<ProjectSettingsPanelKey>("provider");
+  const [projectSettingsAssetsSection, setProjectSettingsAssetsSection] = useState<MaterialsSectionKey | undefined>();
   const [agentDockWidth, setAgentDockWidth] = useState(0);
   const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
   const [isQalamSending, setIsQalamSending] = useState(false);
@@ -376,18 +376,18 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       return proposals.length ? { ...current, proposals } : null;
     });
   }, []);
-  const openAgentSettingsPanel = useCallback(
-    (panel: AgentSettingsPanelKey = "provider", assetsSection?: MaterialsSectionKey) => {
-      setAgentSettingsPanel(panel);
-      setAgentSettingsAssetsSection(panel === "assets" ? assetsSection : undefined);
-      setShowAgentSettings(true);
+  const openProjectSettingsPanel = useCallback(
+    (panel: ProjectSettingsPanelKey = "provider", assetsSection?: MaterialsSectionKey) => {
+      setProjectSettingsPanel(panel);
+      setProjectSettingsAssetsSection(panel === "assets" ? assetsSection : undefined);
+      setShowProjectSettings(true);
     },
     []
   );
   useEffect(() => {
-    if (!externalAgentSettingsRequest) return;
-    openAgentSettingsPanel(externalAgentSettingsRequest.panel);
-  }, [externalAgentSettingsRequest, openAgentSettingsPanel]);
+    if (!externalProjectSettingsRequest) return;
+    openProjectSettingsPanel(externalProjectSettingsRequest.panel);
+  }, [externalProjectSettingsRequest, openProjectSettingsPanel]);
   const {
     nodes,
     setNodeFlowContext,
@@ -673,7 +673,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     onAgentComposerAction: handleQalamComposerAction,
     isAgentSending: isQalamSending,
     isAgentFirstMode: isQalamFirstMode,
-    onOpenAgentSettingsPanel: (panel, assetsSection) => openAgentSettingsPanel(panel, assetsSection),
+    onOpenProjectSettingsPanel: (panel, assetsSection) => openProjectSettingsPanel(panel, assetsSection),
     onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
     pendingScriptReviewNodeIds,
   });
@@ -928,8 +928,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       projectData={projectData}
       setProjectData={setProjectData}
       getAuthToken={getAuthToken}
-      onOpenStats={() => openAgentSettingsPanel("provider")}
-      settingsOpen={showAgentSettings}
+      onOpenStats={() => openProjectSettingsPanel("provider")}
+      settingsOpen={showProjectSettings}
       openRequest={qalamOpenRequest}
       closeRequest={qalamCloseRequest}
       submitRequest={qalamSubmitRequest}
@@ -1057,11 +1057,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         variant="embedded"
       />
 
-      <AgentSettingsPanel
+      <ProjectSettingsPanel
         key={qalamProjectId}
         projectId={qalamProjectId}
-        isOpen={showAgentSettings}
-        onClose={() => setShowAgentSettings(false)}
+        isOpen={showProjectSettings}
+        onClose={() => setShowProjectSettings(false)}
         leftOffset={agentDockWidth}
         projectData={projectData}
         setProjectData={setProjectData}
@@ -1074,8 +1074,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onForceSync={onForceSync}
         onOpenLanding={onOpenLanding}
         onResetProject={onResetProject}
-        requestedPanel={agentSettingsPanel}
-        requestedAssetsSection={agentSettingsAssetsSection}
+        requestedPanel={projectSettingsPanel}
+        requestedAssetsSection={projectSettingsAssetsSection}
         onOrganizeFoundationScaffold={flowSurface.actions?.organizeFoundationScaffold}
         onSetFoundationNodeView={flowSurface.actions?.setFoundationNodeView}
         foundationNodeView={flowSurface.actions?.foundationNodeView}
