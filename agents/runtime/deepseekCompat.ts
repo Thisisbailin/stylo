@@ -5,24 +5,66 @@ const DEEPSEEK_COMPAT_INSTALLED = Symbol.for("qalam.deepseek.chatCompletionsComp
 const isRecord = (value: unknown): value is Record<string, any> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const normalizeAssistantMessageForDeepSeek = (message: any) => {
+const getReasoningText = (message: Record<string, any>) => {
+  if (typeof message.reasoning_content === "string") return message.reasoning_content;
+  if (typeof message.reasoning === "string") return message.reasoning;
+  return "";
+};
+
+const hasAssistantPayload = (message: Record<string, any>) =>
+  (message.content !== null && message.content !== undefined) ||
+  (Array.isArray(message.tool_calls) && message.tool_calls.length > 0);
+
+const appendReasoning = (existing: string, incoming: string) => {
+  if (!incoming) return existing;
+  if (!existing) return incoming;
+  return `${existing}\n${incoming}`;
+};
+
+const normalizeAssistantMessageForDeepSeek = (message: any, pendingReasoning = "") => {
   if (!isRecord(message) || message.role !== "assistant") return message;
-  if (typeof message.reasoning !== "string" || typeof message.reasoning_content === "string") {
-    return message;
-  }
-  const next = { ...message, reasoning_content: message.reasoning };
+  const ownReasoning = getReasoningText(message);
+  const reasoning = appendReasoning(pendingReasoning, ownReasoning);
+  if (!reasoning && typeof message.reasoning !== "string") return message;
+  const next = { ...message };
+  if (reasoning) next.reasoning_content = reasoning;
   delete next.reasoning;
   return next;
 };
 
+const normalizeMessagesForDeepSeek = (messages: unknown) => {
+  if (!Array.isArray(messages)) return messages;
+  let pendingReasoning = "";
+  const normalized: any[] = [];
+
+  for (const message of messages) {
+    if (!isRecord(message) || message.role !== "assistant") {
+      const role = isRecord(message) ? message.role : undefined;
+      if (pendingReasoning && role !== "tool" && role !== "function") {
+        pendingReasoning = "";
+      }
+      normalized.push(message);
+      continue;
+    }
+
+    const reasoning = getReasoningText(message);
+    if (!hasAssistantPayload(message)) {
+      pendingReasoning = appendReasoning(pendingReasoning, reasoning);
+      continue;
+    }
+
+    normalized.push(normalizeAssistantMessageForDeepSeek(message, pendingReasoning));
+    pendingReasoning = "";
+  }
+
+  return normalized;
+};
+
 const normalizeRequestForDeepSeek = (request: any) => {
   if (!isRecord(request)) return request;
-  const messages = Array.isArray(request.messages)
-    ? request.messages.map(normalizeAssistantMessageForDeepSeek)
-    : request.messages;
   return {
     ...request,
-    messages,
+    messages: normalizeMessagesForDeepSeek(request.messages),
     reasoning_effort: request.reasoning_effort || "high",
     thinking: request.thinking || { type: "enabled" },
   };
@@ -94,4 +136,3 @@ export const installDeepSeekChatCompletionsCompatibility = (client: OpenAI) => {
   };
   completions[DEEPSEEK_COMPAT_INSTALLED] = true;
 };
-

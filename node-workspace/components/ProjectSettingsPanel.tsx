@@ -489,6 +489,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   const [observabilityData, setObservabilityData] = useState<AgentObservabilityPayload | null>(null);
   const [observabilityLoading, setObservabilityLoading] = useState(false);
   const [observabilityError, setObservabilityError] = useState<string | null>(null);
+  const observabilityRequestSeqRef = useRef(0);
   const [selectedTraceId, setSelectedTraceId] = useState<string>("");
   const [traceProviderFilter, setTraceProviderFilter] = useState<string>("all");
   const [traceStatusFilter, setTraceStatusFilter] = useState<"all" | "failed">("all");
@@ -673,6 +674,8 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       setObservabilityError(null);
       return;
     }
+    const requestSeq = observabilityRequestSeqRef.current + 1;
+    observabilityRequestSeqRef.current = requestSeq;
     setObservabilityLoading(true);
     setObservabilityError(null);
     try {
@@ -693,19 +696,22 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       if (!response.ok) {
         throw new Error(String((payload as any)?.error || `HTTP ${response.status}`));
       }
+      if (requestSeq !== observabilityRequestSeqRef.current) return;
       setObservabilityData(payload as AgentObservabilityPayload);
     } catch (error: any) {
+      if (requestSeq !== observabilityRequestSeqRef.current) return;
       setObservabilityError(error?.message || "无法加载 Agent 观测数据。");
-      setObservabilityData(null);
     } finally {
-      setObservabilityLoading(false);
+      if (requestSeq === observabilityRequestSeqRef.current) {
+        setObservabilityLoading(false);
+      }
     }
   }, [activeConversation?.id, getAuthToken, isSignedIn, projectId, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;
     void loadObservability();
-  }, [isOpen, loadObservability, runtimeMetaVersion, selectedPanel]);
+  }, [isOpen, loadObservability, selectedPanel]);
 
   useEffect(() => {
     setSelectedTraceId("");

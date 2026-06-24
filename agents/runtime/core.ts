@@ -468,6 +468,16 @@ export const runQalamAgentCore = async ({
             accumulatedText: streamedReasoningText,
           });
         }
+        const chatTextDelta = typeof chatDelta?.content === "string" ? chatDelta.content : "";
+        if (chatTextDelta) {
+          streamedTextDelta += chatTextDelta;
+          onEvent?.({
+            type: "message_delta",
+            runId,
+            delta: chatTextDelta,
+            accumulatedText: streamedTextDelta,
+          });
+        }
         if (rawType === "output_text_delta" && typeof providerEvent?.delta === "string") {
           streamedTextDelta += providerEvent.delta;
           onEvent?.({
