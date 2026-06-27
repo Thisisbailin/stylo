@@ -121,6 +121,13 @@ const upsertStreamingAssistantMessage = (
 const nextMessageOrder = (messages: Message[]) =>
   messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
 
+const messageRunId = (message: Message) => {
+  if (message.kind === "status") return message.statusCard.runId;
+  if (isToolMessage(message)) return message.tool.runId;
+  if (message.role === "assistant" && isChatMessage(message)) return message.meta?.runId;
+  return undefined;
+};
+
 const runAssistantMessageOrder = (messages: Message[], runId: string) => {
   const message = messages.find(
     (item) => item.role === "assistant" && isChatMessage(item) && item.meta?.runId === runId
@@ -131,6 +138,13 @@ const runAssistantMessageOrder = (messages: Message[], runId: string) => {
 const nextStatusOrderForRun = (messages: Message[], runId: string, offsetBeforeAnswer: number) => {
   const answerOrder = runAssistantMessageOrder(messages, runId);
   return answerOrder === null ? nextMessageOrder(messages) : answerOrder - offsetBeforeAnswer;
+};
+
+const nextToolOrderForRun = (messages: Message[], runId: string) => {
+  const answerOrder = runAssistantMessageOrder(messages, runId);
+  if (answerOrder === null) return nextMessageOrder(messages);
+  const toolCount = messages.filter((message) => isToolMessage(message) && messageRunId(message) === runId).length;
+  return Math.min(answerOrder - 0.01, answerOrder - 0.5 + toolCount * 0.001);
 };
 
 const humanizeToolName = (name: string) => {
@@ -566,7 +580,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             {
               role: "assistant",
               kind: "tool",
-              order: nextMessageOrder(withReasoningCompleted),
+              order: runId ? nextToolOrderForRun(withReasoningCompleted, runId) : nextMessageOrder(withReasoningCompleted),
               tool: {
                 callId: event.call.callId,
                 runId: runId || undefined,
@@ -588,7 +602,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           {
             role: "assistant",
             kind: "tool_result",
-            order: nextMessageOrder(prev),
+            order: runId ? nextToolOrderForRun(prev, runId) : nextMessageOrder(prev),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,
@@ -622,7 +636,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           {
             role: "assistant",
             kind: "tool_result",
-            order: nextMessageOrder(prev),
+            order: runId ? nextToolOrderForRun(prev, runId) : nextMessageOrder(prev),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,

@@ -441,6 +441,11 @@ export type QalamToolSettings = {
   workflowBuilder?: {
     enabled?: boolean;
   };
+  runtimeIntelligence?: {
+    enabled?: boolean;
+    webSearchEnabled?: boolean;
+    githubAccessEnabled?: boolean;
+  };
   characterLocation?: {
     enabled?: boolean;
     mergeStrategy?: "patch" | "replace";

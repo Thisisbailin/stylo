@@ -6,6 +6,7 @@ export const normalizeQalamToolSettings = (value: QalamToolSettings | undefined)
   const projectData = value?.projectData || {};
   const workflowBuilder = value?.workflowBuilder || {};
   const characterLocation = value?.characterLocation || {};
+  const runtimeIntelligence = value?.runtimeIntelligence || {};
   return {
     projectData: {
       enabled: projectData.enabled ?? true,
@@ -18,6 +19,11 @@ export const normalizeQalamToolSettings = (value: QalamToolSettings | undefined)
       mergeStrategy: characterLocation.mergeStrategy === "replace" ? "replace" : "patch",
       formsMode: characterLocation.formsMode === "replace" ? "replace" : "merge",
       zonesMode: characterLocation.zonesMode === "replace" ? "replace" : "merge",
+    },
+    runtimeIntelligence: {
+      enabled: runtimeIntelligence.enabled ?? true,
+      webSearchEnabled: runtimeIntelligence.webSearchEnabled ?? true,
+      githubAccessEnabled: runtimeIntelligence.githubAccessEnabled ?? true,
     },
   };
 };
@@ -42,6 +48,15 @@ export const buildToolSummary = (name: string, args: any) => {
   if (name === "search_project_resource") {
     const layerHint = Array.isArray(args?.layers) && args.layers.length ? ` @${args.layers.join("+")}` : "";
     return `资源搜索${layerHint}：${String(args?.query || "").slice(0, 32)}`;
+  }
+  if (name === "read_runtime_manual") {
+    return `运行手册：${args?.topic || "overview"}`;
+  }
+  if (name === "access_github_repository") {
+    return `GitHub 仓库：${args?.action || "status"}${args?.path ? ` / ${String(args.path).slice(0, 32)}` : ""}`;
+  }
+  if (name === "search_web") {
+    return `网页搜索：${String(args?.query || "").slice(0, 32)}`;
   }
   if (name === "edit_script_resource") {
     return `Script 编辑：${args?.entity || "archive"} / ${args?.action || "create"}`;

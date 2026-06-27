@@ -180,7 +180,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "workflow-builder" | "asset-library";
+type ToolKey = "project-data" | "workflow-builder" | "runtime-intelligence" | "asset-library";
 
 type ToolItem = {
   key: ToolKey;
@@ -209,6 +209,18 @@ const TOOL_ITEMS: ToolItem[] = [
     artifact: "返回 Flow 文档 / 档案 / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
     note: "负责统一读取 Flow Workspace 内的项目事实。",
     Icon: Eye,
+  },
+  {
+    key: "runtime-intelligence",
+    capability: "research",
+    title: "research",
+    description: "Agent 可以读取运行手册、搜索网页，并实时查看 Qalam GitHub 仓库的完整代码状态。",
+    tools: ["read_runtime_manual", "search_web", "access_github_repository"],
+    surfaces: ["runtime manual", "web search", "github repository", "source tree", "source file"],
+    boundary: "默认只读认知权限；不直接修改远程仓库代码。",
+    artifact: "返回运行诊断规则、网页搜索结果、仓库默认分支状态、文件树、源码内容和搜索命中。",
+    note: "负责让 Agent 在边缘问题上拥有项目级和外部事实级认知。",
+    Icon: Globe,
   },
   {
     key: "workflow-builder",
@@ -521,6 +533,8 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     const currentWorkflow = current.workflowBuilder || {};
     const baseCharacter = base.characterLocation || {};
     const currentCharacter = current.characterLocation || {};
+    const baseRuntime = base.runtimeIntelligence || {};
+    const currentRuntime = current.runtimeIntelligence || {};
     return {
       projectData: {
         enabled: currentProject.enabled ?? baseProject.enabled ?? true,
@@ -533,6 +547,11 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
         mergeStrategy: currentCharacter.mergeStrategy || baseCharacter.mergeStrategy || "patch",
         formsMode: currentCharacter.formsMode || baseCharacter.formsMode || "merge",
         zonesMode: currentCharacter.zonesMode || baseCharacter.zonesMode || "merge",
+      },
+      runtimeIntelligence: {
+        enabled: currentRuntime.enabled ?? baseRuntime.enabled ?? true,
+        webSearchEnabled: currentRuntime.webSearchEnabled ?? baseRuntime.webSearchEnabled ?? true,
+        githubAccessEnabled: currentRuntime.githubAccessEnabled ?? baseRuntime.githubAccessEnabled ?? true,
       },
     };
   }, [config.textConfig.qalamTools]);
@@ -766,6 +785,25 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
           qalamTools: {
             ...(prev.textConfig.qalamTools || {}),
             workflowBuilder: next,
+          },
+        },
+      };
+    });
+  };
+
+  const updateRuntimeToolSettings = (patch: Partial<typeof qalamToolSettings.runtimeIntelligence>) => {
+    setConfig((prev) => {
+      const existing = prev.textConfig.qalamTools?.runtimeIntelligence || {};
+      return {
+        ...prev,
+        textConfig: {
+          ...prev.textConfig,
+          qalamTools: {
+            ...(prev.textConfig.qalamTools || {}),
+            runtimeIntelligence: {
+              ...existing,
+              ...patch,
+            },
           },
         },
       };
@@ -2121,6 +2159,60 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                             {foundationNodeView ? "Foundation" : "Nodes"}
                           </span>
                         </button>
+                      </div>
+                    ) : activeTool === "runtime-intelligence" ? (
+                      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">认知开关</div>
+                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
+                              控制 Agent 是否可以读取运行手册、搜索网页，并查看 Qalam GitHub 仓库实时源码。
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={qalamToolSettings.runtimeIntelligence.enabled}
+                              onChange={(e) => updateRuntimeToolSettings({ enabled: e.target.checked })}
+                              className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
+                            />
+                            启用
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <label className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
+                            <span className="flex items-center justify-between gap-3">
+                              <span>
+                                <span className="block text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Web Search</span>
+                                <span className="mt-2 block text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+                                  默认开启。用于实时外部事实、Provider/API 行为、版本、价格和文档变更。
+                                </span>
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={qalamToolSettings.runtimeIntelligence.webSearchEnabled}
+                                onChange={(e) => updateRuntimeToolSettings({ webSearchEnabled: e.target.checked })}
+                                className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
+                              />
+                            </span>
+                          </label>
+                          <label className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-3">
+                            <span className="flex items-center justify-between gap-3">
+                              <span>
+                                <span className="block text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">GitHub Source</span>
+                                <span className="mt-2 block text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
+                                  默认开启。允许读取完整仓库树、任意源码文件，并按路径或内容搜索。
+                                </span>
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={qalamToolSettings.runtimeIntelligence.githubAccessEnabled}
+                                onChange={(e) => updateRuntimeToolSettings({ githubAccessEnabled: e.target.checked })}
+                                className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
+                              />
+                            </span>
+                          </label>
+                        </div>
                       </div>
                     ) : activeTool === "workflow-builder" ? (
                       <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-4 space-y-3">

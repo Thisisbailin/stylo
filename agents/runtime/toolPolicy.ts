@@ -21,6 +21,15 @@ export const buildDisabledTools = (
       "search_project_resource"
     );
   }
+  if (!toolSettings.runtimeIntelligence.enabled) {
+    disabledTools.push("read_runtime_manual", "access_github_repository", "search_web");
+  }
+  if (!toolSettings.runtimeIntelligence.webSearchEnabled) {
+    disabledTools.push("search_web");
+  }
+  if (!toolSettings.runtimeIntelligence.githubAccessEnabled) {
+    disabledTools.push("access_github_repository");
+  }
   if (!toolSettings.workflowBuilder.enabled) {
     disabledTools.push(
       "create_document",

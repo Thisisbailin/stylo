@@ -925,6 +925,43 @@ type ToolThread = {
   result?: ToolMessage;
 };
 
+type DisplayMessageItem =
+  | { kind: "status"; key: string; order: number; message: StatusMessage }
+  | { kind: "tool"; key: string; order: number; thread: ToolThread }
+  | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
+  | { kind: "chat"; key: string; order: number; message: ChatMessage };
+
+const getDisplayItemRunId = (item: DisplayMessageItem) => {
+  if (item.kind === "status") return item.message.statusCard.runId;
+  if (item.kind === "tool") return item.thread.request?.tool.runId || item.thread.result?.tool.runId;
+  if (item.kind === "chat" && item.message.role === "assistant") return item.message.meta?.runId;
+  return undefined;
+};
+
+const getDisplayItemPhase = (item: DisplayMessageItem) => {
+  if (item.kind === "status") {
+    const headline = item.message.statusCard.headline;
+    if (headline.includes("连接")) return 0;
+    if (item.message.statusCard.isThinking) return 10;
+    if (headline.includes("生成") || headline.includes("回复")) return 30;
+    return 15;
+  }
+  if (item.kind === "tool") return 20;
+  if (item.kind === "approval") return 25;
+  if (item.kind === "chat" && item.message.role === "assistant") return 40;
+  return 0;
+};
+
+const compareDisplayItems = (left: DisplayMessageItem, right: DisplayMessageItem) => {
+  const leftRunId = getDisplayItemRunId(left);
+  const rightRunId = getDisplayItemRunId(right);
+  if (leftRunId && leftRunId === rightRunId) {
+    const phaseDiff = getDisplayItemPhase(left) - getDisplayItemPhase(right);
+    if (phaseDiff !== 0) return phaseDiff;
+  }
+  return left.order - right.order;
+};
+
 const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) => {
   const expanded = options?.expanded || false;
   const effectiveTool = thread.result?.tool || thread.request?.tool;
@@ -1214,12 +1251,7 @@ export const QalamChatContent: React.FC<Props> = ({
   const [currentShiftTick, setCurrentShiftTick] = useState(0);
   const displayMessages = useMemo(() => {
     const consumed = new Set<number>();
-    const items: Array<
-      | { kind: "status"; key: string; order: number; message: StatusMessage }
-      | { kind: "tool"; key: string; order: number; thread: ToolThread }
-      | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
-      | { kind: "chat"; key: string; order: number; message: ChatMessage }
-    > = [];
+    const items: DisplayMessageItem[] = [];
 
     for (let i = 0; i < messages.length; i += 1) {
       if (consumed.has(i)) continue;
@@ -1276,7 +1308,7 @@ export const QalamChatContent: React.FC<Props> = ({
       items.push({ kind: "chat", key: `chat-${i}`, order: message.order || i, message });
     }
 
-    return [...items].sort((a, b) => a.order - b.order);
+    return [...items].sort(compareDisplayItems);
   }, [messages]);
 
   const runDurationMap = useMemo(() => {
@@ -1365,11 +1397,7 @@ export const QalamChatContent: React.FC<Props> = ({
   }, [displayMessages.length, revealMode]);
 
   const renderMessageItem = (
-    item:
-      | { kind: "status"; key: string; order: number; message: StatusMessage }
-      | { kind: "tool"; key: string; order: number; thread: ToolThread }
-      | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
-      | { kind: "chat"; key: string; order: number; message: ChatMessage },
+    item: DisplayMessageItem,
     expanded: boolean,
     attachRef: boolean
   ) => {

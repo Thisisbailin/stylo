@@ -4,15 +4,13 @@ const RUNTIME_MANUAL_TOPICS = [
   "overview",
   "self_assessment",
   "tooling_friction",
+  "web_search",
   "source_map",
 ] as const;
 
 type RuntimeManualTopic = (typeof RUNTIME_MANUAL_TOPICS)[number];
 
 const DEFAULT_TOPIC: RuntimeManualTopic = "overview";
-const REPO_RAW_BASE = "https://raw.githubusercontent.com/Thisisbailin/qalam";
-const REPO_BRANCH_CANDIDATES = ["main", "master"] as const;
-const DEFAULT_SOURCE_MAX_CHARS = 12000;
 
 const runtimeManualParameters = {
   type: "object",
@@ -27,35 +25,12 @@ const runtimeManualParameters = {
       type: "string",
       description: "Optional short reason or question to focus the manual read.",
     },
-    source_path: {
-      type: "string",
-      description:
-        "Optional repository source file to read from GitHub. Must be one of the concrete sourceFiles returned by the manual; glob patterns are not supported.",
-    },
-    include_source: {
-      type: "boolean",
-      description:
-        "Set true only when implementation-level source evidence is needed. The tool will fetch the selected source_path from the Qalam GitHub repository.",
-    },
-    max_chars: {
-      type: "integer",
-      description: "Optional maximum source characters to return when include_source=true.",
-    },
   },
   additionalProperties: false,
   required: [],
 } as const;
 
 const trim = (value: unknown) => (typeof value === "string" ? value.trim() : "");
-
-const toPositiveInteger = (value: unknown) => {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  }
-  return undefined;
-};
 
 const parseArgs = (input: unknown) => {
   const raw = input && typeof input === "object" && !Array.isArray(input)
@@ -68,9 +43,6 @@ const parseArgs = (input: unknown) => {
   return {
     topic,
     query: trim(raw.query) || undefined,
-    sourcePath: trim(raw.source_path ?? raw.sourcePath) || undefined,
-    includeSource: raw.include_source === true || raw.includeSource === true,
-    maxChars: toPositiveInteger(raw.max_chars ?? raw.maxChars) || DEFAULT_SOURCE_MAX_CHARS,
   };
 };
 
@@ -87,7 +59,7 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
     guidance: [
       "Use this manual only when the user asks about the agent runtime itself, its tool behavior, its cognitive burden, or how to improve its operating model.",
       "Do not treat the manual as project story truth. For project content, use Flow document and resource tools.",
-      "The manual is intentionally small. It points to source-code entry points so an implementation agent can inspect the repository when deeper diagnosis is needed.",
+      "The manual is intentionally small. For deeper diagnosis, use access_github_repository to inspect the live GitHub repository and search_web for fresh external references.",
       "When giving an operational self-assessment, separate evidence from inference. Evidence can come from the environment snapshot, enabled tools, recent tool results, and the runtime source map.",
     ],
     sourceFiles: [
@@ -109,6 +81,7 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
       "If the question is about whether the agent is overloaded, look for symptoms: too many similar tools, unclear source of truth, repeated recoverable tool errors, exhausted lookup budget, or repeated broad reads.",
       "Answer in a diagnostic style: current observation, likely cause, impact on the user workflow, and one or two concrete design changes.",
       "Do not claim direct access to private thoughts or hidden chain-of-thought. Describe observable runtime behavior and prompt/tool constraints instead.",
+      "When source-code certainty matters, use access_github_repository action=status, then tree/search/read against the latest default branch.",
     ],
     sourceFiles: [
       "agents/runtime/instructions.ts",
@@ -128,6 +101,7 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
       "Check whether the base instruction already tells the agent the source-of-truth order. If not, tool selection will feel ambiguous.",
       "Look for unnecessary full reads. A good tool layer supports list/search/identity/detail/full progression.",
       "When suggesting improvements, keep them incremental: rename confusing tools, add narrow views, improve summaries, or add a small manual entry before proposing large runtime rewrites.",
+      "If the user asks about fresh provider behavior or current API capabilities, use search_web first and prefer official provider documentation.",
     ],
     sourceFiles: [
       "agents/tools/index.ts",
@@ -136,6 +110,23 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
       "agents/tools/searchProjectResource.ts",
       "agents/tools/documentTools.ts",
       "agents/runtime/toolPolicy.ts",
+    ],
+  },
+  web_search: {
+    title: "Default Web Search Policy",
+    summary:
+      "The runtime should assume web search is available by default, especially for DeepSeek runs and current provider/API questions.",
+    guidance: [
+      "Use search_web when the answer depends on current external facts, provider capabilities, API docs, GitHub state outside this project, pricing, releases, or live product behavior.",
+      "For technical claims, search first and then prefer official documentation, source repositories, changelogs, or standards documents.",
+      "For Qalam runtime self-assessment, combine three evidence sources when useful: current environment snapshot, access_github_repository for live project code, and search_web for current external behavior.",
+      "If search_web is disabled by the user, say that web search is unavailable and rely only on local context, project tools, and GitHub access if still enabled.",
+    ],
+    sourceFiles: [
+      "agents/tools/searchWeb.ts",
+      "agents/tools/accessGithubRepository.ts",
+      "agents/runtime/toolPolicy.ts",
+      "agents/runtime/instructions.ts",
     ],
   },
   source_map: {
@@ -150,6 +141,7 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
       "Tool enablement settings live in agents/runtime/toolPolicy.ts and the QalamToolSettings type in types.ts.",
       "Project graph resource semantics live under agents/tools/*Resource*.ts and node-workspace/nodeflow/*.",
       "Builtin skill overlays are generated by scripts/generate-skill-manifest.mjs from .agents/skills/*.",
+      "Live repository access is available through access_github_repository. Start with action=status, use action=tree to orient, action=search to locate symbols, and action=read for exact files.",
     ],
     sourceFiles: [
       "agents/runtime/instructions.ts",
@@ -164,83 +156,24 @@ const MANUAL_SECTIONS: Record<RuntimeManualTopic, {
   },
 };
 
-const concreteSourceFiles = () =>
-  Array.from(
-    new Set(
-      Object.values(MANUAL_SECTIONS)
-        .flatMap((section) => section.sourceFiles)
-        .filter((sourceFile) => !sourceFile.includes("*"))
-    )
-  ).sort();
-
-const clipText = (value: string, maxChars: number) =>
-  value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`;
-
-const fetchSourceFile = async (sourcePath: string, maxChars: number) => {
-  const allowed = new Set(concreteSourceFiles());
-  if (!allowed.has(sourcePath)) {
-    return {
-      found: false,
-      error:
-        "source_path is not in the runtime manual allowlist. Read topic=source_map first and choose one concrete sourceFiles entry.",
-      allowed_source_paths: [...allowed],
-    };
-  }
-
-  for (const branch of REPO_BRANCH_CANDIDATES) {
-    const url = `${REPO_RAW_BASE}/${branch}/${sourcePath}`;
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      const text = await response.text();
-      return {
-        found: true,
-        branch,
-        source_path: sourcePath,
-        source_url: url,
-        truncated: text.length > maxChars,
-        content: clipText(text, maxChars),
-      };
-    } catch (error: any) {
-      return {
-        found: false,
-        source_path: sourcePath,
-        error: error?.message || "Failed to fetch source file.",
-      };
-    }
-  }
-
-  return {
-    found: false,
-    source_path: sourcePath,
-    error: "Source file was not found on the configured GitHub branches.",
-    tried_branches: [...REPO_BRANCH_CANDIDATES],
-  };
-};
-
 export const readRuntimeManualToolDef = {
   name: "read_runtime_manual",
   description:
-    "Read a compact Qalam agent runtime manual for on-demand self-assessment, tool ergonomics review, source-code orientation, and allowlisted GitHub source reads. Use only for questions about the agent runtime itself, not project story content.",
+    "Read a compact Qalam agent runtime manual for on-demand self-assessment, default web-search policy, tool ergonomics review, and live GitHub source-code orientation. Use only for questions about the agent runtime itself, not project story content.",
   parameters: runtimeManualParameters,
   execute: async (input: unknown, _bridge: QalamAgentBridge) => {
     const args = parseArgs(input);
     const section = MANUAL_SECTIONS[args.topic];
-    const source = args.includeSource && args.sourcePath
-      ? await fetchSourceFile(args.sourcePath, args.maxChars)
-      : null;
     return {
       target: "runtime_manual",
       action: "read",
       topic: args.topic,
       query: args.query || null,
       section,
-      source,
       available_topics: [...RUNTIME_MANUAL_TOPICS],
-      allowed_source_paths: concreteSourceFiles(),
       repository: "https://github.com/Thisisbailin/qalam",
       note:
-        "This manual is a compact orientation layer. For implementation-level diagnosis, set include_source=true with an allowed concrete source_path.",
+        "This manual is a compact orientation layer. For implementation-level diagnosis, use access_github_repository to inspect the live repository without path allowlists.",
     };
   },
   summarize: (output: any) => {

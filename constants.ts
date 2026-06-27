@@ -48,6 +48,11 @@ export const DEFAULT_QALAM_TOOL_SETTINGS: QalamToolSettings = {
   workflowBuilder: {
     enabled: true,
   },
+  runtimeIntelligence: {
+    enabled: true,
+    webSearchEnabled: true,
+    githubAccessEnabled: true,
+  },
   characterLocation: {
     enabled: true,
     mergeStrategy: "patch",
