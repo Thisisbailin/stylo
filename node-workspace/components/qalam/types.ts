@@ -20,6 +20,7 @@ export type ChatMessage = {
   order?: number;
   meta?: {
     runId?: string;
+    messageId?: string;
     isStreaming?: boolean;
     planItems?: string[];
     searchEnabled?: boolean;

@@ -103,11 +103,13 @@ const upsertStatusMessage = (
 const upsertStreamingAssistantMessage = (
   messages: Message[],
   runId: string,
+  messageId: string | undefined,
   updater: (current: ChatMessage | null) => ChatMessage
 ) => {
-  const index = messages.findIndex(
-    (message) => message.role === "assistant" && isChatMessage(message) && message.meta?.runId === runId
-  );
+  const index = messages.findIndex((message) => {
+    if (message.role !== "assistant" || !isChatMessage(message) || message.meta?.runId !== runId) return false;
+    return messageId ? message.meta?.messageId === messageId : !message.meta?.messageId;
+  });
   const current = index >= 0 ? (messages[index] as ChatMessage) : null;
   const next = updater(current);
   if (index >= 0) {
@@ -120,32 +122,6 @@ const upsertStreamingAssistantMessage = (
 
 const nextMessageOrder = (messages: Message[]) =>
   messages.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
-
-const messageRunId = (message: Message) => {
-  if (message.kind === "status") return message.statusCard.runId;
-  if (isToolMessage(message)) return message.tool.runId;
-  if (message.role === "assistant" && isChatMessage(message)) return message.meta?.runId;
-  return undefined;
-};
-
-const runAssistantMessageOrder = (messages: Message[], runId: string) => {
-  const message = messages.find(
-    (item) => item.role === "assistant" && isChatMessage(item) && item.meta?.runId === runId
-  );
-  return typeof message?.order === "number" ? message.order : null;
-};
-
-const nextStatusOrderForRun = (messages: Message[], runId: string, offsetBeforeAnswer: number) => {
-  const answerOrder = runAssistantMessageOrder(messages, runId);
-  return answerOrder === null ? nextMessageOrder(messages) : answerOrder - offsetBeforeAnswer;
-};
-
-const nextToolOrderForRun = (messages: Message[], runId: string) => {
-  const answerOrder = runAssistantMessageOrder(messages, runId);
-  if (answerOrder === null) return nextMessageOrder(messages);
-  const toolCount = messages.filter((message) => isToolMessage(message) && messageRunId(message) === runId).length;
-  return Math.min(answerOrder - 0.01, answerOrder - 0.5 + toolCount * 0.001);
-};
 
 const humanizeToolName = (name: string) => {
   switch (name) {
@@ -307,10 +283,10 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
   }, []);
 
   const revealAssistantMessage = useCallback(
-    (runId: string, text: string, planItems?: string[]) => {
+    (runId: string, text: string, planItems?: string[], messageId?: string) => {
       if (typeof window === "undefined") {
         setMessages((prev) =>
-          upsertStreamingAssistantMessage(prev, runId, (current) => ({
+          upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
             role: "assistant",
             kind: "chat",
             order: current?.order || nextMessageOrder(prev),
@@ -318,6 +294,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             meta: {
               ...current?.meta,
               runId,
+              messageId,
               isStreaming: false,
               planItems,
             },
@@ -330,7 +307,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       const total = text.length;
       if (total > 1800) {
         setMessages((prev) =>
-          upsertStreamingAssistantMessage(prev, runId, (current) => ({
+          upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
             role: "assistant",
             kind: "chat",
             order: current?.order || nextMessageOrder(prev),
@@ -338,6 +315,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             meta: {
               ...current?.meta,
               runId,
+              messageId,
               isStreaming: false,
               planItems,
             },
@@ -354,7 +332,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       if (!slices.length) slices.push("");
 
       setMessages((prev) =>
-        upsertStreamingAssistantMessage(prev, runId, (current) => ({
+        upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
           role: "assistant",
           kind: "chat",
           order: current?.order || nextMessageOrder(prev),
@@ -362,6 +340,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           meta: {
             ...current?.meta,
             runId,
+            messageId,
             isStreaming: true,
           },
         }))
@@ -371,7 +350,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         window.setTimeout(() => {
           const isLast = index === slices.length - 1;
           setMessages((prev) =>
-            upsertStreamingAssistantMessage(prev, runId, (current) => ({
+            upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
               role: "assistant",
               kind: "chat",
               order: current?.order || nextMessageOrder(prev),
@@ -379,6 +358,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
               meta: {
                 ...current?.meta,
                 runId,
+                messageId,
                 isStreaming: !isLast,
                 planItems: isLast ? planItems : current?.meta?.planItems,
               },
@@ -412,7 +392,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             ? upsertStatusMessage(prev, preflightStatusId, (current) => ({
                   role: "assistant",
                   kind: "status",
-                  order: current?.order || nextMessageOrder(prev),
+                  order: current?.order || event.sequence || nextMessageOrder(prev),
                   statusCard: {
                     id: preflightStatusId,
                     runId: event.runId,
@@ -433,7 +413,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || nextMessageOrder(withPreflight),
+              order: current?.order || event.sequence || nextMessageOrder(withPreflight),
               statusCard: {
                 id: statusId,
                 runId: event.runId,
@@ -460,7 +440,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             upsertStatusMessage(prev, statusId, (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || nextMessageOrder(prev),
+              order: current?.order || event.sequence || nextMessageOrder(prev),
               statusCard: {
                 id: statusId,
                 runId: event.runId,
@@ -485,7 +465,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.75),
+            order: current?.order || event.sequence || nextMessageOrder(prev),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -509,7 +489,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.75),
+            order: current?.order || event.sequence || nextMessageOrder(prev),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -538,7 +518,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || nextStatusOrderForRun(prev, event.runId, 0.25),
+              order: current?.order || event.sequence || nextMessageOrder(prev),
               statusCard: {
                 id: responseStatusId,
                 runId: event.runId,
@@ -553,14 +533,15 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
               },
             })
           );
-          return upsertStreamingAssistantMessage(withResponseStatus, event.runId, (current) => ({
+          return upsertStreamingAssistantMessage(withResponseStatus, event.runId, event.messageId, (current) => ({
             role: "assistant",
             kind: "chat",
-            order: current?.order || nextMessageOrder(withResponseStatus),
+            order: current?.order || event.sequence || nextMessageOrder(withResponseStatus),
             text: event.accumulatedText,
             meta: {
               ...current?.meta,
               runId: event.runId,
+              messageId: event.messageId,
               isStreaming: true,
             },
           }));
@@ -580,7 +561,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             {
               role: "assistant",
               kind: "tool",
-              order: runId ? nextToolOrderForRun(withReasoningCompleted, runId) : nextMessageOrder(withReasoningCompleted),
+              order: event.sequence || nextMessageOrder(withReasoningCompleted),
               tool: {
                 callId: event.call.callId,
                 runId: runId || undefined,
@@ -602,7 +583,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           {
             role: "assistant",
             kind: "tool_result",
-            order: runId ? nextToolOrderForRun(prev, runId) : nextMessageOrder(prev),
+            order: event.sequence || nextMessageOrder(prev),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,
@@ -636,7 +617,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           {
             role: "assistant",
             kind: "tool_result",
-            order: runId ? nextToolOrderForRun(prev, runId) : nextMessageOrder(prev),
+            order: event.sequence || nextMessageOrder(prev),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,
@@ -654,37 +635,40 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         const hasStreamedDelta = streamedMessageSeenRef.current[event.runId];
         setMessages((prev) => {
           const withStreamedAnswer = hasStreamedDelta
-            ? upsertStreamingAssistantMessage(prev, event.runId, (current) => {
+            ? upsertStreamingAssistantMessage(prev, event.runId, event.messageId, (current) => {
                 return current
                   ? {
                       ...current,
-                      order: current.order || nextMessageOrder(prev),
+                      order: current.order || event.sequence || nextMessageOrder(prev),
                       text: event.text || current.text,
                       meta: {
                         ...current.meta,
                         runId: event.runId,
+                        messageId: event.messageId,
                         isStreaming: false,
                         planItems: built.meta?.planItems,
                       },
                     }
                   : {
                       ...built,
-                      order: nextMessageOrder(prev),
+                      order: event.sequence || nextMessageOrder(prev),
                       meta: {
                         ...built.meta,
                         runId: event.runId,
+                        messageId: event.messageId,
                         isStreaming: false,
                       },
                     };
               })
-            : upsertStreamingAssistantMessage(prev, event.runId, (current) => ({
+            : upsertStreamingAssistantMessage(prev, event.runId, event.messageId, (current) => ({
                 role: "assistant",
                 kind: "chat",
-                order: current?.order || nextMessageOrder(prev),
+                order: current?.order || event.sequence || nextMessageOrder(prev),
                 text: "",
                 meta: {
                   ...current?.meta,
                   runId: event.runId,
+                  messageId: event.messageId,
                   isStreaming: true,
                 },
               }));
@@ -694,7 +678,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           });
         });
         if (!hasStreamedDelta && event.text) {
-          window.setTimeout(() => revealAssistantMessage(event.runId, event.text, built.meta?.planItems), 0);
+          window.setTimeout(() => revealAssistantMessage(event.runId, event.text, built.meta?.planItems, event.messageId), 0);
         }
         return;
       }

@@ -226,18 +226,19 @@ export interface QalamAgentRuntime {
   run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult>;
 }
 
-export type AgentRuntimeEvent =
+export type AgentRuntimeEvent = (
   | { type: "run_started"; sessionId: string; runId: string; traceId?: string; tracingEnabled?: boolean }
   | { type: "trace"; runId: string; entry: AgentTraceEntry }
-  | { type: "message_delta"; runId: string; delta: string; accumulatedText: string }
+  | { type: "message_delta"; runId: string; messageId?: string; delta: string; accumulatedText: string }
   | { type: "reasoning_delta"; runId: string; delta: string; accumulatedText: string }
   | { type: "reasoning_completed"; runId: string; text: string }
   | { type: "tool_called"; call: AgentExecutedToolCall }
   | { type: "tool_completed"; call: AgentExecutedToolCall }
   | { type: "tool_failed"; call: AgentExecutedToolCall; error: string }
-  | { type: "message_completed"; runId: string; text: string }
+  | { type: "message_completed"; runId: string; messageId?: string; text: string }
   | { type: "run_completed"; runId: string; result: QalamRunResult }
-  | { type: "run_failed"; runId: string; error: string };
+  | { type: "run_failed"; runId: string; error: string }
+) & { sequence?: number };
 
 export type QalamRunOptions = {
   onEvent?: (event: AgentRuntimeEvent) => void;

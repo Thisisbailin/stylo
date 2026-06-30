@@ -261,6 +261,11 @@ export const runQalamAgentCore = async ({
   traceIncludeSensitiveData,
 }: RunQalamAgentCoreOptions): Promise<QalamRunResult> => {
   const runId = `${runtimeMode === "edge_full" ? "edge-run" : "run"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let runtimeEventSequence = 0;
+  const emitRuntimeEvent = (event: AgentRuntimeEvent) => {
+    runtimeEventSequence += 1;
+    onEvent?.({ ...event, sequence: runtimeEventSequence } as AgentRuntimeEvent);
+  };
   const emitTrace = (
     stage: AgentTraceStage,
     status: AgentTraceStatus,
@@ -268,7 +273,7 @@ export const runQalamAgentCore = async ({
     detail?: string,
     payload?: string
   ) => {
-    onEvent?.({
+    emitRuntimeEvent({
       type: "trace",
       runId,
       entry: createTraceEntry(stage, status, title, detail, payload),
@@ -277,7 +282,7 @@ export const runQalamAgentCore = async ({
 
   if (input.attachments?.length) {
     const message = "新的 Agent runtime 暂不支持图片附件，请先移除附件后再发送。";
-    onEvent?.({ type: "run_failed", runId, error: message });
+    emitRuntimeEvent({ type: "run_failed", runId, error: message });
     throw new Error(message);
   }
 
@@ -289,7 +294,7 @@ export const runQalamAgentCore = async ({
     attachments: input.attachments?.length || 0,
   });
 
-  onEvent?.({
+  emitRuntimeEvent({
     type: "run_started",
     sessionId: input.sessionId,
     runId,
@@ -322,6 +327,67 @@ export const runQalamAgentCore = async ({
   let streamedTextDelta = "";
   let streamedResponseText = "";
   let streamedReasoningText = "";
+  let textSegmentIndex = 0;
+  let activeMessageId = "";
+  let activeMessageText = "";
+  const completedMessageTexts: string[] = [];
+
+  const ensureActiveMessageId = () => {
+    if (!activeMessageId) {
+      textSegmentIndex += 1;
+      activeMessageId = `${runId}-message-${textSegmentIndex}`;
+      activeMessageText = "";
+    }
+    return activeMessageId;
+  };
+
+  const selectCompletedSegmentText = (streamedText: string, completedText?: string) => {
+    const candidate = completedText || "";
+    if (!candidate) return streamedText;
+    if (!streamedText) return candidate;
+    if (candidate.includes(streamedText)) return candidate;
+    if (streamedText.includes(candidate)) return streamedText;
+    return `${streamedText.trimEnd()}\n\n${candidate.trimStart()}`;
+  };
+
+  const emitMessageDelta = (delta: string) => {
+    if (!delta) return;
+    const messageId = ensureActiveMessageId();
+    activeMessageText += delta;
+    streamedTextDelta += delta;
+    emitRuntimeEvent({
+      type: "message_delta",
+      runId,
+      messageId,
+      delta,
+      accumulatedText: activeMessageText,
+    });
+  };
+
+  const completeActiveMessage = (completedText?: string) => {
+    const hasText = Boolean(activeMessageText.trim() || completedText?.trim());
+    if (!hasText) return;
+    const messageId = ensureActiveMessageId();
+    activeMessageText = selectCompletedSegmentText(activeMessageText, completedText);
+    completedMessageTexts.push(activeMessageText);
+    emitRuntimeEvent({
+      type: "message_completed",
+      runId,
+      messageId,
+      text: activeMessageText,
+    });
+    activeMessageId = "";
+    activeMessageText = "";
+  };
+
+  const textAlreadyRepresented = (text: string) => {
+    const normalized = text.trim();
+    if (!normalized) return true;
+    return completedMessageTexts.some((completed) => {
+      const item = completed.trim();
+      return item === normalized || item.includes(normalized);
+    });
+  };
 
   const emitToolEvent = (event: AgentRuntimeEvent) => {
     if (event.type === "tool_called") {
@@ -332,7 +398,7 @@ export const runQalamAgentCore = async ({
       if (index >= 0) toolEvents[index] = event.call;
       else toolEvents.push(event.call);
     }
-    onEvent?.(event);
+    emitRuntimeEvent(event);
   };
 
   const tools = createQalamTools({
@@ -450,8 +516,9 @@ export const runQalamAgentCore = async ({
         if (done) break;
         if (!value) continue;
         if (value.type !== "raw_model_stream_event") continue;
-        const providerEvent = unwrapProviderEvent((value as any).data);
-        const rawType = providerEvent?.type || (value as any)?.data?.type;
+        const rawData = (value as any).data;
+        const providerEvent = unwrapProviderEvent(rawData);
+        const rawType = rawData?.type || providerEvent?.type;
         const chatDelta = Array.isArray(providerEvent?.choices) ? providerEvent.choices[0]?.delta : null;
         const chatReasoningDelta =
           typeof chatDelta?.reasoning_content === "string"
@@ -461,68 +528,54 @@ export const runQalamAgentCore = async ({
               : "";
         if (chatReasoningDelta) {
           streamedReasoningText += chatReasoningDelta;
-          onEvent?.({
+          emitRuntimeEvent({
             type: "reasoning_delta",
             runId,
             delta: chatReasoningDelta,
             accumulatedText: streamedReasoningText,
           });
         }
-        const chatTextDelta = typeof chatDelta?.content === "string" ? chatDelta.content : "";
-        if (chatTextDelta) {
-          streamedTextDelta += chatTextDelta;
-          onEvent?.({
-            type: "message_delta",
-            runId,
-            delta: chatTextDelta,
-            accumulatedText: streamedTextDelta,
-          });
+        if (rawType === "output_text_delta" && typeof rawData?.delta === "string") {
+          emitMessageDelta(rawData.delta);
         }
-        if (rawType === "output_text_delta" && typeof providerEvent?.delta === "string") {
-          streamedTextDelta += providerEvent.delta;
-          onEvent?.({
-            type: "message_delta",
-            runId,
-            delta: providerEvent.delta,
-            accumulatedText: streamedTextDelta,
-          });
-        }
+        const reasoningDelta = typeof rawData?.delta === "string" ? rawData.delta : typeof providerEvent?.delta === "string" ? providerEvent.delta : "";
         if (
           (rawType === "response.reasoning_summary_text.delta" || rawType === "reasoning_summary_text.delta") &&
-          typeof providerEvent?.delta === "string"
+          reasoningDelta
         ) {
-          streamedReasoningText += providerEvent.delta;
-          onEvent?.({
+          streamedReasoningText += reasoningDelta;
+          emitRuntimeEvent({
             type: "reasoning_delta",
             runId,
-            delta: providerEvent.delta,
+            delta: reasoningDelta,
             accumulatedText: streamedReasoningText,
           });
         }
         if (
           (rawType === "response.reasoning_summary_text.done" || rawType === "reasoning_summary_text.done") &&
-          typeof providerEvent?.text === "string"
+          typeof rawData?.text === "string"
         ) {
-          streamedReasoningText = providerEvent.text || streamedReasoningText;
-          onEvent?.({
+          streamedReasoningText = rawData.text || streamedReasoningText;
+          emitRuntimeEvent({
             type: "reasoning_completed",
             runId,
             text: streamedReasoningText,
           });
         }
         if (rawType === "response_done") {
-          const responsePayload = providerEvent?.response || (value as any)?.data?.response;
+          const responsePayload = rawData?.response || providerEvent?.response;
           const candidate = extractTextFromResponseOutput(responsePayload?.output);
           if (candidate) streamedResponseText = candidate;
           const reasoningCandidate = extractReasoningSummaryFromResponseOutput(responsePayload?.output);
           if (reasoningCandidate && !streamedReasoningText.trim()) {
             streamedReasoningText = reasoningCandidate;
-            onEvent?.({
+            emitRuntimeEvent({
               type: "reasoning_completed",
               runId,
               text: reasoningCandidate,
             });
           }
+          completeActiveMessage(candidate);
           emitTrace(
             "model",
             "success",
@@ -534,6 +587,7 @@ export const runQalamAgentCore = async ({
     } finally {
       streamReader.releaseLock();
     }
+    completeActiveMessage();
 
     await (result as any)?.completed;
     const synthesizedToolText = summarizeSuccessfulToolCalls(toolEvents);
@@ -571,8 +625,10 @@ export const runQalamAgentCore = async ({
       `tools=${toolEvents.length} · response=${result.lastResponseId || "n/a"}`,
       finalText
     );
-    onEvent?.({ type: "message_completed", runId, text: finalText });
-    onEvent?.({ type: "run_completed", runId, result: runResult });
+    if (!textAlreadyRepresented(finalText)) {
+      completeActiveMessage(finalText);
+    }
+    emitRuntimeEvent({ type: "run_completed", runId, result: runResult });
     return runResult;
   } catch (error: any) {
     const isMaxTurns = error?.name === "MaxTurnsExceededError" || String(error?.message || "").includes("Max turns");
@@ -630,8 +686,10 @@ export const runQalamAgentCore = async ({
           : "运行中断，但已从已知结果恢复文本。",
         recoveredText
       );
-      onEvent?.({ type: "message_completed", runId, text: recoveredText });
-      onEvent?.({ type: "run_completed", runId, result: runResult });
+      if (!textAlreadyRepresented(recoveredText)) {
+        completeActiveMessage(recoveredText);
+      }
+      emitRuntimeEvent({ type: "run_completed", runId, result: runResult });
       return runResult;
     }
 
@@ -646,7 +704,7 @@ export const runQalamAgentCore = async ({
           : error?.message || "Agent runtime 执行失败";
 
     emitTrace("result", "error", "Run failed", message);
-    onEvent?.({ type: "run_failed", runId, error: message });
+    emitRuntimeEvent({ type: "run_failed", runId, error: message });
     throw new Error(message);
   }
 };

@@ -953,13 +953,15 @@ const getDisplayItemPhase = (item: DisplayMessageItem) => {
 };
 
 const compareDisplayItems = (left: DisplayMessageItem, right: DisplayMessageItem) => {
+  const orderDiff = left.order - right.order;
+  if (orderDiff !== 0) return orderDiff;
   const leftRunId = getDisplayItemRunId(left);
   const rightRunId = getDisplayItemRunId(right);
   if (leftRunId && leftRunId === rightRunId) {
     const phaseDiff = getDisplayItemPhase(left) - getDisplayItemPhase(right);
     if (phaseDiff !== 0) return phaseDiff;
   }
-  return left.order - right.order;
+  return 0;
 };
 
 const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) => {
@@ -1305,7 +1307,7 @@ export const QalamChatContent: React.FC<Props> = ({
         continue;
       }
 
-      items.push({ kind: "chat", key: `chat-${i}`, order: message.order || i, message });
+      items.push({ kind: "chat", key: message.meta?.messageId || `chat-${i}`, order: message.order || i, message });
     }
 
     return [...items].sort(compareDisplayItems);
