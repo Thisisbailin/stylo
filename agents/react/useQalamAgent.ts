@@ -152,6 +152,8 @@ const isAbortLikeError = (value: unknown) => {
 
 type StatusKind = "reasoning" | "response";
 
+const messageStreamKey = (runId: string, messageId?: string) => `${runId}:${messageId || "default"}`;
+
 const completeStatusMessage = (
   messages: Message[],
   statusId: string,
@@ -184,7 +186,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
   const toolFailureCountsRef = useRef<Record<string, Record<string, number>>>({});
   const runAbortMessageRef = useRef<Record<string, string | undefined>>({});
   const displayedRunFailureRef = useRef<Record<string, string>>({});
-  const revealTimersRef = useRef<Record<string, number[]>>({});
+  const runTimelineBaseRef = useRef<Record<string, number>>({});
 
   const createStatusId = useCallback((runId: string, kind: StatusKind) => {
     const next = (statusSequenceRef.current[runId] || 0) + 1;
@@ -192,13 +194,15 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
     return `${runId}-${kind}-${next}`;
   }, []);
 
-  const clearRevealTimers = useCallback((runId?: string) => {
-    if (typeof window === "undefined") return;
-    const runIds = runId ? [runId] : Object.keys(revealTimersRef.current);
-    runIds.forEach((id) => {
-      (revealTimersRef.current[id] || []).forEach((timer) => window.clearTimeout(timer));
-      delete revealTimersRef.current[id];
-    });
+  const resolveEventOrder = useCallback((messages: Message[], event: AgentRuntimeEvent) => {
+    const sequence = event.sequence;
+    if (!event.runId || typeof sequence !== "number") return nextMessageOrder(messages);
+    let base = runTimelineBaseRef.current[event.runId];
+    if (typeof base !== "number") {
+      base = nextMessageOrder(messages) - sequence;
+      runTimelineBaseRef.current[event.runId] = base;
+    }
+    return base + sequence;
   }, []);
 
   const ensureActiveStatusId = useCallback(
@@ -282,106 +286,12 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
     return syntheticResults.length ? [...next, ...syntheticResults] : next;
   }, []);
 
-  const revealAssistantMessage = useCallback(
-    (runId: string, text: string, planItems?: string[], messageId?: string) => {
-      if (typeof window === "undefined") {
-        setMessages((prev) =>
-          upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
-            role: "assistant",
-            kind: "chat",
-            order: current?.order || nextMessageOrder(prev),
-            text,
-            meta: {
-              ...current?.meta,
-              runId,
-              messageId,
-              isStreaming: false,
-              planItems,
-            },
-          }))
-        );
-        return;
-      }
-
-      clearRevealTimers(runId);
-      const total = text.length;
-      if (total > 1800) {
-        setMessages((prev) =>
-          upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
-            role: "assistant",
-            kind: "chat",
-            order: current?.order || nextMessageOrder(prev),
-            text,
-            meta: {
-              ...current?.meta,
-              runId,
-              messageId,
-              isStreaming: false,
-              planItems,
-            },
-          }))
-        );
-        return;
-      }
-      const chunkSize = total > 900 ? 56 : total > 420 ? 40 : 24;
-      const delay = total > 900 ? 20 : 16;
-      const slices: string[] = [];
-      for (let index = 0; index < total; index += chunkSize) {
-        slices.push(text.slice(0, Math.min(total, index + chunkSize)));
-      }
-      if (!slices.length) slices.push("");
-
-      setMessages((prev) =>
-        upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
-          role: "assistant",
-          kind: "chat",
-          order: current?.order || nextMessageOrder(prev),
-          text: "",
-          meta: {
-            ...current?.meta,
-            runId,
-            messageId,
-            isStreaming: true,
-          },
-        }))
-      );
-
-      revealTimersRef.current[runId] = slices.map((slice, index) =>
-        window.setTimeout(() => {
-          const isLast = index === slices.length - 1;
-          setMessages((prev) =>
-            upsertStreamingAssistantMessage(prev, runId, messageId, (current) => ({
-              role: "assistant",
-              kind: "chat",
-              order: current?.order || nextMessageOrder(prev),
-              text: slice,
-              meta: {
-                ...current?.meta,
-                runId,
-                messageId,
-                isStreaming: !isLast,
-                planItems: isLast ? planItems : current?.meta?.planItems,
-              },
-            }))
-          );
-          if (isLast) {
-            clearRevealTimers(runId);
-          }
-        }, index * delay)
-      );
-    },
-    [clearRevealTimers, setMessages]
-  );
-
-  useEffect(() => () => clearRevealTimers(), [clearRevealTimers]);
-
   const handleEvent = useCallback(
     (event: AgentRuntimeEvent) => {
       browserAgentDebug("useQalamAgent event", summarizeEventForDebug(event));
       if (event.type === "run_started") {
         activeRunIdRef.current = event.runId;
         activeRunStartedAtRef.current = Date.now();
-        streamedMessageSeenRef.current[event.runId] = false;
         toolFailureCountsRef.current[event.runId] = {};
         runAbortMessageRef.current[event.runId] = undefined;
         const statusId = ensureActiveStatusId(event.runId, "reasoning");
@@ -392,13 +302,13 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             ? upsertStatusMessage(prev, preflightStatusId, (current) => ({
                   role: "assistant",
                   kind: "status",
-                  order: current?.order || event.sequence || nextMessageOrder(prev),
+                  order: current?.order || resolveEventOrder(prev, event),
                   statusCard: {
                     id: preflightStatusId,
                     runId: event.runId,
                     status: "success",
-                    headline: "Agent 已连接",
-                    detail: "模型运行已启动。",
+                    headline: "Agent 已启动",
+                    detail: "Edge 已受理请求，正在初始化模型会话。",
                     summary: current?.statusCard.summary,
                     steps: current?.statusCard.steps || [],
                     startedAt: current?.statusCard.startedAt || Date.now(),
@@ -413,13 +323,13 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || event.sequence || nextMessageOrder(withPreflight),
+              order: current?.order || resolveEventOrder(withPreflight, event),
               statusCard: {
                 id: statusId,
                 runId: event.runId,
                 status: current?.statusCard.status || "running",
-                headline: "思考",
-                detail: "Agent 已进入工作状态，正在准备本轮分析。",
+                headline: "准备中",
+                detail: "正在建立本轮 Agent 执行上下文。",
                 summary: current?.statusCard.summary,
                 steps: current?.statusCard.steps || [],
                 startedAt: current?.statusCard.startedAt || Date.now(),
@@ -440,7 +350,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             upsertStatusMessage(prev, statusId, (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || event.sequence || nextMessageOrder(prev),
+              order: current?.order || resolveEventOrder(prev, event),
               statusCard: {
                 id: statusId,
                 runId: event.runId,
@@ -465,7 +375,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || event.sequence || nextMessageOrder(prev),
+            order: current?.order || resolveEventOrder(prev, event),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -489,7 +399,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           upsertStatusMessage(prev, statusId, (current) => ({
             role: "assistant",
             kind: "status",
-            order: current?.order || event.sequence || nextMessageOrder(prev),
+            order: current?.order || resolveEventOrder(prev, event),
             statusCard: {
               id: statusId,
               runId: event.runId,
@@ -509,7 +419,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       }
 
       if (event.type === "message_delta") {
-        streamedMessageSeenRef.current[event.runId] = true;
+        streamedMessageSeenRef.current[messageStreamKey(event.runId, event.messageId)] = true;
         const responseStatusId = ensureActiveStatusId(event.runId, "response");
         setMessages((prev) => {
           const withResponseStatus = upsertStatusMessage(
@@ -518,13 +428,13 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             (current) => ({
               role: "assistant",
               kind: "status",
-              order: current?.order || event.sequence || nextMessageOrder(prev),
+              order: current?.order || resolveEventOrder(prev, event),
               statusCard: {
                 id: responseStatusId,
                 runId: event.runId,
                 status: current?.statusCard.status || "running",
-                headline: "生成回复",
-                detail: "回答内容正在持续输出。",
+                headline: "生成内容",
+                detail: "模型正在持续输出本轮内容。",
                 summary: undefined,
                 steps: [],
                 startedAt: current?.statusCard.startedAt || Date.now(),
@@ -536,7 +446,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           return upsertStreamingAssistantMessage(withResponseStatus, event.runId, event.messageId, (current) => ({
             role: "assistant",
             kind: "chat",
-            order: current?.order || event.sequence || nextMessageOrder(withResponseStatus),
+            order: current?.order || resolveEventOrder(withResponseStatus, event),
             text: event.accumulatedText,
             meta: {
               ...current?.meta,
@@ -553,7 +463,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
       if (event.type === "tool_called") {
         recordAgentToolCalled(event.call, activityStorageKey);
         const actionLabel = humanizeToolName(event.call.name);
-        const runId = activeRunIdRef.current;
+        const runId = event.runId;
         setMessages((prev) => {
           const withReasoningCompleted = runId ? finalizeActiveReasoningStatus(prev, runId, "success") : prev;
           return [
@@ -561,7 +471,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
             {
               role: "assistant",
               kind: "tool",
-              order: event.sequence || nextMessageOrder(withReasoningCompleted),
+              order: resolveEventOrder(withReasoningCompleted, event),
               tool: {
                 callId: event.call.callId,
                 runId: runId || undefined,
@@ -577,13 +487,13 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
 
       if (event.type === "tool_completed") {
         recordAgentToolCompleted(event.call, activityStorageKey);
-        const runId = activeRunIdRef.current;
+        const runId = event.runId;
         setMessages((prev) => [
           ...upsertToolStatus(prev, event.call.callId, "success", event.call.summary),
           {
             role: "assistant",
             kind: "tool_result",
-            order: event.sequence || nextMessageOrder(prev),
+            order: resolveEventOrder(prev, event),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,
@@ -599,7 +509,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
 
       if (event.type === "tool_failed") {
         recordAgentToolFailed(event.call, event.error, activityStorageKey);
-        const runId = activeRunIdRef.current;
+        const runId = event.runId;
         if (runId) {
           const currentFailures = toolFailureCountsRef.current[runId] || {};
           const nextFailures = (currentFailures[event.call.name] || 0) + 1;
@@ -617,7 +527,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           {
             role: "assistant",
             kind: "tool_result",
-            order: event.sequence || nextMessageOrder(prev),
+            order: resolveEventOrder(prev, event),
             tool: {
               callId: event.call.callId,
               runId: runId || undefined,
@@ -632,54 +542,57 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
 
       if (event.type === "message_completed") {
         const built = buildAssistantChatMessage(event.text);
-        const hasStreamedDelta = streamedMessageSeenRef.current[event.runId];
+        const streamKey = messageStreamKey(event.runId, event.messageId);
+        const hasStreamedDelta = streamedMessageSeenRef.current[streamKey];
         setMessages((prev) => {
           const withStreamedAnswer = hasStreamedDelta
             ? upsertStreamingAssistantMessage(prev, event.runId, event.messageId, (current) => {
                 return current
                   ? {
                       ...current,
-                      order: current.order || event.sequence || nextMessageOrder(prev),
+                      order: current.order || resolveEventOrder(prev, event),
                       text: event.text || current.text,
                       meta: {
                         ...current.meta,
                         runId: event.runId,
                         messageId: event.messageId,
                         isStreaming: false,
+                        isFinal: event.isFinal,
                         planItems: built.meta?.planItems,
                       },
                     }
                   : {
                       ...built,
-                      order: event.sequence || nextMessageOrder(prev),
+                      order: resolveEventOrder(prev, event),
                       meta: {
                         ...built.meta,
                         runId: event.runId,
                         messageId: event.messageId,
                         isStreaming: false,
+                        isFinal: event.isFinal,
                       },
                     };
               })
             : upsertStreamingAssistantMessage(prev, event.runId, event.messageId, (current) => ({
                 role: "assistant",
                 kind: "chat",
-                order: current?.order || event.sequence || nextMessageOrder(prev),
-                text: "",
+                order: current?.order || resolveEventOrder(prev, event),
+                text: built.text || event.text,
                 meta: {
                   ...current?.meta,
                   runId: event.runId,
                   messageId: event.messageId,
-                  isStreaming: true,
+                  isStreaming: false,
+                  isFinal: event.isFinal,
+                  planItems: built.meta?.planItems,
                 },
               }));
           return finalizeActiveResponseStatus(withStreamedAnswer, event.runId, "success", {
-            headline: "回复完成",
-            detail: "回答已生成完成。",
+            headline: event.isFinal ? "最终回答已完成" : "本轮内容已生成",
+            detail: event.isFinal ? "Agent 已完成本次任务。" : "Agent 将继续处理后续工具或推理步骤。",
           });
         });
-        if (!hasStreamedDelta && event.text) {
-          window.setTimeout(() => revealAssistantMessage(event.runId, event.text, built.meta?.planItems, event.messageId), 0);
-        }
+        delete streamedMessageSeenRef.current[streamKey];
         return;
       }
 
@@ -695,10 +608,13 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         delete activeReasoningStatusIdRef.current[event.runId];
         delete activeResponseStatusIdRef.current[event.runId];
         delete statusSequenceRef.current[event.runId];
-        delete streamedMessageSeenRef.current[event.runId];
+        Object.keys(streamedMessageSeenRef.current)
+          .filter((key) => key.startsWith(`${event.runId}:`))
+          .forEach((key) => delete streamedMessageSeenRef.current[key]);
         delete toolFailureCountsRef.current[event.runId];
         delete runAbortMessageRef.current[event.runId];
         delete displayedRunFailureRef.current[event.runId];
+        delete runTimelineBaseRef.current[event.runId];
         return;
       }
 
@@ -709,7 +625,6 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         const finalError = forcedAbortMessage || event.error;
         const aborted = !forcedAbortMessage && isAbortLikeError(event.error);
         displayedRunFailureRef.current[event.runId] = finalError;
-        clearRevealTimers(event.runId);
         setMessages((prev) => {
           let withStatus = finalizeDanglingToolCalls(prev, event.runId, finalError);
           withStatus = finalizeActiveReasoningStatus(withStatus, event.runId, "error");
@@ -720,9 +635,12 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
           delete activeReasoningStatusIdRef.current[event.runId];
           delete activeResponseStatusIdRef.current[event.runId];
           delete statusSequenceRef.current[event.runId];
-          delete streamedMessageSeenRef.current[event.runId];
+          Object.keys(streamedMessageSeenRef.current)
+            .filter((key) => key.startsWith(`${event.runId}:`))
+            .forEach((key) => delete streamedMessageSeenRef.current[key]);
           delete toolFailureCountsRef.current[event.runId];
           delete runAbortMessageRef.current[event.runId];
+          delete runTimelineBaseRef.current[event.runId];
           if (aborted) {
             return withStatus;
           }
@@ -738,7 +656,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
         });
       }
     },
-    [activityStorageKey, clearRevealTimers, createStatusId, ensureActiveStatusId, finalizeActiveReasoningStatus, finalizeActiveResponseStatus, finalizeDanglingToolCalls, revealAssistantMessage, setMessages]
+    [activityStorageKey, createStatusId, ensureActiveStatusId, finalizeActiveReasoningStatus, finalizeActiveResponseStatus, finalizeDanglingToolCalls, resolveEventOrder, setMessages]
   );
 
   const sendMessage = useCallback(
@@ -847,8 +765,7 @@ export const useQalamAgent = ({ runtime, projectId, sessionId, activityStorageKe
 
   useEffect(() => () => {
     abortRef.current?.abort();
-    clearRevealTimers();
-  }, [clearRevealTimers]);
+  }, []);
 
   return { isRunning, sendMessage, cancel };
 };

@@ -187,7 +187,7 @@ export const createHttpQalamAgentRuntime = ({
     let finalResult: QalamRunResult | null = null;
     let streamedError: string | null = null;
     let lastEventType: string | null = null;
-    let lastMessageCompletedText = "";
+    let lastFinalMessageCompletedText = "";
     await decodeStreamChunks(response.body, (rawPacket) => {
       browserAgentDebug("httpClient raw packet", summarizeRawPacketForDebug(rawPacket));
       const packet = parseAgentStreamPacket(rawPacket);
@@ -197,8 +197,8 @@ export const createHttpQalamAgentRuntime = ({
         if (packet.event.type === "run_completed") {
           finalResult = packet.event.result;
         }
-        if (packet.event.type === "message_completed") {
-          lastMessageCompletedText = packet.event.text || "";
+        if (packet.event.type === "message_completed" && packet.event.isFinal) {
+          lastFinalMessageCompletedText = packet.event.text || "";
         }
         if (packet.event.type === "run_failed") {
           streamedError = packet.event.error;
@@ -218,12 +218,12 @@ export const createHttpQalamAgentRuntime = ({
     });
 
     if (!finalResult) {
-      if (lastMessageCompletedText.trim()) {
+      if (lastFinalMessageCompletedText.trim()) {
         finalResult = {
           projectId: input.projectId,
-          finalText: lastMessageCompletedText,
+          finalText: lastFinalMessageCompletedText,
           sessionId: input.sessionId,
-          outputItems: [{ kind: "text", text: lastMessageCompletedText }],
+          outputItems: [{ kind: "text", text: lastFinalMessageCompletedText }],
           toolCalls: [],
         };
         browserAgentDebug("httpClient synthesized result from message_completed", {
@@ -241,7 +241,7 @@ export const createHttpQalamAgentRuntime = ({
       browserAgentDebugError("httpClient missing final result", {
         sessionId: input.sessionId,
         lastEventType,
-        hadMessageCompletedText: Boolean(lastMessageCompletedText.trim()),
+        hadFinalMessageCompletedText: Boolean(lastFinalMessageCompletedText.trim()),
       });
       throw new Error(
         lastEventType

@@ -15,11 +15,11 @@ export type AgentPromptCatalogEntry = {
 
 export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
   {
-    "id": "07ac2eaa33fe",
-    "title": "guidance · L173",
+    "id": "017c5b09a7c7",
+    "title": "guidance · L178",
     "category": "guardrail",
     "sourcePath": "agents/tools/index.ts",
-    "sourceLine": 173,
+    "sourceLine": 178,
     "content": "The tool failed without a durable project change. Re-read state, adjust arguments, or explain the blocker instead of repeating the same call.",
     "kind": "guardrail",
     "chars": 141

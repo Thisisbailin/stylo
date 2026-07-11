@@ -114,6 +114,9 @@ const extractReasoningSummaryFromResponseOutput = (output: unknown): string => {
   return parts.join("\n").trim();
 };
 
+const responseHasToolCalls = (output: unknown) =>
+  Array.isArray(output) && output.some((item) => item && typeof item === "object" && (item as any).type === "function_call");
+
 const unwrapProviderEvent = (data: any) => {
   if (data && typeof data === "object" && data.event && typeof data.event === "object") {
     return data.event;
@@ -327,10 +330,11 @@ export const runQalamAgentCore = async ({
   let streamedTextDelta = "";
   let streamedResponseText = "";
   let streamedReasoningText = "";
+  let activeReasoningText = "";
   let textSegmentIndex = 0;
   let activeMessageId = "";
   let activeMessageText = "";
-  const completedMessageTexts: string[] = [];
+  const completedMessages: Array<{ messageId: string; text: string; isFinal: boolean }> = [];
 
   const ensureActiveMessageId = () => {
     if (!activeMessageId) {
@@ -364,17 +368,26 @@ export const runQalamAgentCore = async ({
     });
   };
 
-  const completeActiveMessage = (completedText?: string) => {
+  const completeActiveReasoning = (completedText?: string) => {
+    const text = selectCompletedSegmentText(activeReasoningText, completedText);
+    if (!text.trim()) return;
+    activeReasoningText = "";
+    emitRuntimeEvent({ type: "reasoning_completed", runId, text });
+  };
+
+  const completeActiveMessage = (completedText?: string, options?: { isFinal?: boolean }) => {
     const hasText = Boolean(activeMessageText.trim() || completedText?.trim());
     if (!hasText) return;
     const messageId = ensureActiveMessageId();
     activeMessageText = selectCompletedSegmentText(activeMessageText, completedText);
-    completedMessageTexts.push(activeMessageText);
+    const isFinal = options?.isFinal === true;
+    completedMessages.push({ messageId, text: activeMessageText, isFinal });
     emitRuntimeEvent({
       type: "message_completed",
       runId,
       messageId,
       text: activeMessageText,
+      isFinal,
     });
     activeMessageId = "";
     activeMessageText = "";
@@ -383,13 +396,36 @@ export const runQalamAgentCore = async ({
   const textAlreadyRepresented = (text: string) => {
     const normalized = text.trim();
     if (!normalized) return true;
-    return completedMessageTexts.some((completed) => {
-      const item = completed.trim();
+    return completedMessages.some((completed) => {
+      const item = completed.text.trim();
       return item === normalized || item.includes(normalized);
     });
   };
 
-  const emitToolEvent = (event: AgentRuntimeEvent) => {
+  const markCompletedMessageFinal = (text: string) => {
+    const normalized = text.trim();
+    const completed = completedMessages.find((item) => {
+      const itemText = item.text.trim();
+      return itemText === normalized || itemText.includes(normalized);
+    });
+    if (!completed || completed.isFinal) return false;
+    completed.isFinal = true;
+    emitRuntimeEvent({
+      type: "message_completed",
+      runId,
+      messageId: completed.messageId,
+      text: completed.text,
+      isFinal: true,
+    });
+    return true;
+  };
+
+  const emitToolEvent = (
+    event:
+      | { type: "tool_called"; call: AgentExecutedToolCall }
+      | { type: "tool_completed"; call: AgentExecutedToolCall }
+      | { type: "tool_failed"; call: AgentExecutedToolCall; error: string }
+  ) => {
     if (event.type === "tool_called") {
       toolEvents.push(event.call);
     }
@@ -398,7 +434,7 @@ export const runQalamAgentCore = async ({
       if (index >= 0) toolEvents[index] = event.call;
       else toolEvents.push(event.call);
     }
-    emitRuntimeEvent(event);
+    emitRuntimeEvent({ ...event, runId } as AgentRuntimeEvent);
   };
 
   const tools = createQalamTools({
@@ -527,12 +563,13 @@ export const runQalamAgentCore = async ({
               ? chatDelta.reasoning
               : "";
         if (chatReasoningDelta) {
+          activeReasoningText += chatReasoningDelta;
           streamedReasoningText += chatReasoningDelta;
           emitRuntimeEvent({
             type: "reasoning_delta",
             runId,
             delta: chatReasoningDelta,
-            accumulatedText: streamedReasoningText,
+            accumulatedText: activeReasoningText,
           });
         }
         if (rawType === "output_text_delta" && typeof rawData?.delta === "string") {
@@ -543,39 +580,28 @@ export const runQalamAgentCore = async ({
           (rawType === "response.reasoning_summary_text.delta" || rawType === "reasoning_summary_text.delta") &&
           reasoningDelta
         ) {
+          activeReasoningText += reasoningDelta;
           streamedReasoningText += reasoningDelta;
           emitRuntimeEvent({
             type: "reasoning_delta",
             runId,
             delta: reasoningDelta,
-            accumulatedText: streamedReasoningText,
+            accumulatedText: activeReasoningText,
           });
         }
         if (
           (rawType === "response.reasoning_summary_text.done" || rawType === "reasoning_summary_text.done") &&
           typeof rawData?.text === "string"
         ) {
-          streamedReasoningText = rawData.text || streamedReasoningText;
-          emitRuntimeEvent({
-            type: "reasoning_completed",
-            runId,
-            text: streamedReasoningText,
-          });
+          completeActiveReasoning(rawData.text);
         }
         if (rawType === "response_done") {
           const responsePayload = rawData?.response || providerEvent?.response;
           const candidate = extractTextFromResponseOutput(responsePayload?.output);
           if (candidate) streamedResponseText = candidate;
           const reasoningCandidate = extractReasoningSummaryFromResponseOutput(responsePayload?.output);
-          if (reasoningCandidate && !streamedReasoningText.trim()) {
-            streamedReasoningText = reasoningCandidate;
-            emitRuntimeEvent({
-              type: "reasoning_completed",
-              runId,
-              text: reasoningCandidate,
-            });
-          }
-          completeActiveMessage(candidate);
+          if (reasoningCandidate) completeActiveReasoning(reasoningCandidate);
+          completeActiveMessage(candidate, { isFinal: !responseHasToolCalls(responsePayload?.output) });
           emitTrace(
             "model",
             "success",
@@ -587,15 +613,16 @@ export const runQalamAgentCore = async ({
     } finally {
       streamReader.releaseLock();
     }
+    completeActiveReasoning();
     completeActiveMessage();
 
     await (result as any)?.completed;
     const synthesizedToolText = summarizeSuccessfulToolCalls(toolEvents);
     const finalText =
       String(result.finalOutput || "").trim() ||
-      streamedTextDelta.trim() ||
       streamedResponseText.trim() ||
       extractTextFromResponseOutput(result.rawResponses?.at(-1)?.output) ||
+      streamedTextDelta.trim() ||
       synthesizedToolText;
 
     const runResult: QalamRunResult = {
@@ -625,8 +652,8 @@ export const runQalamAgentCore = async ({
       `tools=${toolEvents.length} · response=${result.lastResponseId || "n/a"}`,
       finalText
     );
-    if (!textAlreadyRepresented(finalText)) {
-      completeActiveMessage(finalText);
+    if (!markCompletedMessageFinal(finalText) && !textAlreadyRepresented(finalText)) {
+      completeActiveMessage(finalText, { isFinal: true });
     }
     emitRuntimeEvent({ type: "run_completed", runId, result: runResult });
     return runResult;
@@ -645,7 +672,7 @@ export const runQalamAgentCore = async ({
     const hasSuccessfulAction = toolEvents.some(
       (toolCall) => toolCall.status === "success" && SUCCESSFUL_ACTION_TOOL_NAMES.has(toolCall.name)
     );
-    const fallbackText = streamedTextDelta.trim() || streamedResponseText.trim() || synthesizedToolText;
+    const fallbackText = streamedResponseText.trim() || streamedTextDelta.trim() || synthesizedToolText;
 
     onDebug?.("run error", {
       error,
@@ -686,8 +713,8 @@ export const runQalamAgentCore = async ({
           : "运行中断，但已从已知结果恢复文本。",
         recoveredText
       );
-      if (!textAlreadyRepresented(recoveredText)) {
-        completeActiveMessage(recoveredText);
+      if (!markCompletedMessageFinal(recoveredText) && !textAlreadyRepresented(recoveredText)) {
+        completeActiveMessage(recoveredText, { isFinal: true });
       }
       emitRuntimeEvent({ type: "run_completed", runId, result: runResult });
       return runResult;

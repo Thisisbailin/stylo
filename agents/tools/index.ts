@@ -1,6 +1,6 @@
 import { tool } from "@openai/agents";
 import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import type { AgentExecutedToolCall, AgentRuntimeEvent } from "../runtime/types";
+import type { AgentExecutedToolCall } from "../runtime/types";
 import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
 import type { QalamToolBudgetPolicy } from "../runtime/toolBudget";
 import {
@@ -45,6 +45,11 @@ const MUTATING_TOOL_NAMES = new Set([
   "prepare_generation_execution",
   "cancel_generation_execution",
 ]);
+
+type ToolLifecycleEvent =
+  | { type: "tool_called"; call: AgentExecutedToolCall }
+  | { type: "tool_completed"; call: AgentExecutedToolCall }
+  | { type: "tool_failed"; call: AgentExecutedToolCall; error: string };
 
 const TOOL_DEFS = [
   pingToolDef,
@@ -183,7 +188,7 @@ export const createQalamTools = ({
   toolBudget,
 }: {
   bridge: QalamAgentBridge;
-  emitEvent?: (event: AgentRuntimeEvent) => void;
+  emitEvent?: (event: ToolLifecycleEvent) => void;
   disabledTools?: string[];
   toolBudget?: QalamToolBudgetPolicy;
 }) => {

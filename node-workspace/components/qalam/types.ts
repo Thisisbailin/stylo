@@ -22,6 +22,7 @@ export type ChatMessage = {
     runId?: string;
     messageId?: string;
     isStreaming?: boolean;
+    isFinal?: boolean;
     planItems?: string[];
     searchEnabled?: boolean;
     searchUsed?: boolean;
