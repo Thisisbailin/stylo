@@ -40,16 +40,16 @@ import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 
-const WRITING_SIDE_WIDTH_STORAGE_KEY = "qalam_writing_side_width_v1";
+const WRITING_SIDE_WIDTH_STORAGE_KEY = "qalam_writing_side_width_v2";
 const clampWritingSideWidth = (width: number) => {
   if (typeof window === "undefined") return Math.max(320, width);
-  return Math.round(Math.min(Math.max(320, window.innerWidth * 0.56), Math.max(280, width)));
+  return Math.round(Math.min(Math.min(520, Math.max(320, window.innerWidth - 440)), Math.max(320, width)));
 };
 
 const getInitialWritingSideWidth = () => {
   if (typeof window === "undefined") return 420;
   const stored = Number(window.localStorage.getItem(WRITING_SIDE_WIDTH_STORAGE_KEY));
-  return clampWritingSideWidth(Number.isFinite(stored) && stored > 0 ? stored : Math.round(window.innerWidth * 0.4));
+  return clampWritingSideWidth(Number.isFinite(stored) && stored > 0 ? stored : 420);
 };
 
 interface CreativeWorkspaceProps {
@@ -1008,7 +1008,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
       onSendingChange={setIsQalamSending}
       onScriptEditProposals={handleAgentScriptEditProposals}
-      renderCollapsedTrigger={editingScriptNodeId === null}
+      renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
       allowLegacyConversationMigration={false}
     />
@@ -1172,7 +1172,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           type="button"
           aria-label="调整剧本侧栏宽度"
           className="writing-split-resizer fixed bottom-[3px] top-[3px] z-[82] w-3 -translate-x-1/2 cursor-col-resize touch-none bg-transparent"
-          style={{ left: writingSideWidth }}
+          style={{ left: writingSideWidth + 16 }}
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             event.preventDefault();

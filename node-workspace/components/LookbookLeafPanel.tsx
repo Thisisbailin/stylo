@@ -163,15 +163,11 @@ export const LookbookLeafPanel: React.FC<Props> = ({ projectData, identityNodeId
             <motion.div
               key={`turn-${pageIndex}-${turnDirection}`}
               className="lookbook-leaf-book__turning"
-              initial={{ rotateY: turnDirection > 0 ? 0 : -180, scaleX: 1 }}
-              animate={{
-                rotateY: turnDirection > 0 ? [0, -76, -180] : [-180, -104, 0],
-                scaleX: [1, 0.985, 1],
-              }}
+              initial={{ rotateY: turnDirection > 0 ? 0 : -180 }}
+              animate={{ rotateY: turnDirection > 0 ? -180 : 0 }}
               transition={{
-                duration: 0.68,
-                times: [0, 0.48, 1],
-                ease: [0.42, 0, 0.18, 1],
+                duration: 0.48,
+                ease: [0.22, 1, 0.36, 1],
               }}
               onAnimationComplete={finishTurn}
             >

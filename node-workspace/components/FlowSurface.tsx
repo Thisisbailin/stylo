@@ -1137,6 +1137,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             setIsFoundationGatewayOpen(false);
           }}
           title={isFoundationExpanded && !isAgentTailOpen ? "收起 Foundation" : "展开 Foundation"}
+          aria-label={isFoundationExpanded && !isAgentTailOpen ? "收起 Foundation" : "展开 Foundation"}
           aria-expanded={isFoundationExpanded && !isAgentTailOpen}
         >
           <span className="script-foundation-bar-label__icon" aria-hidden="true">
@@ -1149,10 +1150,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             ) : (
               <Clapperboard size={15} strokeWidth={1.9} />
             )}
-          </span>
-          <span className="script-foundation-bar-label__text">
-            <strong>Foundation</strong>
-            <small>{activeAxisDefinition.label}</small>
           </span>
         </button>
 
@@ -1206,7 +1203,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                       role="button"
                       tabIndex={0}
                       aria-label={`${block.title}，双击打开块档案`}
-                      title="双击打开块档案文档"
+                      title={`${block.title} · 双击打开块档案文档`}
                       draggable
                       onDragStart={(event) => {
                         setDraggingBlockId(block.id);
@@ -1284,21 +1281,19 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 className="script-foundation-bar-label script-foundation-bar-label--agent is-active"
                 onClick={() => setIsAgentTailOpen(false)}
                 title="收起 Agent"
+                aria-label="收起 Agent"
                 aria-expanded="true"
               >
                 <span className="script-foundation-bar-label__icon" aria-hidden="true">
                   <Bot size={15} strokeWidth={1.85} />
-                </span>
-                <span className="script-foundation-bar-label__text">
-                  <strong>Agent</strong>
-                  <small>Qalam</small>
                 </span>
               </button>
               <textarea
                 ref={agentComposerRef}
                 value={agentComposerValue}
                 rows={1}
-                placeholder="Ask Qalam about this script axis..."
+                placeholder=""
+                aria-label="向 Qalam Agent 输入消息"
                 onChange={(event) => onAgentComposerChange?.(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -1353,10 +1348,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 <span className="script-foundation-bar-label__icon" aria-hidden="true">
                   <Network size={15} strokeWidth={1.85} />
                 </span>
-                <span className="script-foundation-bar-label__text">
-                  <strong>Nodes</strong>
-                  <small>Add</small>
-                </span>
               </button>
               <button
                 type="button"
@@ -1375,10 +1366,6 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               >
                 <span className="script-foundation-bar-label__icon" aria-hidden="true">
                   <Bot size={15} strokeWidth={1.85} />
-                </span>
-                <span className="script-foundation-bar-label__text">
-                  <strong>Agent</strong>
-                  <small>Qalam</small>
                 </span>
               </button>
             </div>

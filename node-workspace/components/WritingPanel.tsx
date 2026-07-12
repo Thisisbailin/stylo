@@ -832,7 +832,7 @@ export const WritingPanel: React.FC<Props> = ({
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [isFormatGuideOpen, setIsFormatGuideOpen] = useState(false);
-  const [isFocusMode, setIsFocusMode] = useState(true);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -1611,7 +1611,7 @@ export const WritingPanel: React.FC<Props> = ({
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
       : { paddingLeft: `${qalamPanelWidth + 44}px` }
     : isInfoPanelOpen
-      ? { paddingLeft: `${sidePanelWidth + 3}px` }
+      ? { paddingLeft: `${sidePanelWidth + 44}px` }
       : undefined;
   const toggleAgentPanel = () => {
     if (isQalamOpen) {
@@ -1632,7 +1632,7 @@ export const WritingPanel: React.FC<Props> = ({
   const activeSideInset = isQalamOpen && !isCompactLayout
     ? qalamPanelWidth + 44
     : isInfoPanelOpen
-      ? sidePanelWidth
+      ? sidePanelWidth + 44
       : 0;
   const handleClose = () => {
     applyToProject();
@@ -2023,7 +2023,7 @@ export const WritingPanel: React.FC<Props> = ({
               </section>
 
               {isInfoPanelOpen ? (
-              <aside className="writing-card writing-info-card" style={{ width: sidePanelWidth - 3 }}>
+              <aside className="writing-card writing-info-card" style={{ width: sidePanelWidth }}>
                 <header className="writing-info-panel-header">
                   <div>
                     <strong>稿纸 Info</strong>

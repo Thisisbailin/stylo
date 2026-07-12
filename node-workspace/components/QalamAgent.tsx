@@ -1269,7 +1269,7 @@ export const QalamAgent: React.FC<Props> = ({
     },
     [approveExecution, dismissExecutionApproval, setApprovalPreferences, setMessages]
   );
-  const qalamVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.65));
+  const qalamVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.8));
   const qalamChromeHeight = 62;
   const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
   const qalamGlassConfig = useMemo(

@@ -604,7 +604,7 @@
   width: min(78vw, 1080px);
   height: min(72dvh, 720px);
   transform-style: preserve-3d;
-  transition: transform 680ms cubic-bezier(0.42, 0, 0.18, 1);
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .lookbook-leaf-book.is-closed { transform: translateX(-25%); }
@@ -676,11 +676,11 @@
 }
 
 .lookbook-leaf-book__face--front::after {
-  background: linear-gradient(90deg, rgba(24, 25, 23, 0.22), transparent 18%, transparent 78%, rgba(255, 255, 255, 0.08));
+  background: linear-gradient(90deg, rgba(24, 25, 23, 0.1), transparent 14%);
 }
 
 .lookbook-leaf-book__face--back::after {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), transparent 20%, transparent 76%, rgba(24, 25, 23, 0.2));
+  background: linear-gradient(90deg, transparent 86%, rgba(24, 25, 23, 0.1));
 }
 .lookbook-leaf-book__turning .lookbook-leaf,
 .lookbook-leaf-book__turning .lookbook-book__cover,
@@ -6932,10 +6932,18 @@ button.script-foundation-gateway-card:hover,
   width: 100%;
   max-width: none;
   gap: 0;
-  --writing-paper-width: min(100%, 980px);
+  --writing-paper-width: min(100%, clamp(680px, 68vw, 900px));
 }
 
 .writing-room .writing-script-shell {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.writing-room.is-focus-mode .writing-script-shell {
   overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 18px;
@@ -6945,12 +6953,21 @@ button.script-foundation-gateway-card:hover,
 
 .writing-room .writing-paper-stack {
   width: 100%;
+  padding-top: 58px;
+  padding-bottom: 132px;
+}
+
+.writing-room.is-focus-mode .writing-studio-grid {
+  --writing-paper-width: min(100%, 980px);
+}
+
+.writing-room.is-focus-mode .writing-paper-stack {
   padding-top: 66px;
   padding-bottom: 84px;
 }
 
-.writing-room .writing-script-paper,
-.writing-room .writing-script-paper.is-active {
+.writing-room.is-focus-mode .writing-script-paper,
+.writing-room.is-focus-mode .writing-script-paper.is-active {
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -6958,11 +6975,12 @@ button.script-foundation-gateway-card:hover,
   animation: none;
 }
 
-.writing-info-card {
+.writing-room .writing-info-card {
   position: fixed;
-  inset: 3px auto 3px 3px;
+  inset: 16px auto auto 16px;
   z-index: 80;
-  max-height: none;
+  height: min(760px, calc(80dvh - 16px));
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
   border-radius: 18px;
   background: var(--app-panel);
@@ -8770,13 +8788,13 @@ body.qalam-resizing .writing-split-resizer::before {
 .script-foundation-filmstrip {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent);
-  border-radius: 20px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--app-panel) 88%, transparent);
   box-shadow: 0 18px 42px -34px rgba(28, 28, 30, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.62);
-  padding: 5px;
+  padding: 4px;
   filter: none;
   animation: none;
   backdrop-filter: blur(18px);
@@ -8813,8 +8831,8 @@ body.qalam-resizing .writing-split-resizer::before {
 .script-foundation-head-block {
   display: inline-flex;
   width: 34px;
-  height: 42px;
-  min-height: 42px;
+  height: 38px;
+  min-height: 38px;
   gap: 0;
   border: 0;
   border-radius: 6px;
@@ -8858,7 +8876,7 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-track {
-  min-height: 42px;
+  min-height: 38px;
   align-items: stretch;
   gap: 4px;
   overflow-x: auto;
@@ -8872,7 +8890,7 @@ body.qalam-resizing .writing-split-resizer::before {
 .script-foundation-block.joins-prev,
 .script-foundation-block.joins-next,
 .script-foundation-block.joins-prev.joins-next {
-  height: 42px;
+  height: 38px;
   min-width: 90px;
   margin: 0;
   overflow: hidden;
@@ -8892,21 +8910,14 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-block__inner {
-  min-height: 42px;
-  padding: 7px 9px 6px;
+  min-height: 38px;
+  padding: 0;
   text-shadow: none;
 }
 
 .script-foundation-block__meta,
 .script-foundation-block__foot {
-  position: static;
-  z-index: auto;
-  gap: 5px;
-  color: color-mix(in srgb, var(--app-text-secondary) 78%, var(--foundation-color));
-  font-family: inherit;
-  font-size: 8.5px;
-  font-weight: 620;
-  text-transform: none;
+  display: none;
 }
 
 .script-foundation-block__frame-index {
@@ -8919,13 +8930,7 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-block strong {
-  position: static;
-  z-index: auto;
-  color: var(--app-text-primary);
-  font-size: 11.5px;
-  font-weight: 680;
-  letter-spacing: 0;
-  line-height: 1.15;
+  display: none;
 }
 
 .script-foundation-block:hover,
@@ -8978,7 +8983,7 @@ body.qalam-resizing .writing-split-resizer::before {
 .script-foundation-project-roll.is-slate { --foundation-color: #8e929a; --project-roll-color: #8e929a; }
 
 .script-foundation-boundary {
-  min-height: 42px;
+  min-height: 38px;
 }
 
 .script-foundation-resize {
@@ -9007,10 +9012,10 @@ body.qalam-resizing .writing-split-resizer::before {
 .script-foundation-tail,
 .script-foundation-tail:not(.is-agent-open) {
   width: auto;
-  height: 42px;
-  min-height: 42px;
+  height: 38px;
+  min-height: 38px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: transparent;
   box-shadow: none;
 }
@@ -9019,9 +9024,9 @@ body.qalam-resizing .writing-split-resizer::before {
   position: relative;
   z-index: 4;
   display: flex;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
   align-items: center;
   justify-content: center;
   pointer-events: auto;
@@ -9035,9 +9040,13 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-account-control [data-account-trigger] {
-  height: 36px;
+  width: 34px;
+  height: 34px;
   gap: 4px;
-  padding-inline: 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  padding: 0;
   box-shadow: none;
 }
 
@@ -9047,31 +9056,33 @@ body.qalam-resizing .writing-split-resizer::before {
 
 .script-foundation-tail-labels {
   flex-direction: row;
-  gap: 6px;
+  gap: 4px;
   padding: 0;
 }
 
 .script-foundation-tail-labels button,
 .script-foundation-tail-labels button:hover {
-  width: auto;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border: 0;
   filter: none;
 }
 
 .script-foundation-bar-label {
   display: inline-flex;
-  height: 42px;
-  min-width: 0;
-  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  flex: 0 0 38px;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 0;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: transparent;
   color: var(--app-text-secondary);
   cursor: pointer;
-  padding: 0 10px 0 8px;
+  padding: 0;
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
@@ -9092,9 +9103,9 @@ body.qalam-resizing .writing-split-resizer::before {
 
 .script-foundation-bar-label__icon {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   align-items: center;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
@@ -9104,10 +9115,7 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-bar-label__text {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-  text-align: left;
+  display: none;
 }
 
 .script-foundation-bar-label__text strong,
@@ -9134,37 +9142,37 @@ body.qalam-resizing .writing-split-resizer::before {
 }
 
 .script-foundation-tail.is-agent-open {
-  width: min(560px, calc(100vw - 224px));
-  height: 42px;
-  min-height: 42px;
+  width: min(500px, calc(100vw - 192px));
+  height: 38px;
+  min-height: 38px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: transparent;
   box-shadow: none;
 }
 
 .script-foundation-tail-composer {
-  height: 42px;
-  gap: 7px;
+  height: 38px;
+  gap: 5px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: transparent;
   box-shadow: none;
   padding: 0;
 }
 
 .script-foundation-tail-composer textarea {
-  min-height: 34px;
-  max-height: 34px;
-  border-radius: 12px;
+  min-height: 32px;
+  max-height: 32px;
+  border-radius: 11px;
   background: color-mix(in srgb, var(--app-panel-soft) 86%, transparent);
-  padding: 8px 10px 6px;
+  padding: 7px 10px 5px;
   font-size: 12px;
 }
 
 .script-foundation-tail-send {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 0;
   border-radius: 6px;
   background: color-mix(in srgb, var(--app-accent) 28%, var(--app-panel-soft));
@@ -9363,14 +9371,14 @@ body.qalam-resizing .writing-split-resizer::before {
 
   .script-foundation-head-block {
     width: 38px;
-    height: 46px;
-    min-height: 46px;
+    height: 38px;
+    min-height: 38px;
     gap: 0;
     padding: 0;
   }
 
   .script-foundation-track {
-    min-height: 46px;
+    min-height: 38px;
     gap: 3px;
   }
 
@@ -9381,41 +9389,36 @@ body.qalam-resizing .writing-split-resizer::before {
   .script-foundation-block.joins-next,
   .script-foundation-block.joins-prev.joins-next {
     min-width: 92px;
-    height: 46px;
+    height: 38px;
   }
 
   .script-foundation-block__inner {
-    min-height: 46px;
-    padding: 6px 7px 5px;
+    min-height: 38px;
+    padding: 0;
   }
 
   .script-foundation-boundary {
-    min-height: 46px;
+    min-height: 38px;
   }
 
   .script-foundation-tail,
   .script-foundation-tail:not(.is-agent-open) {
     width: auto;
-    height: 42px;
-    min-height: 42px;
+    height: 38px;
+    min-height: 38px;
   }
 
   .script-foundation-tail.is-agent-open {
-    width: min(420px, calc(100vw - 96px));
-    height: 42px;
-    min-height: 42px;
+    width: min(400px, calc(100vw - 88px));
+    height: 38px;
+    min-height: 38px;
   }
 
   .script-foundation-bar-label {
-    padding-inline: 7px;
-  }
-
-  .script-foundation-bar-label__text small {
-    display: none;
-  }
-
-  .script-foundation-dock:not([data-foundation-expanded="true"]) .script-foundation-bar-label__text {
-    display: none;
+    width: 38px;
+    min-width: 38px;
+    flex-basis: 38px;
+    padding: 0;
   }
 
   .script-foundation-gateway {
