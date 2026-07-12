@@ -28,8 +28,6 @@ export const onRequest = async ({ request }: { request: Request }) => {
     // Workers/Pages fetch only supports http/https; websocket is upgraded via headers.
     const dashscopeUrl = new URL(`https://dashscope.aliyuncs.com${targetPath}`);
     dashscopeUrl.search = url.searchParams.toString();
-    console.log(`[Qwen Proxy] Handshaking with DashScope: ${dashscopeUrl.toString()}`);
-
     try {
         // Cloudflare Workers - Initiating an outbound WebSocket connection
         const resp = await fetch(dashscopeUrl.toString(), {
@@ -40,9 +38,9 @@ export const onRequest = async ({ request }: { request: Request }) => {
         });
 
         if (resp.status !== 101) {
-            const errorText = await resp.text();
-            console.error(`[Qwen Proxy] DashScope rejected handshake: ${resp.status} ${errorText}`);
-            return new Response(`DashScope Handshake Failed: ${resp.status} - ${errorText}`, { status: 502 });
+            await resp.body?.cancel();
+            console.error(`[Qwen Proxy] DashScope rejected handshake: ${resp.status}`);
+            return new Response(`DashScope handshake failed (${resp.status})`, { status: 502 });
         }
 
         const serverWS = resp.webSocket;
@@ -73,9 +71,6 @@ export const onRequest = async ({ request }: { request: Request }) => {
         });
     } catch (error) {
         console.error("[Qwen Proxy] Connection failed");
-        return new Response(
-            `Edge Proxy Exception: ${error instanceof Error ? error.message : "unknown error"}`,
-            { status: 500 }
-        );
+        return new Response("WebSocket proxy failed", { status: 500 });
     }
 };

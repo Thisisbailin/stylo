@@ -206,7 +206,13 @@ Notes:
 
 - D1 binding name: `DB`
 
-The project sync endpoints create and evolve the required D1 tables in code, so there is no separate SQL bootstrap requirement for the current schema path.
+Database schema changes are deployment-time migrations, never request-time DDL. Apply them before deploying Functions:
+
+```bash
+npx wrangler d1 migrations apply qalam --remote
+```
+
+For local D1 development, use the same command with `--local`. The migration files live in `migrations/` and are the authoritative schema.
 
 ## Main Backend Surfaces
 

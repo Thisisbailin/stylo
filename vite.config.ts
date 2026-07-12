@@ -53,6 +53,39 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (!id.includes('/node_modules/')) {
+              if (id.includes('/agents/')) return 'qalam-core';
+              if (id.includes('/services/')) return 'provider-services';
+              if (id.includes('/interactive-35mm-film-roll/')) return 'film-roll';
+              if (id.includes('/node-workspace/nodes/')) return 'flow-nodes';
+              if (id.includes('/node-workspace/foundation/')) return 'qalam-core';
+              if (
+                id.includes('/node-workspace/components/QalamAgent') ||
+                id.includes('/node-workspace/components/qalam/')
+              ) return 'qalam-core';
+              if (
+                id.includes('/node-workspace/components/FlowSurface') ||
+                id.includes('/node-workspace/components/canvas/')
+              ) return 'flow-surface';
+              return undefined;
+            }
+            if (/node_modules\/(react|react-dom|react-is|scheduler)\//.test(id)) return 'react-vendor';
+            if (id.includes('/node_modules/@xyflow/')) return 'flow-vendor';
+            if (id.includes('/node_modules/@clerk/')) return 'auth-vendor';
+            if (id.includes('/node_modules/@openai/') || id.includes('/node_modules/openai/')) return 'agent-vendor';
+            if (id.includes('/node_modules/recharts/') || id.includes('/node_modules/d3-')) return 'charts-vendor';
+            if (id.includes('/node_modules/konva/') || id.includes('/node_modules/react-konva/')) return 'canvas-vendor';
+            if (id.includes('/node_modules/@supabase/')) return 'storage-vendor';
+            if (id.includes('/node_modules/framer-motion/') || id.includes('/node_modules/motion-dom/')) return 'motion-vendor';
+            return 'vendor';
+          },
+        },
+      },
+    },
     define: {
       'process.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(env.VITE_CLERK_PUBLISHABLE_KEY),
     },

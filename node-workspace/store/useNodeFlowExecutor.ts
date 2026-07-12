@@ -93,7 +93,7 @@ const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, r
   }
   const onAbort = () => {
     window.clearTimeout(timer);
-    reject(signal.reason);
+    reject(signal?.reason);
   };
   const timer = window.setTimeout(() => {
     signal?.removeEventListener("abort", onAbort);
@@ -1070,10 +1070,6 @@ export const useNodeFlowExecutor = () => {
         configToUse,
         execution.signal
       );
-
-      console.log('--- AI Full Response ---');
-      console.log(res);
-      console.log('------------------------');
 
       const url = extractImageUrl(res.content) || res.content.trim();
 

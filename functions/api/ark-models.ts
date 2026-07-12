@@ -71,7 +71,8 @@ export const onRequestGet = async (context: PagesContext<Env>) => {
       headers: responseHeaders,
     });
   } catch (error: any) {
-    return new Response(`Ark models proxy error: ${error?.message || "unknown error"}`, {
+    console.error("Ark models proxy failed", error);
+    return new Response("Ark models proxy failed", {
       status: 500,
       headers: CORS_HEADERS,
     });

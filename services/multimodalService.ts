@@ -102,11 +102,6 @@ export const sendMessage = async (
         stream: false // Explicitly disable streaming
     };
 
-    console.log("--- [Multimodal] Request ---");
-    console.log("URL:", apiBase);
-    console.log("Model:", model);
-    // console.log("Payload:", JSON.stringify(payload, null, 2)); // Too large to log with base64
-
     try {
         const response = await fetchViaProxy(apiBase, {
             method: "POST",
@@ -127,10 +122,6 @@ export const sendMessage = async (
         }
 
         const data = await response.json();
-
-        console.log("--- [Multimodal] Response (Raw) ---");
-        // console.log(data); 
-        console.log("Usage:", data.usage);
 
         const choice = data.choices?.[0];
         const message = choice?.message;

@@ -3,7 +3,7 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 const desktopConfig = require("./desktop.config.cjs");
 
-const DEFAULT_DEV_URL = "http://127.0.0.1:5173";
+const DEFAULT_DEV_URL = "http://127.0.0.1:3000";
 const DESKTOP_CHROME_CSS = `
   html.qalam-desktop {
     --qalam-window-control-width: 138px;
@@ -193,7 +193,7 @@ const normalizeStartUrl = (value) => {
   if (!value || typeof value !== "string") return null;
   try {
     const parsed = new URL(value);
-    if (["http:", "https:", "file:"].includes(parsed.protocol)) {
+    if (["http:", "https:"].includes(parsed.protocol)) {
       return parsed.toString();
     }
   } catch {
@@ -223,6 +223,14 @@ const shouldOpenExternally = (targetUrl, appUrl) => {
     return target.origin !== start.origin;
   } catch {
     return true;
+  }
+};
+
+const isAllowedExternalUrl = (value) => {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
   }
 };
 
@@ -290,10 +298,16 @@ const createMainWindow = () => {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (shouldOpenExternally(url, startUrl)) {
-      shell.openExternal(url);
+      if (isAllowedExternalUrl(url)) void shell.openExternal(url);
       return { action: "deny" };
     }
     return { action: "allow" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (!shouldOpenExternally(url, startUrl)) return;
+    event.preventDefault();
+    if (isAllowedExternalUrl(url)) void shell.openExternal(url);
   });
 
   mainWindow.webContents.on("did-finish-load", () => {

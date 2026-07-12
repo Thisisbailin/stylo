@@ -172,6 +172,21 @@ const decodeJwtExpiry = (token: string) => {
   }
 };
 
+const decodeJwtSubject = (token: string) => {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+    const decoded = JSON.parse(atob(normalized));
+    return typeof decoded?.sub === "string" ? decoded.sub : null;
+  } catch {
+    return null;
+  }
+};
+
 const isJwtExpiredOrNearExpiry = (token: string, leewayMs = 30_000) => {
   const expiresAt = decodeJwtExpiry(token);
   if (!expiresAt) return false;
@@ -182,7 +197,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   // Clerk Auth Hooks
   const { isSignedIn: userSignedIn, user, isLoaded: isUserLoaded } = useUser();
   const { openSignIn, signOut } = useClerk();
-  const { getToken, isLoaded: isAuthLoaded, isSignedIn: authSignedIn } = useAuth();
+  const { getToken, isLoaded: isAuthLoaded, isSignedIn: authSignedIn, userId: authUserId } = useAuth();
   const projectStorageKey = buildAccountStorageKey(PROJECT_STORAGE_KEY, accountScope);
   const configStorageKey = buildAccountStorageKey(CONFIG_STORAGE_KEY, accountScope);
   const localBackupKey = buildAccountStorageKey(LOCAL_BACKUP_KEY, accountScope);
@@ -195,16 +210,19 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, [accountScope]);
   const getAuthToken = useCallback(async (options?: { skipCache?: boolean }) => {
     try {
+      const expectedUserId = accountScope.startsWith("user:") ? accountScope.slice(5) : null;
+      if (!expectedUserId || !authSignedIn || authUserId !== expectedUserId) return null;
       const token = await getToken({ template: "default", ...(options?.skipCache ? { skipCache: true } : {}) });
-      if (!token) return null;
+      if (!token || decodeJwtSubject(token) !== expectedUserId) return null;
       if (!options?.skipCache && isJwtExpiredOrNearExpiry(token)) {
-        return await getToken({ template: "default", skipCache: true });
+        const refreshed = await getToken({ template: "default", skipCache: true });
+        return refreshed && decodeJwtSubject(refreshed) === expectedUserId ? refreshed : null;
       }
       return token;
     } catch {
       return null;
     }
-  }, [getToken]);
+  }, [accountScope, authSignedIn, authUserId, getToken]);
   useEffect(() => {
     setApiAuthTokenProvider(authSignedIn ? getAuthToken : null);
     return () => setApiAuthTokenProvider(null);

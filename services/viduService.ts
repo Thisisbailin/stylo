@@ -263,7 +263,6 @@ export const fetchTaskResult = async (
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/creations`;
 
-  console.log("[Vidu] Polling:", url);
   const response = await fetchViaProxy(url, {
     method: "GET",
     headers: buildHeaders(apiKey),

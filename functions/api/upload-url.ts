@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getUserId } from './_auth';
+import { getUserId, JSON_HEADERS } from './_auth';
 import { readJsonRequest } from './_request';
 import type { PagesContext } from './_types';
 
@@ -64,11 +64,8 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
       env.SUPABASE_SERVICE_ROLE_KEY ||
       env.SUPABASE_SECRET_KEY;
     if (!supabaseUrl || !serviceRole) {
-      const missing = [
-        !supabaseUrl ? 'SUPABASE_URL' : null,
-        !serviceRole ? 'SUPABASE_SERVICE_ROLE | SUPABASE_SERVICE_ROLE_KEY | SUPABASE_SECRET_KEY' : null,
-      ].filter(Boolean).join(', ');
-      return new Response(`Supabase env missing: ${missing}`, { status: 500 });
+      console.error('Supabase upload configuration is incomplete');
+      return new Response('Storage service unavailable', { status: 503 });
     }
 
     const supabase = createClient(supabaseUrl, serviceRole);
@@ -81,7 +78,8 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
       .createSignedUploadUrl(fileName, { upsert: false });
 
     if (error) {
-      return new Response(error.message, { status: 400 });
+      console.error('Supabase signed upload URL failed', { message: error.message });
+      return new Response('Unable to create upload URL', { status: 502 });
     }
 
     let publicUrl: string | undefined;
@@ -103,9 +101,10 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
         path: data.path,
         isPublic: PUBLIC_BUCKETS.has(bucket),
       },
-    });
+    }, { headers: JSON_HEADERS });
   } catch (e: any) {
     if (e instanceof Response) return e;
-    return new Response(e?.message || 'Unexpected error', { status: 500 });
+    console.error('Signed upload URL request failed', e);
+    return new Response('Unexpected storage error', { status: 500 });
   }
 };

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { getUserId, jsonResponse } from "./_auth";
+import { readJsonRequest } from "./_request";
 
 type Env = {
   DB: any;
@@ -150,7 +151,7 @@ const deleteStorageUserData = async (env: Env, userId: string) => {
 
 const parseResetOptions = async (request: Request) => {
   if (request.method === "DELETE") return { scope: "project" as const };
-  const body = await request.json().catch(() => null);
+  const body = await readJsonRequest<{ scope?: unknown }>(request, 4 * 1024);
   return {
     scope: body?.scope === "all" ? ("all" as const) : ("project" as const),
   };
@@ -171,7 +172,8 @@ const handleReset = async (context: { request: Request; env: Env }) => {
     });
   } catch (error: any) {
     if (error instanceof Response) return error;
-    return jsonResponse({ error: error?.message || "Failed to reset account data" }, { status: 500 });
+    console.error("Account data reset failed", error);
+    return jsonResponse({ error: "Failed to reset account data" }, { status: 500 });
   }
 };
 

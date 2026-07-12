@@ -89,3 +89,28 @@ test("schema rejects projects beyond the node count limit", () => {
     /项目文件结构无效/
   );
 });
+
+test("schema rejects unsafe node data shapes before components render", () => {
+  assert.throws(
+    () => parseNodeFlowFile({
+      ...makeProject(),
+      nodes: [{
+        id: "vidu-1",
+        type: "viduVideoGen",
+        position: { x: 0, y: 0 },
+        data: { subjects: { not: "an array" } },
+      }],
+      links: [],
+    }),
+    /subjects 必须是数组/
+  );
+  const sanitized = parseNodeFlowFile({
+    ...makeProject(),
+    nodes: [{
+      ...makeNode("unsafe"),
+      data: JSON.parse('{"__proto__":{"polluted":true}}'),
+    }],
+    links: [],
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(sanitized.nodes[0].data, "__proto__"), false);
+});

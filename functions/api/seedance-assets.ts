@@ -254,18 +254,6 @@ export const onRequestOptions = async () =>
     headers: CORS_HEADERS,
   });
 
-const ensureAssetOwnershipTable = async (env: Env) => {
-  await env.DB.prepare(
-    `CREATE TABLE IF NOT EXISTS user_seedance_assets (
-      user_id TEXT NOT NULL,
-      asset_id TEXT NOT NULL,
-      group_id TEXT,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (user_id, asset_id)
-    )`
-  ).run();
-};
-
 const assertAssetOwnership = async (env: Env, userId: string, assetId: string) => {
   const row = await env.DB.prepare(
     "SELECT asset_id FROM user_seedance_assets WHERE user_id = ?1 AND asset_id = ?2"
@@ -327,7 +315,6 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
       limit: 30,
       windowSeconds: 60,
     });
-    await ensureAssetOwnershipTable(env);
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const action = normalizeText(payload?.action);
     if (action === "create") {

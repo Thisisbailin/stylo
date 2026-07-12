@@ -79,7 +79,6 @@ export const submitImageTask = async (
     }
 
     try {
-        console.log("--- [Multimodal] Submit Image Task (Nano Banana) ---");
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
         };

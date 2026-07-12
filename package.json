@@ -4,6 +4,9 @@
   "version": "0.2.0",
   "type": "module",
   "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "predev": "node scripts/generate-skill-manifest.mjs",
     "dev": "vite",
@@ -11,7 +14,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit --strict --pretty false",
     "test": "node scripts/run-tests.mjs",
-    "check": "npm run typecheck && npm test",
+    "audit": "npm audit --audit-level=high",
+    "check": "npm run typecheck && npm test && npm run build && npm run audit",
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "desktop:dev": "concurrently -k \"npm run dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:3000 && cross-env QALAM_DESKTOP_URL=http://127.0.0.1:3000 electron .\"",
@@ -84,7 +88,7 @@
     "electron-builder": "^26.15.2",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.8.2",
-    "vite": "^5.3.4",
+    "vite": "^7.3.6",
     "wait-on": "^9.0.10"
   }
 }

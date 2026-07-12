@@ -120,7 +120,7 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
         ...auditDevice,
       });
       return secretJsonResponse(
-        { error: "Conflict", secrets: existing.secrets, updatedAt: existing.updatedAt },
+        { error: "Conflict", updatedAt: existing.updatedAt },
         { status: 409, headers: { etag: String(existing.updatedAt) } }
       );
     }
@@ -143,7 +143,7 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
         ...auditDevice,
       });
       return secretJsonResponse(
-        { error: "Conflict", secrets: current.secrets, updatedAt: current.updatedAt },
+        { error: "Conflict", updatedAt: current.updatedAt },
         { status: 409, headers: { etag: String(current.updatedAt) } }
       );
     }

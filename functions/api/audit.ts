@@ -4,12 +4,6 @@ type Env = {
 
 const SNAPSHOT_LOG_LIMIT = 50;
 
-export const ensureAuditTable = async (env: Env) => {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_sync_audit (user_id TEXT NOT NULL, id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, status TEXT NOT NULL, detail TEXT NOT NULL, created_at INTEGER NOT NULL)"
-  ).run();
-};
-
 export const logAudit = async (
   env: Env,
   userId: string,
@@ -18,7 +12,6 @@ export const logAudit = async (
   detail: Record<string, unknown> = {}
 ) => {
   try {
-    await ensureAuditTable(env);
     const payload = JSON.stringify(detail);
     const createdAt = Date.now();
     await env.DB.prepare(

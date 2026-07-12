@@ -105,20 +105,10 @@ export const forceFlushAgentTracing = async () => {
   await getGlobalTraceProvider().forceFlush();
 };
 
-export const ensureAgentTracingTables = async (env: EnvWithDb) => {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS agent_traces (trace_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, session_id TEXT NOT NULL, user_id TEXT, provider TEXT NOT NULL, model TEXT NOT NULL, workflow_name TEXT NOT NULL, group_id TEXT, metadata TEXT NOT NULL, trace_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS agent_spans (span_id TEXT PRIMARY KEY, trace_id TEXT NOT NULL, parent_id TEXT, span_type TEXT NOT NULL, span_name TEXT, started_at TEXT, ended_at TEXT, error TEXT, span_json TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"
-  ).run();
-};
-
 export const persistBufferedTrace = async (env: EnvWithDb, context: PersistTraceContext) => {
   const bundle = drainBufferedTrace(context.traceId);
   if (!bundle) return false;
 
-  await ensureAgentTracingTables(env);
   const now = Date.now();
   const traceJson = JSON.stringify(bundle.trace || {});
   const metadataJson = JSON.stringify(context.metadata || {});

@@ -87,7 +87,8 @@ export const onRequestGet = async (context: PagesContext<Env>) => {
       headers: responseHeaders,
     });
   } catch (error: any) {
-    return new Response(`Qwen models proxy error: ${error?.message || "unknown error"}`, {
+    console.error("Qwen models proxy failed", error);
+    return new Response("Qwen models proxy failed", {
       status: 500,
       headers: CORS_HEADERS,
     });

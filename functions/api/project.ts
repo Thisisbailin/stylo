@@ -419,7 +419,7 @@ export const onRequestGet = async (context: {
       const deviceId = getDeviceId(context.request);
       await logAudit(context.env, userId, "project.get", "error", { error: "Failed to load project", detail, deviceId });
     }
-    return jsonResponse({ error: "Failed to load project", detail }, { status: 500 });
+    return jsonResponse({ error: "Failed to load project" }, { status: 500 });
   }
 };
 
@@ -806,6 +806,6 @@ export const onRequestPut = async (context: {
       const deviceId = getDeviceId(context.request);
       await logAudit(context.env, userId, "project.put", "error", { error: "Failed to save project", detail, deviceId });
     }
-    return jsonResponse({ error: "Failed to save project", detail }, { status: 500 });
+    return jsonResponse({ error: "Failed to save project" }, { status: 500 });
   }
 };

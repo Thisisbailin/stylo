@@ -314,7 +314,12 @@ type RestoreRequest = {
 
 const parseVersionTag = (value: string | null): number | undefined => {
   if (value === null) return undefined;
-  const normalized = value.trim().replace(/^W\//i, "").replace(/^"|"$/g, "");
+  const withoutWeakPrefix = value.trim().replace(/^W\//i, "");
+  const normalized = withoutWeakPrefix.startsWith('"') && withoutWeakPrefix.endsWith('"')
+    ? withoutWeakPrefix.slice(1, -1)
+    : withoutWeakPrefix.includes('"')
+      ? ""
+      : withoutWeakPrefix;
   if (!/^\d+$/.test(normalized)) return undefined;
   const version = Number(normalized);
   return Number.isSafeInteger(version) && version >= 0 ? version : undefined;

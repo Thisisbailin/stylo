@@ -84,3 +84,21 @@ test("invalid JSON, corrupt ZIPs, and oversized JSON fail closed", async () => {
   );
   assert.equal(readAttempted, false, "oversized input must be rejected before reading its body");
 });
+
+test("package hydration cannot write resources into arbitrary node fields", async () => {
+  const malicious = makeTextProject();
+  malicious.nodes[0].data = {
+    ...malicious.nodes[0].data,
+    qalamPackageResources: {
+      subjects: {
+        kind: "document",
+        path: ".qalam/nodeflow.json",
+      },
+    },
+  } as never;
+  const blob = await buildNodeFlowPackageBlob(malicious);
+  await assert.rejects(
+    () => readNodeFlowImportFile(new File([blob], "malicious.qalam.zip", { type: "application/zip" })),
+    /不允许资源字段 subjects/
+  );
+});

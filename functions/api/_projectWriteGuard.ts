@@ -1,11 +1,5 @@
 import type { D1DatabaseLike, D1PreparedStatementLike } from "./_types";
 
-export const ensureProjectWriteGuardsTable = async (db: D1DatabaseLike) => {
-  await db.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_write_guards (guard_id TEXT PRIMARY KEY, ok INTEGER NOT NULL)"
-  ).run();
-};
-
 export const createProjectWriteGuardId = (userId: string, opId?: string) =>
   `${userId}:${opId || crypto.randomUUID()}`;
 

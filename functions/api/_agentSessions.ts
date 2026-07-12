@@ -176,19 +176,7 @@ const normalizeRecord = (row: any): PersistedAgentSessionRecord => {
   return { items, messages, updatedAt };
 };
 
-export const ensureAgentSessionsTable = async (env: EnvWithDb) => {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS agent_sessions (session_key TEXT PRIMARY KEY, session_id TEXT NOT NULL, user_id TEXT, items TEXT NOT NULL, messages TEXT NOT NULL, updated_at INTEGER NOT NULL)"
-  ).run();
-  const info = await env.DB.prepare("PRAGMA table_info(agent_sessions)").all();
-  const columns = new Set(((info.results || []) as Array<{ name?: string }>).map((row) => row.name || ""));
-  if (!columns.has("user_id")) {
-    await env.DB.prepare("ALTER TABLE agent_sessions ADD COLUMN user_id TEXT").run();
-  }
-};
-
 const readAgentSessionRecord = async (env: EnvWithDb, sessionKey: string): Promise<PersistedAgentSessionRecord> => {
-  await ensureAgentSessionsTable(env);
   const row = await env.DB.prepare(
     "SELECT items, messages, updated_at FROM agent_sessions WHERE session_key = ?1"
   ).bind(sessionKey).first();
@@ -204,7 +192,6 @@ const compareAndSetAgentSessionRecord = async (
   expectedUpdatedAt: number,
   record: PersistedAgentSessionRecord
 ) => {
-  await ensureAgentSessionsTable(env);
   const values = [
     sessionKey,
     sessionId,
@@ -300,7 +287,6 @@ export class D1EdgeSession implements Session {
   }
 
   async clearSession(): Promise<void> {
-    await ensureAgentSessionsTable(this.env);
     await this.env.DB.prepare("DELETE FROM agent_sessions WHERE session_key = ?1").bind(this.sessionKey).run();
   }
 

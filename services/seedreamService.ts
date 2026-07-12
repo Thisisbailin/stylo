@@ -50,7 +50,6 @@ export const generateSeedreamImage = async (
     };
 
     try {
-        console.log("--- [Seedream] Requesting Image Generation ---");
         const response = await fetchViaProxy(targetUrl, {
             method: "POST",
             headers: {

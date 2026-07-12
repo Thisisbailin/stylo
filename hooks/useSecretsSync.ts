@@ -147,6 +147,7 @@ export const useSecretsSync = ({
         const refreshedToken = await getTokenRef.current({ skipCache: true });
         if (!isOperationCurrent(generation)) return;
         if (refreshedToken) {
+          token = refreshedToken;
           res = await executeSave(refreshedToken);
           if (!isOperationCurrent(generation)) return;
         }
@@ -154,7 +155,15 @@ export const useSecretsSync = ({
 
       if (res.status === 409) {
         emitStatus('conflict', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
-        const data = await res.json().catch(() => null);
+        await res.body?.cancel();
+        const reload = await fetch(buildApiUrl("/api/secrets"), {
+          headers: {
+            authorization: `Bearer ${token}`,
+            "x-device-id": deviceIdRef.current,
+          },
+        });
+        if (!reload.ok) throw new Error(`Conflict reload failed: ${reload.status}`);
+        const data = await reload.json().catch(() => null);
         if (!isOperationCurrent(generation)) return;
         const remote = normalizeSecretsPayload(data?.secrets);
         lastSentRef.current = remote;

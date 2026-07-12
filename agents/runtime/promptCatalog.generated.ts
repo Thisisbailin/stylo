@@ -85,51 +85,51 @@ export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
     "chars": 116
   },
   {
-    "id": "7743dfa31023",
-    "title": "content · L427",
+    "id": "7ff2be3641bf",
+    "title": "content · L439",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 427,
+    "sourceLine": 439,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise durable summary. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and latest tool outcomes. Do not invent facts. Prefer short bullet-like lines.",
     "kind": "instruction",
     "chars": 264
   },
   {
-    "id": "415865dd6b50",
-    "title": "text · L604",
+    "id": "38eccec03293",
+    "title": "text · L616",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 604,
+    "sourceLine": 616,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise, durable summary of prior context. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and the latest successful/failed tool outcomes. Do not invent facts. Prefer bullet-like short lines over prose.",
     "kind": "instruction",
     "chars": 315
   },
   {
-    "id": "8cda7c3973fb",
+    "id": "3bfe65da8b78",
     "title": "structuredPrompt",
     "category": "runtime",
     "sourcePath": "services/responsesTextService.ts",
-    "sourceLine": 337,
+    "sourceLine": 306,
     "content": "${prompt.trim()}\n${buildStructuredOutputContract(schema)}",
     "kind": "instruction",
     "chars": 57
   },
   {
-    "id": "453fabc76027",
+    "id": "d54f0442a0b9",
     "title": "structuredSystemInstruction",
     "category": "runtime",
     "sourcePath": "services/responsesTextService.ts",
-    "sourceLine": 338,
+    "sourceLine": 307,
     "content": "${systemInstruction || \"Role: Structured Output Assistant.\"}\nYou are operating in strict structured-output mode. Return only valid JSON that conforms to the provided schema.",
     "kind": "instruction",
     "chars": 173
   },
   {
-    "id": "f9504f2d96ac",
+    "id": "b5769bb36717",
     "title": "outputText · description",
     "category": "runtime",
     "sourcePath": "services/responsesTextService.ts",
-    "sourceLine": 417,
+    "sourceLine": 386,
     "content": "Generated text response in Chinese",
     "kind": "tool-schema",
     "chars": 34

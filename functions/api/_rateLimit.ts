@@ -1,32 +1,7 @@
 import type { D1DatabaseLike } from "./_types";
 import { jsonResponse } from "./_auth";
 
-const tableReadyByDatabase = new WeakMap<object, Promise<void>>();
 const nextCleanupByDatabase = new WeakMap<object, number>();
-
-const ensureRateLimitTable = async (db: D1DatabaseLike) => {
-  let tableReady = tableReadyByDatabase.get(db);
-  if (!tableReady) {
-    tableReady = db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS api_rate_limits (
-          namespace TEXT NOT NULL,
-          subject TEXT NOT NULL,
-          window_start INTEGER NOT NULL,
-          request_count INTEGER NOT NULL,
-          PRIMARY KEY (namespace, subject, window_start)
-        )`
-      )
-      .run()
-      .then(() => undefined)
-      .catch((error) => {
-        tableReadyByDatabase.delete(db);
-        throw error;
-      });
-    tableReadyByDatabase.set(db, tableReady);
-  }
-  await tableReady;
-};
 
 const cleanExpiredWindows = async (db: D1DatabaseLike, nowSeconds: number) => {
   const nextCleanup = nextCleanupByDatabase.get(db) || 0;
@@ -56,7 +31,6 @@ export const enforceRateLimit = async ({
   limit: number;
   windowSeconds: number;
 }) => {
-  await ensureRateLimitTable(db);
   const nowSeconds = Math.floor(Date.now() / 1_000);
   await cleanExpiredWindows(db, nowSeconds);
   const windowStart = Math.floor(nowSeconds / windowSeconds) * windowSeconds;

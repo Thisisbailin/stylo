@@ -45,8 +45,6 @@ export const createCustomVoice = async (params: {
     language?: 'zh' | 'en' | 'ja' | 'ko' | 'vi';
 }) => {
     const apiKey = resolveApiKey(params.apiKey);
-    console.log(`[Qwen Voice Design] Base: ${TTS_BASE}`);
-
     const body = {
         model: "qwen-voice-design",
         input: {
@@ -135,15 +133,8 @@ export const generateSpeech = async (
         }
     }
 
-    console.log(`[Qwen TTS] Base: ${TTS_BASE}`);
-
     // === WebSocket Implementation for Designed Voices (Realtime Model) ===
     if (model === "qwen3-tts-vd-realtime-2025-12-16") {
-        console.log("[Qwen TTS] Starting WebSocket flow...");
-        console.log(`[Qwen TTS] Model: ${model}`);
-        console.log(`[Qwen TTS] Voice ID: ${options?.voice || "UNDEFINED"}`);
-        console.log(`[Qwen TTS] API Key present: ${!!apiKey}`);
-
         return new Promise((resolve, reject) => {
             // Browser WebSocket APIs cannot set Authorization. Carry the BYOK credential
             // in a private subprotocol so it never appears in URLs or access logs.
@@ -151,8 +142,6 @@ export const generateSpeech = async (
             const wsUrl = `${protocol}//${window.location.host}/api/qwen-tts-ws/v1/realtime?model=${encodeURIComponent(
                 model
             )}`;
-
-            console.log("[Qwen TTS] Connecting to realtime proxy.");
 
             const ws = new WebSocket(wsUrl, [encodeWebSocketCredential(apiKey)]);
             const taskId = generateUUID();
@@ -180,14 +169,12 @@ export const generateSpeech = async (
                     type: "input_text_buffer.append",
                     text,
                 };
-                console.log("[Qwen WS] Sending input_text_buffer.append");
                 sendJson(appendPayload);
 
                 const commitPayload = {
                     event_id: generateUUID(),
                     type: "input_text_buffer.commit",
                 };
-                console.log("[Qwen WS] Sending input_text_buffer.commit");
                 sendJson(commitPayload);
                 commitSent = true;
 
@@ -195,13 +182,11 @@ export const generateSpeech = async (
                     event_id: generateUUID(),
                     type: "session.finish",
                 };
-                console.log("[Qwen WS] Sending session.finish");
                 sendJson(finishPayload);
                 finishSent = true;
             };
 
             ws.onopen = () => {
-                console.log("[Qwen WS] Connected successfully.");
                 const payload = {
                     event_id: taskId,
                     type: "session.update",
@@ -213,7 +198,6 @@ export const generateSpeech = async (
                         sample_rate: options?.sampleRate || 24000,
                     },
                 };
-                console.log("[Qwen WS] Sending session.update:", JSON.stringify(payload, null, 2));
                 sendJson(payload);
 
                 sessionUpdateTimer = window.setTimeout(() => {
@@ -231,7 +215,6 @@ export const generateSpeech = async (
                 }
 
                 if (data instanceof ArrayBuffer) {
-                    // console.log(`[Qwen WS] Received Binary Chunk: ${data.byteLength} bytes`);
                     audioChunks.push(new Uint8Array(data));
                     return;
                 }
@@ -240,8 +223,6 @@ export const generateSpeech = async (
                 try {
                     const msg = JSON.parse(data);
                     const type = msg?.type || "unknown";
-                    console.log("[Qwen WS] Received Message:", type, msg);
-
                     if (type === "error" || type === "response.error") {
                         const errMsg = msg?.error?.message || msg?.message || "Unknown error";
                         console.error("[Qwen WS] Error:", errMsg);
@@ -309,7 +290,6 @@ export const generateSpeech = async (
                     }
 
                     if (sessionFinished) {
-                        console.log("[Qwen WS] Session finished. Compiling audio...");
                         ws.close();
 
                         const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0);
@@ -352,8 +332,6 @@ export const generateSpeech = async (
 
                         const blob = new Blob([wavBuffer], { type: "audio/wav" });
                         const audioUrl = URL.createObjectURL(blob);
-                        console.log("[Qwen WS] Audio URL created:", audioUrl);
-
                         resolved = true;
                         resolve({
                             audioUrl,
@@ -373,7 +351,6 @@ export const generateSpeech = async (
             };
 
             ws.onclose = (e) => {
-                console.log(`[Qwen WS] Closed. Code: ${e.code}, Reason: ${e.reason}, WasClean: ${e.wasClean}`);
                 if (!resolved && audioChunks.length === 0) {
                     const summary = `model=${model}, sessionCreatedModel=${sessionCreatedModel || "unknown"}, sessionUpdated=${sessionUpdated}, sessionUpdatedModel=${sessionUpdatedModel || "unknown"}, commitSent=${commitSent}, finishSent=${finishSent}`;
                     reject(new Error(`WebSocket closed before receiving audio. ${summary}`));
@@ -417,8 +394,6 @@ export const generateSpeech = async (
     } else if (options?.instruction) {
         body.parameters.instruction = options.instruction;
     }
-
-    console.log("[Qwen TTS] Request Body:", JSON.stringify(body));
 
     const res = await fetchViaProxy(GENERATE_BASE, {
         method: "POST",

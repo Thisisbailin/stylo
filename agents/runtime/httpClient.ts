@@ -132,11 +132,15 @@ export const createHttpQalamAgentRuntime = ({
   getAuthToken,
 }: HttpRuntimeDeps): QalamAgentRuntime => ({
   async run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult> {
+    const nodeFlow = getNodeFlowSnapshot?.();
+    if (!nodeFlow) {
+      throw new Error("Qalam HTTP runtime requires a NodeFlow snapshot.");
+    }
     const requestBody: AgentHttpRunRequest = {
       run: input,
       runtime: getRuntimeConfig(),
       projectData: getProjectDataSnapshot?.(),
-      nodeFlow: getNodeFlowSnapshot?.(),
+      nodeFlow,
     };
     browserAgentDebug("httpClient request", {
       endpoint,

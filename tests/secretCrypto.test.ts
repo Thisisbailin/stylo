@@ -21,10 +21,14 @@ test("secret envelope authentication binds ciphertext to user and detects tamper
   const envelope = await encryptSecretEnvelope({ secrets: { videoApiKey: "secret" } }, "user-a", encryptionKey);
   await assert.rejects(() => decryptSecretEnvelope(envelope, "user-b", encryptionKey), /authentication failed/);
 
-  const last = envelope.ciphertext.at(-1) || "A";
+  const tamperIndex = Math.floor(envelope.ciphertext.length / 2);
+  const original = envelope.ciphertext[tamperIndex] || "A";
   const tampered = {
     ...envelope,
-    ciphertext: `${envelope.ciphertext.slice(0, -1)}${last === "A" ? "B" : "A"}`,
+    ciphertext:
+      envelope.ciphertext.slice(0, tamperIndex) +
+      (original === "A" ? "B" : "A") +
+      envelope.ciphertext.slice(tamperIndex + 1),
   };
   await assert.rejects(() => decryptSecretEnvelope(tampered, "user-a", encryptionKey), /authentication failed/);
 });
