@@ -1004,7 +1004,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
       allowLegacyConversationMigration={false}
-      writingDock={{ active: editingScriptNodeId !== null, width: writingSideWidth }}
     />
   );
 
@@ -1140,7 +1139,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         foundationNodeView={flowSurface.actions?.foundationNodeView}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
-      {editingScriptNodeId !== null ? (
+      {editingScriptNodeId !== null && isQalamCollapsed ? (
         <WritingPanel
           projectData={projectData}
           setProjectData={setProjectData}

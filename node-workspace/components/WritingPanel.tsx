@@ -822,6 +822,11 @@ export const WritingPanel: React.FC<Props> = ({
   const [cursorPos, setCursorPos] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
+  const [viewportSize, setViewportSize] = useState(
+    typeof window !== "undefined"
+      ? { width: window.innerWidth, height: window.innerHeight }
+      : { width: 1440, height: 960 }
+  );
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
   const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(!isQalamOpen);
   const [isFormatGuideOpen, setIsFormatGuideOpen] = useState(false);
@@ -973,6 +978,13 @@ export const WritingPanel: React.FC<Props> = ({
       lines,
     });
   }, [agentScriptEditProposals, commitDraftToProject, onResolveAgentScriptEditProposal, scriptNode?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     setIsInfoPanelOpen(!isQalamOpen);
@@ -1584,7 +1596,15 @@ export const WritingPanel: React.FC<Props> = ({
     { label: "地点", value: locationCount },
     { label: "问题", value: parserIssues.length },
   ];
-  const stageStyle = { paddingLeft: `${sidePanelWidth + 3}px` };
+  const isCompactLayout = viewportSize.width < 1180;
+  const qalamPanelWidth = isCompactLayout
+    ? Math.max(320, viewportSize.width - 32)
+    : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
+  const stageStyle = isQalamOpen
+    ? isCompactLayout
+      ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
+      : { paddingLeft: `${qalamPanelWidth + 44}px` }
+    : { paddingLeft: `${sidePanelWidth + 3}px` };
   const switchSidePanel = () => {
     if (isInfoPanelOpen) {
       setIsInfoPanelOpen(false);
@@ -1844,7 +1864,7 @@ export const WritingPanel: React.FC<Props> = ({
                   className="writing-format-dock"
                   role="dialog"
                   aria-label="Fountain 格式引导"
-                  style={{ paddingLeft: sidePanelWidth + 18 }}
+                  style={{ paddingLeft: isQalamOpen && !isCompactLayout ? qalamPanelWidth + 62 : sidePanelWidth + 18 }}
                 >
                   <button
                     type="button"

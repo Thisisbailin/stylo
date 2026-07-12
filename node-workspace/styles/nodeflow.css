@@ -6547,22 +6547,6 @@ body.qalam-resizing .writing-split-resizer::before {
   background: color-mix(in srgb, var(--app-accent) 56%, var(--app-border-strong));
 }
 
-.qalam-panel--writing-dock {
-  animation: none;
-}
-
-.qalam-panel--writing-dock .qalam-header-shell {
-  border-bottom: 1px solid var(--app-border);
-}
-
-.qalam-panel--writing-dock .qalam-wordmark {
-  font-size: 25px;
-}
-
-.qalam-panel--writing-dock [class*="max-h-"] {
-  scrollbar-color: var(--app-border-strong) transparent;
-}
-
 .writing-format-dock {
   inset: 0;
   z-index: 84;
@@ -6627,8 +6611,7 @@ body.qalam-resizing .writing-split-resizer::before {
     padding-left: 18px !important;
   }
 
-  .writing-room .writing-info-card,
-  .qalam-panel--writing-dock {
+  .writing-room .writing-info-card {
     width: calc(100vw - 6px) !important;
   }
 
