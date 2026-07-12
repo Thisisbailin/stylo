@@ -16,7 +16,7 @@ export const setNodeFlowRef = <T extends Record<string, unknown>>(data: T | unde
   return {
     ...(data || {}),
     qalamNodeRef: resolved,
-  } as T;
+  } as unknown as T;
 };
 
 const buildRefConflictMap = (nodes: NodeFlowNode[], excludeNodeId?: string) => {
@@ -71,7 +71,7 @@ export const dedupeNodeFlowRefs = (nodes: NodeFlowNode[]) => {
     seen.add(nextRef);
     return {
       ...node,
-      data: setNodeFlowRef((node.data || {}) as Record<string, unknown>, nextRef),
+      data: setNodeFlowRef(node.data, nextRef),
     };
   });
 };

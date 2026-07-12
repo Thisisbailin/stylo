@@ -31,7 +31,7 @@ export const Filmstrip: React.FC<FilmstripProps> = ({
 
   // Spring animation transition based on physics configuration
   const springTransition = {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: physics.stiffness,
     damping: physics.damping,
     mass: physics.mass,

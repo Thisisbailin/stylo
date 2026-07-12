@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { PhotoFrame, getEmulsionStyles, RibbonParams, RIBBON_PRESETS } from './DevelopedRoll';
 import { Sparkles, Sliders, Layers, Film, ArrowRight, ArrowLeft } from 'lucide-react';
 

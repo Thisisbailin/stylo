@@ -85,7 +85,7 @@ const normalizeCanvasViewport = (value: any): ProjectData["canvas"]["viewport"] 
 };
 
 
-const normalizeFlow = (value: any): ProjectData["flow"] => {
+const normalizeFlow = (value: any): NonNullable<ProjectData["flow"]> => {
   const revision = typeof value?.revision === "number" && Number.isFinite(value.revision) ? value.revision : 0;
 
   const flowNodes = Array.isArray(value?.flowNodes)
@@ -244,13 +244,13 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
 
   const portraits = rawPortraits
     .map((portrait: any, index: number) => normalizePortrait(portrait, mention, index === 0 ? "normal" : `look${index + 1}`, undefined, true))
-    .filter((portrait): portrait is ProjectRolePortrait => !!portrait);
+    .filter((portrait: ProjectRolePortrait | null): portrait is ProjectRolePortrait => portrait !== null);
 
   if (portraits.length > 0) {
     return normalizeRolePortraits(
       {
         mention,
-        name: toSafeString(role?.name || role?.displayName || mention || "韬唤"),
+        name: toSafeString(role?.name || role?.displayName || mention || "身份"),
       } as ProjectRoleIdentity,
       portraits.slice(0, MAX_ROLE_PORTRAITS)
     );
@@ -275,7 +275,7 @@ const normalizePortraits = (role: any, mention: string): ProjectRolePortrait[] =
 const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
   const rawMention = toSafeString(role?.mention).replace(/^@/, "");
   const mentionRoot = rawMention.includes("_") ? rawMention.split("_")[0] : rawMention;
-  const name = toSafeString(role?.name || role?.displayName || mentionRoot || "韬唤");
+  const name = toSafeString(role?.name || role?.displayName || mentionRoot || "身份");
   const mention = mentionRoot || buildMention(name);
   const kind = role?.kind === "scene" ? "scene" : "person";
   const tone = role?.tone === "sky" ? "sky" : "emerald";
@@ -296,7 +296,7 @@ const normalizeRoleIdentity = (role: any): ProjectRoleIdentity => {
     isMain: typeof role?.isMain === "boolean" ? role.isMain : undefined,
     isCore: typeof role?.isCore === "boolean" ? role.isCore : undefined,
     title: toOptionalString(role?.title) || name,
-    summary: toSafeString(role?.summary || role?.role || role?.type || `${kind === "person" ? "浜虹墿" : "鍦烘櫙"}韬唤`),
+    summary: toSafeString(role?.summary || role?.role || role?.type || `${kind === "person" ? "人物" : "场景"}身份`),
     description: toSafeString(role?.description || role?.bio || role?.visuals),
     visualTags: toOptionalString(role?.visualTags),
     episodeUsage: toOptionalString(role?.episodeUsage),

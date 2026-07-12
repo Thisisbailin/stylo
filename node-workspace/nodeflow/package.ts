@@ -6,6 +6,7 @@ import type {
   NodeFlowNodeData,
 } from "../types";
 import { getFoundationAxisDefinition, isFoundationAxis } from "../foundation/axes";
+import { NODE_FLOW_IMPORT_LIMITS, parseNodeFlowFile } from "./schema";
 
 type ZipEntryInput = {
   path: string;
@@ -18,6 +19,7 @@ type ZipEntry = {
   method: number;
   compressedSize: number;
   uncompressedSize: number;
+  checksum: number;
   localHeaderOffset: number;
   dataOffset: number;
   data: Uint8Array;
@@ -52,6 +54,13 @@ const textDecoder = new TextDecoder();
 const QALAM_PACKAGE_NODEFLOW_PATH = ".qalam/nodeflow.json";
 const QALAM_PACKAGE_MANIFEST_PATH = ".qalam/manifest.json";
 const QALAM_RESOURCE_FIELD = "qalamPackageResources";
+const MAX_PACKAGE_BYTES = 192 * 1024 * 1024;
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
+const MAX_RESOURCE_BYTES = 64 * 1024 * 1024;
+const MAX_DOCUMENT_RESOURCE_BYTES = 5 * 1024 * 1024;
+const MAX_HYDRATED_RESOURCE_BYTES = 128 * 1024 * 1024;
+const MAX_ZIP_ENTRIES = 10_000;
+const MAX_ZIP_PATH_LENGTH = 1_024;
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
@@ -97,6 +106,17 @@ const toDosDateTime = (date: Date) => {
 };
 
 const createZip = (entries: ZipEntryInput[]) => {
+  if (entries.length > MAX_ZIP_ENTRIES) throw new Error(`项目包文件数超过 ${MAX_ZIP_ENTRIES}。`);
+  const occupiedPaths = new Set<string>();
+  let totalBytes = 0;
+  entries.forEach((entry) => {
+    assertSafeZipPath(entry.path);
+    if (occupiedPaths.has(entry.path)) throw new Error(`项目包包含重复路径：${entry.path}`);
+    occupiedPaths.add(entry.path);
+    if (entry.data.length > MAX_RESOURCE_BYTES) throw new Error(`项目包文件过大：${entry.path}`);
+    totalBytes += entry.data.length;
+  });
+  if (totalBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) throw new Error("项目包总体积过大。");
   const now = new Date();
   const { dosTime, dosDate } = toDosDateTime(now);
   const localParts: Uint8Array[] = [];
@@ -178,6 +198,27 @@ const findEndOfCentralDirectory = (bytes: Uint8Array) => {
   return -1;
 };
 
+const assertByteRange = (offset: number, length: number, total: number, label: string) => {
+  if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset + length > total) {
+    throw new Error(`zip ${label} 越界。`);
+  }
+};
+
+const assertSafeZipPath = (path: string) => {
+  const segments = path.split("/");
+  if (
+    !path ||
+    path.length > MAX_ZIP_PATH_LENGTH ||
+    path.includes("\0") ||
+    path.includes("\\") ||
+    path.startsWith("/") ||
+    /^[A-Za-z]:/.test(path) ||
+    segments.some((segment) => segment === "..")
+  ) {
+    throw new Error("zip 包含不安全的文件路径。");
+  }
+};
+
 const inflateRaw = async (data: Uint8Array) => {
   const DecompressionStreamCtor = (globalThis as { DecompressionStream?: new (format: string) => TransformStream }).DecompressionStream;
   if (!DecompressionStreamCtor) {
@@ -188,33 +229,60 @@ const inflateRaw = async (data: Uint8Array) => {
 };
 
 const readZip = async (file: File | Blob) => {
+  if (file.size > MAX_PACKAGE_BYTES) {
+    throw new Error(`项目包超过 ${Math.floor(MAX_PACKAGE_BYTES / 1024 / 1024)} MB 限制。`);
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.length < 22) throw new Error("不是有效的 zip 文件。");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const endOffset = findEndOfCentralDirectory(bytes);
   if (endOffset < 0) throw new Error("不是有效的 zip 文件。");
+  assertByteRange(endOffset, 22, bytes.length, "中央目录尾记录");
   const entryCount = readUint16(view, endOffset + 10);
   const centralOffset = readUint32(view, endOffset + 16);
+  const centralSize = readUint32(view, endOffset + 12);
+  if (entryCount > MAX_ZIP_ENTRIES) throw new Error(`项目包文件数超过 ${MAX_ZIP_ENTRIES}。`);
+  assertByteRange(centralOffset, centralSize, bytes.length, "中央目录");
   const entries = new Map<string, ZipEntry>();
   let cursor = centralOffset;
+  const centralEnd = centralOffset + centralSize;
+  let totalUncompressedSize = 0;
 
   for (let index = 0; index < entryCount; index += 1) {
+    assertByteRange(cursor, 46, centralEnd, "中央目录条目");
     if (readUint32(view, cursor) !== 0x02014b50) throw new Error("zip 中央目录损坏。");
     const method = readUint16(view, cursor + 10);
+    if (method !== 0 && method !== 8) throw new Error(`不支持的 zip 压缩方式：${method}`);
+    const checksum = readUint32(view, cursor + 16);
     const compressedSize = readUint32(view, cursor + 20);
     const uncompressedSize = readUint32(view, cursor + 24);
     const nameLength = readUint16(view, cursor + 28);
     const extraLength = readUint16(view, cursor + 30);
     const commentLength = readUint16(view, cursor + 32);
     const localHeaderOffset = readUint32(view, cursor + 42);
+    const centralEntrySize = 46 + nameLength + extraLength + commentLength;
+    assertByteRange(cursor, centralEntrySize, centralEnd, "中央目录条目内容");
     const path = textDecoder.decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+    assertSafeZipPath(path);
+    if (uncompressedSize > MAX_RESOURCE_BYTES) {
+      throw new Error(`项目包文件过大：${path}`);
+    }
+    totalUncompressedSize += uncompressedSize;
+    if (totalUncompressedSize > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+      throw new Error("项目包解压后总体积过大。");
+    }
+    assertByteRange(localHeaderOffset, 30, bytes.length, "本地文件头");
+    if (readUint32(view, localHeaderOffset) !== 0x04034b50) throw new Error("zip 本地文件头损坏。");
     const localNameLength = readUint16(view, localHeaderOffset + 26);
     const localExtraLength = readUint16(view, localHeaderOffset + 28);
     const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    assertByteRange(dataOffset, compressedSize, bytes.length, "文件数据");
     const data = bytes.slice(dataOffset, dataOffset + compressedSize);
     if (!path.endsWith("/")) {
-      entries.set(path, { path, method, compressedSize, uncompressedSize, localHeaderOffset, dataOffset, data });
+      if (entries.has(path)) throw new Error(`项目包包含重复路径：${path}`);
+      entries.set(path, { path, method, compressedSize, uncompressedSize, checksum, localHeaderOffset, dataOffset, data });
     }
-    cursor += 46 + nameLength + extraLength + commentLength;
+    cursor += centralEntrySize;
   }
   return entries;
 };
@@ -223,10 +291,15 @@ const readZipEntry = async (entries: Map<string, ZipEntry>, path: string, packag
   const prefixedPath = packageRoot ? `${packageRoot.replace(/\/$/, "")}/${path}` : path;
   const entry = entries.get(path) || entries.get(prefixedPath);
   if (!entry) throw new Error(`项目包缺少文件：${path}`);
-  if (entry.method === 0) return entry.data;
+  if (entry.method === 0) {
+    if (entry.data.length !== entry.uncompressedSize || crc32(entry.data) !== entry.checksum) {
+      throw new Error(`项目包文件校验失败：${path}`);
+    }
+    return entry.data;
+  }
   if (entry.method === 8) {
     const inflated = await inflateRaw(entry.data);
-    if (inflated.length !== entry.uncompressedSize) {
+    if (inflated.length !== entry.uncompressedSize || crc32(inflated) !== entry.checksum) {
       throw new Error(`项目包文件大小不匹配：${path}`);
     }
     return inflated;
@@ -328,6 +401,36 @@ const bytesToDataUrl = (bytes: Uint8Array, mimeType: string) => {
   return `data:${mimeType || "application/octet-stream"};base64,${btoa(binary)}`;
 };
 
+const readResponseBytes = async (response: Response) => {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESOURCE_BYTES) {
+    throw new Error("资源超过项目包单文件大小限制。");
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length > MAX_RESOURCE_BYTES) throw new Error("资源超过项目包单文件大小限制。");
+    return bytes;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_RESOURCE_BYTES) {
+        await reader.cancel("resource size limit exceeded");
+        throw new Error("资源超过项目包单文件大小限制。");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return concatBytes(chunks);
+};
+
 const resolveMediaBytes = async (value: string, fallbackMimeType: string) => {
   const dataUrl = dataUrlToBytes(value);
   if (dataUrl) return dataUrl;
@@ -336,7 +439,7 @@ const resolveMediaBytes = async (value: string, fallbackMimeType: string) => {
     const response = await fetch(value);
     if (!response.ok) return null;
     const mimeType = response.headers.get("content-type")?.split(";")[0] || fallbackMimeType;
-    return { bytes: new Uint8Array(await response.arrayBuffer()), mimeType };
+    return { bytes: await readResponseBytes(response), mimeType };
   } catch {
     return null;
   }
@@ -430,6 +533,12 @@ const MEDIA_FIELDS_BY_NODE_TYPE: Record<string, string[]> = {
   audioInput: ["audio"],
   videoInput: ["video"],
   annotation: ["sourceImage", "outputImage"],
+};
+
+const DOCUMENT_FIELDS_BY_NODE_TYPE: Record<string, string[]> = {
+  scriptPage: ["text"],
+  mdText: ["text"],
+  text: ["text"],
 };
 
 const packMediaFields = async (
@@ -551,7 +660,6 @@ export const buildNodeFlowPackageBlob = async (nodeFlow: NodeFlowFile) => {
     path: `${packageRoot}/${entry.path}`,
   }));
   return createZip([
-    { path: `${packageRoot}/`, data: new Uint8Array() },
     ...collectDirectoryEntries(rootedFileEntries.map((entry) => entry.path)),
     ...rootedFileEntries,
   ]);
@@ -571,20 +679,55 @@ export const downloadNodeFlowPackage = async (nodeFlow: NodeFlowFile) => {
 
 const hydratePackageResources = async (nodeFlow: NodeFlowFile, entries: Map<string, ZipEntry>, packageRoot = "") => {
   const nodes: NodeFlowNode[] = [];
+  let hydratedBytes = 0;
   for (const node of nodeFlow.nodes || []) {
-    const resources = (node.data as PackageNodeData)?.[QALAM_RESOURCE_FIELD];
-    if (!resources) {
+    const rawResources = (node.data as Record<string, unknown>)?.[QALAM_RESOURCE_FIELD];
+    if (rawResources === undefined) {
       nodes.push(node);
       continue;
     }
+    if (!rawResources || typeof rawResources !== "object" || Array.isArray(rawResources)) {
+      throw new Error(`节点 ${node.id} 的项目包资源索引无效。`);
+    }
+    const resources = rawResources as Record<string, unknown>;
     const nextData = { ...node.data } as PackageNodeData;
-    for (const [field, resource] of Object.entries(resources)) {
+    for (const [field, rawResource] of Object.entries(resources)) {
+      if (!rawResource || typeof rawResource !== "object" || Array.isArray(rawResource)) {
+        throw new Error(`节点 ${node.id} 的资源 ${field} 描述无效。`);
+      }
+      const candidate = rawResource as Record<string, unknown>;
+      if (
+        (candidate.kind !== "document" && candidate.kind !== "media") ||
+        typeof candidate.path !== "string" ||
+        (candidate.mimeType !== undefined && typeof candidate.mimeType !== "string") ||
+        (candidate.originalValue !== undefined && typeof candidate.originalValue !== "string")
+      ) {
+        throw new Error(`节点 ${node.id} 的资源 ${field} 描述无效。`);
+      }
+      const resource = candidate as PackageResource;
+      const allowedFields = resource.kind === "document"
+        ? DOCUMENT_FIELDS_BY_NODE_TYPE[node.type] || []
+        : MEDIA_FIELDS_BY_NODE_TYPE[node.type] || [];
+      if (!allowedFields.includes(field)) {
+        throw new Error(`节点 ${node.id} 不允许资源字段 ${field}。`);
+      }
+      if (resource.mimeType && resource.mimeType.length > 256) {
+        throw new Error(`节点 ${node.id} 的资源 ${field} MIME 类型过长。`);
+      }
       if (!resource.path && resource.originalValue) {
         (nextData as Record<string, unknown>)[field] = resource.originalValue;
         continue;
       }
       if (!resource.path) continue;
+      assertSafeZipPath(resource.path);
       const bytes = await readZipEntry(entries, resource.path, packageRoot);
+      if (resource.kind === "document" && bytes.byteLength > MAX_DOCUMENT_RESOURCE_BYTES) {
+        throw new Error(`节点 ${node.id} 的文档资源过大。`);
+      }
+      hydratedBytes += bytes.byteLength;
+      if (hydratedBytes > MAX_HYDRATED_RESOURCE_BYTES) {
+        throw new Error("项目包需载入内存的资源总体积过大。");
+      }
       if (resource.kind === "document") {
         const text = textDecoder.decode(bytes);
         (nextData as Record<string, unknown>)[field] = text;
@@ -602,16 +745,58 @@ const hydratePackageResources = async (nodeFlow: NodeFlowFile, entries: Map<stri
   nodeFlow.nodes = nodes;
 
   if (Array.isArray(nodeFlow.globalAssetHistory)) {
-    nodeFlow.globalAssetHistory = await Promise.all(
-      nodeFlow.globalAssetHistory.map(async (item) => {
-        if (!item.src?.startsWith("qalam-package://")) return item;
-        const path = item.src.replace("qalam-package://", "");
-        const bytes = await readZipEntry(entries, path, packageRoot);
-        return { ...item, src: bytesToDataUrl(bytes, getMimeFromPath(path)) };
-      })
-    );
+    const hydratedHistory: GlobalAssetHistoryItem[] = [];
+    for (const item of nodeFlow.globalAssetHistory) {
+      if (!item.src?.startsWith("qalam-package://")) {
+        hydratedHistory.push(item);
+        continue;
+      }
+      const path = item.src.replace("qalam-package://", "");
+      assertSafeZipPath(path);
+      const bytes = await readZipEntry(entries, path, packageRoot);
+      hydratedBytes += bytes.byteLength;
+      if (hydratedBytes > MAX_HYDRATED_RESOURCE_BYTES) {
+        throw new Error("项目包需载入内存的资源总体积过大。");
+      }
+      hydratedHistory.push({ ...item, src: bytesToDataUrl(bytes, getMimeFromPath(path)) });
+    }
+    nodeFlow.globalAssetHistory = hydratedHistory;
   }
-  return nodeFlow;
+  return parseNodeFlowFile(nodeFlow);
+};
+
+const parseJsonDocument = (text: string, label: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${label} 不是有效的 JSON。`);
+  }
+};
+
+const parsePackageManifest = (value: unknown): Partial<QalamPackageManifest> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const manifest = value as Record<string, unknown>;
+  if (manifest.format !== undefined && manifest.format !== "qalam-project-package") {
+    throw new Error("项目包 manifest 格式不受支持。");
+  }
+  if (manifest.version !== undefined && manifest.version !== 1) {
+    throw new Error(`项目包 manifest 版本不受支持：${String(manifest.version)}`);
+  }
+  if (typeof manifest.packageRoot === "string" && manifest.packageRoot) {
+    assertSafeZipPath(manifest.packageRoot);
+  }
+  if (typeof manifest.nodeFlowPath === "string" && manifest.nodeFlowPath) {
+    assertSafeZipPath(manifest.nodeFlowPath);
+  }
+  return {
+    format: manifest.format as QalamPackageManifest["format"] | undefined,
+    version: manifest.version as 1 | undefined,
+    createdAt: typeof manifest.createdAt === "string" ? manifest.createdAt : undefined,
+    packageRoot: typeof manifest.packageRoot === "string" ? manifest.packageRoot : undefined,
+    nodeFlowPath: typeof manifest.nodeFlowPath === "string" ? manifest.nodeFlowPath : undefined,
+    assetCount: typeof manifest.assetCount === "number" ? manifest.assetCount : undefined,
+    unresolvedAssetCount: typeof manifest.unresolvedAssetCount === "number" ? manifest.unresolvedAssetCount : undefined,
+  };
 };
 
 export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> => {
@@ -621,14 +806,22 @@ export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> 
     file.type === "application/zip" ||
     file.type === "application/x-zip-compressed";
   if (!isZip) {
-    return JSON.parse(await file.text()) as NodeFlowFile;
+    if (file.size > NODE_FLOW_IMPORT_LIMITS.jsonBytes) {
+      throw new Error(`项目 JSON 超过 ${Math.floor(NODE_FLOW_IMPORT_LIMITS.jsonBytes / 1024 / 1024)} MB 限制。`);
+    }
+    return parseNodeFlowFile(parseJsonDocument(await file.text(), "项目文件"));
   }
   const entries = await readZip(file);
   const manifestEntry =
     entries.get(QALAM_PACKAGE_MANIFEST_PATH) ||
     Array.from(entries.values()).find((entry) => entry.path.endsWith(`/${QALAM_PACKAGE_MANIFEST_PATH}`));
   const manifest = manifestEntry
-    ? JSON.parse(textDecoder.decode(await readZipEntry(entries, manifestEntry.path))) as Partial<QalamPackageManifest>
+    ? parsePackageManifest(
+        parseJsonDocument(
+          textDecoder.decode(await readZipEntry(entries, manifestEntry.path)),
+          "项目包 manifest"
+        )
+      )
     : null;
   const packageRoot =
     manifestEntry?.path.endsWith(`/${QALAM_PACKAGE_MANIFEST_PATH}`)
@@ -640,6 +833,14 @@ export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> 
     entries.get("nodeflow.json") ||
     Array.from(entries.values()).find((entry) => entry.path.endsWith(`/${QALAM_PACKAGE_NODEFLOW_PATH}`));
   if (!nodeFlowEntry) throw new Error("项目包缺少 .qalam/nodeflow.json。");
-  const nodeFlow = JSON.parse(textDecoder.decode(await readZipEntry(entries, nodeFlowEntry.path))) as NodeFlowFile;
+  if (nodeFlowEntry.uncompressedSize > NODE_FLOW_IMPORT_LIMITS.jsonBytes) {
+    throw new Error("项目包中的 nodeflow.json 过大。");
+  }
+  const nodeFlow = parseNodeFlowFile(
+    parseJsonDocument(
+      textDecoder.decode(await readZipEntry(entries, nodeFlowEntry.path)),
+      "项目包 nodeflow.json"
+    )
+  );
   return hydratePackageResources(nodeFlow, entries, packageRoot);
 };

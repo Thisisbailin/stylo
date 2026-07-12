@@ -1,13 +1,19 @@
 import { ARK_RESPONSES_BASE_URL } from "../../constants";
+import { getUserId } from "./_auth";
+import { enforceRateLimit } from "./_rateLimit";
+import type { D1DatabaseLike, PagesContext } from "./_types";
+
+type Env = Record<string, unknown> & {
+  DB: D1DatabaseLike;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
 };
-
-const resolveBaseUrl = (raw?: string | null) =>
-  (raw || ARK_RESPONSES_BASE_URL).trim().replace(/\/+$/, "");
 
 export const onRequestOptions = async () =>
   new Response(null, {
@@ -15,7 +21,20 @@ export const onRequestOptions = async () =>
     headers: CORS_HEADERS,
   });
 
-export const onRequestGet = async (context: any) => {
+export const onRequestGet = async (context: PagesContext<Env>) => {
+  try {
+    const userId = await getUserId(context.request, context.env);
+    await enforceRateLimit({
+      db: context.env.DB,
+      namespace: "ark-models",
+      subject: userId,
+      limit: 30,
+      windowSeconds: 60,
+    });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    throw error;
+  }
   const apiKey = typeof context.env?.ARK_API_KEY === "string" ? context.env.ARK_API_KEY.trim() : "";
   if (!apiKey) {
     return new Response("Pages Functions 未配置 ARK_API_KEY。", {
@@ -24,9 +43,7 @@ export const onRequestGet = async (context: any) => {
     });
   }
 
-  const requestUrl = new URL(context.request.url);
-  const baseUrl = resolveBaseUrl(requestUrl.searchParams.get("baseUrl"));
-  const targetUrl = `${baseUrl}/models`;
+  const targetUrl = `${ARK_RESPONSES_BASE_URL}/models`;
 
   try {
     const response = await fetch(targetUrl, {
@@ -34,9 +51,20 @@ export const onRequestGet = async (context: any) => {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
+      redirect: "manual",
     });
-    const responseHeaders = new Headers(response.headers);
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    if (response.status >= 300 && response.status < 400) {
+      return new Response("Ark models endpoint redirected unexpectedly", {
+        status: 502,
+        headers: CORS_HEADERS,
+      });
+    }
+    const responseHeaders = new Headers({
+      ...CORS_HEADERS,
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    });
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

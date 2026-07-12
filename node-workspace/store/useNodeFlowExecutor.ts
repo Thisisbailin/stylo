@@ -1,4 +1,4 @@
-import { useNodeFlowStore } from "./nodeFlowStore";
+import { captureNodeFlowAccountExecution, useNodeFlowStore } from "./nodeFlowStore";
 import * as MultimodalService from "../../services/multimodalService";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import * as ViduService from "../../services/viduService";
@@ -18,9 +18,9 @@ import {
   SEEDANCE_DEFAULT_MODEL,
 } from "../../constants";
 import { useCallback } from "react";
-import { DesignAssetItem, ProjectRoleIdentity, SeedanceContentItem, SeedanceModel } from "../../types";
+import type { DesignAssetItem, ProjectRoleIdentity, SeedanceContentItem, SeedanceModel, ViduSubject } from "../../types";
 import { buildApiUrl } from "../../utils/api";
-import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
+import { buildAuthorizedJsonHeaders, captureApiAuthLease } from "../../utils/authToken";
 import type { EntityBinding } from "../types";
 import { applyRolePortraits } from "../../utils/projectRoles";
 
@@ -67,7 +67,40 @@ const parseAtMentions = (text: string): string[] => {
 
 const escapeRegex = (str: string) => str.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const captureExecutorLease = () => {
+  const nodeFlow = captureNodeFlowAccountExecution();
+  const auth = captureApiAuthLease();
+  const signal = AbortSignal.any([nodeFlow.signal, auth.signal]);
+  return {
+    accountGeneration: nodeFlow.accountGeneration,
+    authGeneration: auth.generation,
+    signal,
+    isCurrent: () => nodeFlow.isCurrent() && auth.isCurrent() && !signal.aborted,
+    assertCurrent: () => {
+      nodeFlow.assertCurrent();
+      auth.assertCurrent();
+      if (signal.aborted) throw signal.reason;
+    },
+  };
+};
+
+type ExecutorLease = ReturnType<typeof captureExecutorLease>;
+
+const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) {
+    reject(signal?.reason);
+    return;
+  }
+  const onAbort = () => {
+    window.clearTimeout(timer);
+    reject(signal.reason);
+  };
+  const timer = window.setTimeout(() => {
+    signal?.removeEventListener("abort", onAbort);
+    resolve();
+  }, ms);
+  signal?.addEventListener("abort", onAbort, { once: true });
+});
 
 const getViduStateLabel = (state?: string) => {
   const normalized = (state || "").toLowerCase();
@@ -169,8 +202,13 @@ const parseWanReferenceVoiceTarget = (value: unknown) => {
   };
 };
 
-const uploadReferenceFile = async (source: string, options?: { bucket?: string; prefix?: string }) => {
-  const response = await fetch(source);
+const uploadReferenceFile = async (
+  source: string,
+  options: { bucket?: string; prefix?: string } | undefined,
+  execution: ExecutorLease
+) => {
+  execution.assertCurrent();
+  const response = await fetch(source, { signal: execution.signal });
   const blob = await response.blob();
   const contentType = blob.type || "image/png";
   const ext = contentType.split("/")[1] || "png";
@@ -179,8 +217,9 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
 
   const signedRes = await fetch(buildApiUrl("/api/upload-url"), {
     method: "POST",
-    headers: await buildAuthorizedJsonHeaders(),
+    headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
     body: JSON.stringify({ fileName, bucket, contentType }),
+    signal: execution.signal,
   });
   if (!signedRes.ok) {
     const err = await signedRes.text();
@@ -195,6 +234,7 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
     method: "PUT",
     headers: { "Content-Type": contentType },
     body: blob,
+    signal: execution.signal,
   });
   if (!uploadRes.ok) {
     const err = await uploadRes.text();
@@ -205,8 +245,9 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
   if (signedData.path) {
     const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
       method: "POST",
-      headers: await buildAuthorizedJsonHeaders(),
+      headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
       body: JSON.stringify({ path: signedData.path, bucket: signedData.bucket || bucket }),
+      signal: execution.signal,
     });
     if (!downloadRes.ok) {
       const err = await downloadRes.text();
@@ -219,7 +260,7 @@ const uploadReferenceFile = async (source: string, options?: { bucket?: string; 
   throw new Error("Reference upload failed: no accessible URL returned.");
 };
 
-const normalizeWanImages = async (sources: string[]) => {
+const normalizeWanImages = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -228,7 +269,7 @@ const normalizeWanImages = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      const uploaded = await uploadReferenceFile(src, { bucket: "assets", prefix: "wan-inputs/" });
+      const uploaded = await uploadReferenceFile(src, { bucket: "assets", prefix: "wan-inputs/" }, execution);
       results.push(uploaded);
       continue;
     }
@@ -237,17 +278,18 @@ const normalizeWanImages = async (sources: string[]) => {
   return results;
 };
 
-const normalizeWanAudio = async (source?: string) => {
+const normalizeWanAudio = async (source: string | undefined, execution: ExecutorLease) => {
   if (!source) return undefined;
   if (source.startsWith("http://") || source.startsWith("https://")) return source;
   if (source.startsWith("data:") || source.startsWith("blob:")) {
-    return uploadReferenceFile(source, { bucket: "assets", prefix: "wan-audio/" });
+    return uploadReferenceFile(source, { bucket: "assets", prefix: "wan-audio/" }, execution);
   }
   try {
     const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
       method: "POST",
-      headers: await buildAuthorizedJsonHeaders(),
+      headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
       body: JSON.stringify({ path: source, bucket: "assets" }),
+      signal: execution.signal,
     });
     if (!downloadRes.ok) {
       const err = await downloadRes.text();
@@ -256,12 +298,13 @@ const normalizeWanAudio = async (source?: string) => {
     const data = await downloadRes.json();
     if (data?.signedUrl) return data.signedUrl as string;
   } catch (e) {
+    if (execution.signal.aborted) throw execution.signal.reason;
     console.warn("Failed to resolve audio URL", e);
   }
   return source;
 };
 
-const normalizeWanReferenceVideos = async (sources: string[]) => {
+const normalizeWanReferenceVideos = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -270,7 +313,7 @@ const normalizeWanReferenceVideos = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      const uploaded = await uploadReferenceFile(src, { bucket: "assets", prefix: "wan-reference-video/" });
+      const uploaded = await uploadReferenceFile(src, { bucket: "assets", prefix: "wan-reference-video/" }, execution);
       results.push(uploaded);
       continue;
     }
@@ -279,7 +322,7 @@ const normalizeWanReferenceVideos = async (sources: string[]) => {
   return results;
 };
 
-const normalizeSeedanceVideos = async (sources: string[]) => {
+const normalizeSeedanceVideos = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -288,7 +331,7 @@ const normalizeSeedanceVideos = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-video/" }));
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-video/" }, execution));
       continue;
     }
     results.push(src);
@@ -296,7 +339,7 @@ const normalizeSeedanceVideos = async (sources: string[]) => {
   return results;
 };
 
-const normalizeSeedanceImages = async (sources: string[]) => {
+const normalizeSeedanceImages = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -305,14 +348,15 @@ const normalizeSeedanceImages = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-image/" }));
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-image/" }, execution));
       continue;
     }
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: await buildAuthorizedJsonHeaders(),
+        headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
         body: JSON.stringify({ path: src, bucket: "assets" }),
+        signal: execution.signal,
       });
       if (downloadRes.ok) {
         const downloadData = await downloadRes.json();
@@ -322,6 +366,7 @@ const normalizeSeedanceImages = async (sources: string[]) => {
         }
       }
     } catch (e) {
+      if (execution.signal.aborted) throw execution.signal.reason;
       console.warn("Failed to resolve Seedance image URL", e);
     }
     results.push(src);
@@ -329,7 +374,7 @@ const normalizeSeedanceImages = async (sources: string[]) => {
   return results;
 };
 
-const normalizeSeedanceAudios = async (sources: string[]) => {
+const normalizeSeedanceAudios = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -338,14 +383,15 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:audio/") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }));
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "seedance-reference-audio/" }, execution));
       continue;
     }
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: await buildAuthorizedJsonHeaders(),
+        headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
         body: JSON.stringify({ path: src, bucket: "assets" }),
+        signal: execution.signal,
       });
       if (downloadRes.ok) {
         const downloadData = await downloadRes.json();
@@ -355,6 +401,7 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
         }
       }
     } catch (e) {
+      if (execution.signal.aborted) throw execution.signal.reason;
       console.warn("Failed to resolve Seedance audio URL", e);
     }
     results.push(src);
@@ -362,7 +409,7 @@ const normalizeSeedanceAudios = async (sources: string[]) => {
   return results;
 };
 
-const normalizeViduImages = async (sources: string[]) => {
+const normalizeViduImages = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -371,14 +418,15 @@ const normalizeViduImages = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-image/" }));
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-image/" }, execution));
       continue;
     }
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: await buildAuthorizedJsonHeaders(),
+        headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
         body: JSON.stringify({ path: src, bucket: "assets" }),
+        signal: execution.signal,
       });
       if (downloadRes.ok) {
         const downloadData = await downloadRes.json();
@@ -388,6 +436,7 @@ const normalizeViduImages = async (sources: string[]) => {
         }
       }
     } catch (e) {
+      if (execution.signal.aborted) throw execution.signal.reason;
       console.warn("Failed to resolve Vidu image URL", e);
     }
     results.push(src);
@@ -395,7 +444,7 @@ const normalizeViduImages = async (sources: string[]) => {
   return results;
 };
 
-const normalizeViduVideos = async (sources: string[]) => {
+const normalizeViduVideos = async (sources: string[], execution: ExecutorLease) => {
   const results: string[] = [];
   for (const src of sources) {
     if (!src) continue;
@@ -404,14 +453,15 @@ const normalizeViduVideos = async (sources: string[]) => {
       continue;
     }
     if (src.startsWith("data:") || src.startsWith("blob:")) {
-      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-video/" }));
+      results.push(await uploadReferenceFile(src, { bucket: "assets", prefix: "vidu-reference-video/" }, execution));
       continue;
     }
     try {
       const downloadRes = await fetch(buildApiUrl("/api/download-url"), {
         method: "POST",
-        headers: await buildAuthorizedJsonHeaders(),
+        headers: await buildAuthorizedJsonHeaders(undefined, execution.authGeneration),
         body: JSON.stringify({ path: src, bucket: "assets" }),
+        signal: execution.signal,
       });
       if (downloadRes.ok) {
         const downloadData = await downloadRes.json();
@@ -421,6 +471,7 @@ const normalizeViduVideos = async (sources: string[]) => {
         }
       }
     } catch (e) {
+      if (execution.signal.aborted) throw execution.signal.reason;
       console.warn("Failed to resolve Vidu video URL", e);
     }
     results.push(src);
@@ -693,6 +744,33 @@ const buildImageVersionHistory = (
   ].slice(0, 12);
 };
 
+const EXECUTOR_MUTATING_STORE_METHODS = new Set<PropertyKey>([
+  "updateNodeData",
+  "addToGlobalHistory",
+  "mutateProjectRole",
+  "clearExecutionApproval",
+]);
+
+const createAccountScopedExecutorStore = (execution: ExecutorLease) => {
+  const snapshot = useNodeFlowStore.getState();
+  const isCurrent = execution.isCurrent;
+
+  return new Proxy(snapshot, {
+    get(target, property) {
+      const snapshotValue = Reflect.get(target, property);
+      if (typeof snapshotValue !== "function") return snapshotValue;
+
+      return (...args: unknown[]) => {
+        if (!isCurrent()) return undefined;
+        const currentValue = Reflect.get(useNodeFlowStore.getState(), property);
+        if (typeof currentValue !== "function") return undefined;
+        if (EXECUTOR_MUTATING_STORE_METHODS.has(property) && !isCurrent()) return undefined;
+        return currentValue(...args);
+      };
+    },
+  });
+};
+
 export const useNodeFlowExecutor = () => {
   const store = useNodeFlowStore();
   const config = store.appConfig;
@@ -703,6 +781,8 @@ export const useNodeFlowExecutor = () => {
   };
 
   const executeImageGen = useCallback(async (nodeId: string) => {
+    const execution = captureExecutorLease();
+    const store = createAccountScopedExecutorStore(execution);
     const node = store.getNodeById(nodeId);
     if (!node) return;
     const { images, text: connectedText, atMentions, entityBindings, imageRefs, connectedIdentity } = store.getConnectedInputs(nodeId);
@@ -756,7 +836,6 @@ export const useNodeFlowExecutor = () => {
       if (isNanoBananaNode) {
         configToUse.provider = "nanobanana";
         configToUse.baseUrl = NANOBANANA_PRO_ENDPOINT;
-        configToUse.apiKey = "";
       }
       if (isWanImageNode) {
         configToUse.provider = "wan";
@@ -769,7 +848,8 @@ export const useNodeFlowExecutor = () => {
         const { id } = await WuyinkejiService.submitImageTask(finalPrompt || "Generate an image", configToUse, {
           aspectRatio,
           inputImageUrl: refImage,
-          size: data.size
+          size: data.size,
+          signal: execution.signal,
         });
         let processingStartedAt: number | null = null;
         const taskSubmittedAt = Date.now();
@@ -787,7 +867,7 @@ export const useNodeFlowExecutor = () => {
 
         const maxAttempts = 60;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const result = await WuyinkejiService.checkImageTaskStatus(id, configToUse);
+          const result = await WuyinkejiService.checkImageTaskStatus(id, configToUse, execution.signal);
           if (!processingStartedAt && result.status === "processing") {
             processingStartedAt = Date.now();
           }
@@ -850,7 +930,7 @@ export const useNodeFlowExecutor = () => {
             taskState: result.status,
           });
           // Wait 5 seconds between polls
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await wait(5000, execution.signal);
         }
 
         store.updateNodeData(nodeId, {
@@ -872,7 +952,8 @@ export const useNodeFlowExecutor = () => {
         try {
           const url = await SeedreamService.generateSeedreamImage(text || "Generate an image", configToUse, {
             aspectRatio,
-            inputImageUrl: refImage
+            inputImageUrl: refImage,
+            signal: execution.signal,
           });
 
           store.updateNodeData(nodeId, {
@@ -904,7 +985,7 @@ export const useNodeFlowExecutor = () => {
           store.updateNodeData(nodeId, { status: "error", error: "Wan 图片需要提示词。" });
           return;
         }
-        const normalizedImages = await normalizeWanImages(images);
+        const normalizedImages = await normalizeWanImages(images, execution);
         const { id, url } = await WanService.submitWanImageTask(text || "Generate an image", configToUse, {
           aspectRatio,
           inputImages: normalizedImages,
@@ -914,6 +995,7 @@ export const useNodeFlowExecutor = () => {
           seed: data.seed,
           watermark: data.watermark,
           size: data.size,
+          signal: execution.signal,
         });
 
         if (url) {
@@ -942,7 +1024,7 @@ export const useNodeFlowExecutor = () => {
 
         const maxAttempts = 60;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const result = await WanService.checkWanTaskStatus(id);
+          const result = await WanService.checkWanTaskStatus(id, configToUse.apiKey, execution.signal);
           if (result.status === "succeeded") {
             store.updateNodeData(nodeId, {
               status: "complete",
@@ -965,7 +1047,7 @@ export const useNodeFlowExecutor = () => {
             store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Wan 图像生成失败。" });
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, 15000));
+          await wait(15000, execution.signal);
         }
 
         store.updateNodeData(nodeId, { status: "error", error: "Wan 图像生成超时。" });
@@ -985,7 +1067,8 @@ export const useNodeFlowExecutor = () => {
 
       const res = await MultimodalService.sendMessage(
         [{ role: "user", content: promptContent }],
-        configToUse
+        configToUse,
+        execution.signal
       );
 
       console.log('--- AI Full Response ---');
@@ -1021,6 +1104,8 @@ export const useNodeFlowExecutor = () => {
   }, [config?.multimodalConfig, store]);
 
   const runViduVideoGen = useCallback(async (nodeId: string) => {
+    const execution = captureExecutorLease();
+    const store = createAccountScopedExecutorStore(execution);
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
     const { images, text: connectedText, atMentions, entityBindings, imageRefs } = store.getConnectedInputs(nodeId);
@@ -1035,7 +1120,6 @@ export const useNodeFlowExecutor = () => {
     const viduConfig = {
       ...(config.viduConfig || INITIAL_VIDU_CONFIG),
       baseUrl: config.viduConfig?.baseUrl || INITIAL_VIDU_CONFIG.baseUrl,
-      apiKey: "",
       defaultModel: config.viduConfig?.defaultModel || INITIAL_VIDU_CONFIG.defaultModel || "viduq3",
     };
     const model = data.model || viduConfig.defaultModel || "viduq3";
@@ -1078,7 +1162,7 @@ export const useNodeFlowExecutor = () => {
       "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-1.png",
       "https://prod-ss-images.s3.cn-northwest-1.amazonaws.com.cn/vidu-maas/template/reference2video-2.png",
     ];
-    const manualSubjects = Array.isArray(data.subjects)
+    const manualSubjects: ViduSubject[] = Array.isArray(data.subjects)
       ? data.subjects
           .filter((item: any) => item && typeof item.name === "string" && item.name.trim())
           .map((item: any) => ({
@@ -1090,8 +1174,8 @@ export const useNodeFlowExecutor = () => {
           }))
       : [];
 
-    const subjectPromptResult = useCharacters && mentions.length > 0
-      ? mentions.reduce(
+    const subjectPromptResult: { prompt: string; subjects: ViduSubject[] } = useCharacters && mentions.length > 0
+      ? mentions.reduce<{ prompt: string; subjects: ViduSubject[] }>(
           (acc, mention, idx) => {
             const slotName = String(idx + 1);
             const hit = resolvedIdentityByMention.get(mention.toLowerCase());
@@ -1113,9 +1197,9 @@ export const useNodeFlowExecutor = () => {
               ],
             };
           },
-          { prompt, subjects: [] as Array<{ name: string; images?: string[]; videos?: string[]; voiceId?: string; serverId?: string }> }
+          { prompt, subjects: [] }
         )
-      : { prompt, subjects: [] as Array<{ name: string; images?: string[]; videos?: string[]; voiceId?: string; serverId?: string }> };
+      : { prompt, subjects: [] };
 
     const subjectCandidates =
       subjectPromptResult.subjects.length > 0 ? subjectPromptResult.subjects : manualSubjects;
@@ -1132,12 +1216,12 @@ export const useNodeFlowExecutor = () => {
     const normalizedHydratedSubjects = await Promise.all(
       hydratedSubjects.map(async (subject) => ({
         ...subject,
-        images: Array.isArray(subject.images) ? await normalizeViduImages(subject.images.filter(Boolean).slice(0, 3)) : subject.images,
-        videos: Array.isArray(subject.videos) ? await normalizeViduVideos(subject.videos.filter(Boolean).slice(0, 1)) : subject.videos,
+        images: Array.isArray(subject.images) ? await normalizeViduImages(subject.images.filter(Boolean).slice(0, 3), execution) : subject.images,
+        videos: Array.isArray(subject.videos) ? await normalizeViduVideos(subject.videos.filter(Boolean).slice(0, 1), execution) : subject.videos,
       }))
     );
 
-    const nonSubjectImages = await normalizeViduImages(images.filter(Boolean).slice(0, 7));
+    const nonSubjectImages = await normalizeViduImages(images.filter(Boolean).slice(0, 7), execution);
 
     if (normalizedMode === "subject" && normalizedHydratedSubjects.length === 0) {
       store.updateNodeData(nodeId, {
@@ -1210,7 +1294,11 @@ export const useNodeFlowExecutor = () => {
         lastCreditsCost: data.lastCreditsCost ?? null,
       });
 
-      const { taskId, credits } = await ViduService.createReferenceVideo(request as any, viduConfig);
+      const { taskId, credits } = await ViduService.createReferenceVideo(
+        request as any,
+        viduConfig,
+        execution.signal
+      );
 
       const taskSubmittedAt = Date.now();
       let processingStartedAt: number | null = null;
@@ -1232,7 +1320,7 @@ export const useNodeFlowExecutor = () => {
       });
 
       while (true) {
-        const result = await ViduService.fetchTaskResult(taskId, viduConfig);
+        const result = await ViduService.fetchTaskResult(taskId, viduConfig, execution.signal);
         const rawState = result.rawState || result.state;
         const normalizedRawState = rawState.toLowerCase();
         if (!processingStartedAt && isProcessingTaskState(normalizedRawState)) {
@@ -1305,7 +1393,7 @@ export const useNodeFlowExecutor = () => {
           return;
         }
 
-        await wait(getViduPollDelayMs(rawState));
+        await wait(getViduPollDelayMs(rawState), execution.signal);
       }
     } catch (e: any) {
       store.updateNodeData(nodeId, {
@@ -1319,6 +1407,8 @@ export const useNodeFlowExecutor = () => {
   }, [config, store]);
 
   const runSeedanceVideoGen = useCallback(async (nodeId: string) => {
+    const execution = captureExecutorLease();
+    const store = createAccountScopedExecutorStore(execution);
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
 
@@ -1340,9 +1430,9 @@ export const useNodeFlowExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
-      const normalizedVideos = await normalizeSeedanceVideos(referenceVideos.slice(0, 3));
-      const normalizedAudios = await normalizeSeedanceAudios(audios.slice(0, 3));
-      const normalizedImages = await normalizeSeedanceImages(images.filter(Boolean).slice(0, 9));
+      const normalizedVideos = await normalizeSeedanceVideos(referenceVideos.slice(0, 3), execution);
+      const normalizedAudios = await normalizeSeedanceAudios(audios.slice(0, 3), execution);
+      const normalizedImages = await normalizeSeedanceImages(images.filter(Boolean).slice(0, 9), execution);
 
       const content: SeedanceContentItem[] = [];
       if (prompt) {
@@ -1389,7 +1479,8 @@ export const useNodeFlowExecutor = () => {
               : 5,
           watermark: data.watermark === true,
         },
-        configToUse
+        configToUse,
+        execution.signal
       );
 
       store.updateNodeData(nodeId, {
@@ -1401,7 +1492,7 @@ export const useNodeFlowExecutor = () => {
 
       const maxAttempts = 60;
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const result = await SeedanceVideoService.getSeedanceTask(task.id, configToUse);
+        const result = await SeedanceVideoService.getSeedanceTask(task.id, configToUse, execution.signal);
         if (result.status === "succeeded") {
           store.updateNodeData(nodeId, {
             status: "complete",
@@ -1417,7 +1508,7 @@ export const useNodeFlowExecutor = () => {
           });
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await wait(5000, execution.signal);
       }
 
       store.updateNodeData(nodeId, { status: "error", error: "Seedance 生成超时。" });
@@ -1430,6 +1521,8 @@ export const useNodeFlowExecutor = () => {
   }, [config, store]);
 
   const executeVideoGen = useCallback(async (nodeId: string) => {
+    const execution = captureExecutorLease();
+    const store = createAccountScopedExecutorStore(execution);
     const node = store.getNodeById(nodeId);
     if (!node || !config) return;
     if (node.type === "viduVideoGen") {
@@ -1491,7 +1584,7 @@ export const useNodeFlowExecutor = () => {
     store.updateNodeData(nodeId, { status: "loading", error: null });
 
     try {
-      const normalizedImages = (isWanLegacyVideo || isWanReferenceVideoNode) ? await normalizeWanImages(images) : images;
+      const normalizedImages = (isWanLegacyVideo || isWanReferenceVideoNode) ? await normalizeWanImages(images, execution) : images;
       const refImage =
         normalizedImages.find((src) => src.startsWith("http")) ||
         (isWanLegacyVideo ? normalizedImages[0] : undefined);
@@ -1509,7 +1602,7 @@ export const useNodeFlowExecutor = () => {
         params.seed = data.seed;
         if (data.audioEnabled && data.audioUrl) {
           const audioUrl = data.audioUrl.trim();
-          params.audioUrl = await normalizeWanAudio(audioUrl);
+          params.audioUrl = await normalizeWanAudio(audioUrl, execution);
         }
       }
       let promptForRequest = prompt;
@@ -1523,11 +1616,11 @@ export const useNodeFlowExecutor = () => {
           roles,
           latestProjectRefs
         );
-        const normalizedVideos = await normalizeWanReferenceVideos(referenceVideos);
-        const normalizedReferenceImages = await normalizeWanImages(referenceImages);
-        const normalizedReferenceAudios = await Promise.all(referenceAudios.slice(0, 1).map((item) => normalizeWanAudio(item)));
+        const normalizedVideos = await normalizeWanReferenceVideos(referenceVideos, execution);
+        const normalizedReferenceImages = await normalizeWanImages(referenceImages, execution);
+        const normalizedReferenceAudios = await Promise.all(referenceAudios.slice(0, 1).map((item) => normalizeWanAudio(item, execution)));
         const referenceVoiceUrl = normalizedReferenceAudios.find(Boolean);
-        const normalizedFirstFrame = firstFrameImage ? await normalizeWanImages([firstFrameImage]) : [];
+        const normalizedFirstFrame = firstFrameImage ? await normalizeWanImages([firstFrameImage], execution) : [];
         const explicitProjectRefs = projectReferenceTargets
           .map((target) => latestProjectRefs.get(makeProjectRefKey(target.category, target.refId)))
           .filter((item): item is ProjectReferenceAsset => !!item);
@@ -1623,10 +1716,10 @@ export const useNodeFlowExecutor = () => {
             ? config.videoConfig.baseUrl
             : QWEN_WAN_VIDEO_ENDPOINT;
         configToUse.model = data.model || QWEN_WAN_REFERENCE_VIDEO_MODEL;
-        configToUse.apiKey = "";
       }
 
       if (isWanLegacyVideo) {
+        params.signal = execution.signal;
         const { id, url } = await WanService.submitWanVideoTask(prompt || "Animate this", configToUse, params);
         if (url) {
           store.updateNodeData(nodeId, { status: "complete", videoUrl: url, error: null });
@@ -1641,7 +1734,7 @@ export const useNodeFlowExecutor = () => {
 
         const maxAttempts = 60;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const result = await WanService.checkWanTaskStatus(id);
+          const result = await WanService.checkWanTaskStatus(id, configToUse.apiKey, execution.signal);
           if (result.status === "succeeded") {
             store.updateNodeData(nodeId, { status: "complete", videoUrl: result.url, error: null });
             return;
@@ -1650,7 +1743,7 @@ export const useNodeFlowExecutor = () => {
             store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Wan 视频生成失败。" });
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, 15000));
+          await wait(15000, execution.signal);
         }
 
         store.updateNodeData(nodeId, { status: "error", error: "Wan 视频生成超时。" });
@@ -1658,6 +1751,7 @@ export const useNodeFlowExecutor = () => {
       }
 
       if (isWanReferenceVideoNode) {
+        params.signal = execution.signal;
         const { id, url } = await WanService.submitWanReferenceVideoTask(promptForRequest || "Animate this", configToUse, params);
         if (url) {
           store.updateNodeData(nodeId, { status: "complete", videoUrl: url, error: null });
@@ -1672,7 +1766,7 @@ export const useNodeFlowExecutor = () => {
 
         const maxAttempts = 60;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          const result = await WanService.checkWanTaskStatus(id);
+          const result = await WanService.checkWanTaskStatus(id, configToUse.apiKey, execution.signal);
           if (result.status === "succeeded") {
             store.updateNodeData(nodeId, { status: "complete", videoUrl: result.url, error: null });
             return;
@@ -1681,7 +1775,7 @@ export const useNodeFlowExecutor = () => {
             store.updateNodeData(nodeId, { status: "error", error: result.errorMsg || "Wan 参考生视频生成失败。" });
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await wait(5000, execution.signal);
         }
 
         store.updateNodeData(nodeId, { status: "error", error: "Wan 参考生视频生成超时。" });

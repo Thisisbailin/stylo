@@ -183,7 +183,20 @@ export const buildNodeFlowExecutionApprovalProposal = (options: {
       }),
     };
   }
-  const data = node.data as VideoGenNodeData;
+  const data = node.data as Record<string, unknown>;
+  const readStringArray = (value: unknown) =>
+    Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : undefined;
+  const projectReferenceTargets = Array.isArray(data.projectReferenceTargets)
+    ? data.projectReferenceTargets.filter(
+        (item): item is { category: "identity"; refId: string; label?: string } =>
+          Boolean(
+            item &&
+              typeof item === "object" &&
+              (item as { category?: unknown }).category === "identity" &&
+              typeof (item as { refId?: unknown }).refId === "string"
+          )
+      )
+    : undefined;
   const info = resolveVideoProviderAndModel(node, runtimeDefaults);
   return {
     ...base,
@@ -193,18 +206,9 @@ export const buildNodeFlowExecutionApprovalProposal = (options: {
     inputSummary: summarizeInputs({
       connectedImages: connectedInputs.images,
       connectedAudios: connectedInputs.audios,
-      referenceImages: Array.isArray((data as VideoGenNodeData).referenceImages)
-        ? ((data as VideoGenNodeData).referenceImages || []).filter(Boolean)
-        : undefined,
-      referenceVideos:
-        Array.isArray((data as VideoGenNodeData).referenceVideos)
-          ? ((data as VideoGenNodeData).referenceVideos || []).filter(Boolean)
-          : Array.isArray((data as SeedanceVideoGenNodeData).referenceVideos)
-            ? ((data as SeedanceVideoGenNodeData).referenceVideos || []).filter(Boolean)
-            : undefined,
-      projectReferenceTargets: Array.isArray((data as VideoGenNodeData).projectReferenceTargets)
-        ? (data as VideoGenNodeData).projectReferenceTargets
-        : undefined,
+      referenceImages: readStringArray(data.referenceImages),
+      referenceVideos: readStringArray(data.referenceVideos),
+      projectReferenceTargets,
     }),
   };
 };

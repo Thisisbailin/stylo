@@ -1,4 +1,4 @@
-import type { DesignAssetItem, ProjectRoleIdentity, ProjectRolePortrait } from "../types";
+import type { DesignAssetItem, ProjectRoleAlias, ProjectRoleIdentity, ProjectRolePortrait } from "../types";
 
 export const MAX_ROLE_PORTRAITS = 20;
 
@@ -27,6 +27,23 @@ export const buildRoleMention = (name: string) => sanitizeIdentityToken(name, "i
 
 export const buildPortraitMention = (roleMention: string, portraitName: string) =>
   `${roleMention}_${sanitizeIdentityToken(portraitName, "normal")}`;
+
+const normalizeDraftAliases = (
+  aliases: AnalysisCharacterDraft["aliases"],
+  roleMention: string
+): ProjectRoleAlias[] | undefined => {
+  if (!Array.isArray(aliases)) return undefined;
+  const normalized = aliases.flatMap((alias, index) => {
+    const value = typeof alias?.value === "string" ? alias.value.trim() : "";
+    if (!value) return [];
+    return [{
+      id: alias.id?.trim() || `alias-${roleMention}-${index + 1}`,
+      value,
+      normalized: alias.normalized?.trim() || undefined,
+    }];
+  });
+  return normalized.length > 0 ? normalized : undefined;
+};
 
 export const getPrimaryPortrait = (role?: ProjectRoleIdentity | null) =>
   (role?.portraits || []).find((portrait) => portrait.isPrimary) || role?.portraits?.[0];
@@ -287,7 +304,7 @@ export const buildPersonRolesFromAnalysis = (items: AnalysisCharacterDraft[]): P
         episodeUsage: item.episodeUsage,
         tags: item.tags,
         status: item.status || "draft",
-        aliases: item.aliases,
+        aliases: normalizeDraftAliases(item.aliases, mention),
         binding: {
           mention,
           aliases: [name, `@${mention}`],

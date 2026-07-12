@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useConfig } from "../../hooks/useConfig";
 import { usePersistedState } from "../../hooks/usePersistedState";
-import { ProjectData } from "../../types";
+import { AppConfig, ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode } from "../types";
 import { createStableId } from "../../utils/id";
 import { buildApiUrl } from "../../utils/api";
@@ -23,13 +22,13 @@ import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
 import { useQalamAgent } from "../../agents/react/useQalamAgent";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
+import { parseNodeFlowFile } from "../nodeflow/schema";
 import { projectRolesToCharacters, projectRolesToLocations } from "../../utils/projectRoles";
 import type { AgentUiContext } from "../../agents/runtime/types";
 import {
-  buildQalamActivityStorageKey,
-  buildQalamConversationStorageKey,
+  buildQalamAccountSessionId,
+  buildQalamAccountStorageKeys,
   buildQalamScopedProjectData,
-  buildQalamSessionId,
   resolveQalamProjectId,
 } from "../../agents/runtime/projectScope";
 import type {
@@ -39,8 +38,10 @@ import type {
 } from "./qalam/interactionTypes";
 
 type Props = {
+  accountScope: string;
   projectId: string;
   projectData: ProjectData;
+  config: AppConfig;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   onOpenStats?: () => void;
@@ -495,8 +496,10 @@ const createConversationRecord = (messages: Message[] = []): ConversationRecord 
 };
 
 export const QalamAgent: React.FC<Props> = ({
+  accountScope,
   projectId,
   projectData,
+  config,
   setProjectData,
   getAuthToken,
   onOpenStats,
@@ -518,9 +521,12 @@ export const QalamAgent: React.FC<Props> = ({
   onScriptEditProposals,
 }) => {
   const PANEL_ANIMATION_MS = 460;
-  const { config } = useConfig("qalam_config_v1");
-  const effectiveConversationStorageKey = conversationStorageKey || buildQalamConversationStorageKey(projectId);
-  const activityStorageKey = buildQalamActivityStorageKey(projectId);
+  const accountStorageKeys = buildQalamAccountStorageKeys(accountScope, projectId);
+  const effectiveConversationStorageKey = conversationStorageKey || accountStorageKeys.conversationStorageKey;
+  const activityStorageKey = accountStorageKeys.activityStorageKey;
+  const approvalPreferenceStorageKey = accountScope === "guest"
+    ? "qalam_execution_approval_prefs_v1"
+    : `qalam_execution_approval_prefs_v1:${encodeURIComponent(accountScope)}`;
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
   const moveNode = useNodeFlowStore((state) => state.moveNode);
@@ -570,7 +576,7 @@ export const QalamAgent: React.FC<Props> = ({
     },
   });
   const [approvalPreferences, setApprovalPreferences] = usePersistedState<ApprovalPreferenceState>({
-    key: "qalam_execution_approval_prefs_v1",
+    key: approvalPreferenceStorageKey,
     initialValue: {},
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
@@ -777,7 +783,7 @@ export const QalamAgent: React.FC<Props> = ({
     (text: string) =>
       parseMentions(text)
         .map((name) => mentionIndex.get(toSearch(name)) || null)
-        .filter(Boolean)
+        .filter((tag): tag is NonNullable<typeof tag> => tag !== null)
         .map((tag) => ({
           kind: tag.kind,
           name: tag.name,
@@ -788,7 +794,8 @@ export const QalamAgent: React.FC<Props> = ({
   const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useQalamAgent({
     runtime,
     projectId,
-    sessionId: buildQalamSessionId(
+    sessionId: buildQalamAccountSessionId(
+      accountScope,
       projectId,
       activeConversation?.id || conversationState.activeId || "qalam-default"
     ),
@@ -1058,6 +1065,9 @@ export const QalamAgent: React.FC<Props> = ({
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
     const runProjectId = projectId;
+    const runAccountGeneration = useNodeFlowStore.getState().accountGeneration;
+    const isRunAccountCurrent = () =>
+      useNodeFlowStore.getState().accountGeneration === runAccountGeneration;
     setMessages((prev) => {
       const nextOrder = prev.reduce((max, message) => Math.max(max, message.order || 0), 0) + 1;
       const userMsg: Message = { role: "user", text: cleanedInput, kind: "chat", order: nextOrder };
@@ -1074,6 +1084,7 @@ export const QalamAgent: React.FC<Props> = ({
         },
       });
       if (
+        !isRunAccountCurrent() ||
         runResult.projectId !== runProjectId ||
         resolveQalamProjectId(projectDataRef.current) !== runProjectId
       ) {
@@ -1092,7 +1103,7 @@ export const QalamAgent: React.FC<Props> = ({
           viewport: viewport || undefined,
           activeView,
         });
-        const candidateFlow =
+        const candidateFlowInput =
           runResult.updatedNodeFlow ||
           (agentProjectPatch?.flow
             ? buildNodeFlowFileFromProjectData({ ...latestProjectData, flow: agentProjectPatch.flow }, {
@@ -1103,6 +1114,9 @@ export const QalamAgent: React.FC<Props> = ({
                 activeView,
               })
             : null);
+        const candidateFlow = candidateFlowInput
+          ? parseNodeFlowFile(candidateFlowInput)
+          : null;
         const proposals =
           currentFlow && candidateFlow
             ? collectScriptEditProposals(currentFlow.nodes, candidateFlow.nodes)
@@ -1114,10 +1128,11 @@ export const QalamAgent: React.FC<Props> = ({
         const resultBase = applyAgentProjectPatch(latestProjectData, agentProjectPatch, runProjectId);
 
         if (committedFlow) {
+          if (!isRunAccountCurrent()) return;
           const nextProjectData = mergeNodeFlowIntoProjectData(resultBase, committedFlow);
           setProjectData(nextProjectData);
           projectDataRef.current = nextProjectData;
-          importNodeFlow(committedFlow);
+          importNodeFlow(committedFlow, { expectedAccountGeneration: runAccountGeneration });
         } else if (agentProjectPatch) {
           setProjectData(resultBase);
           projectDataRef.current = resultBase;
@@ -1131,6 +1146,7 @@ export const QalamAgent: React.FC<Props> = ({
         }
       }
       if (runResult.updatedExecutionApprovals) {
+        if (!isRunAccountCurrent()) return;
         setExecutionApprovals(runResult.updatedExecutionApprovals);
       }
     } catch (err: any) {
@@ -1164,7 +1180,7 @@ export const QalamAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
+  }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto qalam-panel";
   const dockInset = 16;

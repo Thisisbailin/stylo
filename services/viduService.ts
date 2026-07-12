@@ -6,7 +6,7 @@ import {
   ViduTaskResult,
   ViduTaskState,
 } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
 import { VIDU_DEFAULT_BASE_URL } from "../constants";
 
 const DEFAULT_BASE_URL = VIDU_DEFAULT_BASE_URL;
@@ -38,14 +38,11 @@ const ensureArrayHasValues = (arr?: unknown[], label?: string) => {
 
 const resolveConfig = (config?: ViduServiceConfig) => {
   const envBase =
-    (typeof import.meta !== "undefined" ? (import.meta as any)?.env?.VIDU_BASE_URL || (import.meta as any)?.env?.VITE_VIDU_BASE_URL : undefined) ||
+    (typeof import.meta !== "undefined" ? (import.meta as any)?.env?.VIDU_BASE_URL : undefined) ||
     (typeof process !== "undefined" ? process.env?.VIDU_BASE_URL : undefined);
-  const envKey =
-    (typeof import.meta !== "undefined" ? (import.meta as any)?.env?.VIDU_API_KEY || (import.meta as any)?.env?.VITE_VIDU_API_KEY : undefined) ||
-    (typeof process !== "undefined" ? process.env?.VIDU_API_KEY : undefined);
 
   const baseUrl = normalizeBaseUrl(config?.baseUrl || envBase);
-  const apiKey = config?.apiKey || envKey;
+  const apiKey = config?.apiKey;
   const defaultModel = config?.defaultModel || DEFAULT_REFERENCE_MODEL;
 
   if (!baseUrl) {
@@ -61,31 +58,16 @@ const buildHeaders = (apiKey?: string, includeContentType = false) => {
   return headers;
 };
 
-const readProxyDebugHeaders = (response: Response) => ({
-  target: response.headers.get("x-qalam-proxy-target") || "n/a",
-  vidu: response.headers.get("x-qalam-proxy-vidu") || "n/a",
-  keySource: response.headers.get("x-qalam-proxy-key-source") || "n/a",
-  keyFingerprint: response.headers.get("x-qalam-proxy-key-fingerprint") || "n/a",
-  authHeader: response.headers.get("x-qalam-proxy-auth-header") || "n/a",
-  keyQuery: response.headers.get("x-qalam-proxy-key-query") || "n/a",
-});
-
 export const fetchViduCredits = async (config?: ViduServiceConfig) => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/credits?show_detail`;
 
-  const response = await fetch(wrapWithProxy(url), {
+  const response = await fetchViaProxy(url, {
     method: "GET",
     headers: buildHeaders(apiKey),
   });
 
   const text = await response.text();
-  console.log("[Vidu] Credits proxy debug:", {
-    url,
-    ...readProxyDebugHeaders(response),
-  });
-  console.log("[Vidu] Credits raw response:", text);
-
   if (!response.ok) {
     throw new Error(`Vidu credits failed (${response.status}): ${text}`);
   }
@@ -114,23 +96,23 @@ export const fetchViduCredits = async (config?: ViduServiceConfig) => {
   }
 };
 
-const postJson = async <T>(path: string, body: Record<string, unknown>, config?: ViduServiceConfig): Promise<T> => {
+const postJson = async <T>(
+  path: string,
+  body: Record<string, unknown>,
+  config?: ViduServiceConfig,
+  signal?: AbortSignal
+): Promise<T> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;
 
-  const response = await fetch(wrapWithProxy(url), {
+  const response = await fetchViaProxy(url, {
     method: "POST",
     headers: buildHeaders(apiKey, true),
     body: JSON.stringify(body),
+    signal,
   });
 
   const text = await response.text();
-  console.log("[Vidu] Submit proxy debug:", {
-    path,
-    url,
-    ...readProxyDebugHeaders(response),
-  });
-  console.log("[Vidu] Submit raw response:", text);
   if (!response.ok) {
     throw new Error(`Vidu request failed (${response.status}): ${text}`);
   }
@@ -145,7 +127,7 @@ const postJson = async <T>(path: string, body: Record<string, unknown>, config?:
 export const fetchViduModels = async (config?: ViduServiceConfig): Promise<string[]> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/models`;
-  const response = await fetch(wrapWithProxy(url), {
+  const response = await fetchViaProxy(url, {
     method: "GET",
     headers: buildHeaders(apiKey),
   });
@@ -159,7 +141,8 @@ export const fetchViduModels = async (config?: ViduServiceConfig): Promise<strin
 
 const createSubjectReferenceVideo = async (
   params: ViduReferenceVideoSubjectParams,
-  config?: ViduServiceConfig
+  config?: ViduServiceConfig,
+  signal?: AbortSignal
 ) => {
   const { defaultModel } = resolveConfig(config);
 
@@ -201,7 +184,8 @@ const createSubjectReferenceVideo = async (
   const data = await postJson<{ task_id?: string; id?: string; state?: string; credits?: number }>(
     "reference2video",
     payload,
-    config
+    config,
+    signal
   );
 
   const taskId = data.task_id || data.id;
@@ -212,7 +196,8 @@ const createSubjectReferenceVideo = async (
 
 const createNonSubjectReferenceVideo = async (
   params: ViduReferenceVideoNonSubjectParams,
-  config?: ViduServiceConfig
+  config?: ViduServiceConfig,
+  signal?: AbortSignal
 ) => {
   const { defaultModel } = resolveConfig(config);
 
@@ -242,7 +227,8 @@ const createNonSubjectReferenceVideo = async (
   const data = await postJson<{ task_id?: string; id?: string; state?: string; credits?: number }>(
     "reference2video",
     payload,
-    config
+    config,
+    signal
   );
 
   const taskId = data.task_id || data.id;
@@ -254,37 +240,37 @@ const createNonSubjectReferenceVideo = async (
 // Unified reference2video selector
 export const createReferenceVideo = async (
   request: ViduReferenceRequest,
-  config?: ViduServiceConfig
+  config?: ViduServiceConfig,
+  signal?: AbortSignal
 ) => {
   if (request.mode === "subject" || request.mode === "audioVideo") {
     if (!request.subjectParams) throw new Error("subjectParams required for subject mode");
-    return createSubjectReferenceVideo(request.subjectParams, config);
+    return createSubjectReferenceVideo(request.subjectParams, config, signal);
   }
   if (request.mode === "nonSubject" || request.mode === "videoOnly") {
     if (!request.nonSubjectParams) throw new Error("nonSubjectParams required for nonSubject mode");
-    return createNonSubjectReferenceVideo(request.nonSubjectParams, config);
+    return createNonSubjectReferenceVideo(request.nonSubjectParams, config, signal);
   }
   throw new Error(`Unknown reference mode: ${String(request.mode)}`);
 };
 
 // --- Task polling ---
-export const fetchTaskResult = async (taskId: string, config?: ViduServiceConfig): Promise<ViduTaskResult> => {
+export const fetchTaskResult = async (
+  taskId: string,
+  config?: ViduServiceConfig,
+  signal?: AbortSignal
+): Promise<ViduTaskResult> => {
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/creations`;
 
   console.log("[Vidu] Polling:", url);
-  const response = await fetch(wrapWithProxy(url), {
+  const response = await fetchViaProxy(url, {
     method: "GET",
     headers: buildHeaders(apiKey),
+    signal,
   });
 
   const text = await response.text();
-  console.log("[Vidu] Poll proxy debug:", {
-    taskId,
-    url,
-    ...readProxyDebugHeaders(response),
-  });
-  console.log("[Vidu] Poll raw response:", text);
   if (!response.ok) {
     throw new Error(`Failed to fetch Vidu task (${response.status}): ${text}`);
   }
@@ -312,7 +298,7 @@ export const cancelTask = async (taskId: string, config?: ViduServiceConfig): Pr
   const { baseUrl, apiKey } = resolveConfig(config);
   const url = `${baseUrl}/tasks/${taskId}/cancel`;
 
-  const response = await fetch(wrapWithProxy(url), {
+  const response = await fetchViaProxy(url, {
     method: "POST",
     headers: buildHeaders(apiKey, true),
     body: JSON.stringify({ id: taskId }),

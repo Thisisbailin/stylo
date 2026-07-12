@@ -1,4 +1,4 @@
-import { buildApiUrl } from "../utils/api";
+import { buildApiUrl, fetchAuthorized } from "../utils/api";
 
 export type ArkModel = {
   id: string;
@@ -31,7 +31,7 @@ export const fetchArkModels = async (
     url.searchParams.set("baseUrl", baseUrl.trim());
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await fetchAuthorized(url.toString(), {
     method: "GET",
   });
   if (!res.ok) {

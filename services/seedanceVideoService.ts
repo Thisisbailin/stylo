@@ -8,23 +8,10 @@ import type {
   VideoServiceConfig,
 } from "../types";
 import { SEEDANCE_DEFAULT_BASE_URL } from "../constants";
-import { buildApiUrl, wrapWithProxy } from "../utils/api";
+import { buildApiUrl, fetchAuthorized, fetchViaProxy } from "../utils/api";
 
 const resolveApiKey = (config?: VideoServiceConfig) => {
-  const envKey =
-    (typeof import.meta !== "undefined"
-      ? ((import.meta as any).env?.ARK_API_KEY ||
-        (import.meta as any).env?.VITE_ARK_API_KEY ||
-        (import.meta as any).env?.VIDEO_API_KEY ||
-        (import.meta as any).env?.VITE_VIDEO_API_KEY)
-      : undefined) ||
-    (typeof process !== "undefined"
-      ? (process.env?.ARK_API_KEY ||
-        process.env?.VITE_ARK_API_KEY ||
-        process.env?.VIDEO_API_KEY ||
-        process.env?.VITE_VIDEO_API_KEY)
-      : undefined);
-  return (config?.apiKey || envKey || "").trim();
+  return (config?.apiKey || "").trim();
 };
 
 const resolveBaseUrl = (config?: VideoServiceConfig) =>
@@ -116,15 +103,12 @@ const maskKeySource = (config?: VideoServiceConfig): SeedanceKeyProbeResult["key
 
 export const createSeedanceTask = async (
   params: SeedanceTaskCreateParams,
-  config?: VideoServiceConfig
+  config?: VideoServiceConfig,
+  signal?: AbortSignal
 ): Promise<SeedanceTaskSubmissionResult> => {
   const apiKey = resolveApiKey(config);
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(
-    apiKey
-      ? wrapWithProxy(`${baseUrl}/contents/generations/tasks`)
-      : buildServerProxyUrl("/api/seedance/contents/generations/tasks", config),
-    {
+  const requestInit: RequestInit = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -140,8 +124,11 @@ export const createSeedanceTask = async (
       watermark: params.watermark ?? false,
       ...(params.useWebSearch ? { tools: [{ type: "web_search" }] } : {}),
     }),
-    }
-  );
+    signal,
+  };
+  const response = apiKey
+    ? await fetchViaProxy(`${baseUrl}/contents/generations/tasks`, requestInit)
+    : await fetchAuthorized(buildServerProxyUrl("/api/seedance/contents/generations/tasks", config), requestInit);
 
   const data = await parseJson(response);
   const id = data?.id || data?.task_id || data?.output?.task_id;
@@ -156,22 +143,22 @@ export const createSeedanceTask = async (
 
 export const getSeedanceTask = async (
   taskId: string,
-  config?: VideoServiceConfig
+  config?: VideoServiceConfig,
+  signal?: AbortSignal
 ): Promise<SeedanceTaskStatusResult> => {
   const apiKey = resolveApiKey(config);
   const baseUrl = resolveBaseUrl(config);
-  const response = await fetch(
-    apiKey
-      ? wrapWithProxy(`${baseUrl}/contents/generations/tasks/${taskId}`)
-      : buildServerProxyUrl(`/api/seedance/contents/generations/tasks/${taskId}`, config),
-    {
+  const requestInit: RequestInit = {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
-    }
-  );
+    signal,
+  };
+  const response = apiKey
+    ? await fetchViaProxy(`${baseUrl}/contents/generations/tasks/${taskId}`, requestInit)
+    : await fetchAuthorized(buildServerProxyUrl(`/api/seedance/contents/generations/tasks/${taskId}`, config), requestInit);
 
   const data = await parseJson(response);
   const statusRaw = data?.status || data?.output?.status || data?.task_status;
@@ -202,7 +189,7 @@ export const probeSeedanceApiKey = async (
     const endpoint = buildApiUrl("/api/ark-models");
     const url = new URL(endpoint, typeof window !== "undefined" ? window.location.origin : "http://localhost");
     url.searchParams.set("baseUrl", baseUrl);
-    const serverResponse = await fetch(url.toString(), { method: "GET" });
+    const serverResponse = await fetchAuthorized(url.toString(), { method: "GET" });
     if (serverResponse.ok) {
       const raw = await serverResponse.json();
       const models = normalizeModels(raw);
@@ -231,8 +218,7 @@ export const probeSeedanceApiKey = async (
     };
   }
 
-  const modelsUrl = wrapWithProxy(`${baseUrl}/models`);
-  const modelsResponse = await fetch(modelsUrl, {
+  const modelsResponse = await fetchViaProxy(`${baseUrl}/models`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -271,7 +257,7 @@ export const probeSeedanceApiKey = async (
     };
   }
 
-  const fallbackResponse = await fetch(wrapWithProxy(`${baseUrl}/contents/generations/tasks/qalam-api-key-probe`), {
+  const fallbackResponse = await fetchViaProxy(`${baseUrl}/contents/generations/tasks/qalam-api-key-probe`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -307,7 +293,7 @@ export const probeSeedanceApiKey = async (
 };
 
 const postAssetApi = async (payload: Record<string, unknown>) => {
-  const response = await fetch(buildApiUrl("/api/seedance-assets"), {
+  const response = await fetchAuthorized(buildApiUrl("/api/seedance-assets"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

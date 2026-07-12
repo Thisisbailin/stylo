@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { Camera, Sliders, Layers, Trash2, Sparkles, Image as ImageIcon } from 'lucide-react';
 
 export interface PhotoFrame {

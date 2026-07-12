@@ -1,5 +1,5 @@
 import { AppConfig } from "../types";
-import { INITIAL_TEXT_CONFIG, INITIAL_VIDEO_CONFIG, INITIAL_MULTIMODAL_CONFIG, INITIAL_REMEMBER_KEYS, INITIAL_SYNC_KEYS, INITIAL_VIDU_CONFIG } from "../constants";
+import { INITIAL_TEXT_CONFIG, INITIAL_VIDEO_CONFIG, INITIAL_MULTIMODAL_CONFIG, INITIAL_REMEMBER_KEYS, INITIAL_SYNC_KEYS, INITIAL_VIDU_CONFIG, VIDU_DEFAULT_BASE_URL } from "../constants";
 import { usePersistedState } from "./usePersistedState";
 
 export const useConfig = (key: string) => {
@@ -17,11 +17,11 @@ export const useConfig = (key: string) => {
     deserialize: (value) => {
       const parsed = JSON.parse(value);
       const normalizeViduBaseUrl = (baseUrl?: string) => {
-        if (typeof baseUrl !== "string" || !baseUrl.trim()) return INITIAL_VIDU_CONFIG.baseUrl;
+        if (typeof baseUrl !== "string" || !baseUrl.trim()) return VIDU_DEFAULT_BASE_URL;
         return baseUrl
           .trim()
-          .replace("https://api.vidu.com/ent/v2", INITIAL_VIDU_CONFIG.baseUrl)
-          .replace("http://api.vidu.com/ent/v2", INITIAL_VIDU_CONFIG.baseUrl);
+          .replace("https://api.vidu.com/ent/v2", VIDU_DEFAULT_BASE_URL)
+          .replace("http://api.vidu.com/ent/v2", VIDU_DEFAULT_BASE_URL);
       };
       const rememberApiKeys = parsed.rememberApiKeys ?? INITIAL_REMEMBER_KEYS;
       const syncApiKeys = parsed.syncApiKeys ?? INITIAL_SYNC_KEYS;
@@ -66,12 +66,12 @@ export const useConfig = (key: string) => {
     },
     serialize: (value) => {
       const { rememberApiKeys = INITIAL_REMEMBER_KEYS, syncApiKeys = INITIAL_SYNC_KEYS } = value;
-      // 若未记住且未云同步，则持久化时清空；若开启云同步，则允许落盘（以便重载前先有值）
-      const allowPersistKeys = rememberApiKeys || syncApiKeys;
-      const textConfig = allowPersistKeys ? value.textConfig : { ...value.textConfig, apiKey: '' };
-      const videoConfig = allowPersistKeys ? value.videoConfig : { ...value.videoConfig, apiKey: '' };
-      const multimodalConfig = allowPersistKeys ? value.multimodalConfig : { ...value.multimodalConfig, apiKey: '' };
-      const viduConfig = allowPersistKeys ? value.viduConfig : { ...(value.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
+      // Cloud sync is independent from local persistence. Only the explicit
+      // "remember locally" preference may put credentials in localStorage.
+      const textConfig = rememberApiKeys ? value.textConfig : { ...value.textConfig, apiKey: '' };
+      const videoConfig = rememberApiKeys ? value.videoConfig : { ...value.videoConfig, apiKey: '' };
+      const multimodalConfig = rememberApiKeys ? value.multimodalConfig : { ...value.multimodalConfig, apiKey: '' };
+      const viduConfig = rememberApiKeys ? value.viduConfig : { ...(value.viduConfig || INITIAL_VIDU_CONFIG), apiKey: '' };
       return JSON.stringify({
         syncApiKeys,
         rememberApiKeys,

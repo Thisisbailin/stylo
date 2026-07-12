@@ -3,34 +3,19 @@ import type {
   NodeFlowGraphLink,
   NodeFlowLink,
   NodeFlowNode,
+  NodeFlowNodeData,
   NodeFlowNodeStyle,
   NodeType,
 } from "../types";
+import { NODE_TYPES } from "../types";
 import { createDefaultNodeFlowNodeData } from "./defaults";
 import { buildNodeFlowLinkId } from "./links";
 import { normalizeNodeFlowGraphLinks } from "./graphLinks";
 import { dedupeNodeFlowRefs } from "./refs";
 
-const NODE_TYPES = new Set<NodeType>([
-  "scriptPage",
-  "mdText",
-  "folder",
-  "imageInput",
-  "audioInput",
-  "videoInput",
-  "annotation",
-  "text",
-  "scriptBoard",
-  "identityCard",
-  "imageGen",
-  "nanoBananaImageGen",
-  "wanImageGen",
-  "wanReferenceVideoGen",
-  "viduVideoGen",
-  "seedanceVideoGen",
-]);
+const NODE_TYPE_SET = new Set<NodeType>(NODE_TYPES);
 
-const isNodeType = (type: unknown): type is NodeType => typeof type === "string" && NODE_TYPES.has(type as NodeType);
+const isNodeType = (type: unknown): type is NodeType => typeof type === "string" && NODE_TYPE_SET.has(type as NodeType);
 
 export const getNodeFlowNodeDimensions = (node: NodeFlowNode) => {
   const styleWidth = typeof node.style?.width === "number" ? node.style.width : undefined;
@@ -66,7 +51,7 @@ export const sanitizeNodeFlowNodeStyle = (_type: NodeType, style?: NodeFlowNodeS
 export const normalizeNodeFlowNode = (node: NodeFlowNode): NodeFlowNode | null => {
   if (!isNodeType((node as { type?: unknown }).type)) return null;
   const base = createDefaultNodeFlowNodeData(node.type);
-  const data = base ? { ...base, ...(node.data || {}) } : node.data || {};
+  const data = (base ? { ...base, ...(node.data || {}) } : node.data) as NodeFlowNodeData;
   const position = node.position || { x: 0, y: 0 };
   return {
     ...node,

@@ -1,5 +1,5 @@
 import { MultimodalConfig, TokenUsage } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
 import { NANOBANANA_PRO_ENDPOINT, WUYINKEJI_ASYNC_DETAIL_ENDPOINT } from "../constants";
 
 export interface ImageTaskSubmissionResult {
@@ -12,14 +12,6 @@ export interface ImageTaskStatusResult {
     url?: string;
     errorMsg?: string;
 }
-
-const readProxyDebugHeaders = (response: Response) => ({
-    target: response.headers.get("x-qalam-proxy-target") || "",
-    nanoBanana: response.headers.get("x-qalam-proxy-nanobanana") || "",
-    keySource: response.headers.get("x-qalam-proxy-key-source") || "",
-    authHeader: response.headers.get("x-qalam-proxy-auth-header") || "",
-    keyQuery: response.headers.get("x-qalam-proxy-key-query") || "",
-});
 
 const findFirstMediaUrl = (value: unknown): string | undefined => {
     if (!value) return undefined;
@@ -68,6 +60,7 @@ export const submitImageTask = async (
         aspectRatio?: string;
         inputImageUrl?: string;
         size?: string;
+        signal?: AbortSignal;
     }
 ): Promise<ImageTaskSubmissionResult> => {
     const { baseUrl, apiKey } = config;
@@ -75,10 +68,6 @@ export const submitImageTask = async (
 
     const endpoint = (baseUrl || NANOBANANA_PRO_ENDPOINT).trim();
     const urlObj = new URL(endpoint);
-
-    if (resolvedApiKey && !urlObj.searchParams.get("key")) {
-        urlObj.searchParams.set("key", resolvedApiKey);
-    }
 
     const payload: Record<string, unknown> = {
         prompt,
@@ -97,18 +86,14 @@ export const submitImageTask = async (
         if (resolvedApiKey) {
             headers.Authorization = resolvedApiKey;
         }
-        const response = await fetch(wrapWithProxy(urlObj.toString()), {
+        const response = await fetchViaProxy(urlObj.toString(), {
             method: "POST",
             headers,
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: options?.signal,
         });
 
-        console.log("[Nano Banana] Submit proxy debug:", {
-            status: response.status,
-            ...readProxyDebugHeaders(response),
-        });
         const text = await response.text();
-        console.log("[Nano Banana] Submit raw response:", text);
         if (!response.ok) throw new Error(`API Error ${response.status}: ${text}`);
 
         let data;
@@ -135,33 +120,25 @@ export const submitImageTask = async (
  */
 export const checkImageTaskStatus = async (
     taskId: string,
-    config: MultimodalConfig
+    config: MultimodalConfig,
+    signal?: AbortSignal
 ): Promise<ImageTaskStatusResult> => {
     const { apiKey } = config;
     const resolvedApiKey = (apiKey || "").trim();
 
     const detailUrl = new URL(WUYINKEJI_ASYNC_DETAIL_ENDPOINT);
     detailUrl.searchParams.set("id", taskId);
-    if (resolvedApiKey && !detailUrl.searchParams.get("key")) {
-        detailUrl.searchParams.set("key", resolvedApiKey);
-    }
-
     try {
-        console.log(`[Nano Banana] Polling: ${detailUrl.toString()}`);
         const headers: Record<string, string> = {
             "Content-Type": "application/json",
         };
         if (resolvedApiKey) {
             headers.Authorization = resolvedApiKey;
         }
-        const response = await fetch(wrapWithProxy(detailUrl.toString()), {
+        const response = await fetchViaProxy(detailUrl.toString(), {
             method: "GET",
-            headers
-        });
-
-        console.log("[Nano Banana] Poll proxy debug:", {
-            status: response.status,
-            ...readProxyDebugHeaders(response),
+            headers,
+            signal,
         });
 
         if (!response.ok) {
@@ -170,8 +147,6 @@ export const checkImageTaskStatus = async (
         }
 
         const text = await response.text();
-        console.log("[Nano Banana] Poll raw response:", text);
-
         let data: any;
         try {
             data = JSON.parse(text);

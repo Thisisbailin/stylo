@@ -40,6 +40,13 @@ const qalamSecondaryTextClass =
 const qalamMetaTextClass =
   "text-[13px] leading-6 text-[var(--app-text-muted)] md:text-[11px] md:leading-relaxed";
 
+const renderFoldoutSurface = (title: string, children: React.ReactNode) => (
+  <div className="ml-3 mt-2 border-l-2 border-[var(--app-border)] pl-4">
+    <div className="text-[11px] font-medium text-[var(--app-text-muted)]">{title}</div>
+    <div className="mt-2 space-y-2 text-[var(--app-text-secondary)]">{children}</div>
+  </div>
+);
+
 const formatWorkedDuration = (durationMs: number) => {
   const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
   const minutes = Math.floor(totalSeconds / 60);

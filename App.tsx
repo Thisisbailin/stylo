@@ -18,11 +18,18 @@ import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
+import { resetNodeFlowAccountState } from './node-workspace/store/nodeFlowStore';
 import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
+import {
+  buildQalamAccountStorageKeys,
+  DEFAULT_QALAM_PROJECT_ID,
+  QALAM_ACTIVITY_STORAGE_PREFIX,
+  QALAM_CONVERSATION_STORAGE_PREFIX,
+} from './agents/runtime/projectScope';
 
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
@@ -35,7 +42,117 @@ const CONFIG_STORAGE_KEY = 'qalam_config_v1';
 const THEME_STORAGE_KEY = 'qalam_theme_v1';
 const LOCAL_BACKUP_KEY = 'qalam_local_backup';
 const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
+const AVATAR_STORAGE_KEY = 'qalam_avatar_url';
 const LANDING_ROUTE_HASH = "#/landing";
+
+type AccountScope = "guest" | `user:${string}`;
+
+const buildAccountStorageKey = (baseKey: string, accountScope: AccountScope) =>
+  `${baseKey}:${encodeURIComponent(accountScope)}`;
+
+const LEGACY_MIGRATION_MARKER_PREFIX = "qalam_legacy_migration_v1";
+
+const isUnscopedLegacyQalamKey = (key: string | null) => {
+  if (!key) return false;
+  const prefix = key.startsWith(`${QALAM_CONVERSATION_STORAGE_PREFIX}:`)
+    ? QALAM_CONVERSATION_STORAGE_PREFIX
+    : key.startsWith(`${QALAM_ACTIVITY_STORAGE_PREFIX}:`)
+      ? QALAM_ACTIVITY_STORAGE_PREFIX
+      : null;
+  if (!prefix) return false;
+  try {
+    const scope = decodeURIComponent(key.slice(prefix.length + 1));
+    return !scope.startsWith("user:") && !scope.startsWith("guest:");
+  } catch {
+    return false;
+  }
+};
+
+const getLegacyProjectId = (rawProject: string | null) => {
+  if (!rawProject) return DEFAULT_QALAM_PROJECT_ID;
+  try {
+    const project = JSON.parse(rawProject) as Record<string, unknown>;
+    if (typeof project.activeFlowProjectId === "string" && project.activeFlowProjectId.trim()) {
+      return project.activeFlowProjectId.trim();
+    }
+    const firstProject = Array.isArray(project.flowProjects) ? project.flowProjects[0] : null;
+    if (firstProject && typeof firstProject === "object" && typeof firstProject.id === "string") {
+      return firstProject.id;
+    }
+  } catch {
+    // Invalid legacy state remains quarantined and is never loaded implicitly.
+  }
+  return DEFAULT_QALAM_PROJECT_ID;
+};
+
+const migrateLegacyLocalState = (accountScope: AccountScope) => {
+  const legacyProject = localStorage.getItem(PROJECT_STORAGE_KEY);
+  const projectId = getLegacyProjectId(legacyProject);
+  const fixedKeys = [
+    PROJECT_STORAGE_KEY,
+    CONFIG_STORAGE_KEY,
+    LOCAL_BACKUP_KEY,
+    REMOTE_BACKUP_KEY,
+    AVATAR_STORAGE_KEY,
+  ];
+  fixedKeys.forEach((legacyKey) => {
+    const value = localStorage.getItem(legacyKey);
+    if (value === null) return;
+    const scopedKey = buildAccountStorageKey(legacyKey, accountScope);
+    if (localStorage.getItem(scopedKey) === null) localStorage.setItem(scopedKey, value);
+    localStorage.removeItem(legacyKey);
+  });
+
+  const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+    .filter((key): key is string => Boolean(key));
+  for (const key of allKeys) {
+    const prefix = key.startsWith(`${QALAM_CONVERSATION_STORAGE_PREFIX}:`)
+      ? QALAM_CONVERSATION_STORAGE_PREFIX
+      : key.startsWith(`${QALAM_ACTIVITY_STORAGE_PREFIX}:`)
+        ? QALAM_ACTIVITY_STORAGE_PREFIX
+        : null;
+    if (!prefix || !isUnscopedLegacyQalamKey(key)) continue;
+    const encodedScope = key.slice(prefix.length + 1);
+    let legacyProjectScope = "";
+    try {
+      legacyProjectScope = decodeURIComponent(encodedScope);
+    } catch {
+      continue;
+    }
+    const targetKeys = buildQalamAccountStorageKeys(accountScope, legacyProjectScope);
+    const targetKey = prefix === QALAM_CONVERSATION_STORAGE_PREFIX
+      ? targetKeys.conversationStorageKey
+      : targetKeys.activityStorageKey;
+    const value = localStorage.getItem(key);
+    if (value !== null && localStorage.getItem(targetKey) === null) localStorage.setItem(targetKey, value);
+    localStorage.removeItem(key);
+  }
+
+  const targetConversationKey = buildQalamAccountStorageKeys(accountScope, projectId).conversationStorageKey;
+  if (localStorage.getItem(targetConversationKey) === null) {
+    const legacyConversation = localStorage.getItem("qalam_conversations_v1");
+    const legacyMessages = localStorage.getItem("qalam_messages_v1");
+    if (legacyConversation) {
+      localStorage.setItem(targetConversationKey, legacyConversation);
+    } else if (legacyMessages) {
+      try {
+        const messages = JSON.parse(legacyMessages);
+        if (Array.isArray(messages) && messages.length > 0) {
+          const now = Date.now();
+          const id = `legacy-${now.toString(36)}`;
+          localStorage.setItem(targetConversationKey, JSON.stringify({
+            activeId: id,
+            items: [{ id, title: "迁移的对话", createdAt: now, updatedAt: now, messages }],
+          }));
+        }
+      } catch {
+        // Leave malformed legacy messages quarantined.
+      }
+    }
+  }
+  localStorage.removeItem("qalam_conversations_v1");
+  localStorage.removeItem("qalam_messages_v1");
+};
 
 const readAppViewFromLocation = (): "main" | "landing" => {
   if (typeof window === "undefined") return "main";
@@ -61,11 +178,21 @@ const isJwtExpiredOrNearExpiry = (token: string, leewayMs = 30_000) => {
   return expiresAt - Date.now() <= leewayMs;
 };
 
-const App: React.FC = () => {
+const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) => {
   // Clerk Auth Hooks
   const { isSignedIn: userSignedIn, user, isLoaded: isUserLoaded } = useUser();
   const { openSignIn, signOut } = useClerk();
   const { getToken, isLoaded: isAuthLoaded, isSignedIn: authSignedIn } = useAuth();
+  const projectStorageKey = buildAccountStorageKey(PROJECT_STORAGE_KEY, accountScope);
+  const configStorageKey = buildAccountStorageKey(CONFIG_STORAGE_KEY, accountScope);
+  const localBackupKey = buildAccountStorageKey(LOCAL_BACKUP_KEY, accountScope);
+  const remoteBackupKey = buildAccountStorageKey(REMOTE_BACKUP_KEY, accountScope);
+  const forceCloudClearKey = buildAccountStorageKey(FORCE_CLOUD_CLEAR_KEY, accountScope);
+  const avatarStorageKey = buildAccountStorageKey(AVATAR_STORAGE_KEY, accountScope);
+  React.useLayoutEffect(() => {
+    resetNodeFlowAccountState();
+    return resetNodeFlowAccountState;
+  }, [accountScope]);
   const getAuthToken = useCallback(async (options?: { skipCache?: boolean }) => {
     try {
       const token = await getToken({ template: "default", ...(options?.skipCache ? { skipCache: true } : {}) });
@@ -86,7 +213,7 @@ const App: React.FC = () => {
 
   // Initialize state with Persisted hooks
   const [projectData, setProjectDataRaw] = usePersistedState<ProjectData>({
-    key: PROJECT_STORAGE_KEY,
+    key: projectStorageKey,
     initialValue: INITIAL_PROJECT_DATA,
     deserialize: (value) => normalizeProjectData(JSON.parse(value)),
     serialize: (value) => JSON.stringify(value),
@@ -100,7 +227,7 @@ const App: React.FC = () => {
     [setProjectDataRaw]
   );
 
-  const { config, setConfig } = useConfig(CONFIG_STORAGE_KEY);
+  const { config, setConfig } = useConfig(configStorageKey);
 
   const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
 
@@ -141,7 +268,7 @@ const App: React.FC = () => {
   const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
-    key: 'qalam_avatar_url',
+    key: avatarStorageKey,
     initialValue: '',
     deserialize: (v) => JSON.parse(v),
     serialize: (v) => JSON.stringify(v)
@@ -151,7 +278,7 @@ const App: React.FC = () => {
     const percent = normalizeRolloutPercent(import.meta.env.VITE_SYNC_ROLLOUT_PERCENT);
     const salt = import.meta.env.VITE_SYNC_ROLLOUT_SALT || "";
     const allowlistRaw = import.meta.env.VITE_SYNC_ROLLOUT_ALLOWLIST || "";
-    const allowlist = allowlistRaw.split(",").map((value) => value.trim()).filter(Boolean);
+    const allowlist = allowlistRaw.split(",").map((value: string) => value.trim()).filter(Boolean);
     const userId = user?.id || (userSignedIn ? "" : getDeviceId());
     const allowlisted = !!user?.id && allowlist.includes(user.id);
     if (!userId) {
@@ -218,6 +345,13 @@ const App: React.FC = () => {
   useEffect(() => {
     activeConflictRef.current = activeConflict;
   }, [activeConflict]);
+
+  useEffect(() => () => {
+    activeConflictRef.current?.resolve?.(true);
+    conflictQueueRef.current.forEach((item) => item.resolve?.(true));
+    conflictQueueRef.current = [];
+    activeConflictRef.current = null;
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -313,6 +447,7 @@ const App: React.FC = () => {
 
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
   useCloudSync({
+    accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
     getToken: getAuthToken,
@@ -321,8 +456,9 @@ const App: React.FC = () => {
     setHasLoadedRemote,
     hasLoadedRemote,
     refreshKey: syncRefreshKey,
-    localBackupKey: LOCAL_BACKUP_KEY,
-    remoteBackupKey: REMOTE_BACKUP_KEY,
+    localBackupKey,
+    remoteBackupKey,
+    forceClearKey: forceCloudClearKey,
     onError: handleCloudSyncError,
     onStatusChange: updateProjectSyncStatus,
     onConflictConfirm: requestConflictResolution,
@@ -331,6 +467,7 @@ const App: React.FC = () => {
   });
 
   useSecretsSync({
+    accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
     getToken: getAuthToken,
@@ -364,11 +501,12 @@ const App: React.FC = () => {
 
   const handleResetProject = async () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
-      localStorage.setItem(FORCE_CLOUD_CLEAR_KEY, "1");
+      localStorage.setItem(forceCloudClearKey, "1");
       setProjectData(INITIAL_PROJECT_DATA);
-      localStorage.removeItem(PROJECT_STORAGE_KEY);
-      localStorage.removeItem(LOCAL_BACKUP_KEY);
-      localStorage.removeItem(REMOTE_BACKUP_KEY);
+      localStorage.removeItem(projectStorageKey);
+      localStorage.removeItem(localBackupKey);
+      localStorage.removeItem(remoteBackupKey);
+      localStorage.removeItem(`${localBackupKey}_last_synced`);
       setAvatarUrl('');
       try {
         const token = await getAuthToken();
@@ -563,6 +701,7 @@ const App: React.FC = () => {
   const renderMainContent = () => (
     <div className="h-full">
       <CreativeWorkspace
+        accountScope={accountScope}
         projectData={projectData}
         setProjectData={setProjectData}
         config={config}
@@ -582,8 +721,8 @@ const App: React.FC = () => {
           isLoaded: isUserLoaded,
           isSignedIn: !!userSignedIn,
           name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Qalam User",
-          email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress,
-          avatarUrl: avatarUrl || user?.imageUrl,
+          email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || undefined,
+          avatarUrl: avatarUrl || user?.imageUrl || undefined,
           onSignIn: () => openSignIn(),
           onSignOut: () => signOut(),
           onUploadAvatar: handleAvatarUploadClick,
@@ -644,6 +783,75 @@ const App: React.FC = () => {
       </AppShell>
     </>
   );
+};
+
+const AccountMigrationGate: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const markerKey = `${LEGACY_MIGRATION_MARKER_PREFIX}:${encodeURIComponent(accountScope)}`;
+      if (localStorage.getItem(markerKey)) {
+        setReady(true);
+        return;
+      }
+      const hasLegacyState = [
+        PROJECT_STORAGE_KEY,
+        CONFIG_STORAGE_KEY,
+        LOCAL_BACKUP_KEY,
+        REMOTE_BACKUP_KEY,
+        AVATAR_STORAGE_KEY,
+        "qalam_conversations_v1",
+        "qalam_messages_v1",
+      ].some((key) => localStorage.getItem(key) !== null) ||
+        Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+          .some(isUnscopedLegacyQalamKey);
+      if (!hasLegacyState) {
+        localStorage.setItem(markerKey, "none");
+        setReady(true);
+        return;
+      }
+
+      const destination = accountScope === "guest" ? "访客空间" : "当前登录账号";
+      const shouldImport = window.confirm(
+        `检测到升级前的本地项目或对话。是否将它们导入${destination}？\n\n` +
+        "选择取消会将旧数据保持隔离，不会在访客或其他账号中自动显示。"
+      );
+      if (shouldImport) migrateLegacyLocalState(accountScope);
+      localStorage.setItem(markerKey, shouldImport ? "imported" : "quarantined");
+    } catch (error) {
+      console.warn("Legacy local data migration was unavailable", error);
+    } finally {
+      setReady(true);
+    }
+  }, [accountScope]);
+
+  return ready ? <ScopedApp key={accountScope} accountScope={accountScope} /> : null;
+};
+
+const App: React.FC = () => {
+  const { isSignedIn: userSignedIn, user, isLoaded: isUserLoaded } = useUser();
+  const { isLoaded: isAuthLoaded, isSignedIn: authSignedIn, userId: authUserId } = useAuth();
+
+  if (!isUserLoaded || !isAuthLoaded) return null;
+
+  const userStateId = user?.id || null;
+  const fullySignedOut = !userSignedIn && !authSignedIn && !userStateId && !authUserId;
+  if (fullySignedOut) {
+    return <AccountMigrationGate key="guest" accountScope="guest" />;
+  }
+
+  const identityIsConsistent = Boolean(
+    userSignedIn &&
+    authSignedIn &&
+    userStateId &&
+    authUserId &&
+    userStateId === authUserId
+  );
+  if (!identityIsConsistent) return null;
+
+  const accountScope: AccountScope = `user:${userStateId}`;
+  return <AccountMigrationGate key={accountScope} accountScope={accountScope} />;
 };
 
 export default App;

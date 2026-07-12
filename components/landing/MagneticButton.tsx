@@ -1,7 +1,14 @@
 import React, { memo, useRef } from "react";
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  type HTMLMotionProps,
+} from "framer-motion";
 
-type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+type Props = Omit<HTMLMotionProps<"button">, "children"> & {
+  children?: React.ReactNode;
   icon?: React.ReactNode;
 };
 

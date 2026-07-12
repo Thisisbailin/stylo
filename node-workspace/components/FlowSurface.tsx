@@ -46,7 +46,7 @@ import type {
   FlowState,
   CanvasMeasuredSize,
 } from "../../types";
-import type { NodeFlowContextSnapshot, NodeFlowFile, NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
+import type { NodeFlowContextSnapshot, NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeType } from "../types";
 import {
   AudioInputNode,
   VideoInputNode,
@@ -67,6 +67,7 @@ import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
 import { createEmptyNodeFlowApprovalState } from "../nodeflow/approvals";
 import { createIdleNodeFlowExecutionState } from "../nodeflow/sessionState";
 import { buildNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
+import { parseNodeFlowFile } from "../nodeflow/schema";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
@@ -344,9 +345,9 @@ const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeI
   const magneticPadding = 46;
   let closest: { nodeId: string; side: "left" | "right"; distance: number } | null = null;
 
-  document.querySelectorAll<HTMLElement>(".react-flow__node").forEach((nodeElement) => {
+  for (const nodeElement of document.querySelectorAll<HTMLElement>(".react-flow__node")) {
     const nodeId = nodeElement.getAttribute("data-id");
-    if (!nodeId || nodeId === excludedNodeId) return;
+    if (!nodeId || nodeId === excludedNodeId) continue;
     const rect = nodeElement.getBoundingClientRect();
 
     const insideMagneticBounds =
@@ -355,7 +356,7 @@ const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeI
       clientY >= rect.top - magneticPadding &&
       clientY <= rect.bottom + magneticPadding;
 
-    if (!insideMagneticBounds) return;
+    if (!insideMagneticBounds) continue;
 
     const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
     const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
@@ -363,12 +364,12 @@ const getScriptNodeHitAtPoint = (clientX: number, clientY: number, excludedNodeI
 
     if (!closest || distance < closest.distance) {
       closest = {
-      nodeId,
-      side: clientX < rect.left + rect.width / 2 ? "left" : "right",
+        nodeId,
+        side: clientX < rect.left + rect.width / 2 ? "left" : "right",
         distance,
       };
     }
-  });
+  }
 
   return closest ? { nodeId: closest.nodeId, side: closest.side } : null;
 };
@@ -382,17 +383,17 @@ const getScriptAxisTargetHitAtPoint = (clientX: number, clientY: number): Script
   const magneticPadding = 18;
   let closest: { target: ScriptAxisTarget; distance: number } | null = null;
 
-  document.querySelectorAll<HTMLElement>("[data-axis-target-type]").forEach((element) => {
+  for (const element of document.querySelectorAll<HTMLElement>("[data-axis-target-type]")) {
     const type = element.getAttribute("data-axis-target-type");
     const id = element.getAttribute("data-axis-target-id");
-    if (!id || (type !== "head" && !isFoundationAxis(type))) return;
+    if (!id || (type !== "head" && !isFoundationAxis(type))) continue;
     const rect = element.getBoundingClientRect();
     const inside =
       clientX >= rect.left - magneticPadding &&
       clientX <= rect.right + magneticPadding &&
       clientY >= rect.top - magneticPadding &&
       clientY <= rect.bottom + magneticPadding;
-    if (!inside) return;
+    if (!inside) continue;
 
     const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
     const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
@@ -400,7 +401,7 @@ const getScriptAxisTargetHitAtPoint = (clientX: number, clientY: number): Script
     if (!closest || distance < closest.distance) {
       closest = { target: { type, id } as ScriptAxisTarget, distance };
     }
-  });
+  }
 
   return closest?.target || null;
 };
@@ -3039,8 +3040,9 @@ export const useFlowSurface = ({
   }, [handleAddScriptPage, screenToFlowPosition]);
 
   const handleImportScriptNodeFlow = useCallback(
-    (nodeFlow: NodeFlowFile) => {
-      const hydrated = hydrateImportedNodeFlow(nodeFlow, flowRuntimeContext);
+    (nodeFlow: unknown) => {
+      const parsed = parseNodeFlowFile(nodeFlow);
+      const hydrated = hydrateImportedNodeFlow(parsed, flowRuntimeContext);
       setProjectData((previous) => {
         const currentFlow = ensureFlow(previous.flow);
         const existingIds = new Set<string>([

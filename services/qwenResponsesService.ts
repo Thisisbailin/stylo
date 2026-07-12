@@ -1,6 +1,6 @@
 import { AgentTool, AgentToolCall } from "./toolingTypes";
 import type { TokenUsage } from "../types";
-import { buildApiUrl, wrapWithProxy } from "../utils/api";
+import { buildApiUrl, fetchAuthorized, fetchViaProxy } from "../utils/api";
 import { QWEN_RESPONSES_BASE_URL } from "../constants";
 
 export interface QwenResponsesConfig {
@@ -47,25 +47,8 @@ export type QwenModel = {
 const DEFAULT_BASE = QWEN_RESPONSES_BASE_URL;
 
 const resolveApiKey = (config: QwenResponsesConfig) => {
-  const envKey =
-    (typeof import.meta !== "undefined"
-      ? (import.meta.env.QWEN_API_KEY ||
-        import.meta.env.VITE_QWEN_API_KEY ||
-        import.meta.env.DASHSCOPE_API_KEY ||
-        import.meta.env.VITE_DASHSCOPE_API_KEY ||
-        import.meta.env.OPENAI_API_KEY ||
-        import.meta.env.VITE_OPENAI_API_KEY)
-      : undefined) ||
-    (typeof process !== "undefined"
-      ? (process.env?.QWEN_API_KEY ||
-        process.env?.VITE_QWEN_API_KEY ||
-        process.env?.DASHSCOPE_API_KEY ||
-        process.env?.VITE_DASHSCOPE_API_KEY ||
-        process.env?.OPENAI_API_KEY ||
-        process.env?.VITE_OPENAI_API_KEY)
-      : undefined);
-  const key = (config.apiKey || envKey || "").trim();
-  if (!key) throw new Error("Missing Qwen API key. 请配置 QWEN_API_KEY / DASHSCOPE_API_KEY / OPENAI_API_KEY，或在设置中填写。");
+  const key = (config.apiKey || "").trim();
+  if (!key) throw new Error("Missing Qwen API key. 请在项目设置中填写。");
   return key;
 };
 
@@ -239,7 +222,7 @@ export const createQwenResponse = async (
     };
   }
 
-  const res = await fetch(wrapWithProxy(endpoint), {
+  const res = await fetchViaProxy(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -263,26 +246,9 @@ export const createQwenResponse = async (
 export const fetchQwenModels = async (
   config: QwenResponsesConfig = {}
 ): Promise<{ models: QwenModel[]; raw: any }> => {
-  const optionalEnvKey =
-    (typeof import.meta !== "undefined"
-      ? (import.meta.env.QWEN_API_KEY ||
-        import.meta.env.VITE_QWEN_API_KEY ||
-        import.meta.env.DASHSCOPE_API_KEY ||
-        import.meta.env.VITE_DASHSCOPE_API_KEY ||
-        import.meta.env.OPENAI_API_KEY ||
-        import.meta.env.VITE_OPENAI_API_KEY)
-      : undefined) ||
-    (typeof process !== "undefined"
-      ? (process.env?.QWEN_API_KEY ||
-        process.env?.VITE_QWEN_API_KEY ||
-        process.env?.DASHSCOPE_API_KEY ||
-        process.env?.VITE_DASHSCOPE_API_KEY ||
-        process.env?.OPENAI_API_KEY ||
-        process.env?.VITE_OPENAI_API_KEY)
-      : undefined);
-  const apiKey = (config.apiKey || optionalEnvKey || "").trim();
+  const apiKey = (config.apiKey || "").trim();
   const res = apiKey
-    ? await fetch(wrapWithProxy(resolveModelsEndpoint(config.baseUrl)), {
+    ? await fetchViaProxy(resolveModelsEndpoint(config.baseUrl), {
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -294,7 +260,7 @@ export const fetchQwenModels = async (
         if (config.baseUrl?.trim()) {
           url.searchParams.set("baseUrl", config.baseUrl.trim());
         }
-        return fetch(url.toString(), { method: "GET" });
+        return fetchAuthorized(url.toString(), { method: "GET" });
       })();
   if (!res.ok) {
     const err = await res.text();

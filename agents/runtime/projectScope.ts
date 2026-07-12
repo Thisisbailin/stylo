@@ -45,6 +45,46 @@ export const buildQalamSessionPrefix = (projectId: string) =>
 export const buildQalamSessionId = (projectId: string, conversationId: string) =>
   `${buildQalamSessionPrefix(projectId)}${encodeScopePart(normalizeScopePart(conversationId, "default"))}`;
 
+const qualifyQalamAccountScopePart = (
+  accountScope: string,
+  value: string | undefined,
+  fallback: string
+) => {
+  const normalizedAccountScope = normalizeScopePart(accountScope, "guest");
+  const normalizedValue = normalizeScopePart(value, fallback);
+  return `${normalizedAccountScope}:${normalizedValue}`;
+};
+
+/**
+ * Local Agent records are account data. Keep their storage namespace distinct
+ * even when two Clerk accounts use the same project id on the same device.
+ */
+export const buildQalamAccountStorageKeys = (accountScope: string, projectId: string) => {
+  const storageProjectScope = qualifyQalamAccountScopePart(
+    accountScope,
+    projectId,
+    DEFAULT_QALAM_PROJECT_ID
+  );
+  return {
+    conversationStorageKey: buildQalamConversationStorageKey(storageProjectScope),
+    activityStorageKey: buildQalamActivityStorageKey(storageProjectScope),
+  };
+};
+
+/**
+ * Server sessions remain project-scoped for bridge validation, while the
+ * conversation segment carries the account scope used by the local UI.
+ */
+export const buildQalamAccountSessionId = (
+  accountScope: string,
+  projectId: string,
+  conversationId: string
+) =>
+  buildQalamSessionId(
+    projectId,
+    qualifyQalamAccountScopePart(accountScope, conversationId, "default")
+  );
+
 export const isQalamSessionInProject = (sessionId: string, projectId: string) =>
   sessionId.startsWith(buildQalamSessionPrefix(projectId));
 

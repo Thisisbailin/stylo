@@ -10,7 +10,7 @@ type Props = {
   data: AnnotationNodeData;
 };
 
-export const AnnotationNode: React.FC<Props & { selected?: boolean }> = ({ data, selected }) => {
+export const AnnotationNode: React.FC<Props & { selected?: boolean }> = ({ id, data, selected }) => {
   const connectedInputs = useNodeFlowStore((state) => state.getConnectedInputs);
   const openModal = useAnnotationStore((state) => state.openModal);
   const connectedImage = connectedInputs(id).images[0] || null;

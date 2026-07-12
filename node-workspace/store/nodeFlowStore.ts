@@ -43,6 +43,7 @@ import {
   hydrateImportedNodeFlow,
 } from "../nodeflow/serialization";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
+import { parseNodeFlowFile } from "../nodeflow/schema";
 import { buildConnectedInputs, type NodeFlowConnectedInputs, validateNodeFlowState } from "../nodeflow/queries";
 import {
   createEmptyNodeFlowCanvasState,
@@ -93,6 +94,7 @@ interface ClipboardData {
 }
 
 interface NodeFlowStore {
+  accountGeneration: number;
   revision: number;
   nodes: NodeFlowNode[];
   links: NodeFlowLink[];
@@ -143,7 +145,10 @@ interface NodeFlowStore {
 
   // Save/Load
   exportNodeFlow: (name?: string) => Promise<void>;
-  importNodeFlow: (nodeFlow: NodeFlowFile) => void;
+  importNodeFlow: (
+    nodeFlow: unknown,
+    options?: { expectedAccountGeneration?: number }
+  ) => void;
   clearNodeFlow: () => void;
   applyViduReferenceDemo: (offset?: XYPosition, options?: RevisionGuardOptions) => { ok: boolean; error?: string };
 
@@ -179,6 +184,7 @@ interface NodeFlowStore {
 }
 
 let nodeIdCounter = 0;
+let accountAbortController = new AbortController();
 
 const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
   if (typeof expectedRevision !== "number") return;
@@ -190,6 +196,7 @@ const assertExpectedRevision = (currentRevision: number, expectedRevision?: numb
 };
 
 export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
+  accountGeneration: 0,
   revision: 0,
   nodes: [],
   links: [],
@@ -415,9 +422,16 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     await downloadNodeFlowPackage(nodeFlow);
   },
 
-  importNodeFlow: (nodeFlow) => {
+  importNodeFlow: (nodeFlow, options) => {
     const current = get();
-    const hydrated = hydrateImportedNodeFlow(nodeFlow, current.nodeFlowContext);
+    if (
+      options?.expectedAccountGeneration !== undefined &&
+      options.expectedAccountGeneration !== current.accountGeneration
+    ) {
+      return;
+    }
+    const parsed = parseNodeFlowFile(nodeFlow);
+    const hydrated = hydrateImportedNodeFlow(parsed, current.nodeFlowContext);
     nodeIdCounter = hydrated.maxId;
     set({
       revision: hydrated.revision,
@@ -475,3 +489,48 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
     set((state) => appendExternalNodesAndLinksCommand({ state, nodes: newNodes, links: newLinks }).state);
   },
 }));
+
+/**
+ * Clears every account-derived value while preserving the store actions.
+ * Account boundaries call this before a newly scoped workspace is painted so
+ * approvals, assets, graph data, and provider configuration cannot leak across
+ * sessions through this module-level Zustand store.
+ */
+export const resetNodeFlowAccountState = () => {
+  accountAbortController.abort(new DOMException("NodeFlow account scope changed", "AbortError"));
+  accountAbortController = new AbortController();
+  nodeIdCounter = 0;
+  const accountGeneration = useNodeFlowStore.getState().accountGeneration + 1;
+  useNodeFlowStore.setState({
+    accountGeneration,
+    revision: 0,
+    nodes: [],
+    links: [],
+    graphLinks: [],
+    linkStyle: "curved",
+    clipboard: null,
+    ...createIdleNodeFlowExecutionState(),
+    ...createEmptyNodeFlowAssetState(),
+    ...createEmptyNodeFlowCanvasState(),
+    ...createEmptyNodeFlowCollaborationState(),
+    ...createEmptyNodeFlowApprovalState(),
+    availableImageModels: [],
+    availableVideoModels: [],
+    nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
+  });
+};
+
+export const captureNodeFlowAccountExecution = () => {
+  const accountGeneration = useNodeFlowStore.getState().accountGeneration;
+  const signal = accountAbortController.signal;
+  const isCurrent = () =>
+    !signal.aborted && useNodeFlowStore.getState().accountGeneration === accountGeneration;
+  return {
+    accountGeneration,
+    signal,
+    isCurrent,
+    assertCurrent: () => {
+      if (!isCurrent()) throw new DOMException("NodeFlow account scope changed", "AbortError");
+    },
+  };
+};

@@ -1,6 +1,6 @@
 
 import { MultimodalConfig } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
 
 /**
  * GENERATE SEEDREAM IMAGE
@@ -12,6 +12,7 @@ export const generateSeedreamImage = async (
     options?: {
         aspectRatio?: string;
         inputImageUrl?: string;
+        signal?: AbortSignal;
     }
 ): Promise<string> => {
     const { baseUrl, apiKey, model } = config;
@@ -50,13 +51,14 @@ export const generateSeedreamImage = async (
 
     try {
         console.log("--- [Seedream] Requesting Image Generation ---");
-        const response = await fetch(wrapWithProxy(targetUrl), {
+        const response = await fetchViaProxy(targetUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${apiKey}`
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: options?.signal,
         });
 
         if (!response.ok) {

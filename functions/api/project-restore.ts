@@ -1,7 +1,17 @@
-import { verifyToken } from "@clerk/backend";
 import { validateProjectPayload } from "./validation";
 import { logAudit } from "./audit";
 import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
+import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
+import { readJsonRequest } from "./_request";
+import {
+  buildProjectWriteGuardCleanupStatement,
+  buildProjectWriteGuardStatement,
+  createProjectWriteGuardId,
+  isProjectWriteGuardError,
+} from "./_projectWriteGuard";
+import { bindOperationId, normalizeOperationId } from "./_idempotency";
+import { normalizeFlowProjectsForStorage } from "./_projectFlowMigration";
+import { buildBulkProjectInsertStatements } from "./_projectBulkStatements";
 
 type Env = {
   DB: any;
@@ -9,45 +19,10 @@ type Env = {
   CLERK_JWT_KEY?: string;
 } & RolloutEnv;
 
-const JSON_HEADERS = { "content-type": "application/json" };
 const MAX_PROJECT_BYTES = 1_800_000;
 const MAX_FLOW_PROJECTS = 3;
-const jsonResponse = (body: unknown, init: ResponseInit = {}) => {
-  const headers = { ...JSON_HEADERS, ...(init.headers || {}) };
-  return new Response(JSON.stringify(body), { ...init, headers });
-};
-
-const stripOuterQuotes = (value: string) => {
-  if (
-    (value.startsWith("\"") && value.endsWith("\"")) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-};
-
-const normalizeJwtKey = (value: string) => {
-  const unescaped = value.replace(/\\r\\n|\\n|\\r/g, "\n");
-  const trimmed = stripOuterQuotes(unescaped.trim());
-  if (!trimmed) return "";
-  const header = "-----BEGIN PUBLIC KEY-----";
-  const trailer = "-----END PUBLIC KEY-----";
-  const body = trimmed
-    .replace(/-----BEGIN [^-]+-----/g, "")
-    .replace(/-----END [^-]+-----/g, "")
-    .replace(/\s+/g, "");
-  if (!body) return "";
-  return `${header}\n${body}\n${trailer}`;
-};
-
-const extractBearerToken = (authHeader: string) => {
-  const match = authHeader.match(/Bearer\s+([^,]+)/i);
-  const raw = match ? match[1] : authHeader;
-  const trimmed = stripOuterQuotes(raw.trim());
-  const whitespaceStripped = trimmed.replace(/\s+/g, "");
-  return whitespaceStripped.replace(/[^A-Za-z0-9._-]/g, "");
-};
+const SNAPSHOT_LIMIT = 10;
+const MAX_RESTORE_REQUEST_BYTES = 16 * 1024;
 
 const getDeviceId = (request: Request, body?: any) => {
   const headerId = request.headers.get("x-device-id") || request.headers.get("X-Device-Id");
@@ -210,86 +185,6 @@ const collectProjectParts = (projectData: any) => {
   };
 };
 
-async function ensureTables(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_meta (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL, last_op_id TEXT)"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_episodes (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_scenes (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, scene_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id, scene_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_flow_projects (user_id TEXT NOT NULL, project_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, project_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_flow_nodes (user_id TEXT NOT NULL, project_id TEXT NOT NULL, node_id TEXT NOT NULL, node_index INTEGER NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, project_id, node_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_characters (user_id TEXT NOT NULL, char_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, char_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_locations (user_id TEXT NOT NULL, loc_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, loc_id))"
-  ).run();
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_snapshots (user_id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, version))"
-  ).run();
-}
-
-const ensureColumn = async (env: Env, table: string, column: string, type: string) => {
-  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
-  const columns = new Set((info?.results || []).map((row: any) => row.name));
-  if (!columns.has(column)) {
-    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
-  }
-};
-
-const ensureSchema = async (env: Env) => {
-  await ensureTables(env);
-  await ensureColumn(env, "user_project_meta", "data", "TEXT");
-  await ensureColumn(env, "user_project_meta", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_meta", "last_op_id", "TEXT");
-  await ensureColumn(env, "user_project_episodes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_scenes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_flow_projects", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_flow_nodes", "node_index", "INTEGER");
-  await ensureColumn(env, "user_project_flow_nodes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_characters", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_locations", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_snapshots", "data", "TEXT");
-  await ensureColumn(env, "user_project_snapshots", "version", "INTEGER");
-  await ensureColumn(env, "user_project_snapshots", "created_at", "INTEGER");
-};
-
-async function getUserId(request: Request, env: Env) {
-  const authHeader = request.headers.get("authorization") || "";
-  const token = extractBearerToken(authHeader);
-
-  const rawSecret = typeof env.CLERK_SECRET_KEY === "string" ? env.CLERK_SECRET_KEY : "";
-  const rawJwtKey = typeof env.CLERK_JWT_KEY === "string" ? env.CLERK_JWT_KEY : "";
-  const asciiCleaned = rawSecret.replace(/[^\x20-\x7E]/g, "");
-  let secretKey = stripOuterQuotes(asciiCleaned.replace(/\s+/g, ""));
-  const jwtKey = normalizeJwtKey(rawJwtKey);
-  if (!secretKey && !jwtKey) {
-    throw new Response("Missing CLERK_SECRET_KEY on server", { status: 500 });
-  }
-
-  if (!token) {
-    throw new Response(JSON.stringify({ error: "Unauthorized", detail: "Missing bearer token" }), { status: 401, headers: JSON_HEADERS });
-  }
-
-  try {
-    const payload = await verifyToken(token, jwtKey ? { jwtKey } : { secretKey });
-    if (payload?.sub) return payload.sub;
-    throw new Error("Token payload missing sub");
-  } catch (err: any) {
-    const detail = err?.message || "Token verification failed";
-    console.warn("verifyToken failed", err);
-    throw new Response(JSON.stringify({ error: "Unauthorized", detail }), { status: 401, headers: JSON_HEADERS });
-  }
-}
-
 const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
   const metaRow = await env.DB.prepare(
     "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1"
@@ -410,6 +305,21 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
   return { projectData, updatedAt: metaRow.updated_at };
 };
 
+type RestoreRequest = {
+  version?: unknown;
+  expectedUpdatedAt?: unknown;
+  opId?: unknown;
+  deviceId?: unknown;
+};
+
+const parseVersionTag = (value: string | null): number | undefined => {
+  if (value === null) return undefined;
+  const normalized = value.trim().replace(/^W\//i, "").replace(/^"|"$/g, "");
+  if (!/^\d+$/.test(normalized)) return undefined;
+  const version = Number(normalized);
+  return Number.isSafeInteger(version) && version >= 0 ? version : undefined;
+};
+
 export const onRequestPost = async (context: { request: Request; env: Env }) => {
   let userId: string | null = null;
   try {
@@ -422,15 +332,74 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       }
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
-    await ensureSchema(context.env);
 
-    const body = await context.request.json();
+    const body = await readJsonRequest<RestoreRequest>(context.request, MAX_RESTORE_REQUEST_BYTES);
     const deviceId = getDeviceId(context.request, body);
     const auditDevice = deviceId ? { deviceId } : {};
-    const version = typeof body?.version === "number" ? body.version : undefined;
-    if (!version) {
+    const version = typeof body.version === "number" && Number.isSafeInteger(body.version)
+      ? body.version
+      : undefined;
+    if (!version || version < 1) {
       if (userId) await logAudit(context.env, userId, "project.restore", "invalid", { error: "Missing version", ...auditDevice });
-      return jsonResponse({ error: "Missing version" }, { status: 400 });
+      return jsonResponse({ error: "A positive integer snapshot version is required" }, { status: 400 });
+    }
+
+    const opId = normalizeOperationId(body.opId);
+    if (!opId) {
+      return jsonResponse({ error: "A valid opId is required" }, { status: 400 });
+    }
+    const boundOpId = await bindOperationId("project-restore", opId, { version });
+
+    const ifMatchHeader = context.request.headers.get("if-match");
+    const headerVersion = parseVersionTag(ifMatchHeader);
+    if (ifMatchHeader !== null && headerVersion === undefined) {
+      return jsonResponse({ error: "Invalid If-Match project version" }, { status: 400 });
+    }
+    const bodyVersion = typeof body.expectedUpdatedAt === "number" &&
+      Number.isSafeInteger(body.expectedUpdatedAt) && body.expectedUpdatedAt >= 0
+      ? body.expectedUpdatedAt
+      : undefined;
+    const expectedUpdatedAt = headerVersion ?? bodyVersion;
+    if (expectedUpdatedAt === undefined) {
+      if (userId) {
+        await logAudit(context.env, userId, "project.restore", "conflict", {
+          reason: "missing_precondition",
+          version,
+          ...auditDevice,
+        });
+      }
+      return jsonResponse(
+        { error: "A current project version is required in If-Match" },
+        { status: 428 }
+      );
+    }
+
+    const currentMeta = await context.env.DB.prepare(
+      "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
+    ).bind(userId).first();
+    const currentUpdatedAt = currentMeta ? Number(currentMeta.updated_at) || 0 : 0;
+
+    if (currentMeta?.last_op_id === boundOpId) {
+      return jsonResponse(
+        { ok: true, updatedAt: currentUpdatedAt },
+        { headers: { etag: String(currentUpdatedAt) } }
+      );
+    }
+
+    if (expectedUpdatedAt !== currentUpdatedAt) {
+      if (userId) {
+        await logAudit(context.env, userId, "project.restore", "conflict", {
+          reason: "version_mismatch",
+          expectedUpdatedAt,
+          updatedAt: currentUpdatedAt,
+          version,
+          ...auditDevice,
+        });
+      }
+      return jsonResponse(
+        { error: "Conflict", updatedAt: currentUpdatedAt },
+        { status: 409, headers: { etag: String(currentUpdatedAt) } }
+      );
     }
 
     const snapshot = await context.env.DB.prepare(
@@ -444,27 +413,19 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       return jsonResponse({ error: "Snapshot not found" }, { status: 404 });
     }
 
-    const currentSnapshot = await loadCurrentProjectSnapshot(context.env, userId);
-    if (currentSnapshot) {
-      const snapshotPayload = JSON.stringify({ projectData: currentSnapshot.projectData });
-      const snapshotBytes = new TextEncoder().encode(snapshotPayload).length;
-      if (snapshotBytes <= MAX_PROJECT_BYTES) {
-        await context.env.DB.prepare(
-          "INSERT OR IGNORE INTO user_project_snapshots (user_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4)"
-        )
-          .bind(userId, currentSnapshot.updatedAt, snapshotPayload, Date.now())
-          .run();
-      } else {
-        console.warn("Skipping pre-restore snapshot larger than D1 row limit guard", {
-          userId,
-          version: currentSnapshot.updatedAt,
-          bytes: snapshotBytes,
-        });
-      }
-    }
+    const currentSnapshot = currentMeta
+      ? await loadCurrentProjectSnapshot(context.env, userId)
+      : null;
 
-    const parsed = JSON.parse(snapshot.data as string);
-    const projectData = parsed?.projectData ?? parsed;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(snapshot.data as string);
+    } catch {
+      return jsonResponse({ error: "Snapshot data is corrupt" }, { status: 400 });
+    }
+    const projectData = parsed && typeof parsed === "object" && "projectData" in parsed
+      ? (parsed as { projectData: unknown }).projectData
+      : parsed;
     const validation = validateProjectPayload(projectData);
     if (!validation.ok) {
       const error = (validation as any).error;
@@ -473,10 +434,23 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     const builtMeta = buildMetaFromProject(projectData);
-    const flowProjectsToStore = toFlowProjects(builtMeta.flowProjects);
-    const meta = compactMeta(builtMeta);
+    const flowProjectsToStore = normalizeFlowProjectsForStorage({
+      flowProjects: builtMeta.flowProjects,
+      legacyFlow: builtMeta.flow,
+      activeFlowProjectId: builtMeta.activeFlowProjectId,
+      fileName: builtMeta.fileName,
+      roles: builtMeta.roles,
+      designAssets: builtMeta.designAssets,
+      timestamp: version,
+      limit: MAX_FLOW_PROJECTS,
+    });
+    const meta = compactMeta({
+      ...builtMeta,
+      activeFlowProjectId: builtMeta.activeFlowProjectId ||
+        (typeof flowProjectsToStore[0]?.id === "string" ? flowProjectsToStore[0].id : undefined),
+    });
     const parts = collectProjectParts(projectData);
-    const updatedAt = Date.now();
+    const updatedAt = Math.max(Date.now(), currentUpdatedAt + 1);
     const metaSerialized = serializeWithSizeGuard(meta, "Project meta");
     flowProjectsToStore.forEach((flowProject) => {
       const split = splitFlowProject(flowProject);
@@ -486,53 +460,125 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       });
     });
 
-    await context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId).run();
-    await context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId).run();
+    const guardId = createProjectWriteGuardId(userId, boundOpId);
+    const statements = [
+      buildProjectWriteGuardStatement(
+        context.env.DB,
+        userId,
+        guardId,
+        Boolean(currentMeta),
+        expectedUpdatedAt
+      ),
+    ];
 
-    for (const episode of parts.episodes) {
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_episodes (user_id, episode_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-      )
-        .bind(userId, episode.id, JSON.stringify(episode), updatedAt)
-        .run();
+    if (currentSnapshot) {
+      const snapshotPayload = JSON.stringify({ projectData: currentSnapshot.projectData });
+      const snapshotBytes = new TextEncoder().encode(snapshotPayload).length;
+      if (snapshotBytes <= MAX_PROJECT_BYTES) {
+        statements.push(context.env.DB.prepare(
+          "INSERT OR IGNORE INTO user_project_snapshots (user_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4)"
+        ).bind(userId, currentSnapshot.updatedAt, snapshotPayload, Date.now()));
+        statements.push(context.env.DB.prepare(
+          "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 ORDER BY version DESC LIMIT ?2)"
+        ).bind(userId, SNAPSHOT_LIMIT));
+      } else {
+        console.warn("Skipping pre-restore snapshot larger than D1 row limit guard", {
+          userId,
+          version: currentSnapshot.updatedAt,
+          bytes: snapshotBytes,
+        });
+      }
     }
 
-    for (const scene of parts.scenes) {
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_scenes (user_id, episode_id, scene_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)"
-      )
-        .bind(userId, scene.episodeId, scene.scene.id, JSON.stringify(scene.scene), updatedAt)
-        .run();
-    }
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1").bind(userId));
 
+    const flowProjectRows: Array<{ projectId: string; data: unknown }> = [];
+    const flowNodeRows: Array<{
+      projectId: string;
+      nodeId: string;
+      nodeIndex: number;
+      data: unknown;
+    }> = [];
     for (const flowProject of flowProjectsToStore) {
       const projectId = typeof flowProject.id === "string" ? flowProject.id : "";
       if (!projectId) continue;
       const split = splitFlowProject(flowProject);
-      await context.env.DB.prepare(
-        "INSERT INTO user_project_flow_projects (user_id, project_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-      )
-        .bind(userId, projectId, JSON.stringify(split.project), updatedAt)
-        .run();
+      flowProjectRows.push({ projectId, data: split.project });
       for (const flowNode of split.nodes) {
-        await context.env.DB.prepare(
-          "INSERT INTO user_project_flow_nodes (user_id, project_id, node_id, node_index, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-        )
-          .bind(userId, projectId, flowNode.nodeId, flowNode.nodeIndex, JSON.stringify(flowNode.node), updatedAt)
-          .run();
+        flowNodeRows.push({
+          projectId,
+          nodeId: flowNode.nodeId,
+          nodeIndex: flowNode.nodeIndex,
+          data: flowNode.node,
+        });
       }
     }
 
-    await context.env.DB.prepare(
+    statements.push(...buildBulkProjectInsertStatements(
+      context.env.DB,
+      userId,
+      updatedAt,
+      {
+        episodes: parts.episodes.map((episode: any) => ({ id: episode.id, data: episode })),
+        scenes: parts.scenes.map((scene) => ({
+          episodeId: scene.episodeId,
+          sceneId: scene.scene.id,
+          data: scene.scene,
+        })),
+        flowProjects: flowProjectRows,
+        flowNodes: flowNodeRows,
+      }
+    ));
+
+    statements.push(context.env.DB.prepare(
       "INSERT INTO user_project_meta (user_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id) DO UPDATE SET data=?2, updated_at=?3, last_op_id=?4"
-    )
-      .bind(userId, metaSerialized, updatedAt, null)
-      .run();
+    ).bind(userId, metaSerialized, updatedAt, boundOpId));
+    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
+
+    try {
+      await context.env.DB.batch(statements);
+    } catch (batchError) {
+      if (isProjectWriteGuardError(batchError)) {
+        const latestMeta = await context.env.DB.prepare(
+          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
+        ).bind(userId).first();
+        const latestUpdatedAt = latestMeta ? Number(latestMeta.updated_at) || 0 : 0;
+        if (latestMeta?.last_op_id === boundOpId) {
+          return jsonResponse(
+            { ok: true, updatedAt: latestUpdatedAt },
+            { headers: { etag: String(latestUpdatedAt) } }
+          );
+        }
+        if (userId) {
+          await logAudit(context.env, userId, "project.restore", "conflict", {
+            reason: "cas_guard_failed",
+            expectedUpdatedAt,
+            updatedAt: latestUpdatedAt,
+            version,
+            ...auditDevice,
+          });
+        }
+        return jsonResponse(
+          { error: "Conflict", updatedAt: latestUpdatedAt },
+          { status: 409, headers: { etag: String(latestUpdatedAt) } }
+        );
+      }
+      throw batchError;
+    }
 
     if (userId) {
-      await logAudit(context.env, userId, "project.restore", "ok", { updatedAt, version, ...auditDevice });
+      await logAudit(context.env, userId, "project.restore", "ok", {
+        updatedAt,
+        previousUpdatedAt: currentUpdatedAt,
+        opId,
+        version,
+        ...auditDevice,
+      });
     }
     return jsonResponse(
       { ok: true, updatedAt },

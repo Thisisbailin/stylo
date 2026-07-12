@@ -135,29 +135,11 @@ The app can run in a reduced local mode without full cloud services.
 
 If `VITE_CLERK_PUBLISHABLE_KEY` is not set, the app falls back to guest mode and cloud sync is disabled.
 
-For useful local testing, the most common env vars are:
+Frontend environment variables must never contain provider secrets. The supported local frontend variables are:
 
 ```bash
 VITE_CLERK_PUBLISHABLE_KEY=
 VITE_API_BASE=
-
-QWEN_API_KEY=
-VITE_QWEN_API_KEY=
-DASHSCOPE_API_KEY=
-VITE_DASHSCOPE_API_KEY=
-
-OPENROUTER_API_KEY=
-VITE_OPENROUTER_API_KEY=
-
-VIDU_API_KEY=
-VITE_VIDU_API_KEY=
-VIDU_BASE_URL=
-VITE_VIDU_BASE_URL=
-
-ARK_API_KEY=
-VITE_ARK_API_KEY=
-VIDEO_API_KEY=
-VITE_VIDEO_API_KEY=
 ```
 
 Notes:
@@ -165,6 +147,7 @@ Notes:
 - `Qwen` is the default primary route for the current agent and several media flows.
 - `OpenRouter` is supported as an alternate agent/chat path.
 - `VITE_API_BASE` is useful when the frontend runs locally but `/api/*` should hit a deployed Cloudflare Pages backend.
+- For BYOK development, enter the provider key in project settings. Shared provider keys belong only in Pages Functions secrets listed below. Vite exposes every `VITE_*` value to the browser bundle, so `VITE_*_API_KEY` variables are intentionally unsupported.
 
 ## Cloud Sync And Backend
 
@@ -185,6 +168,7 @@ VITE_SYNC_ROLLOUT_ALLOWLIST=
 ```bash
 CLERK_SECRET_KEY=
 CLERK_JWT_KEY=
+SECRETS_ENCRYPTION_KEY=
 
 QWEN_API_KEY=
 DASHSCOPE_API_KEY=
@@ -200,6 +184,8 @@ SYNC_ROLLOUT_ALLOWLIST=
 
 SUPABASE_SECRET_KEY=
 ```
+
+`SECRETS_ENCRYPTION_KEY` is required when API-key sync is enabled. It must decode to exactly 32 random bytes (for example, generate one with `openssl rand -base64 32`) and must be stored only as a Cloudflare Pages secret. Existing plaintext `user_secrets` rows are migrated to an AES-256-GCM envelope with per-record random IVs and user-bound authenticated data on first access; the endpoint fails closed when the key is missing or invalid.
 
 ### Wrangler-managed vars
 

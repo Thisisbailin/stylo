@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { CanisterStyle, PhysicsParams } from '../types';
 
 interface CanisterProps {
@@ -29,7 +29,7 @@ export const Canister: React.FC<CanisterProps> = ({
 
   // Canister 3D rotation and bounce effect using spring based on user physics
   const springTransition = {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: physics.stiffness,
     damping: physics.damping,
     mass: physics.mass,

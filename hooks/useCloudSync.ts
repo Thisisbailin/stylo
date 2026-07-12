@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { ProjectData, SyncStatus } from "../types";
-import { dropFileReplacer, backupData, isProjectEmpty, FORCE_CLOUD_CLEAR_KEY } from "../utils/persistence";
+import { dropFileReplacer, backupData, isProjectEmpty } from "../utils/persistence";
 import { validateProjectData } from "../utils/validation";
 import { computeProjectDelta, isDeltaEmpty, ProjectDelta } from "../utils/delta";
 import { normalizeProjectData } from "../utils/projectData";
@@ -8,6 +8,7 @@ import { getDeviceId } from "../utils/device";
 import { buildApiUrl } from "../utils/api";
 
 type UseCloudSyncOptions = {
+  accountScope: string;
   isSignedIn: boolean;
   isLoaded: boolean;
   getToken: (options?: { skipCache?: boolean }) => Promise<string | null>;
@@ -18,6 +19,7 @@ type UseCloudSyncOptions = {
   refreshKey?: number;
   localBackupKey: string;
   remoteBackupKey: string;
+  forceClearKey: string;
   onError?: (err: unknown) => void;
   onConflictConfirm?: (opts: { remote: ProjectData; local: ProjectData }) => Promise<boolean> | boolean;
   onConflictNotice?: (opts: { remote: ProjectData; local: ProjectData; merged: ProjectData; conflicts: string[] }) => void;
@@ -71,6 +73,7 @@ const parseBaseline = (raw: string): SyncBaseline | null => {
 };
 
 export const useCloudSync = ({
+  accountScope,
   isSignedIn,
   isLoaded,
   getToken,
@@ -81,6 +84,7 @@ export const useCloudSync = ({
   refreshKey,
   localBackupKey,
   remoteBackupKey,
+  forceClearKey,
   onError,
   onConflictConfirm = defaultConflictConfirm,
   onConflictNotice,
@@ -108,6 +112,10 @@ export const useCloudSync = ({
   const onErrorRef = useRef(onError);
   const onStatusChangeRef = useRef(onStatusChange);
   const onConflictConfirmRef = useRef(onConflictConfirm);
+  const getTokenRef = useRef(getToken);
+  const activeScopeRef = useRef(accountScope);
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     onErrorRef.current = onError;
@@ -121,8 +129,56 @@ export const useCloudSync = ({
     onConflictConfirmRef.current = onConflictConfirm;
   }, [onConflictConfirm]);
 
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
+
   const baselineKey = `${localBackupKey}_last_synced`;
-  const forceClearKey = FORCE_CLOUD_CLEAR_KEY;
+
+  const isOperationCurrent = (generation: number) =>
+    mountedRef.current &&
+    generationRef.current === generation &&
+    activeScopeRef.current === accountScope;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    activeScopeRef.current = accountScope;
+    generationRef.current += 1;
+    projectDataRef.current = projectData;
+    remoteUpdatedAtRef.current = null;
+    remoteHasDataRef.current = null;
+    pendingOpRef.current = null;
+    isSavingRef.current = false;
+    retryCountRef.current = 0;
+    saveRetryCountRef.current = 0;
+    lastRefreshKeyRef.current = null;
+    syncBlockedRef.current = null;
+    lastSyncedRef.current = null;
+    baselineRef.current = null;
+    statusRef.current = "idle";
+    isLoadingRef.current = false;
+    if (syncSaveTimeout.current) window.clearTimeout(syncSaveTimeout.current);
+    if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
+    if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
+    syncSaveTimeout.current = null;
+    retryTimeout.current = null;
+    saveRetryTimeout.current = null;
+    setHasLoadedRemote(false);
+
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+      if (syncSaveTimeout.current) window.clearTimeout(syncSaveTimeout.current);
+      if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
+      if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
+      syncSaveTimeout.current = null;
+      retryTimeout.current = null;
+      saveRetryTimeout.current = null;
+      pendingOpRef.current = null;
+      isSavingRef.current = false;
+      isLoadingRef.current = false;
+    };
+  }, [accountScope, setHasLoadedRemote]);
 
   const shouldForceCloudClear = () => {
     if (typeof window === "undefined") return false;
@@ -208,6 +264,8 @@ export const useCloudSync = ({
   const createOpId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   const flushSaveQueue = async () => {
+    const generation = generationRef.current;
+    if (!isOperationCurrent(generation)) return;
     if (!isSignedIn || !isLoaded || !hasLoadedRemote) return;
     if (isSavingRef.current) return;
     const op = pendingOpRef.current;
@@ -221,13 +279,14 @@ export const useCloudSync = ({
     emitStatus('syncing', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
 
     try {
-      let token = await getToken();
+      let token = await getTokenRef.current();
+      if (!isOperationCurrent(generation)) return;
       if (!token) {
-        token = await getToken({ skipCache: true });
+        token = await getTokenRef.current({ skipCache: true });
+        if (!isOperationCurrent(generation)) return;
       }
       if (!token) {
-        isSavingRef.current = false;
-        return;
+        throw new Error("Unable to obtain an authentication token for project sync.");
       }
       const executeSave = (authToken: string) =>
         fetch(buildApiUrl("/api/project"), {
@@ -246,16 +305,20 @@ export const useCloudSync = ({
         });
 
       let res = await executeSave(token);
+      if (!isOperationCurrent(generation)) return;
       if ((res.status === 401 || res.status === 403)) {
-        const refreshedToken = await getToken({ skipCache: true });
+        const refreshedToken = await getTokenRef.current({ skipCache: true });
+        if (!isOperationCurrent(generation)) return;
         if (refreshedToken) {
           res = await executeSave(refreshedToken);
+          if (!isOperationCurrent(generation)) return;
         }
       }
 
       if (res.status === 409) {
         emitStatus('conflict', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
         const data = await res.json().catch(() => null);
+        if (!isOperationCurrent(generation)) return;
         const remotePayload = data?.projectData?.projectData ? data.projectData.projectData : data?.projectData;
         if (remotePayload) {
           const normalized = normalizeProjectData(remotePayload);
@@ -274,6 +337,7 @@ export const useCloudSync = ({
             return;
           }
           const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote: normalized, local }));
+          if (!isOperationCurrent(generation)) return;
           if (useRemote) {
             backupData(localBackupKey, local);
             projectDataRef.current = normalized;
@@ -316,6 +380,7 @@ export const useCloudSync = ({
       }
 
       const data = await res.json().catch(() => null);
+      if (!isOperationCurrent(generation)) return;
       if (typeof data?.updatedAt === "number") {
         remoteUpdatedAtRef.current = data.updatedAt;
       }
@@ -331,6 +396,7 @@ export const useCloudSync = ({
       isSavingRef.current = false;
       if (pendingOpRef.current) void flushSaveQueue();
     } catch (e) {
+      if (!isOperationCurrent(generation)) return;
       onErrorRef.current?.(e);
       const message = e instanceof Error ? e.message : "Failed to save project";
       emitStatus('error', { error: message, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current, lastAttemptAt: Date.now() });
@@ -345,12 +411,13 @@ export const useCloudSync = ({
       saveRetryCountRef.current += 1;
       if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
       saveRetryTimeout.current = window.setTimeout(() => {
-        void flushSaveQueue();
+        if (isOperationCurrent(generation)) void flushSaveQueue();
       }, delay);
     }
   };
 
   const enqueueSave = (data: ProjectData, baseVersion?: number | null) => {
+    if (!mountedRef.current || activeScopeRef.current !== accountScope) return;
     if (syncBlockedRef.current) {
       emitStatus('error', { error: syncBlockedRef.current, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
       return;
@@ -384,10 +451,26 @@ export const useCloudSync = ({
   // Reset loaded flag when sign-out
   useEffect(() => {
     if (!isSignedIn) {
+      generationRef.current += 1;
       setHasLoadedRemote(false);
       pendingOpRef.current = null;
       isSavingRef.current = false;
+      isLoadingRef.current = false;
       syncBlockedRef.current = null;
+      remoteUpdatedAtRef.current = null;
+      remoteHasDataRef.current = null;
+      lastSyncedRef.current = null;
+      baselineRef.current = null;
+      retryCountRef.current = 0;
+      lastRefreshKeyRef.current = null;
+      if (syncSaveTimeout.current) {
+        window.clearTimeout(syncSaveTimeout.current);
+        syncSaveTimeout.current = null;
+      }
+      if (retryTimeout.current) {
+        window.clearTimeout(retryTimeout.current);
+        retryTimeout.current = null;
+      }
       if (saveRetryTimeout.current) {
         window.clearTimeout(saveRetryTimeout.current);
         saveRetryTimeout.current = null;
@@ -413,6 +496,8 @@ export const useCloudSync = ({
   // Initial load
   useEffect(() => {
     if (!isSignedIn || !isLoaded) return;
+    const generation = generationRef.current;
+    if (!isOperationCurrent(generation)) return;
     const refreshChanged = typeof refreshKey === "number" && refreshKey !== lastRefreshKeyRef.current;
     if (hasLoadedRemote && !refreshChanged) return;
     if (refreshChanged) lastRefreshKeyRef.current = refreshKey ?? null;
@@ -420,7 +505,7 @@ export const useCloudSync = ({
     emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
 
     const scheduleRetry = (loadFn: () => void) => {
-      if (cancelled || hasLoadedRemote) return;
+      if (cancelled || hasLoadedRemote || !isOperationCurrent(generation)) return;
       if (retryCountRef.current >= MAX_RETRIES) {
         const error = "Sync failed after 10 retries. Please sign in again or check your Clerk JWT template.";
         syncBlockedRef.current = error;
@@ -432,20 +517,26 @@ export const useCloudSync = ({
       const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 15000);
       retryCountRef.current += 1;
       emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
-      retryTimeout.current = window.setTimeout(loadFn, delay);
+      retryTimeout.current = window.setTimeout(() => {
+        if (isOperationCurrent(generation)) loadFn();
+      }, delay);
     };
 
     const saveNow = async (data: ProjectData, updatedAt?: number | null) => {
+      if (!isOperationCurrent(generation)) return;
       enqueueSave(data, updatedAt ?? remoteUpdatedAtRef.current);
     };
 
     const loadRemote = async () => {
+      if (!isOperationCurrent(generation)) return;
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
       try {
-        let token = await getToken();
+        let token = await getTokenRef.current();
+        if (!isOperationCurrent(generation)) return;
         if (!token) {
-          token = await getToken({ skipCache: true });
+          token = await getTokenRef.current({ skipCache: true });
+          if (!isOperationCurrent(generation)) return;
         }
         if (!token) {
           scheduleRetry(loadRemote);
@@ -460,10 +551,13 @@ export const useCloudSync = ({
           });
 
         let res = await executeLoad(token);
+        if (!isOperationCurrent(generation)) return;
         if (res.status === 401 || res.status === 403) {
-          const refreshedToken = await getToken({ skipCache: true });
+          const refreshedToken = await getTokenRef.current({ skipCache: true });
+          if (!isOperationCurrent(generation)) return;
           if (refreshedToken) {
             res = await executeLoad(refreshedToken);
+            if (!isOperationCurrent(generation)) return;
           }
         }
 
@@ -490,6 +584,7 @@ export const useCloudSync = ({
         }
 
         const data = await res.json();
+        if (!isOperationCurrent(generation)) return;
         if (!cancelled && data.projectData) {
           const remotePayload = data.projectData.projectData ? data.projectData.projectData : data.projectData;
           const remote = normalizeProjectData(remotePayload);
@@ -550,6 +645,7 @@ export const useCloudSync = ({
 
             emitStatus('conflict', { pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
             const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote, local }));
+            if (!isOperationCurrent(generation)) return;
             if (useRemote) {
               backupData(localBackupKey, local);
               setProjectData(remote);
@@ -573,23 +669,24 @@ export const useCloudSync = ({
         emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
         if (!cancelled) setHasLoadedRemote(true);
       } catch (e) {
-        if (!cancelled) {
+        if (!cancelled && isOperationCurrent(generation)) {
           onErrorRef.current?.(e);
           const message = e instanceof Error ? e.message : "Failed to load cloud project data";
           emitStatus('error', { error: message, retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
           scheduleRetry(loadRemote);
         }
       } finally {
-        isLoadingRef.current = false;
+        if (isOperationCurrent(generation)) isLoadingRef.current = false;
       }
     };
 
     loadRemote();
     return () => {
       cancelled = true;
+      generationRef.current += 1;
       if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
     };
-  }, [isSignedIn, isLoaded, hasLoadedRemote, refreshKey, getToken, localBackupKey, remoteBackupKey, setProjectData, setHasLoadedRemote]);
+  }, [accountScope, isSignedIn, isLoaded, hasLoadedRemote, refreshKey, localBackupKey, remoteBackupKey, forceClearKey, setProjectData, setHasLoadedRemote]);
 
   // Save with debounce
   useEffect(() => {
@@ -614,5 +711,5 @@ export const useCloudSync = ({
         clearTimeout(syncSaveTimeout.current);
       }
     };
-  }, [projectData, isSignedIn, isLoaded, hasLoadedRemote, saveDebounceMs]);
+  }, [accountScope, projectData, isSignedIn, isLoaded, hasLoadedRemote, saveDebounceMs, forceClearKey]);
 };

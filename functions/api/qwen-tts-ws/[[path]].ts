@@ -1,6 +1,8 @@
-export const onRequest = async ({ request }) => {
+import { readWebSocketCredential } from "../../../utils/websocketAuth";
+
+export const onRequest = async ({ request }: { request: Request }) => {
     const url = new URL(request.url);
-    const token = url.searchParams.get('token');
+    const token = readWebSocketCredential(request.headers.get("sec-websocket-protocol"));
 
     // Diagnostic mode: If request is NOT a WebSocket upgrade, return environment info
     if (request.headers.get('Upgrade') !== 'websocket') {
@@ -8,7 +10,7 @@ export const onRequest = async ({ request }) => {
             status: 'Proxy Active',
             info: 'This endpoint is for Qwen TTS Realtime WebSocket proxying.',
             pathname: url.pathname,
-            hasToken: !!token,
+            hasCredential: !!token,
             timestamp: new Date().toISOString()
         }), {
             status: 200,
@@ -17,13 +19,11 @@ export const onRequest = async ({ request }) => {
     }
 
     if (!token) {
-        return new Response('Missing DashScope token in query string', { status: 400 });
+        return new Response('Missing DashScope WebSocket credential', { status: 400 });
     }
 
     // Rewrite target URL (api/qwen-tts-ws/v1/realtime -> api-ws/v1/realtime)
     const targetPath = url.pathname.replace('/api/qwen-tts-ws', '/api-ws');
-    // Remove token from query string before forwarding upstream.
-    url.searchParams.delete('token');
     // Workers/Pages fetch only supports http/https; websocket is upgraded via headers.
     const dashscopeUrl = new URL(`https://dashscope.aliyuncs.com${targetPath}`);
     dashscopeUrl.search = url.searchParams.toString();
@@ -57,7 +57,7 @@ export const onRequest = async ({ request }) => {
         serverWS.accept();
 
         // Standard relay pattern for CF Workers
-        server.addEventListener('message', ev => serverWS.send(ev.data));
+        server.addEventListener('message', (ev: MessageEvent) => serverWS.send(ev.data));
         serverWS.addEventListener('message', ev => server.send(ev.data));
 
         server.addEventListener('close', () => serverWS.close());
@@ -70,8 +70,11 @@ export const onRequest = async ({ request }) => {
             status: 101,
             webSocket: client,
         });
-    } catch (err: any) {
-        console.error(`[Qwen TTS Proxy] Connection Error: ${err.message}`);
-        return new Response(`Edge Proxy Exception: ${err.message}`, { status: 500 });
+    } catch (error) {
+        console.error("[Qwen TTS Proxy] Connection failed");
+        return new Response(
+            `Edge Proxy Exception: ${error instanceof Error ? error.message : "unknown error"}`,
+            { status: 500 }
+        );
     }
 };

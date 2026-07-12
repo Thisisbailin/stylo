@@ -135,7 +135,7 @@ const parseScenes = (episodeContent: string): Scene[] => {
   // Captures: 1: EpisodeNum, 2: SceneNum, 3: Title (rest of line)
   const sceneHeaderRegex = /^\s*([0-9０-９]{1,4})\s*[-－–—]\s*([0-9０-９]{1,4})\s*(.+)$/;
 
-  lines.forEach(line => {
+  for (const line of lines) {
     const match = line.match(sceneHeaderRegex);
     if (match) {
       // If we have a current scene, save it
@@ -164,7 +164,7 @@ const parseScenes = (episodeContent: string): Scene[] => {
         buffer.push(line);
       }
     }
-  });
+  }
 
   if (currentScene) {
     currentScene.content = buffer.join('\n').trim();
@@ -205,7 +205,7 @@ export const parseScriptToEpisodes = (rawText: string): Episode[] => {
   const episodeStartRegex = /^\s*第\s*[0-90-9\d零一二三四五六七八九十百千两]+\s*集/;
   const castLineRegex = /^\s*人物[:：]\s*(.+)$/;
 
-  lines.forEach((line) => {
+  for (const line of lines) {
     // Check if line matches Episode Header AND isn't absurdly long (e.g. accidentally captured a whole paragraph)
     if (episodeStartRegex.test(line) && line.length < 50) {
       if (currentEpisode) {
@@ -242,7 +242,7 @@ export const parseScriptToEpisodes = (rawText: string): Episode[] => {
         buffer.push(line);
       }
     }
-  });
+  }
 
   if (currentEpisode) {
     const fullContent = buffer.join('\n').trim();

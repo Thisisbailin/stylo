@@ -1,3 +1,5 @@
+import { buildAuthorizedHeaders, captureApiAuthLease } from "./authToken";
+
 const rawBase = typeof import.meta !== "undefined" ? import.meta.env?.VITE_API_BASE : "";
 const base = typeof rawBase === "string" ? rawBase.replace(/\/+$/, "") : "";
 
@@ -8,9 +10,25 @@ export const buildApiUrl = (path: string) => {
   return `${base}${path}`;
 };
 
-export const wrapWithProxy = (url: string) => {
-  if (!url) return url;
-  // If we are on localhost, we might not need proxy, but it's safer to always use in production
-  const proxyEndpoint = buildApiUrl("/api/proxy");
-  return `${proxyEndpoint}?url=${encodeURIComponent(url)}`;
+export const fetchViaProxy = async (url: string, init: RequestInit = {}) => {
+  const lease = captureApiAuthLease();
+  if (init.signal?.aborted) throw init.signal.reason;
+  const headers = await buildAuthorizedHeaders(
+    init.headers,
+    "x-qalam-authorization",
+    lease.generation
+  );
+  lease.assertCurrent();
+  headers.set("x-proxy-url", url);
+  const signal = init.signal ? AbortSignal.any([lease.signal, init.signal]) : lease.signal;
+  return fetch(buildApiUrl("/api/proxy"), { ...init, headers, signal });
+};
+
+export const fetchAuthorized = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const lease = captureApiAuthLease();
+  if (init.signal?.aborted) throw init.signal.reason;
+  const headers = await buildAuthorizedHeaders(init.headers, "authorization", lease.generation);
+  lease.assertCurrent();
+  const signal = init.signal ? AbortSignal.any([lease.signal, init.signal]) : lease.signal;
+  return fetch(input, { ...init, headers, signal });
 };

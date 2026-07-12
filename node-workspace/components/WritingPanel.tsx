@@ -1526,9 +1526,10 @@ export const WritingPanel: React.FC<Props> = ({
   }, [commitDraftToProject, lastReviewedPatch]);
 
   const submitSelectionToQalam = useCallback(() => {
-    const selectedText = selectionBubble?.text.trim();
-    const message = selectionBubble?.message.trim();
-    if (!selectedText || !message || !scriptNode?.id) return;
+    const selection = selectionBubble;
+    const selectedText = selection?.text.trim();
+    const message = selection?.message.trim();
+    if (!selection || !selectedText || !message || !scriptNode?.id) return;
     const data = (scriptNode.data || {}) as Record<string, unknown>;
     openWritingQalam();
     onSubmitToQalam?.(message, {
@@ -1539,8 +1540,8 @@ export const WritingPanel: React.FC<Props> = ({
         title: draft.title,
         selectedText,
         range: {
-          start: selectionBubble.start,
-          end: selectionBubble.end,
+          start: selection.start,
+          end: selection.end,
         },
       },
     });

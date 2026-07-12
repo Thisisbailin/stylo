@@ -29,6 +29,7 @@ type ClerkState = {
 type SessionState = {
   isLoaded: boolean;
   isSignedIn: boolean;
+  userId: string | null;
   getToken: (...args: any[]) => Promise<string | null>;
 };
 
@@ -63,6 +64,7 @@ const fallbackContextValue: AuthContextValue = {
   sessionState: {
     isLoaded: true,
     isSignedIn: false,
+    userId: null,
     getToken: async () => null,
   },
 };
@@ -90,6 +92,7 @@ const ClerkBridge: React.FC<React.PropsWithChildren> = ({ children }) => {
     sessionState: {
       isLoaded: auth.isLoaded,
       isSignedIn: !!auth.isSignedIn,
+      userId: auth.userId || null,
       getToken: (...args: any[]) => auth.getToken(...args),
     },
   }), [auth, clerk, user]);

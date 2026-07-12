@@ -1,13 +1,25 @@
+import { getUserId, jsonResponse } from "./_auth";
+import { enforceRateLimit } from "./_rateLimit";
+import { readJsonRequest } from "./_request";
+import type { D1DatabaseLike, PagesContext } from "./_types";
+
+type Env = Record<string, unknown> & {
+  DB: D1DatabaseLike;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+};
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
 };
 
 const HOST = "open.volcengineapi.com";
 const REGION = "cn-beijing";
 const SERVICE = "ark";
 const VERSION = "2024-01-01";
+const MAX_REQUEST_BYTES = 64 * 1024;
 
 const encoder = new TextEncoder();
 
@@ -148,7 +160,11 @@ const callArkAction = async ({
   return parseArkResult(raw);
 };
 
-const createAsset = async (payload: any, env: Record<string, unknown>) => {
+const createAsset = async (
+  payload: Record<string, unknown>,
+  env: Record<string, unknown>,
+  authorizedGroupId?: string
+) => {
   const { accessKey, secretKey, defaultGroupId, projectName } = resolveAccess(env);
   if (!accessKey || !secretKey) {
     throw new Error("服务端未配置 VOLC_ACCESS_KEY_ID / VOLC_SECRET_ACCESS_KEY，无法调用 Seedance Assets API。");
@@ -159,7 +175,7 @@ const createAsset = async (payload: any, env: Record<string, unknown>) => {
     throw new Error("CreateAsset 需要可公网访问的 HTTPS 图片 URL。");
   }
 
-  let groupId = normalizeText(payload?.groupId) || defaultGroupId;
+  let groupId = authorizedGroupId || defaultGroupId;
   const name = normalizeText(payload?.name, `qalam-aigc-${Date.now()}`).slice(0, 80);
 
   if (!groupId) {
@@ -202,7 +218,7 @@ const createAsset = async (payload: any, env: Record<string, unknown>) => {
   };
 };
 
-const getAsset = async (payload: any, env: Record<string, unknown>) => {
+const getAsset = async (payload: Record<string, unknown>, env: Record<string, unknown>) => {
   const { accessKey, secretKey, projectName } = resolveAccess(env);
   if (!accessKey || !secretKey) {
     throw new Error("服务端未配置 VOLC_ACCESS_KEY_ID / VOLC_SECRET_ACCESS_KEY，无法查询 Seedance Assets API。");
@@ -238,24 +254,108 @@ export const onRequestOptions = async () =>
     headers: CORS_HEADERS,
   });
 
-export const onRequestPost = async ({ request, env }: any) => {
+const ensureAssetOwnershipTable = async (env: Env) => {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS user_seedance_assets (
+      user_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL,
+      group_id TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, asset_id)
+    )`
+  ).run();
+};
+
+const assertAssetOwnership = async (env: Env, userId: string, assetId: string) => {
+  const row = await env.DB.prepare(
+    "SELECT asset_id FROM user_seedance_assets WHERE user_id = ?1 AND asset_id = ?2"
+  )
+    .bind(userId, assetId)
+    .first();
+  if (!row) throw new Response("Seedance asset not found", { status: 404 });
+};
+
+const resolveAuthorizedGroupId = async (
+  env: Env,
+  userId: string,
+  requestedGroupId: string
+) => {
+  if (!requestedGroupId) return undefined;
+  const { defaultGroupId } = resolveAccess(env);
+  if (requestedGroupId === defaultGroupId) return requestedGroupId;
+  const row = await env.DB.prepare(
+    "SELECT group_id FROM user_seedance_assets WHERE user_id = ?1 AND group_id = ?2 LIMIT 1"
+  )
+    .bind(userId, requestedGroupId)
+    .first();
+  if (!row) throw new Response("Seedance asset group is not owned by this user", { status: 403 });
+  return requestedGroupId;
+};
+
+const recordAssetOwnership = async (
+  env: Env,
+  userId: string,
+  asset: { assetId: string; groupId?: string }
+) => {
+  await env.DB.prepare(
+    `INSERT INTO user_seedance_assets (user_id, asset_id, group_id, created_at)
+     VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT(user_id, asset_id)
+     DO UPDATE SET group_id = excluded.group_id`
+  )
+    .bind(userId, asset.assetId, asset.groupId || null, Date.now())
+    .run();
+};
+
+const withCors = (response: Response) => {
+  const headers = new Headers(response.headers);
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
+export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
   try {
-    const payload = await request.json();
+    const userId = await getUserId(request, env);
+    await enforceRateLimit({
+      db: env.DB,
+      namespace: "seedance-assets",
+      subject: userId,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    await ensureAssetOwnershipTable(env);
+    const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const action = normalizeText(payload?.action);
     if (action === "create") {
-      return Response.json(await createAsset(payload, env || {}), { headers: CORS_HEADERS });
+      const requestedGroupId = normalizeText(payload.groupId);
+      const authorizedGroupId = await resolveAuthorizedGroupId(env, userId, requestedGroupId);
+      const asset = await createAsset(payload, env, authorizedGroupId);
+      await recordAssetOwnership(env, userId, asset);
+      return Response.json(asset, { headers: { ...CORS_HEADERS, "Cache-Control": "no-store" } });
     }
     if (action === "get") {
-      return Response.json(await getAsset(payload, env || {}), { headers: CORS_HEADERS });
+      const assetId = normalizeText(payload.assetId);
+      await assertAssetOwnership(env, userId, assetId);
+      return Response.json(await getAsset(payload, env), {
+        headers: { ...CORS_HEADERS, "Cache-Control": "no-store" },
+      });
     }
     return new Response("Unsupported seedance-assets action", {
       status: 400,
       headers: CORS_HEADERS,
     });
-  } catch (error: any) {
-    return new Response(error?.message || "Seedance Assets API error", {
-      status: 500,
-      headers: CORS_HEADERS,
+  } catch (error) {
+    if (error instanceof Response) return withCors(error);
+    console.error("[Seedance Assets] Request failed", {
+      message: error instanceof Error ? error.message : "unknown error",
     });
+    return jsonResponse(
+      { error: "Seedance Assets API request failed" },
+      { status: 502, headers: CORS_HEADERS }
+    );
   }
 };

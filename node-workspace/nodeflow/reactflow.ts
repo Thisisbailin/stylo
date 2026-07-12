@@ -33,7 +33,7 @@ export const toNodeFlowCanvasNode = (node: NodeFlowNode): NodeFlowCanvasNode => 
 
 export const fromNodeFlowCanvasNode = (node: NodeFlowCanvasNode): NodeFlowNode => ({
   id: node.id,
-  type: node.type,
+  type: node.type as NodeType,
   position: node.position,
   data: node.data,
   parentId: node.parentId,
@@ -65,7 +65,7 @@ export const fromNodeFlowCanvasLink = (link: NodeFlowCanvasLink): NodeFlowLink =
   data: link.data,
   selected: link.selected,
   type: link.type,
-  markerEnd: link.markerEnd,
+  markerEnd: typeof link.markerEnd === "string" ? link.markerEnd : undefined,
 });
 
 export const applyNodeFlowNodeChanges = (
@@ -79,7 +79,7 @@ export const applyNodeFlowLinkChanges = (
 ) => applyEdgeChanges(changes, links.map(toNodeFlowCanvasLink)).map(fromNodeFlowCanvasLink);
 
 export const createNodeFlowCanvasLink = (
-  connection: Connection,
+  connection: Connection & { id: string },
   links: NodeFlowLink[]
 ) =>
-  addEdge(connection, links.map(toNodeFlowCanvasLink)).map(fromNodeFlowCanvasLink);
+  addEdge<NodeFlowCanvasLink>(connection, links.map(toNodeFlowCanvasLink)).map(fromNodeFlowCanvasLink);

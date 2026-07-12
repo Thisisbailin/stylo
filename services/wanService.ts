@@ -1,5 +1,5 @@
 import { MultimodalConfig, VideoServiceConfig } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
 import { QWEN_WAN_IMAGE_ENDPOINT, QWEN_WAN_VIDEO_ENDPOINT } from "../constants";
 
 export interface WanTaskSubmissionResult {
@@ -15,17 +15,6 @@ export interface WanTaskStatusResult {
 }
 
 const TASK_STATUS_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/tasks";
-
-const resolveQwenApiKey = () => {
-  const envKey =
-    (typeof import.meta !== "undefined"
-      ? (import.meta.env.QWEN_API_KEY || import.meta.env.VITE_QWEN_API_KEY)
-      : undefined) ||
-    (typeof process !== "undefined"
-      ? (process.env?.QWEN_API_KEY || process.env?.VITE_QWEN_API_KEY)
-      : undefined);
-  return (envKey || "").trim();
-};
 
 const resolveSize = (aspectRatio?: string) => {
   const normalized = (aspectRatio || "1:1").trim();
@@ -76,7 +65,7 @@ const requestWanTask = async (
   endpoint: string,
   apiKey: string,
   payload: Record<string, any>,
-  options?: { async?: boolean }
+  options?: { async?: boolean; signal?: AbortSignal }
 ) => {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -86,10 +75,11 @@ const requestWanTask = async (
     headers["X-DashScope-Async"] = "enable";
   }
 
-  const response = await fetch(wrapWithProxy(endpoint), {
+  const response = await fetchViaProxy(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    signal: options?.signal,
   });
 
   const text = await response.text();
@@ -117,7 +107,8 @@ const requestWanTask = async (
 const requestWanTaskStream = async (
   endpoint: string,
   apiKey: string,
-  payload: Record<string, any>
+  payload: Record<string, any>,
+  signal?: AbortSignal
 ): Promise<WanTaskSubmissionResult> => {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -126,10 +117,11 @@ const requestWanTaskStream = async (
     Accept: "text/event-stream",
   };
 
-  const response = await fetch(wrapWithProxy(endpoint), {
+  const response = await fetchViaProxy(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    signal,
   });
 
   if (!response.ok) {
@@ -190,11 +182,12 @@ export const submitWanImageTask = async (
     promptExtend?: boolean;
     watermark?: boolean;
     size?: string;
+    signal?: AbortSignal;
   }
 ): Promise<WanTaskSubmissionResult> => {
-  const apiKey = resolveQwenApiKey();
+  const apiKey = (config.apiKey || "").trim();
   if (!apiKey) {
-    throw new Error("Missing Qwen API key. 请在环境变量 QWEN_API_KEY/VITE_QWEN_API_KEY 配置。");
+    throw new Error("Missing Qwen API key. 请在项目设置中填写。");
   }
   if (!config.model) {
     throw new Error("Missing Wan image model. 请先选择模型。");
@@ -252,11 +245,11 @@ export const submitWanImageTask = async (
 
   if (enableInterleave) {
     payload.parameters.stream = true;
-    return requestWanTaskStream(endpoint, apiKey, payload);
+    return requestWanTaskStream(endpoint, apiKey, payload, options?.signal);
   }
 
   // Sync call for image editing (requires 1-4 images).
-  return requestWanTask(endpoint, apiKey, payload);
+  return requestWanTask(endpoint, apiKey, payload, { signal: options?.signal });
 };
 
 export const submitWanVideoTask = async (
@@ -272,11 +265,12 @@ export const submitWanVideoTask = async (
     watermark?: boolean;
     promptExtend?: boolean;
     audioUrl?: string;
+    signal?: AbortSignal;
   }
 ): Promise<WanTaskSubmissionResult> => {
-  const apiKey = resolveQwenApiKey();
+  const apiKey = (config.apiKey || "").trim();
   if (!apiKey) {
-    throw new Error("Missing Qwen API key. 请在环境变量 QWEN_API_KEY/VITE_QWEN_API_KEY 配置。");
+    throw new Error("Missing Qwen API key. 请在项目设置中填写。");
   }
   if (!config.model) {
     throw new Error("Missing Wan video model. 请先选择模型。");
@@ -311,7 +305,7 @@ export const submitWanVideoTask = async (
     payload.input.audio_url = options.audioUrl;
   }
 
-  return requestWanTask(endpoint, apiKey, payload, { async: true });
+  return requestWanTask(endpoint, apiKey, payload, { async: true, signal: options?.signal });
 };
 
 export const submitWanReferenceVideoTask = async (
@@ -326,11 +320,12 @@ export const submitWanReferenceVideoTask = async (
     seed?: number;
     watermark?: boolean;
     promptExtend?: boolean;
+    signal?: AbortSignal;
   }
 ): Promise<WanTaskSubmissionResult> => {
-  const apiKey = resolveQwenApiKey();
+  const apiKey = (config.apiKey || "").trim();
   if (!apiKey) {
-    throw new Error("Missing Qwen API key. 请在环境变量 QWEN_API_KEY/VITE_QWEN_API_KEY 配置。");
+    throw new Error("Missing Qwen API key. 请在项目设置中填写。");
   }
   if (!config.model) {
     throw new Error("Missing Wan reference video model. 请先选择模型。");
@@ -375,22 +370,27 @@ export const submitWanReferenceVideoTask = async (
     parameters,
   };
 
-  return requestWanTask(endpoint, apiKey, payload, { async: true });
+  return requestWanTask(endpoint, apiKey, payload, { async: true, signal: options?.signal });
 };
 
-export const checkWanTaskStatus = async (taskId: string): Promise<WanTaskStatusResult> => {
-  const apiKey = resolveQwenApiKey();
-  if (!apiKey) {
+export const checkWanTaskStatus = async (
+  taskId: string,
+  apiKey?: string,
+  signal?: AbortSignal
+): Promise<WanTaskStatusResult> => {
+  const resolvedApiKey = (apiKey || "").trim();
+  if (!resolvedApiKey) {
     return { id: taskId, status: "failed", errorMsg: "Missing Qwen API key." };
   }
 
   const endpoint = `${TASK_STATUS_ENDPOINT}/${taskId}`;
   try {
-    const response = await fetch(wrapWithProxy(endpoint), {
+    const response = await fetchViaProxy(endpoint, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${resolvedApiKey}`,
       },
+      signal,
     });
     if (!response.ok) {
       if (response.status === 404) return { id: taskId, status: "processing" };
@@ -409,6 +409,7 @@ export const checkWanTaskStatus = async (taskId: string): Promise<WanTaskStatusR
       (String(statusRaw || "").toUpperCase() === "UNKNOWN" ? "Wan 任务不存在或已过期（task_id 超过 24 小时）。" : undefined);
     return { id: taskId, status, url, errorMsg };
   } catch (e: any) {
+    if (signal?.aborted) throw e;
     return { id: taskId, status: "processing", errorMsg: e.message };
   }
 };

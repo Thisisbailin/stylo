@@ -1,6 +1,8 @@
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
+import { encodeWebSocketCredential } from "../utils/websocketAuth";
 
 export type QwenAudioOptions = {
+    apiKey?: string;
     model?: string;
     voice?: string;       // Built-in voice name or Generated Voice ID
     voicePrompt?: string; // Natural language description for VOICE DESIGN
@@ -16,16 +18,9 @@ const TTS_BASE = "https://dashscope.aliyuncs.com";
 const CUSTOMIZE_BASE = `${TTS_BASE}/api/v1/services/audio/tts/customization`;
 const GENERATE_BASE = `${TTS_BASE}/api/v1/services/audio/tts/generation`;
 
-const resolveApiKey = () => {
-    const envKey =
-        (typeof import.meta !== "undefined"
-            ? (import.meta.env.QWEN_API_KEY || import.meta.env.VITE_QWEN_API_KEY)
-            : undefined) ||
-        (typeof process !== "undefined"
-            ? (process.env?.QWEN_API_KEY || process.env?.VITE_QWEN_API_KEY)
-            : undefined);
-    const key = (envKey || "").trim();
-    if (!key) throw new Error("Missing Qwen API key.");
+const resolveApiKey = (configuredKey?: string) => {
+    const key = (configuredKey || "").trim();
+    if (!key) throw new Error("Missing Qwen API key. 请在项目设置中填写。");
     return key;
 };
 
@@ -43,12 +38,13 @@ const sanitizePreferredName = (name?: string): string | undefined => {
  * Voice Design: Create a unique, fixed voice ID for a character
  */
 export const createCustomVoice = async (params: {
+    apiKey?: string;
     voicePrompt: string;
     previewText?: string;
     preferredName?: string;
     language?: 'zh' | 'en' | 'ja' | 'ko' | 'vi';
 }) => {
-    const apiKey = resolveApiKey();
+    const apiKey = resolveApiKey(params.apiKey);
     console.log(`[Qwen Voice Design] Base: ${TTS_BASE}`);
 
     const body = {
@@ -67,7 +63,7 @@ export const createCustomVoice = async (params: {
         }
     };
 
-    const res = await fetch(wrapWithProxy(CUSTOMIZE_BASE), {
+    const res = await fetchViaProxy(CUSTOMIZE_BASE, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
@@ -124,7 +120,7 @@ export const generateSpeech = async (
     text: string,
     options?: QwenAudioOptions
 ): Promise<{ audioUrl: string; duration?: number; raw: any }> => {
-    const apiKey = resolveApiKey();
+    const apiKey = resolveApiKey(options?.apiKey);
 
     let model = options?.model;
     const isDesignedVoice = options?.voice?.startsWith('vd-') || options?.voice?.includes('vd-');
@@ -149,16 +145,16 @@ export const generateSpeech = async (
         console.log(`[Qwen TTS] API Key present: ${!!apiKey}`);
 
         return new Promise((resolve, reject) => {
-            // Use local proxy to inject Authorization header (browser WS API doesn't support headers)
-            // The proxy at /api/qwen-tts-ws forwards to DashScope TTS realtime and moves `token` into `Authorization`.
+            // Browser WebSocket APIs cannot set Authorization. Carry the BYOK credential
+            // in a private subprotocol so it never appears in URLs or access logs.
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/qwen-tts-ws/v1/realtime?model=${encodeURIComponent(
                 model
-            )}&token=${encodeURIComponent(apiKey)}`;
+            )}`;
 
-            console.log(`[Qwen TTS] Connecting to WS URL: ${wsUrl}`);
+            console.log("[Qwen TTS] Connecting to realtime proxy.");
 
-            const ws = new WebSocket(wsUrl);
+            const ws = new WebSocket(wsUrl, [encodeWebSocketCredential(apiKey)]);
             const taskId = generateUUID();
             const audioChunks: Uint8Array[] = [];
 
@@ -424,7 +420,7 @@ export const generateSpeech = async (
 
     console.log("[Qwen TTS] Request Body:", JSON.stringify(body));
 
-    const res = await fetch(wrapWithProxy(GENERATE_BASE), {
+    const res = await fetchViaProxy(GENERATE_BASE, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",

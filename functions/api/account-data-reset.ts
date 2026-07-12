@@ -9,26 +9,10 @@ type Env = {
   SUPABASE_SERVICE_ROLE?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
-  ALLOW_LEGACY_STORAGE_RESET?: string;
 };
 
 const STORAGE_BUCKETS = ["assets", "public-assets"] as const;
 const STORAGE_LIST_LIMIT = 100;
-const LEGACY_STORAGE_PREFIXES: Record<(typeof STORAGE_BUCKETS)[number], string[]> = {
-  assets: [
-    "video-inputs",
-    "wan-inputs",
-    "wan-audio",
-    "wan-reference-video",
-    "seedance-reference-video",
-    "seedance-reference-image",
-    "seedance-reference-audio",
-    "vidu-reference-image",
-    "vidu-reference-video",
-  ],
-  "public-assets": ["avatars", "seedance-assets"],
-};
-
 const getSupabaseAdmin = (env: Env) => {
   const supabaseUrl = env.SUPABASE_URL;
   const serviceRole = env.SUPABASE_SERVICE_ROLE || env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
@@ -138,7 +122,7 @@ const removeStoragePaths = async (supabase: any, bucket: string, paths: string[]
   return removed;
 };
 
-const deleteStorageUserData = async (env: Env, userId: string, includeLegacyGlobalStorage: boolean) => {
+const deleteStorageUserData = async (env: Env, userId: string) => {
   const supabase = getSupabaseAdmin(env);
   if (!supabase) {
     return {
@@ -149,45 +133,36 @@ const deleteStorageUserData = async (env: Env, userId: string, includeLegacyGlob
   }
 
   const prefix = `users/${userId}`;
-  const legacyResetAllowed = env.ALLOW_LEGACY_STORAGE_RESET === "true";
-  const legacyResetEnabled = includeLegacyGlobalStorage && legacyResetAllowed;
   const buckets: Record<string, { prefixes: Record<string, { listed: number; removed: number }> }> = {};
   for (const bucket of STORAGE_BUCKETS) {
-    const prefixes = legacyResetEnabled ? [prefix, ...LEGACY_STORAGE_PREFIXES[bucket]] : [prefix];
     const bucketResult: Record<string, { listed: number; removed: number }> = {};
-    for (const targetPrefix of prefixes) {
-      const paths = await collectStoragePaths(supabase, bucket, targetPrefix);
-      const removed = await removeStoragePaths(supabase, bucket, paths);
-      bucketResult[targetPrefix] = { listed: paths.length, removed };
-    }
+    const paths = await collectStoragePaths(supabase, bucket, prefix);
+    const removed = await removeStoragePaths(supabase, bucket, paths);
+    bucketResult[prefix] = { listed: paths.length, removed };
     buckets[bucket] = { prefixes: bucketResult };
   }
   return {
     skipped: false,
     prefix,
-    includeLegacyGlobalStorage,
-    legacyResetAllowed,
-    legacyResetEnabled,
     buckets,
   };
 };
 
 const parseResetOptions = async (request: Request) => {
-  if (request.method === "DELETE") return { scope: "project" as const, includeLegacyGlobalStorage: false };
+  if (request.method === "DELETE") return { scope: "project" as const };
   const body = await request.json().catch(() => null);
   return {
     scope: body?.scope === "all" ? ("all" as const) : ("project" as const),
-    includeLegacyGlobalStorage: body?.includeLegacyGlobalStorage === true,
   };
 };
 
 const handleReset = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
-    const { scope, includeLegacyGlobalStorage } = await parseResetOptions(context.request);
+    const { scope } = await parseResetOptions(context.request);
     const includeAccountSettings = scope === "all";
     const d1 = await resetD1UserData(context.env, userId, includeAccountSettings);
-    const storage = await deleteStorageUserData(context.env, userId, includeLegacyGlobalStorage);
+    const storage = await deleteStorageUserData(context.env, userId);
     return jsonResponse({
       ok: true,
       scope,

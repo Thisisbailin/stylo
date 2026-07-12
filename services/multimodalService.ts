@@ -1,22 +1,11 @@
 import { MultimodalConfig, TokenUsage } from "../types";
-import { wrapWithProxy } from "../utils/api";
+import { fetchViaProxy } from "../utils/api";
 import { NANOBANANA_PRO_MODEL } from "../constants";
 
 export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
 }
-
-const resolveQwenApiKey = () => {
-    const envKey =
-        (typeof import.meta !== "undefined"
-            ? (import.meta.env.QWEN_API_KEY || import.meta.env.VITE_QWEN_API_KEY)
-            : undefined) ||
-        (typeof process !== "undefined"
-            ? (process.env?.QWEN_API_KEY || process.env?.VITE_QWEN_API_KEY)
-            : undefined);
-    return (envKey || "").trim();
-};
 
 // Helper to convert mixed text/markdown-image content into OpenAI Structured Content
 const formatContentForApi = (content: string): any => {
@@ -72,12 +61,11 @@ const formatContentForApi = (content: string): any => {
 
 export const sendMessage = async (
     messages: ChatMessage[],
-    config: MultimodalConfig
+    config: MultimodalConfig,
+    signal?: AbortSignal
 ): Promise<{ content: string; usage: TokenUsage }> => {
     const { baseUrl, apiKey, model } = config;
-    const resolvedApiKey =
-        apiKey ||
-        (baseUrl.includes("dashscope.aliyuncs.com") ? resolveQwenApiKey() : "");
+    const resolvedApiKey = (apiKey || "").trim();
 
     if (!baseUrl || !resolvedApiKey) {
         throw new Error("Multimodal Intelligence configuration missing. Please check Settings.");
@@ -120,7 +108,7 @@ export const sendMessage = async (
     // console.log("Payload:", JSON.stringify(payload, null, 2)); // Too large to log with base64
 
     try {
-        const response = await fetch(wrapWithProxy(apiBase), {
+        const response = await fetchViaProxy(apiBase, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -128,7 +116,8 @@ export const sendMessage = async (
                 "HTTP-Referer": window.location.origin,
                 "X-Title": "Qalam"
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal,
         });
 
         if (!response.ok) {
@@ -199,12 +188,10 @@ export const fetchMultimodalModels = async (baseUrl: string, apiKey: string): Pr
     if (apiBase.endsWith('/chat/completions')) apiBase = apiBase.replace('/chat/completions', '');
     if (!apiBase.endsWith('/v1')) apiBase = `${apiBase}/v1`;
 
-    const resolvedApiKey =
-        apiKey ||
-        (baseUrl.includes("dashscope.aliyuncs.com") ? resolveQwenApiKey() : "");
+    const resolvedApiKey = (apiKey || "").trim();
     if (!resolvedApiKey) return [];
     try {
-        const response = await fetch(wrapWithProxy(`${apiBase}/models`), {
+        const response = await fetchViaProxy(`${apiBase}/models`, {
             method: 'GET',
             headers: { "Authorization": `Bearer ${resolvedApiKey}` }
         });

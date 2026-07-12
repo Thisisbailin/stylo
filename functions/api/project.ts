@@ -1,7 +1,17 @@
-import { verifyToken } from "@clerk/backend";
 import { validateProjectDelta, validateProjectPayload } from "./validation";
 import { logAudit } from "./audit";
 import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
+import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
+import { readJsonRequest } from "./_request";
+import {
+  buildProjectWriteGuardCleanupStatement,
+  buildProjectWriteGuardStatement,
+  createProjectWriteGuardId,
+  isProjectWriteGuardError,
+} from "./_projectWriteGuard";
+import { bindOperationId, normalizeOperationId } from "./_idempotency";
+import { normalizeFlowProjectsForStorage } from "./_projectFlowMigration";
+import { buildBulkProjectInsertStatements } from "./_projectBulkStatements";
 
 type Env = {
   DB: any; // D1 binding injected by Cloudflare Pages
@@ -9,15 +19,10 @@ type Env = {
   CLERK_JWT_KEY?: string;
 } & RolloutEnv;
 
-const JSON_HEADERS = { "content-type": "application/json" };
 const SNAPSHOT_LIMIT = 10;
 const MAX_PROJECT_BYTES = 1_800_000;
+const MAX_PROJECT_REQUEST_BYTES = 32 * 1024 * 1024;
 const MAX_FLOW_PROJECTS = 3;
-
-const jsonResponse = (body: unknown, init: ResponseInit = {}) => {
-  const headers = { ...JSON_HEADERS, ...(init.headers || {}) };
-  return new Response(JSON.stringify(body), { ...init, headers });
-};
 
 const emptyStats = {
   context: { total: 0, success: 0, error: 0 }
@@ -82,81 +87,6 @@ const getDeviceId = (request: Request, body?: any) => {
   return headerId || bodyId || undefined;
 };
 
-async function ensureMetaTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_meta (user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER NOT NULL, last_op_id TEXT)"
-  ).run();
-}
-
-async function ensureEpisodesTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_episodes (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id))"
-  ).run();
-}
-
-async function ensureScenesTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_scenes (user_id TEXT NOT NULL, episode_id INTEGER NOT NULL, scene_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, episode_id, scene_id))"
-  ).run();
-}
-
-async function ensureFlowProjectsTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_flow_projects (user_id TEXT NOT NULL, project_id TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, project_id))"
-  ).run();
-}
-
-async function ensureFlowNodesTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_flow_nodes (user_id TEXT NOT NULL, project_id TEXT NOT NULL, node_id TEXT NOT NULL, node_index INTEGER NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, project_id, node_id))"
-  ).run();
-}
-
-async function ensureSnapshotsTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_snapshots (user_id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (user_id, version))"
-  ).run();
-}
-
-async function ensureProjectWriteGuardsTable(env: Env) {
-  await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS user_project_write_guards (guard_id TEXT PRIMARY KEY, ok INTEGER NOT NULL)"
-  ).run();
-}
-
-async function ensureTables(env: Env) {
-  await ensureMetaTable(env);
-  await ensureEpisodesTable(env);
-  await ensureScenesTable(env);
-  await ensureFlowProjectsTable(env);
-  await ensureFlowNodesTable(env);
-  await ensureSnapshotsTable(env);
-  await ensureProjectWriteGuardsTable(env);
-}
-
-const ensureColumn = async (env: Env, table: string, column: string, type: string) => {
-  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all();
-  const columns = new Set((info?.results || []).map((row: any) => row.name));
-  if (!columns.has(column)) {
-    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
-  }
-};
-
-const ensureSchema = async (env: Env) => {
-  await ensureTables(env);
-  await ensureColumn(env, "user_project_meta", "data", "TEXT");
-  await ensureColumn(env, "user_project_meta", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_meta", "last_op_id", "TEXT");
-  await ensureColumn(env, "user_project_episodes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_scenes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_flow_projects", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_flow_nodes", "node_index", "INTEGER");
-  await ensureColumn(env, "user_project_flow_nodes", "updated_at", "INTEGER");
-  await ensureColumn(env, "user_project_snapshots", "data", "TEXT");
-  await ensureColumn(env, "user_project_snapshots", "version", "INTEGER");
-  await ensureColumn(env, "user_project_snapshots", "created_at", "INTEGER");
-};
-
 const toFlowProjects = (value: unknown) =>
   Array.isArray(value)
     ? value
@@ -183,6 +113,31 @@ const splitFlowProject = (project: Record<string, unknown>) => {
         nodeIndex: index,
       })),
   };
+};
+
+const toFlowStorageRows = (flowProjects: Array<Record<string, unknown>>) => {
+  const projects: Array<{ projectId: string; data: unknown }> = [];
+  const nodes: Array<{
+    projectId: string;
+    nodeId: string;
+    nodeIndex: number;
+    data: unknown;
+  }> = [];
+  flowProjects.forEach((flowProject) => {
+    const projectId = typeof flowProject.id === "string" ? flowProject.id : "";
+    if (!projectId) return;
+    const split = splitFlowProject(flowProject);
+    projects.push({ projectId, data: split.project });
+    split.nodes.forEach((flowNode) => {
+      nodes.push({
+        projectId,
+        nodeId: flowNode.nodeId,
+        nodeIndex: flowNode.nodeIndex,
+        data: flowNode.node,
+      });
+    });
+  });
+  return { projects, nodes };
 };
 
 const hydrateFlowProject = (
@@ -258,49 +213,6 @@ const buildSnapshotStatements = (
       "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 ORDER BY version DESC LIMIT ?2)"
     ).bind(userId, SNAPSHOT_LIMIT),
   ];
-};
-
-const createProjectWriteGuardId = (userId: string, opId?: string) =>
-  `${userId}:${opId || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
-
-const buildProjectWriteGuardStatement = (
-  env: Env,
-  userId: string,
-  guardId: string,
-  existing: boolean,
-  expectedUpdatedAt?: number
-) => {
-  if (existing) {
-    return env.DB.prepare(
-      `INSERT INTO user_project_write_guards (guard_id, ok)
-       VALUES (?1, (
-         SELECT CASE
-           WHEN EXISTS (
-             SELECT 1 FROM user_project_meta
-             WHERE user_id = ?2 AND updated_at = ?3
-           )
-           THEN 1 ELSE NULL
-         END
-       ))`
-    ).bind(guardId, userId, expectedUpdatedAt);
-  }
-  return env.DB.prepare(
-    `INSERT INTO user_project_write_guards (guard_id, ok)
-     VALUES (?1, (
-       SELECT CASE
-         WHEN NOT EXISTS (
-           SELECT 1 FROM user_project_meta
-           WHERE user_id = ?2
-         )
-         THEN 1 ELSE NULL
-       END
-     ))`
-  ).bind(guardId, userId);
-};
-
-const isProjectWriteGuardError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error || "");
-  return /user_project_write_guards/i.test(message) || (/NOT NULL/i.test(message) && /\bok\b/i.test(message));
 };
 
 const buildMetaFromProject = (projectData: any): ProjectMeta => ({
@@ -474,151 +386,6 @@ const loadProjectData = async (env: Env, userId: string) => {
   return { projectData, updatedAt };
 };
 
-const stripOuterQuotes = (value: string) => {
-  if (
-    (value.startsWith("\"") && value.endsWith("\"")) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-};
-
-const getInvalidCharCodes = (value: string, allowDot: boolean) => {
-  const codes = new Set<number>();
-  for (const ch of value) {
-    const isAllowed = allowDot ? /[A-Za-z0-9._-]/.test(ch) : /[A-Za-z0-9_-]/.test(ch);
-    if (!isAllowed) {
-      codes.add(ch.codePointAt(0) ?? 0);
-    }
-  }
-  return Array.from(codes).slice(0, 6);
-};
-
-const extractBearerToken = (authHeader: string) => {
-  const match = authHeader.match(/Bearer\s+([^,]+)/i);
-  const raw = match ? match[1] : authHeader;
-  const trimmed = stripOuterQuotes(raw.trim());
-  const whitespaceStripped = trimmed.replace(/\s+/g, "");
-  const invalidCharCodes = getInvalidCharCodes(whitespaceStripped, true);
-  const sanitized = whitespaceStripped.replace(/[^A-Za-z0-9._-]/g, "");
-  const token = invalidCharCodes.length ? sanitized : whitespaceStripped;
-  return {
-    tokenRaw: trimmed,
-    tokenWhitespaceStripped: whitespaceStripped,
-    tokenSanitized: sanitized,
-    tokenInvalidCharCodes: invalidCharCodes,
-    tokenSanitizedUsed: token !== whitespaceStripped,
-    token
-  };
-};
-
-const normalizeJwtKey = (value: string) => {
-  const unescaped = value.replace(/\\r\\n|\\n|\\r/g, "\n");
-  const trimmed = stripOuterQuotes(unescaped.trim());
-  if (!trimmed) return "";
-  const header = "-----BEGIN PUBLIC KEY-----";
-  const trailer = "-----END PUBLIC KEY-----";
-  const body = trimmed
-    .replace(/-----BEGIN [^-]+-----/g, "")
-    .replace(/-----END [^-]+-----/g, "")
-    .replace(/\s+/g, "");
-  if (!body) return "";
-  return `${header}\n${body}\n${trailer}`;
-};
-
-async function getUserId(request: Request, env: Env) {
-  const authHeader = request.headers.get("authorization") || "";
-  const { tokenRaw, tokenWhitespaceStripped, tokenSanitized, tokenInvalidCharCodes, tokenSanitizedUsed, token } =
-    extractBearerToken(authHeader);
-
-  const rawSecret = typeof env.CLERK_SECRET_KEY === "string" ? env.CLERK_SECRET_KEY : "";
-  const rawJwtKey = typeof env.CLERK_JWT_KEY === "string" ? env.CLERK_JWT_KEY : "";
-  const asciiCleaned = rawSecret.replace(/[^\x20-\x7E]/g, "");
-  let secretKey = stripOuterQuotes(asciiCleaned.replace(/\s+/g, ""));
-  const jwtKeyRaw = rawJwtKey;
-  const jwtKey = normalizeJwtKey(jwtKeyRaw);
-  if (!secretKey && !jwtKey) {
-    throw new Response("Missing CLERK_SECRET_KEY on server", { status: 500 });
-  }
-
-  if (!token) {
-    throw new Response(JSON.stringify({ error: "Unauthorized", detail: "Missing bearer token" }), { status: 401, headers: JSON_HEADERS });
-  }
-
-  const decodePart = (part?: string) => {
-    if (!part) return null;
-    try {
-      const normalized = part.replace(/-/g, "+").replace(/_/g, "/");
-      const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
-      const json = atob(padded);
-      return JSON.parse(json);
-    } catch {
-      return null;
-    }
-  };
-  const tokenParts = token.split(".");
-  const [headerPart, payloadPart] = tokenParts;
-  const tokenHeader = decodePart(headerPart);
-  const tokenPayload = decodePart(payloadPart);
-  const signaturePart = tokenParts.length === 3 ? tokenParts[2] : "";
-  const signatureInvalidCharCodes = getInvalidCharCodes(signaturePart, false);
-
-  const verifyAttempt = async (options: { jwtKey?: string; secretKey?: string }) => {
-    try {
-      const payload = await verifyToken(token, options);
-      if (payload?.sub) return { sub: payload.sub };
-      return { error: new Error("Token payload missing sub") };
-    } catch (err) {
-      return { error: err };
-    }
-  };
-
-  const jwtAttempt = jwtKey ? await verifyAttempt({ jwtKey }) : null;
-  if (jwtAttempt?.sub) return jwtAttempt.sub;
-  const secretAttempt = secretKey ? await verifyAttempt({ secretKey }) : null;
-  if (secretAttempt?.sub) return secretAttempt.sub;
-
-  const jwtError = jwtAttempt?.error instanceof Error ? jwtAttempt.error.message : undefined;
-  const secretError = secretAttempt?.error instanceof Error ? secretAttempt.error.message : undefined;
-  const detail = jwtError || secretError || "Token verification failed";
-  const debug = {
-    secretKeyLength: secretKey.length,
-    secretKeyAsciiCleanedLength: asciiCleaned.length,
-    secretKeyNonAsciiRemoved: rawSecret.length - asciiCleaned.length,
-    secretKeyHasWhitespace: /\s/.test(rawSecret),
-    secretKeyTrimmedLength: rawSecret.trim().length,
-    usingJwtKey: Boolean(jwtKey),
-    jwtKeyLength: jwtKey.length || undefined,
-    jwtKeyRawLength: jwtKeyRaw.length || undefined,
-    jwtKeyHasWhitespace: /\s/.test(jwtKeyRaw),
-    jwtKeyHasHeader: jwtKeyRaw.includes("BEGIN PUBLIC KEY"),
-    jwtKeyNormalizedLength: jwtKey.length || undefined,
-    jwtKeyError: jwtError,
-    secretKeyError: secretError,
-    tokenRawLength: tokenRaw.length,
-    tokenWhitespaceStrippedLength: tokenWhitespaceStripped.length,
-    tokenSanitizedLength: tokenSanitized.length,
-    tokenSanitizedUsed,
-    tokenHasWhitespace: /\s/.test(tokenRaw),
-    tokenInvalidCharCodes,
-    tokenSegments: tokenParts.length,
-    tokenSignatureLength: signaturePart.length,
-    tokenSignatureInvalidCharCodes: signatureInvalidCharCodes,
-    tokenKid: tokenHeader?.kid,
-    tokenAlg: tokenHeader?.alg,
-    tokenTyp: tokenHeader?.typ,
-    tokenIssuer: tokenPayload?.iss,
-    tokenAzp: tokenPayload?.azp,
-    tokenIat: tokenPayload?.iat,
-    tokenExp: tokenPayload?.exp,
-    tokenSub: tokenPayload?.sub
-  };
-  console.warn("verifyToken failed", { jwtError, secretError });
-  console.warn("verifyToken debug", debug);
-  throw new Response(JSON.stringify({ error: "Unauthorized", detail, debug }), { status: 401, headers: JSON_HEADERS });
-}
-
 export const onRequestGet = async (context: {
   request: Request;
   env: Env;
@@ -634,7 +401,6 @@ export const onRequestGet = async (context: {
       }
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
-    await ensureSchema(context.env);
 
     const data = await loadProjectData(context.env, userId);
     if (!data) {
@@ -672,9 +438,11 @@ export const onRequestPut = async (context: {
       }
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
-    await ensureSchema(context.env);
 
-    const body = await context.request.json();
+    const body = await readJsonRequest<Record<string, unknown>>(
+      context.request,
+      MAX_PROJECT_REQUEST_BYTES
+    );
     if (!body || typeof body !== "object") {
       const deviceId = getDeviceId(context.request);
       if (userId) await logAudit(context.env, userId, "project.put", "invalid", { error: "Invalid payload", deviceId });
@@ -705,7 +473,18 @@ export const onRequestPut = async (context: {
     }
 
     const clientUpdatedAt = typeof (body as any).updatedAt === "number" ? (body as any).updatedAt : undefined;
-    const opId = typeof (body as any).opId === "string" ? (body as any).opId : undefined;
+    const rawOpId = (body as any).opId;
+    const opId = rawOpId === undefined ? "" : normalizeOperationId(rawOpId);
+    if (rawOpId !== undefined && !opId) {
+      return jsonResponse({ error: "Invalid opId" }, { status: 400 });
+    }
+    const boundOpId = opId
+      ? await bindOperationId("project-put", opId, {
+          mode,
+          updatedAt: clientUpdatedAt,
+          payload: delta || projectData,
+        })
+      : "";
 
     const existingMeta = await context.env.DB.prepare(
       "SELECT data, updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
@@ -713,7 +492,7 @@ export const onRequestPut = async (context: {
       .bind(userId)
       .first();
 
-    if (existingMeta && opId && existingMeta.last_op_id === opId) {
+    if (existingMeta && boundOpId && existingMeta.last_op_id === boundOpId) {
       return jsonResponse(
         { ok: true, updatedAt: existingMeta.updated_at },
         { headers: { etag: String(existingMeta.updated_at) } }
@@ -745,18 +524,29 @@ export const onRequestPut = async (context: {
       ? safeJsonParse<ProjectMeta>(existingMeta.data as string, DEFAULT_META)
       : DEFAULT_META;
     let hasChanges = false;
-    const updatedAt = Date.now();
+    const storageTimestamp = Date.now();
     let flowProjectsToStore: Array<Record<string, unknown>> | null = null;
 
-    if (delta?.meta) {
+    if (delta?.meta && Object.keys(delta.meta).length > 0) {
       const incomingMeta = delta.meta as any;
-      const incomingFlowProjects = toFlowProjects(incomingMeta.flowProjects);
+      const incomingFlowProjects = normalizeFlowProjectsForStorage({
+        flowProjects: incomingMeta.flowProjects,
+        legacyFlow: incomingMeta.flow,
+        activeFlowProjectId: incomingMeta.activeFlowProjectId || meta.activeFlowProjectId,
+        fileName: incomingMeta.fileName || meta.fileName,
+        roles: incomingMeta.roles || meta.roles,
+        designAssets: incomingMeta.designAssets || meta.designAssets,
+        timestamp: storageTimestamp,
+        limit: MAX_FLOW_PROJECTS,
+      });
       if (incomingFlowProjects.length > 0 || Object.prototype.hasOwnProperty.call(incomingMeta, "flowProjects")) {
         flowProjectsToStore = incomingFlowProjects;
       }
       meta = {
         ...meta,
         ...delta.meta,
+        activeFlowProjectId: incomingMeta.activeFlowProjectId || meta.activeFlowProjectId ||
+          (typeof incomingFlowProjects[0]?.id === "string" ? incomingFlowProjects[0].id : undefined),
       };
       meta = compactMeta(meta);
       hasChanges = true;
@@ -764,8 +554,21 @@ export const onRequestPut = async (context: {
 
     if (!delta) {
       const builtMeta = buildMetaFromProject(projectData);
-      flowProjectsToStore = toFlowProjects(builtMeta.flowProjects);
-      meta = compactMeta(builtMeta);
+      flowProjectsToStore = normalizeFlowProjectsForStorage({
+        flowProjects: builtMeta.flowProjects,
+        legacyFlow: builtMeta.flow,
+        activeFlowProjectId: builtMeta.activeFlowProjectId,
+        fileName: builtMeta.fileName,
+        roles: builtMeta.roles,
+        designAssets: builtMeta.designAssets,
+        timestamp: storageTimestamp,
+        limit: MAX_FLOW_PROJECTS,
+      });
+      meta = compactMeta({
+        ...builtMeta,
+        activeFlowProjectId: builtMeta.activeFlowProjectId ||
+          (typeof flowProjectsToStore[0]?.id === "string" ? flowProjectsToStore[0].id : undefined),
+      });
       hasChanges = true;
     }
 
@@ -780,6 +583,49 @@ export const onRequestPut = async (context: {
       if (userId) await logAudit(context.env, userId, "project.put", "invalid", { error, mode, ...auditDevice });
       return jsonResponse({ error }, { status: 400 });
     }
+
+    if (delta) {
+      if (
+        (delta.episodes?.length || 0) > 0 ||
+        (delta.scenes?.length || 0) > 0 ||
+        (delta.deleted?.episodes?.length || 0) > 0 ||
+        (delta.deleted?.scenes?.length || 0) > 0
+      ) {
+        hasChanges = true;
+      }
+      if (delta.roles && delta.roles.length > 0) {
+        const rolesById = new Map(
+          (Array.isArray(meta.roles) ? meta.roles : [])
+            .filter((role) => typeof role.id === "string")
+            .map((role) => [role.id as string, role])
+        );
+        delta.roles.forEach((role) => {
+          if (typeof role.id === "string") rolesById.set(role.id, role);
+        });
+        meta = { ...meta, roles: Array.from(rolesById.values()) };
+        hasChanges = true;
+      }
+      if (delta.deleted?.roles && delta.deleted.roles.length > 0) {
+        const deletedRoleIds = new Set(delta.deleted.roles);
+        meta = {
+          ...meta,
+          roles: (Array.isArray(meta.roles) ? meta.roles : []).filter(
+            (role) => typeof role.id !== "string" || !deletedRoleIds.has(role.id)
+          ),
+        };
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges && delta) {
+      const unchangedVersion = existingMeta ? Number(existingMeta.updated_at) || 0 : 0;
+      return jsonResponse(
+        { ok: true, updatedAt: unchangedVersion },
+        { headers: { etag: String(unchangedVersion) } }
+      );
+    }
+
+    const updatedAt = Math.max(storageTimestamp, Number(existingMeta?.updated_at || 0) + 1);
 
     let metaSerialized = "";
     try {
@@ -808,10 +654,10 @@ export const onRequestPut = async (context: {
       throw err;
     }
 
-    const guardId = createProjectWriteGuardId(userId, opId);
+    const guardId = createProjectWriteGuardId(userId, boundOpId || undefined);
     const statements = [
       buildProjectWriteGuardStatement(
-        context.env,
+        context.env.DB,
         userId,
         guardId,
         Boolean(existingMeta),
@@ -823,89 +669,61 @@ export const onRequestPut = async (context: {
     if (delta) {
       const episodes = delta.episodes || [];
       const scenes = delta.scenes || [];
-      const roles = delta.roles || [];
-
-      for (const episode of episodes) {
-        const episodeData = {
-          id: episode.id,
-          title: episode.title,
-          content: episode.content,
-          status: episode.status,
-          errorMsg: episode.errorMsg,
-        };
-        statements.push(context.env.DB.prepare(
-          "INSERT INTO user_project_episodes (user_id, episode_id, data, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, episode_id) DO UPDATE SET data=?3, updated_at=?4"
-        )
-          .bind(userId, episode.id, JSON.stringify(episodeData), updatedAt)
-        );
-        hasChanges = true;
-      }
-
-      for (const scene of scenes) {
-        const { episodeId: _episodeId, ...sceneData } = scene as Record<string, unknown>;
-        statements.push(context.env.DB.prepare(
-          "INSERT INTO user_project_scenes (user_id, episode_id, scene_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, episode_id, scene_id) DO UPDATE SET data=?4, updated_at=?5"
-        )
-          .bind(userId, (scene as any).episodeId, (scene as any).id, JSON.stringify(sceneData), updatedAt)
-        );
-        hasChanges = true;
-      }
-
-      if (roles.length > 0) {
-        hasChanges = true;
-      }
-
+      const flowRows = toFlowStorageRows(flowProjectsToStore || []);
       if (flowProjectsToStore) {
         statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
         statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
-        for (const flowProject of flowProjectsToStore) {
-          const projectId = typeof flowProject.id === "string" ? flowProject.id : "";
-          if (!projectId) continue;
-          const split = splitFlowProject(flowProject);
-          statements.push(context.env.DB.prepare(
-            "INSERT INTO user_project_flow_projects (user_id, project_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-          )
-            .bind(userId, projectId, JSON.stringify(split.project), updatedAt)
-          );
-          for (const flowNode of split.nodes) {
-            statements.push(context.env.DB.prepare(
-              "INSERT INTO user_project_flow_nodes (user_id, project_id, node_id, node_index, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-            )
-              .bind(userId, projectId, flowNode.nodeId, flowNode.nodeIndex, JSON.stringify(flowNode.node), updatedAt)
-            );
-          }
-        }
-        hasChanges = true;
       }
+
+      statements.push(...buildBulkProjectInsertStatements(
+        context.env.DB,
+        userId,
+        updatedAt,
+        {
+          episodes: episodes.map((episode) => ({
+            id: Number(episode.id),
+            data: {
+              id: episode.id,
+              title: episode.title,
+              content: episode.content,
+              status: episode.status,
+              errorMsg: episode.errorMsg,
+            },
+          })),
+          scenes: scenes.map((scene) => {
+            const { episodeId, ...data } = scene as Record<string, unknown>;
+            return {
+              episodeId: Number(episodeId),
+              sceneId: String((scene as Record<string, unknown>).id),
+              data,
+            };
+          }),
+          flowProjects: flowRows.projects,
+          flowNodes: flowRows.nodes,
+        },
+        { upsertEpisodesAndScenes: true }
+      ));
 
       const deleted = delta.deleted || {};
       if (deleted.episodes && deleted.episodes.length > 0) {
-        for (const episodeId of deleted.episodes) {
-          statements.push(context.env.DB.prepare(
-            "DELETE FROM user_project_episodes WHERE user_id = ?1 AND episode_id = ?2"
-          )
-            .bind(userId, episodeId)
-          );
-          statements.push(context.env.DB.prepare(
-            "DELETE FROM user_project_scenes WHERE user_id = ?1 AND episode_id = ?2"
-          )
-            .bind(userId, episodeId)
-          );
-        }
-        hasChanges = true;
+        const ids = JSON.stringify(deleted.episodes);
+        statements.push(context.env.DB.prepare(
+          "DELETE FROM user_project_episodes WHERE user_id = ?1 AND episode_id IN (SELECT value FROM json_each(?2))"
+        ).bind(userId, ids));
+        statements.push(context.env.DB.prepare(
+          "DELETE FROM user_project_scenes WHERE user_id = ?1 AND episode_id IN (SELECT value FROM json_each(?2))"
+        ).bind(userId, ids));
       }
       if (deleted.scenes && deleted.scenes.length > 0) {
-        for (const scene of deleted.scenes) {
-          statements.push(context.env.DB.prepare(
-            "DELETE FROM user_project_scenes WHERE user_id = ?1 AND episode_id = ?2 AND scene_id = ?3"
-          )
-            .bind(userId, scene.episodeId, scene.sceneId)
-          );
-        }
-        hasChanges = true;
-      }
-      if (deleted.roles && deleted.roles.length > 0) {
-        hasChanges = true;
+        statements.push(context.env.DB.prepare(
+          `DELETE FROM user_project_scenes
+           WHERE user_id = ?1
+             AND EXISTS (
+               SELECT 1 FROM json_each(?2)
+               WHERE CAST(json_extract(value, '$.episodeId') AS INTEGER) = user_project_scenes.episode_id
+                 AND json_extract(value, '$.sceneId') = user_project_scenes.scene_id
+             )`
+        ).bind(userId, JSON.stringify(deleted.scenes)));
       }
     } else {
       const parts = collectProjectParts(projectData);
@@ -915,39 +733,22 @@ export const onRequestPut = async (context: {
       statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
       statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
 
-      for (const episode of parts.episodes) {
-        statements.push(context.env.DB.prepare(
-          "INSERT INTO user_project_episodes (user_id, episode_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-        )
-          .bind(userId, episode.id, JSON.stringify(episode), updatedAt)
-        );
-      }
-
-      for (const scene of parts.scenes) {
-        statements.push(context.env.DB.prepare(
-          "INSERT INTO user_project_scenes (user_id, episode_id, scene_id, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)"
-        )
-          .bind(userId, scene.episodeId, scene.scene.id, JSON.stringify(scene.scene), updatedAt)
-        );
-      }
-
-      for (const flowProject of flowProjectsToStore || []) {
-        const projectId = typeof flowProject.id === "string" ? flowProject.id : "";
-        if (!projectId) continue;
-        const split = splitFlowProject(flowProject);
-        statements.push(context.env.DB.prepare(
-          "INSERT INTO user_project_flow_projects (user_id, project_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)"
-        )
-          .bind(userId, projectId, JSON.stringify(split.project), updatedAt)
-        );
-        for (const flowNode of split.nodes) {
-          statements.push(context.env.DB.prepare(
-            "INSERT INTO user_project_flow_nodes (user_id, project_id, node_id, node_index, data, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-          )
-            .bind(userId, projectId, flowNode.nodeId, flowNode.nodeIndex, JSON.stringify(flowNode.node), updatedAt)
-          );
+      const flowRows = toFlowStorageRows(flowProjectsToStore || []);
+      statements.push(...buildBulkProjectInsertStatements(
+        context.env.DB,
+        userId,
+        updatedAt,
+        {
+          episodes: parts.episodes.map((episode: any) => ({ id: episode.id, data: episode })),
+          scenes: parts.scenes.map((scene) => ({
+            episodeId: scene.episodeId,
+            sceneId: scene.scene.id,
+            data: scene.scene,
+          })),
+          flowProjects: flowRows.projects,
+          flowNodes: flowRows.nodes,
         }
-      }
+      ));
 
     }
 
@@ -955,16 +756,26 @@ export const onRequestPut = async (context: {
       statements.push(context.env.DB.prepare(
         "INSERT INTO user_project_meta (user_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id) DO UPDATE SET data=?2, updated_at=?3, last_op_id=?4"
       )
-        .bind(userId, metaSerialized, updatedAt, opId || null)
+        .bind(userId, metaSerialized, updatedAt, boundOpId || null)
       );
     }
 
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_write_guards WHERE guard_id = ?1").bind(guardId));
+    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
 
     try {
       await context.env.DB.batch(statements);
     } catch (batchError) {
       if (isProjectWriteGuardError(batchError)) {
+        const latestMeta = await context.env.DB.prepare(
+          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
+        ).bind(userId).first();
+        const latestUpdatedAt = latestMeta ? Number(latestMeta.updated_at) || 0 : 0;
+        if (boundOpId && latestMeta?.last_op_id === boundOpId) {
+          return jsonResponse(
+            { ok: true, updatedAt: latestUpdatedAt },
+            { headers: { etag: String(latestUpdatedAt) } }
+          );
+        }
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "cas_guard_failed", updatedAt: existingMeta?.updated_at, mode, ...auditDevice });
         const remoteData = await loadProjectData(context.env, userId);
         return jsonResponse(

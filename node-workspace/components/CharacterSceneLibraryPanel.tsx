@@ -28,6 +28,7 @@ type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   initialSelectionType?: "character" | "scene";
+  apiKey?: string;
 };
 
 type Selection =
@@ -60,6 +61,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
   projectData,
   setProjectData,
   initialSelectionType = "character",
+  apiKey,
 }) => {
   const COLLAPSED_ROLE_LIST_HEIGHT = 88;
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -222,6 +224,7 @@ export const CharacterSceneLibraryPanel: React.FC<Props> = ({
     setIsDesigningVoice(true);
     try {
       const result = await createCustomVoice({
+        apiKey,
         voicePrompt: prompt,
         preferredName: role.name,
         previewText: `大家好，我是${role.name}。很高兴见到各位。`,

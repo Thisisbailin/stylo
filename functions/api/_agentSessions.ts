@@ -196,26 +196,31 @@ const readAgentSessionRecord = async (env: EnvWithDb, sessionKey: string): Promi
   return normalizeRecord(row);
 };
 
-const writeAgentSessionRecord = async (
+const compareAndSetAgentSessionRecord = async (
   env: EnvWithDb,
   sessionKey: string,
   sessionId: string,
   userId: string | null,
+  expectedUpdatedAt: number,
   record: PersistedAgentSessionRecord
 ) => {
   await ensureAgentSessionsTable(env);
-  await env.DB.prepare(
-    "INSERT INTO agent_sessions (session_key, session_id, user_id, items, messages, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(session_key) DO UPDATE SET items = ?4, messages = ?5, updated_at = ?6, user_id = ?3, session_id = ?2"
-  )
-    .bind(
-      sessionKey,
-      sessionId,
-      userId,
-      JSON.stringify(record.items),
-      JSON.stringify(record.messages),
-      record.updatedAt
-    )
-    .run();
+  const values = [
+    sessionKey,
+    sessionId,
+    userId,
+    JSON.stringify(record.items),
+    JSON.stringify(record.messages),
+    record.updatedAt,
+  ];
+  const result = expectedUpdatedAt === 0
+    ? await env.DB.prepare(
+        "INSERT INTO agent_sessions (session_key, session_id, user_id, items, messages, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(session_key) DO NOTHING"
+      ).bind(...values).run()
+    : await env.DB.prepare(
+        "UPDATE agent_sessions SET session_id=?2, user_id=?3, items=?4, messages=?5, updated_at=?6 WHERE session_key=?1 AND updated_at=?7"
+      ).bind(...values, expectedUpdatedAt).run();
+  return Number(result?.meta?.changes ?? result?.changes ?? 0) > 0;
 };
 
 export const resolveAgentSessionOwner = async (request: Request, env: EnvWithDb) => {
@@ -248,29 +253,50 @@ export class D1EdgeSession implements Session {
 
   async addItems(items: AgentInputItem[]): Promise<void> {
     if (!items.length) return;
-    const existing = await readAgentSessionRecord(this.env, this.sessionKey);
-    const merged = [...existing.items, ...items.map(cloneItem)];
-    const timestampBase = Date.now();
-    const projectedMessages = projectAgentItemsToSessionMessages(items.map(cloneItem), timestampBase);
-    await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
-      items: trimSessionItems(merged, STORED_SESSION_ITEM_LIMIT),
-      messages: [...existing.messages, ...projectedMessages].slice(-STORED_SESSION_MESSAGE_LIMIT),
-      updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
-    });
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+      const merged = [...existing.items, ...items.map(cloneItem)];
+      const timestampBase = Date.now();
+      const projectedMessages = projectAgentItemsToSessionMessages(items.map(cloneItem), timestampBase);
+      const written = await compareAndSetAgentSessionRecord(
+        this.env,
+        this.sessionKey,
+        this.sessionId,
+        this.userId,
+        existing.updatedAt,
+        {
+          items: trimSessionItems(merged, STORED_SESSION_ITEM_LIMIT),
+          messages: [...existing.messages, ...projectedMessages].slice(-STORED_SESSION_MESSAGE_LIMIT),
+          updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
+        }
+      );
+      if (written) return;
+    }
+    throw new Error("Agent session update conflicted repeatedly");
   }
 
   async popItem(): Promise<AgentInputItem | undefined> {
-    const existing = await readAgentSessionRecord(this.env, this.sessionKey);
-    if (!existing.items.length) return undefined;
-    const nextItems = existing.items.slice(0, -1);
-    const removed = existing.items[existing.items.length - 1];
-    const timestampBase = Date.now();
-    await writeAgentSessionRecord(this.env, this.sessionKey, this.sessionId, this.userId, {
-      items: nextItems,
-      messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-STORED_SESSION_MESSAGE_LIMIT),
-      updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
-    });
-    return cloneItem(removed);
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+      if (!existing.items.length) return undefined;
+      const nextItems = existing.items.slice(0, -1);
+      const removed = existing.items[existing.items.length - 1];
+      const timestampBase = Date.now();
+      const written = await compareAndSetAgentSessionRecord(
+        this.env,
+        this.sessionKey,
+        this.sessionId,
+        this.userId,
+        existing.updatedAt,
+        {
+          items: nextItems,
+          messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-STORED_SESSION_MESSAGE_LIMIT),
+          updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
+        }
+      );
+      if (written) return cloneItem(removed);
+    }
+    throw new Error("Agent session pop conflicted repeatedly");
   }
 
   async clearSession(): Promise<void> {

@@ -803,7 +803,7 @@ const findFirstArchiveChild = (
 ) => {
   const children = getOutgoingTargets(links, folderId)
     .map((id) => nodeById.get(id))
-    .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "mdText");
+    .filter((node): node is NodeFlowNode => node?.type === "mdText");
   const structuralArchive = children.find(
     (node) =>
       getFoundationNodeMeta(node).foundationRole === "block-document" ||
@@ -903,7 +903,7 @@ export const parseFoundationGraph = (
     const folderChildren = sortFoundationChildren(
       getOutgoingTargets(flow.links, axisId)
         .map((id) => nodeById.get(id))
-        .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "folder")
+        .filter((node): node is NodeFlowNode => node?.type === "folder")
     );
     if (!folderChildren.length) return createDefaultTimeline(project.durationMin).blocks;
     const blocks = folderChildren.map((folder, index) => {
@@ -929,7 +929,7 @@ export const parseFoundationGraph = (
     const folderChildren = sortFoundationChildren(
       getOutgoingTargets(flow.links, axisId)
         .map((id) => nodeById.get(id))
-        .filter((node): node is NodeFlowNode => Boolean(node) && node.type === "folder")
+        .filter((node): node is NodeFlowNode => node?.type === "folder")
     );
     if (!folderChildren.length) return createDefaultWeightedAxisBlocks(axis);
     const definition = getFoundationAxisDefinition(axis);
@@ -1211,7 +1211,7 @@ export const ensureFoundationGraphSkeleton = (
   if (membershipNormalizedFlow !== normalizedFlow) {
     normalizedFlow = membershipNormalizedFlow;
     links = normalizedFlow.links;
-    normalizedFlow.flowNodes.forEach((node) => nodeById.set(node.id, node));
+    (normalizedFlow.flowNodes ?? []).forEach((node) => nodeById.set(node.id, node));
     changed = true;
   }
   const parsed = parseFoundationGraph(normalizedFlow, project);

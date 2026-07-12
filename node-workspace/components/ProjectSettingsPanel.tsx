@@ -61,12 +61,12 @@ import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel } from "./SyncPanel";
 import type { ModuleKey } from "./ModuleBar";
 import {
-  buildQalamActivityStorageKey,
-  buildQalamConversationStorageKey,
-  buildQalamSessionId,
+  buildQalamAccountSessionId,
+  buildQalamAccountStorageKeys,
 } from "../../agents/runtime/projectScope";
 
 type Props = {
+  accountScope: string;
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
@@ -446,6 +446,7 @@ const getDefaultProjectSettingsWidth = (leftOffset: number) => {
 };
 
 export const ProjectSettingsPanel: React.FC<Props> = ({
+  accountScope,
   projectId,
   isOpen,
   onClose,
@@ -468,8 +469,10 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   foundationNodeView = false,
   onOpenVisualLab,
 }) => {
-  const conversationStorageKey = buildQalamConversationStorageKey(projectId);
-  const activityStorageKey = buildQalamActivityStorageKey(projectId);
+  const { conversationStorageKey, activityStorageKey } = buildQalamAccountStorageKeys(
+    accountScope,
+    projectId
+  );
   const { applyViduReferenceDemo, revision, globalAssetHistory } = useNodeFlowStore();
   const [activeMultiProvider, setActiveMultiProvider] = useState<MultiProviderKey>(resolveMultiProviderKey(config.multimodalConfig.provider));
   const [activeVideoProvider, setActiveVideoProvider] = useState<"qwen" | "vidu" | "seedance">("qwen");
@@ -702,7 +705,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
       const params = new URLSearchParams({
         projectId,
-        sessionId: buildQalamSessionId(projectId, activeConversation.id),
+        sessionId: buildQalamAccountSessionId(accountScope, projectId, activeConversation.id),
       });
       const traceId = (traceIdOverride || selectedTraceId || "").trim();
       if (traceId) params.set("traceId", traceId);
@@ -725,7 +728,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
         setObservabilityLoading(false);
       }
     }
-  }, [activeConversation?.id, getAuthToken, isSignedIn, projectId, selectedTraceId]);
+  }, [accountScope, activeConversation?.id, getAuthToken, isSignedIn, projectId, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;
@@ -992,17 +995,10 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   };
 
   const handleFetchTextModels = async () => {
-    const envKey =
-      (typeof import.meta !== "undefined"
-        ? (import.meta.env.OPENROUTER_API_KEY || import.meta.env.VITE_OPENROUTER_API_KEY)
-        : undefined) ||
-      (typeof process !== "undefined"
-        ? (process.env?.OPENROUTER_API_KEY || process.env?.VITE_OPENROUTER_API_KEY)
-        : undefined);
-    const apiKey = config.textConfig.apiKey || envKey;
+    const apiKey = config.textConfig.apiKey;
     const baseUrl = activeAgentBaseUrl || OPENROUTER_BASE_URL;
     if (!apiKey) {
-      setTextModelFetchMessage({ type: "error", text: "未检测到 OpenRouter API Key 环境变量。" });
+      setTextModelFetchMessage({ type: "error", text: "请先在项目设置中填写 OpenRouter API Key。" });
       return;
     }
     setIsLoadingTextModels(true);
@@ -1497,7 +1493,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                 </div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                Uses the same project agent core through the OpenAI Agents SDK Chat Completions transport. Configure DEEPSEEK_API_KEY in Edge, or VITE_DEEPSEEK_API_KEY for local browser runtime.
+                Uses the same project agent core through the OpenAI Agents SDK Chat Completions transport. Shared keys belong in Edge secrets; BYOK credentials are entered in project settings.
               </div>
               <div className="space-y-4">
                 <div>
@@ -1577,7 +1573,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                 )}
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                备用路线。使用环境变量 OPENROUTER_API_KEY / VITE_OPENROUTER_API_KEY。
+                备用路线。共享密钥仅配置在 Edge；个人密钥请在项目设置中填写。
               </div>
             </div>
           )}
@@ -1694,7 +1690,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                 <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                主选路线。使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。模型列表接口返回的是平台可见模型，不等于当前 API Key 一定已开通全部权限；若 404，请先回退到 `qwen-plus`。
+                主选路线。共享密钥仅配置在 Edge；个人密钥请在项目设置中填写。模型列表接口返回的是平台可见模型，不等于当前 API Key 一定已开通全部权限；若 404，请先回退到 `qwen-plus`。
               </div>
 
               <div className="space-y-4">
@@ -1817,7 +1813,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                 <div className="text-[11px] text-[var(--app-text-muted)]">用于多模态图片生成，占位可替换。</div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用环境变量 OPENROUTER_API_KEY / VITE_OPENROUTER_API_KEY。
+                共享密钥仅配置在 Edge；个人密钥请在项目设置中填写。
               </div>
             </div>
           )}
@@ -1826,7 +1822,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
             <div className="order-[40] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。
+                共享密钥仅配置在 Edge；个人密钥请在项目设置中填写。
               </div>
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
                 <div className="text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">multimodal-generation · 1</div>
@@ -1885,7 +1881,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
             <div className="order-[60] rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-3">
               <div className="text-xs text-[var(--app-text-secondary)]">Aliyun Qwen</div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用环境变量 QWEN_API_KEY / VITE_QWEN_API_KEY。
+                共享密钥仅配置在 Edge；个人密钥请在项目设置中填写。
               </div>
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
                 <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[var(--app-text-muted)]">
@@ -1952,7 +1948,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                 </div>
               </div>
               <div className="text-[11px] text-[var(--app-text-muted)]">
-                使用 ARK_API_KEY / VITE_ARK_API_KEY，或沿用 Video API Key。
+                共享 ARK_API_KEY 仅配置在 Edge；个人密钥请在项目设置中填写，或沿用 Video API Key。
               </div>
               <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -2455,6 +2451,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                   projectData={projectData}
                   setProjectData={setProjectData}
                   initialSelectionType="character"
+                  apiKey={config.textConfig.apiKey}
                 />
               )}
 

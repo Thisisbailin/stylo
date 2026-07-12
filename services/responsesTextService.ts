@@ -26,38 +26,7 @@ const Type = {
 const resolveProviderApiKey = (provider: TextProvider, configuredKey?: string): string => {
   const key = (configuredKey || "").trim();
   if (key) return key;
-
-  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  const processEnv = typeof process !== "undefined" ? process.env : undefined;
-
-  const candidates =
-    provider === "openrouter"
-      ? [
-          env?.OPENROUTER_API_KEY,
-          env?.VITE_OPENROUTER_API_KEY,
-          processEnv?.OPENROUTER_API_KEY,
-          processEnv?.VITE_OPENROUTER_API_KEY,
-        ]
-      : [
-          env?.QWEN_API_KEY,
-          env?.VITE_QWEN_API_KEY,
-          env?.DASHSCOPE_API_KEY,
-          env?.VITE_DASHSCOPE_API_KEY,
-          processEnv?.QWEN_API_KEY,
-          processEnv?.VITE_QWEN_API_KEY,
-          processEnv?.DASHSCOPE_API_KEY,
-          processEnv?.VITE_DASHSCOPE_API_KEY,
-        ];
-
-  const resolved = candidates.find((value) => typeof value === "string" && value.trim())?.trim();
-  if (!resolved) {
-    throw new Error(
-      provider === "openrouter"
-        ? "OpenRouter API key missing. 请配置 OPENROUTER_API_KEY/VITE_OPENROUTER_API_KEY。"
-        : "Qwen API key missing. 请配置 QWEN_API_KEY/VITE_QWEN_API_KEY 或 DASHSCOPE_API_KEY。"
-    );
-  }
-  return resolved;
+  throw new Error(`${provider === "openrouter" ? "OpenRouter" : "Qwen"} API key missing. 请在项目设置中填写。`);
 };
 
 const googleSchemaToJsonSchema = (schema: Schema): any => {

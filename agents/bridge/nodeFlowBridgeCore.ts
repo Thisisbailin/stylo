@@ -5,6 +5,7 @@ import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import { buildNodeFlowGraphLinkId } from "../../node-workspace/nodeflow/graphLinks";
 import { findGraphNode } from "../../node-workspace/nodeflow/projectGraph";
 import { buildConnectedInputs } from "../../node-workspace/nodeflow/queries";
+import { createEmptyNodeFlowContextSnapshot } from "../../node-workspace/nodeflow/sessionState";
 import {
   buildNodeFlowExecutionApprovalProposal,
   inferExecutionApprovalAction,
@@ -497,7 +498,7 @@ const removeNodeFlowLink = (
   const snapshot = deps.getNodeFlowSnapshot();
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   if (input.linkKind === "graph") {
-    const graphLink = snapshot.graphLinks.find((link) => link.id === input.linkId);
+    const graphLink = (snapshot.graphLinks ?? []).find((link) => link.id === input.linkId);
     if (!graphLink) {
       throw new Error("removeNodeFlowLink 找不到指定的 nodeflow graph link。");
     }
@@ -615,7 +616,7 @@ const requestNodeFlowExecutionApproval = (
       nodeId: node.id,
       nodes: snapshot.nodes,
       links: snapshot.links,
-      nodeFlowContext: snapshot.nodeFlowContext,
+      nodeFlowContext: snapshot.nodeFlowContext ?? createEmptyNodeFlowContextSnapshot(),
     }),
   });
   deps.requestExecutionApproval?.(proposal);

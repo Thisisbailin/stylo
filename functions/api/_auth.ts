@@ -5,7 +5,11 @@ type EnvWithClerk = {
   CLERK_JWT_KEY?: string;
 };
 
-export const JSON_HEADERS = { "content-type": "application/json" };
+export const JSON_HEADERS = {
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+  "x-content-type-options": "nosniff",
+};
 
 export const jsonResponse = (body: unknown, init: ResponseInit = {}) => {
   const headers = { ...JSON_HEADERS, ...(init.headers || {}) };
@@ -36,16 +40,17 @@ const normalizeJwtKey = (value: string) => {
   return `${header}\n${body}\n${trailer}`;
 };
 
-const extractBearerToken = (authHeader: string) => {
-  const match = authHeader.match(/Bearer\s+([^,]+)/i);
-  const raw = match ? match[1] : authHeader;
-  const trimmed = stripOuterQuotes(raw.trim());
-  const whitespaceStripped = trimmed.replace(/\s+/g, "");
-  return whitespaceStripped.replace(/[^A-Za-z0-9._-]/g, "");
-};
+const extractBearerToken = (authHeader: string) =>
+  authHeader.match(
+    /^Bearer\s+([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i
+  )?.[1] || "";
 
-export const getUserId = async (request: Request, env: EnvWithClerk) => {
-  const authHeader = request.headers.get("authorization") || "";
+export const getUserId = async (
+  request: Request,
+  env: EnvWithClerk,
+  authorizationHeader = "authorization"
+) => {
+  const authHeader = request.headers.get(authorizationHeader) || "";
   const token = extractBearerToken(authHeader);
 
   const rawSecret = typeof env.CLERK_SECRET_KEY === "string" ? env.CLERK_SECRET_KEY : "";
@@ -64,16 +69,21 @@ export const getUserId = async (request: Request, env: EnvWithClerk) => {
     });
   }
 
-  try {
-    const payload = await verifyToken(token, jwtKey ? { jwtKey } : { secretKey });
-    if (payload?.sub) return payload.sub;
-    throw new Error("Token payload missing sub");
-  } catch (err: any) {
-    const detail = err?.message || "Token verification failed";
-    throw new Response(JSON.stringify({ error: "Unauthorized", detail }), {
-      status: 401,
-      headers: JSON_HEADERS,
-    });
+  const attempts = [
+    ...(jwtKey ? [{ jwtKey }] : []),
+    ...(secretKey ? [{ secretKey }] : []),
+  ];
+  for (const options of attempts) {
+    try {
+      const payload = await verifyToken(token, options);
+      if (payload?.sub) return payload.sub;
+    } catch {
+      // Try the next configured verification method.
+    }
   }
-};
 
+  throw new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: JSON_HEADERS,
+  });
+};

@@ -157,16 +157,36 @@ export const SyncPanel: React.FC<Props> = ({
         setSnapshotMessage({ type: "error", text: "Auth token missing. Please re-login." });
         return;
       }
+      const indexRes = await fetch(buildApiUrl("/api/project-snapshots"), {
+        headers: { authorization: `Bearer ${token}`, "x-device-id": deviceIdRef.current },
+      });
+      if (!indexRes.ok) {
+        throw new Error(`Failed to read the current project version (${indexRes.status})`);
+      }
+      const index = await indexRes.json();
+      const expectedUpdatedAt = typeof index?.currentVersion === "number" &&
+        Number.isSafeInteger(index.currentVersion) && index.currentVersion >= 0
+        ? index.currentVersion
+        : null;
+      if (expectedUpdatedAt === null) {
+        throw new Error("The server returned an invalid project version.");
+      }
+      const opId = globalThis.crypto?.randomUUID?.() ||
+        `restore-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
       const res = await fetch(buildApiUrl("/api/project-restore"), {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
           "x-device-id": deviceIdRef.current,
+          "if-match": String(expectedUpdatedAt),
         },
-        body: JSON.stringify({ version }),
+        body: JSON.stringify({ version, expectedUpdatedAt, opId }),
       });
       if (!res.ok) {
+        if (res.status === 409) {
+          throw new Error("Cloud data changed before the restore. Reload history and try again.");
+        }
         throw new Error(`Restore failed (${res.status})`);
       }
       setSnapshotMessage({ type: "success", text: "Snapshot restored." });

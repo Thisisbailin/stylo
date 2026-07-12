@@ -3,23 +3,26 @@ import { DesignAssetItem, Episode, ProjectRoleIdentity, SeedanceModel, ViduRefer
 
 export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 
-export type NodeType =
-  | "scriptPage"
-  | "mdText"
-  | "folder"
-  | "imageInput"
-  | "audioInput"
-  | "videoInput"
-  | "annotation"
-  | "text"
-  | "scriptBoard"
-  | "identityCard"
-  | "imageGen"
-  | "nanoBananaImageGen"
-  | "wanImageGen"
-  | "wanReferenceVideoGen"
-  | "viduVideoGen"
-  | "seedanceVideoGen";
+export const NODE_TYPES = [
+  "scriptPage",
+  "mdText",
+  "folder",
+  "imageInput",
+  "audioInput",
+  "videoInput",
+  "annotation",
+  "text",
+  "scriptBoard",
+  "identityCard",
+  "imageGen",
+  "nanoBananaImageGen",
+  "wanImageGen",
+  "wanReferenceVideoGen",
+  "viduVideoGen",
+  "seedanceVideoGen",
+] as const;
+
+export type NodeType = (typeof NODE_TYPES)[number];
 
 export type NodeStatus = "idle" | "loading" | "complete" | "error";
 

@@ -1,178 +1,231 @@
+import { getUserId, jsonResponse } from "./_auth";
+import { enforceRateLimit } from "./_rateLimit";
+import type { D1DatabaseLike, PagesContext } from "./_types";
 
-const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+type Env = {
+  DB: D1DatabaseLike;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+  CORS_ALLOWED_ORIGINS?: string;
+};
+
+const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
+
+const TARGET_POLICIES: ReadonlyArray<{
+  hostname: string;
+  pathPrefixes?: readonly string[];
+  exactPaths?: readonly string[];
+}> = [
+  { hostname: "dashscope.aliyuncs.com", pathPrefixes: ["/api/"] },
+  { hostname: "ark.cn-beijing.volces.com", pathPrefixes: ["/api/v3/"] },
+  { hostname: "openrouter.ai", pathPrefixes: ["/api/v1/"] },
+  { hostname: "api.deepseek.com", pathPrefixes: ["/v1/"] },
+  { hostname: "api.openai.com", pathPrefixes: ["/v1/"] },
+  {
+    hostname: "api.wuyinkeji.com",
+    exactPaths: ["/api/async/image_nanoBanana_pro", "/api/async/detail"],
+  },
+  { hostname: "api.vidu.cn", pathPrefixes: ["/ent/v2/"] },
+  { hostname: "api.vidu.com", pathPrefixes: ["/ent/v2/"] },
+];
+
+const FORWARDED_REQUEST_HEADERS = [
+  "accept",
+  "authorization",
+  "content-type",
+  "http-referer",
+  "x-dashscope-async",
+  "x-dashscope-sse",
+  "x-title",
+] as const;
+
+const parseAllowedOrigins = (request: Request, env: Env) => {
+  const allowed = new Set([new URL(request.url).origin]);
+  (env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .forEach((origin) => allowed.add(origin));
+  return allowed;
+};
+
+const buildCorsHeaders = (request: Request, env: Env) => {
+  const headers = new Headers({
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-proxy-url",
-    "Access-Control-Expose-Headers": "x-qalam-proxy-target,x-qalam-proxy-nanobanana,x-qalam-proxy-vidu,x-qalam-proxy-key-source,x-qalam-proxy-key-fingerprint,x-qalam-proxy-auth-header,x-qalam-proxy-key-query",
+    "Access-Control-Allow-Headers": [
+      "Accept",
+      "Authorization",
+      "Content-Type",
+      "HTTP-Referer",
+      "X-DashScope-Async",
+      "X-DashScope-SSE",
+      "X-Qalam-Authorization",
+      "X-Proxy-Url",
+      "X-Title",
+    ].join(", "),
+    "Access-Control-Expose-Headers": "Retry-After, X-Request-Id",
+    Vary: "Origin",
+  });
+  const origin = request.headers.get("origin");
+  if (origin && parseAllowedOrigins(request, env).has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+  return headers;
 };
 
-const toKeyFingerprint = (value?: string) => {
-    if (!value) return "missing";
-    const trimmed = value.trim();
-    if (!trimmed) return "empty";
-    if (trimmed.length <= 8) return `${trimmed[0] || ""}***(${trimmed.length})`;
-    return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}(${trimmed.length})`;
+const withCors = (response: Response, request: Request, env: Env) => {
+  const headers = new Headers(response.headers);
+  buildCorsHeaders(request, env).forEach((value, key) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 };
 
-const resolveNanoBananaApiKey = (env: Record<string, unknown>) => {
-    const candidates = [
-        { name: "NANOBANANA_API_KEY", value: env.NANOBANANA_API_KEY },
-        { name: "NANO_BANANA_API_KEY", value: env.NANO_BANANA_API_KEY },
-        { name: "WUYINKEJI_API_KEY", value: env.WUYINKEJI_API_KEY },
-    ];
-    const hit = candidates.find((item) => typeof item.value === "string" && item.value.trim().length > 0);
-    return {
-        key: typeof hit?.value === "string" ? hit.value.trim() : "",
-        source: hit?.name || "missing",
-    };
+const parseTargetUrl = (value: string | null) => {
+  if (!value || value.length > 4_096) {
+    throw new Response("Missing or oversized proxy target", { status: 400 });
+  }
+
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    throw new Response("Invalid proxy target", { status: 400 });
+  }
+
+  const policy = TARGET_POLICIES.find(
+    (candidate) =>
+      candidate.hostname === target.hostname.toLowerCase() &&
+      (
+        candidate.exactPaths?.includes(target.pathname) ||
+        candidate.pathPrefixes?.some((prefix) => target.pathname.startsWith(prefix))
+      )
+  );
+  const hasDefaultPort = !target.port || target.port === "443";
+  if (
+    target.protocol !== "https:" ||
+    !hasDefaultPort ||
+    target.username ||
+    target.password ||
+    target.hash ||
+    !policy
+  ) {
+    throw new Response("Proxy target is not allowed", { status: 403 });
+  }
+  return target;
 };
 
-const normalizeApiKeyValue = (value: unknown) => {
-    if (typeof value !== "string") return "";
-    let normalized = value.trim();
-    if (
-        (normalized.startsWith('"') && normalized.endsWith('"')) ||
-        (normalized.startsWith("'") && normalized.endsWith("'"))
-    ) {
-        normalized = normalized.slice(1, -1).trim();
+const readRequestBody = async (request: Request) => {
+  if (request.method === "GET" || request.method === "HEAD") return undefined;
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    throw new Response("Proxy request body is too large", { status: 413 });
+  }
+  const body = await request.arrayBuffer();
+  if (body.byteLength > MAX_REQUEST_BYTES) {
+    throw new Response("Proxy request body is too large", { status: 413 });
+  }
+  return body;
+};
+
+const buildUpstreamHeaders = (request: Request) => {
+  const headers = new Headers();
+  FORWARDED_REQUEST_HEADERS.forEach((name) => {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  });
+  return headers;
+};
+
+const normalizeProviderKey = (value: string) =>
+  value.trim().replace(/^(Bearer|Token)\s+/i, "").trim();
+
+const prepareProviderSpecificRequest = (target: URL, headers: Headers) => {
+  if (target.hostname !== "api.wuyinkeji.com" || target.searchParams.has("key")) return;
+  const authorization = headers.get("authorization");
+  if (!authorization) return;
+  const key = normalizeProviderKey(authorization);
+  if (key) {
+    target.searchParams.set("key", key);
+    headers.delete("authorization");
+  }
+};
+
+const buildSafeResponseHeaders = (upstream: Response) => {
+  const headers = new Headers({
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  const rawContentType = upstream.headers.get("content-type") || "";
+  if (/^(application\/(?:json|problem\+json)|text\/event-stream)(?:;|$)/i.test(rawContentType)) {
+    headers.set("Content-Type", rawContentType);
+  } else if (/^text\/plain(?:;|$)/i.test(rawContentType)) {
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+  } else {
+    headers.set("Content-Type", "application/octet-stream");
+    headers.set("Content-Disposition", "attachment");
+  }
+  for (const name of ["retry-after", "x-request-id", "x-dashscope-request-id"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
+};
+
+export const onRequest = async ({ request, env }: PagesContext<Env>) => {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: buildCorsHeaders(request, env) });
+  }
+  if (request.method !== "GET" && request.method !== "POST") {
+    return withCors(new Response("Method not allowed", { status: 405 }), request, env);
+  }
+
+  try {
+    const userId = await getUserId(request, env, "x-qalam-authorization");
+    await enforceRateLimit({
+      db: env.DB,
+      namespace: "provider-proxy",
+      subject: userId,
+      limit: 120,
+      windowSeconds: 60,
+    });
+    const target = parseTargetUrl(request.headers.get("x-proxy-url"));
+    const headers = buildUpstreamHeaders(request);
+    prepareProviderSpecificRequest(target, headers);
+    const body = await readRequestBody(request);
+    const upstream = await fetch(target, {
+      method: request.method,
+      headers,
+      body,
+      redirect: "manual",
+    });
+    if (upstream.status >= 300 && upstream.status < 400) {
+      return withCors(
+        jsonResponse({ error: "Upstream redirects are not allowed" }, { status: 502 }),
+        request,
+        env
+      );
     }
-    normalized = normalized.replace(/^(Token|Bearer)\s+/i, "").trim();
-    return normalized;
-};
-
-const isNanoBananaTarget = (url: URL) =>
-    url.hostname === "api.wuyinkeji.com" &&
-    (
-        url.pathname.includes("/api/async/image_nanoBanana_pro") ||
-        url.pathname.includes("/api/async/detail")
+    return withCors(
+      new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: buildSafeResponseHeaders(upstream),
+      }),
+      request,
+      env
     );
-
-const resolveViduApiKey = (env: Record<string, unknown>) => {
-    const candidates = [
-        { name: "VIDU_API_KEY", value: env.VIDU_API_KEY },
-        { name: "VITE_VIDU_API_KEY", value: env.VITE_VIDU_API_KEY },
-    ];
-    const hit = candidates.find((item) => normalizeApiKeyValue(item.value).length > 0);
-    return {
-        key: normalizeApiKeyValue(hit?.value),
-        source: hit?.name || "missing",
-    };
-};
-
-const isViduTarget = (url: URL) =>
-    (url.hostname === "api.vidu.cn" || url.hostname === "api.vidu.com") && url.pathname.startsWith("/ent/v2/");
-
-export const onRequest = async ({ request, env }) => {
-    // Handle CORS preflight
-    if (request.method === "OPTIONS") {
-        return new Response(null, {
-            headers: corsHeaders,
-        });
-    }
-
-    const proxyUrl = request.headers.get("x-proxy-url") || new URL(request.url).searchParams.get("url");
-
-    if (!proxyUrl) {
-        return new Response("Missing x-proxy-url header or url param", { status: 400 });
-    }
-
-    const method = request.method;
-    const headers = new Headers(request.headers);
-    const targetUrl = new URL(proxyUrl);
-        const debugHeaders: Record<string, string> = {
-            "x-qalam-proxy-target": targetUrl.pathname,
-            "x-qalam-proxy-nanobanana": "false",
-            "x-qalam-proxy-vidu": "false",
-            "x-qalam-proxy-key-source": "n/a",
-            "x-qalam-proxy-key-fingerprint": "n/a",
-            "x-qalam-proxy-auth-header": headers.get("Authorization") ? "forwarded" : "none",
-            "x-qalam-proxy-key-query": targetUrl.searchParams.get("key") ? "forwarded" : "none",
-    };
-
-    try {
-
-        // Clean up headers that shouldn't be forwarded to the target
-        headers.delete("host");
-        headers.delete("x-proxy-url");
-        headers.delete("cf-connecting-ip");
-        headers.delete("cf-ray");
-        headers.delete("cf-visitor");
-        headers.delete("cf-ipcountry");
-        headers.delete("x-real-ip");
-        headers.delete("content-length"); // Fetch will recalculate
-
-        if (isNanoBananaTarget(targetUrl)) {
-            const { key: apiKey, source } = resolveNanoBananaApiKey((env || {}) as Record<string, unknown>);
-            debugHeaders["x-qalam-proxy-nanobanana"] = "true";
-            debugHeaders["x-qalam-proxy-key-source"] = source;
-            debugHeaders["x-qalam-proxy-key-fingerprint"] = toKeyFingerprint(apiKey);
-            if (!apiKey) {
-                return new Response("Proxy Error: Missing NANOBANANA_API_KEY in Cloudflare environment.", {
-                    status: 500,
-                    headers: {
-                        ...corsHeaders,
-                        ...debugHeaders,
-                    },
-                });
-            }
-            if (!headers.get("Authorization")) {
-                headers.set("Authorization", apiKey);
-                debugHeaders["x-qalam-proxy-auth-header"] = "injected";
-            }
-            if (!targetUrl.searchParams.get("key")) {
-                targetUrl.searchParams.set("key", apiKey);
-                debugHeaders["x-qalam-proxy-key-query"] = "injected";
-            }
-        }
-
-        if (isViduTarget(targetUrl)) {
-            const { key: apiKey, source } = resolveViduApiKey((env || {}) as Record<string, unknown>);
-            debugHeaders["x-qalam-proxy-vidu"] = "true";
-            debugHeaders["x-qalam-proxy-key-source"] = source;
-            debugHeaders["x-qalam-proxy-key-fingerprint"] = toKeyFingerprint(apiKey);
-            if (!apiKey) {
-                return new Response("Proxy Error: Missing VIDU_API_KEY in Cloudflare environment.", {
-                    status: 500,
-                    headers: {
-                        ...corsHeaders,
-                        ...debugHeaders,
-                    },
-                });
-            }
-            const hadAuthHeader = !!headers.get("Authorization");
-            headers.set("Authorization", `Token ${apiKey}`);
-            debugHeaders["x-qalam-proxy-auth-header"] = hadAuthHeader ? "overridden" : "injected";
-        }
-
-        const body = method !== "GET" && method !== "HEAD" ? await request.arrayBuffer() : null;
-
-        console.log(`[Proxy] Forwarding ${method} to ${targetUrl.toString()}`);
-
-        const response = await fetch(targetUrl.toString(), {
-            method,
-            headers,
-            body,
-            redirect: "follow",
-        });
-
-        const responseHeaders = new Headers(response.headers);
-        // Allow the browser to read the response
-        responseHeaders.set("Access-Control-Allow-Origin", "*");
-        responseHeaders.set("Access-Control-Expose-Headers", corsHeaders["Access-Control-Expose-Headers"]);
-        Object.entries(debugHeaders).forEach(([key, value]) => responseHeaders.set(key, value));
-
-        return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: responseHeaders,
-        });
-    } catch (err: any) {
-        return new Response(`Proxy Error: ${err.message}`, {
-            status: 500,
-            headers: {
-                ...corsHeaders,
-                ...debugHeaders,
-            },
-        });
-    }
+  } catch (error) {
+    if (error instanceof Response) return withCors(error, request, env);
+    console.error("[Proxy] Upstream request failed", {
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+    return withCors(
+      jsonResponse({ error: "Upstream request failed" }, { status: 502 }),
+      request,
+      env
+    );
+  }
 };

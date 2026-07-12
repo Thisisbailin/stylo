@@ -25,7 +25,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as FolderNodeData;
     case "scriptPage":
       return {
-        title: "鍓ф湰鏂囨。",
+        title: "剧本文档",
         text: "",
         documentId: undefined,
         documentKind: "script",
@@ -35,7 +35,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as ScriptPageNodeData;
     case "mdText":
       return {
-        title: "妗ｆ鏂囨。",
+        title: "档案文档",
         text: "",
         content: "",
         documentId: undefined,
@@ -93,11 +93,11 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as TextNodeData;
     case "scriptBoard":
       return {
-        title: "鍓ф湰闈㈡澘",
+        title: "剧本面板",
       } as ScriptBoardNodeData;
     case "identityCard":
       return {
-        title: "瑙掕壊 / 鍦烘櫙韬唤鍗＄墖",
+        title: "角色 / 场景身份卡片",
         avatarOverrides: {},
       } as IdentityCardNodeData;
     case "imageGen":

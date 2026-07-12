@@ -11,12 +11,13 @@ import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderMo
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
 import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
-import { createAgentSessionKey, D1EdgeSession, QalamChatCompactionSession, QalamResponsesCompactionSession, readD1SessionMessages, resolveAgentSessionOwner } from "./_agentSessions";
+import { createAgentSessionKey, D1EdgeSession, QalamChatCompactionSession, QalamResponsesCompactionSession, readD1SessionMessages } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
 import { DEFAULT_NODE_DIMENSIONS } from "../../node-workspace/nodeflow/placement";
+import { parseNodeFlowFile } from "../../node-workspace/nodeflow/schema";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 import { createNodeFlowGraphLink, removeNodeFlowGraphLink } from "../../node-workspace/nodeflow/graphLinks";
 import {
@@ -32,15 +33,39 @@ import {
   assertQalamProjectScope,
   isQalamSessionInProject,
 } from "../../agents/runtime/projectScope";
+import { getUserId } from "./_auth";
+import { enforceRateLimit } from "./_rateLimit";
+import { readJsonRequest } from "./_request";
+import type { D1DatabaseLike, PagesContext } from "./_types";
+
+type AgentEnv = Record<string, unknown> & {
+  DB: D1DatabaseLike;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+};
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
 };
 
-const EDGE_AGENT_MAX_TURNS = 50;
+const EDGE_AGENT_MAX_TURNS = 20;
 const EDGE_CHAT_SESSION_MAX_ITEMS = 18;
+const MAX_AGENT_REQUEST_BYTES = 5 * 1024 * 1024;
+const MAX_AGENT_TEXT_LENGTH = 20_000;
+const MAX_AGENT_NODES = 500;
+const MAX_AGENT_LINKS = 1_000;
+
+const withCorsHeaders = (response: Response) => {
+  const headers = new Headers(response.headers);
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
 
 const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark" | "deepseek") => {
   const value =
@@ -124,8 +149,7 @@ const createNodeFlowBridgeState = (
 ) => {
   let currentProjectData = projectData;
   let projectDataUpdated = false;
-  let currentNodeFlow: NodeFlowFile = structuredClone(
-    nodeFlow || {
+  const initialNodeFlow: NodeFlowFile = nodeFlow || {
       version: 2,
       revision: 0,
       name: projectData.fileName || "Qalam NodeFlow",
@@ -133,10 +157,9 @@ const createNodeFlowBridgeState = (
       links: [],
       linkStyle: "angular",
       globalAssetHistory: [],
-      viewport: null,
       activeView: null,
-    }
-  );
+    };
+  let currentNodeFlow = structuredClone(initialNodeFlow);
   let nodeFlowUpdated = false;
   let currentExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal> = {};
   let executionApprovalsUpdated = false;
@@ -357,11 +380,55 @@ export const onRequestOptions = async () =>
     headers: CORS_HEADERS,
   });
 
-export const onRequestPost = async (context: any) => {
-  const body = (await context.request.json().catch(() => null)) as AgentHttpRunRequest | null;
+export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
+  let sessionOwner: string;
+  let body: AgentHttpRunRequest | null = null;
+  try {
+    sessionOwner = await getUserId(context.request, context.env);
+    await enforceRateLimit({
+      db: context.env.DB,
+      namespace: "agent-run",
+      subject: sessionOwner,
+      limit: 10,
+      windowSeconds: 60,
+    });
+    body = await readJsonRequest<AgentHttpRunRequest>(context.request, MAX_AGENT_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof Response) return withCorsHeaders(error);
+    throw error;
+  }
   if (!body?.run?.projectId || !body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.nodeFlow) {
     return new Response(JSON.stringify({ error: "请求缺少 run.projectId、run.sessionId、run.userText、runtime.model 或 nodeFlow。" }), {
       status: 400,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    });
+  }
+  try {
+    body = { ...body, nodeFlow: parseNodeFlowFile(body.nodeFlow) };
+  } catch (error) {
+    return new Response(JSON.stringify({
+      error: error instanceof Error ? error.message : "Agent NodeFlow payload is invalid.",
+    }), {
+      status: 400,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    });
+  }
+  if (
+    body.run.projectId.length > 256 ||
+    body.run.sessionId.length > 256 ||
+    body.run.userText.length > MAX_AGENT_TEXT_LENGTH ||
+    body.nodeFlow.nodes.length > MAX_AGENT_NODES ||
+    body.nodeFlow.links.length > MAX_AGENT_LINKS ||
+    (body.run.attachments?.length || 0) > 8
+  ) {
+    return new Response(JSON.stringify({ error: "Agent request exceeds the allowed project, text, graph, or attachment limits." }), {
+      status: 413,
       headers: {
         ...CORS_HEADERS,
         "Content-Type": "application/json; charset=utf-8",
@@ -385,13 +452,6 @@ export const onRequestPost = async (context: any) => {
   }
 
   const provider = resolveAgentProvider(body.runtime.provider);
-  let sessionOwner: string | null = null;
-  try {
-    sessionOwner = await resolveAgentSessionOwner(context.request, context.env || {});
-  } catch (error) {
-    if (error instanceof Response) return error;
-    throw error;
-  }
   const sessionKey = createAgentSessionKey(body.run.projectId, body.run.sessionId, sessionOwner);
 
   const stream = new ReadableStream<Uint8Array>({
@@ -428,11 +488,11 @@ export const onRequestPost = async (context: any) => {
           runtime: body.runtime,
           projectId: body.run.projectId,
           sessionId: body.run.sessionId,
-          userText: body.run.userText,
+          userTextChars: body.run.userText.length,
         });
         const effectiveModel = resolveProviderModel(provider, body.runtime.model);
         const apiMode = resolveApiMode(provider);
-        const resolvedBaseUrl = resolveBaseUrl(provider, body.runtime.baseUrl);
+        const resolvedBaseUrl = resolveBaseUrl(provider);
         const resolvedApiKey = resolveApiKey(context.env || {}, provider);
         const {
           skills: enabledSkills,
@@ -528,7 +588,9 @@ export const onRequestPost = async (context: any) => {
                   return hasMeaningfulProjectPatch(patch) ? patch : undefined;
                 })()
               : undefined,
-            updatedNodeFlow: bridgeState.hasUpdatedNodeFlow() ? bridgeState.getNodeFlow() : undefined,
+            updatedNodeFlow: bridgeState.hasUpdatedNodeFlow()
+              ? parseNodeFlowFile(bridgeState.getNodeFlow())
+              : undefined,
             updatedExecutionApprovals: bridgeState.hasUpdatedExecutionApprovals()
               ? bridgeState.getExecutionApprovals()
               : undefined,

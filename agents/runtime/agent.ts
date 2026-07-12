@@ -24,39 +24,9 @@ type RuntimeDeps = {
 };
 
 const resolveApiKey = (provider: "qwen" | "openrouter" | "ark" | "deepseek", apiKey?: string) => {
-  const env = typeof import.meta !== "undefined" ? import.meta.env : undefined;
-  const processEnv = typeof process !== "undefined" ? process.env : undefined;
-  const envKey =
-    provider === "openrouter"
-      ? env?.OPENROUTER_API_KEY ||
-        env?.VITE_OPENROUTER_API_KEY ||
-        processEnv?.OPENROUTER_API_KEY ||
-        processEnv?.VITE_OPENROUTER_API_KEY
-      : provider === "ark"
-        ? env?.ARK_API_KEY ||
-          env?.VITE_ARK_API_KEY ||
-          processEnv?.ARK_API_KEY ||
-          processEnv?.VITE_ARK_API_KEY
-        : provider === "deepseek"
-          ? env?.DEEPSEEK_API_KEY ||
-            env?.VITE_DEEPSEEK_API_KEY ||
-            processEnv?.DEEPSEEK_API_KEY ||
-            processEnv?.VITE_DEEPSEEK_API_KEY
-        : env?.QWEN_API_KEY ||
-          env?.VITE_QWEN_API_KEY ||
-          env?.DASHSCOPE_API_KEY ||
-          env?.VITE_DASHSCOPE_API_KEY ||
-          processEnv?.QWEN_API_KEY ||
-          processEnv?.VITE_QWEN_API_KEY ||
-          processEnv?.DASHSCOPE_API_KEY ||
-          processEnv?.VITE_DASHSCOPE_API_KEY ||
-          env?.OPENAI_API_KEY ||
-          env?.VITE_OPENAI_API_KEY ||
-          processEnv?.OPENAI_API_KEY ||
-          processEnv?.VITE_OPENAI_API_KEY;
-  const finalKey = (apiKey || envKey || "").trim();
+  const finalKey = (apiKey || "").trim();
   if (!finalKey) {
-    throw new Error("缺少 OpenAI 兼容 API Key，无法运行新的 Agent runtime。");
+    throw new Error(`缺少 ${provider} API Key，请在项目设置中填写。`);
   }
   return finalKey;
 };

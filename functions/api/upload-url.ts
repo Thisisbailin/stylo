@@ -1,8 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { getUserId } from './_auth';
+import { readJsonRequest } from './_request';
+import type { PagesContext } from './_types';
+
+type Env = {
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_SECRET_KEY?: string;
+};
 
 const ALLOWED_BUCKETS = new Set(['assets', 'public-assets']);
 const PUBLIC_BUCKETS = new Set(['public-assets']);
+const MAX_REQUEST_BYTES = 16 * 1024;
 
 const sanitizePath = (value: unknown) => {
   if (typeof value !== 'string') return '';
@@ -33,10 +45,10 @@ const normalizeContentType = (value: unknown) => {
   return cleaned || 'application/octet-stream';
 };
 
-export const onRequestPost = async ({ request, env }) => {
+export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
   try {
     const userId = await getUserId(request, env);
-    const payload = await request.json();
+    const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const requestedFileName = sanitizePath(payload?.fileName);
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
     const contentType = normalizeContentType(payload?.contentType);

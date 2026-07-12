@@ -4,9 +4,10 @@ import { getDeviceId } from "../utils/device";
 import { buildApiUrl } from "../utils/api";
 
 type Options = {
+  accountScope: string;
   isSignedIn: boolean;
   isLoaded: boolean;
-  getToken: () => Promise<string | null>;
+  getToken: (options?: { skipCache?: boolean }) => Promise<string | null>;
   config: AppConfig;
   setConfig: (c: AppConfig | ((c: AppConfig) => AppConfig)) => void;
   debounceMs?: number;
@@ -19,7 +20,14 @@ type SecretsPayload = {
   videoApiKey?: string;
 };
 
+const normalizeSecretsPayload = (value: SecretsPayload | null | undefined): Required<SecretsPayload> => ({
+  textApiKey: typeof value?.textApiKey === "string" ? value.textApiKey : "",
+  multiApiKey: typeof value?.multiApiKey === "string" ? value.multiApiKey : "",
+  videoApiKey: typeof value?.videoApiKey === "string" ? value.videoApiKey : "",
+});
+
 export const useSecretsSync = ({
+  accountScope,
   isSignedIn,
   isLoaded,
   getToken,
@@ -42,15 +50,65 @@ export const useSecretsSync = ({
   const statusRef = useRef<SyncStatus>('idle');
   const deviceIdRef = useRef<string>(getDeviceId());
   const isLoadingRef = useRef(false);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const getTokenRef = useRef(getToken);
+  const activeScopeRef = useRef(accountScope);
+  const generationRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    getTokenRef.current = getToken;
+  }, [getToken]);
 
   const emitStatus = (status: SyncStatus, detail?: { lastSyncAt?: number; error?: string; pendingOps?: number; retryCount?: number; lastAttemptAt?: number }) => {
     statusRef.current = status;
-    onStatusChange?.(status, detail);
+    onStatusChangeRef.current?.(status, detail);
   };
 
   const createOpId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+  const isOperationCurrent = (generation: number) =>
+    mountedRef.current &&
+    generationRef.current === generation &&
+    activeScopeRef.current === accountScope;
+
+  const invalidateOperations = () => {
+    generationRef.current += 1;
+    if (saveTimeout.current) window.clearTimeout(saveTimeout.current);
+    if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
+    if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
+    saveTimeout.current = null;
+    retryTimeout.current = null;
+    saveRetryTimeout.current = null;
+    retryCountRef.current = 0;
+    hasLoadedRef.current = false;
+    lastSentRef.current = null;
+    remoteUpdatedAtRef.current = null;
+    pendingOpRef.current = null;
+    isSavingRef.current = false;
+    saveRetryCountRef.current = 0;
+    statusRef.current = "idle";
+    isLoadingRef.current = false;
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    activeScopeRef.current = accountScope;
+    invalidateOperations();
+
+    return () => {
+      mountedRef.current = false;
+      invalidateOperations();
+    };
+  }, [accountScope]);
+
   const flushSaveQueue = async () => {
+    const generation = generationRef.current;
+    if (!isOperationCurrent(generation)) return;
     if (!isSignedIn || !isLoaded || !config.syncApiKeys) return;
     if (isSavingRef.current) return;
     const op = pendingOpRef.current;
@@ -64,25 +122,41 @@ export const useSecretsSync = ({
     emitStatus('syncing', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
 
     try {
-      const token = await getToken();
+      let token = await getTokenRef.current();
+      if (!isOperationCurrent(generation)) return;
       if (!token) {
-        isSavingRef.current = false;
-        return;
+        token = await getTokenRef.current({ skipCache: true });
+        if (!isOperationCurrent(generation)) return;
       }
-      const res = await fetch(buildApiUrl("/api/secrets"), {
+      if (!token) {
+        throw new Error("Unable to obtain an authentication token for secrets sync.");
+      }
+      const executeSave = (authToken: string) => fetch(buildApiUrl("/api/secrets"), {
         method: "PUT",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${token}`,
+          authorization: `Bearer ${authToken}`,
           "x-device-id": deviceIdRef.current
         },
         body: JSON.stringify({ secrets: op.payload, updatedAt: op.baseVersion, opId: op.id })
       });
 
+      let res = await executeSave(token);
+      if (!isOperationCurrent(generation)) return;
+      if (res.status === 401 || res.status === 403) {
+        const refreshedToken = await getTokenRef.current({ skipCache: true });
+        if (!isOperationCurrent(generation)) return;
+        if (refreshedToken) {
+          res = await executeSave(refreshedToken);
+          if (!isOperationCurrent(generation)) return;
+        }
+      }
+
       if (res.status === 409) {
         emitStatus('conflict', { pendingOps: 1, retryCount: saveRetryCountRef.current, lastAttemptAt: attemptAt });
         const data = await res.json().catch(() => null);
-        const remote: SecretsPayload = data?.secrets || {};
+        if (!isOperationCurrent(generation)) return;
+        const remote = normalizeSecretsPayload(data?.secrets);
         lastSentRef.current = remote;
         if (typeof data?.updatedAt === "number") {
           remoteUpdatedAtRef.current = data.updatedAt;
@@ -105,6 +179,7 @@ export const useSecretsSync = ({
       }
 
       const data = await res.json().catch(() => null);
+      if (!isOperationCurrent(generation)) return;
       if (typeof data?.updatedAt === "number") {
         remoteUpdatedAtRef.current = data.updatedAt;
       }
@@ -115,6 +190,7 @@ export const useSecretsSync = ({
       isSavingRef.current = false;
       if (pendingOpRef.current) void flushSaveQueue();
     } catch (e) {
+      if (!isOperationCurrent(generation)) return;
       emitStatus('error', { error: "Failed to save secrets", pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current, lastAttemptAt: Date.now() });
       isSavingRef.current = false;
       if (saveRetryCountRef.current >= MAX_RETRIES) {
@@ -126,12 +202,13 @@ export const useSecretsSync = ({
       saveRetryCountRef.current += 1;
       if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
       saveRetryTimeout.current = window.setTimeout(() => {
-        void flushSaveQueue();
+        if (isOperationCurrent(generation)) void flushSaveQueue();
       }, delay);
     }
   };
 
   const enqueueSave = (payload: SecretsPayload, baseVersion?: number | null) => {
+    if (!mountedRef.current || activeScopeRef.current !== accountScope) return;
     pendingOpRef.current = {
       id: createOpId(),
       payload,
@@ -148,32 +225,20 @@ export const useSecretsSync = ({
 
   useEffect(() => {
     if (!isSignedIn || !config.syncApiKeys) {
-      pendingOpRef.current = null;
-      isSavingRef.current = false;
-      if (saveRetryTimeout.current) {
-        window.clearTimeout(saveRetryTimeout.current);
-        saveRetryTimeout.current = null;
-      }
-      saveRetryCountRef.current = 0;
+      invalidateOperations();
     }
   }, [isSignedIn, config.syncApiKeys]);
-
-  useEffect(() => {
-    return () => {
-      if (saveRetryTimeout.current) {
-        window.clearTimeout(saveRetryTimeout.current);
-      }
-    };
-  }, []);
 
   // 拉取云端密钥
   useEffect(() => {
     if (!isSignedIn || !isLoaded || !config.syncApiKeys || hasLoadedRef.current) return;
+    const generation = generationRef.current;
+    if (!isOperationCurrent(generation)) return;
     let cancelled = false;
     emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
 
     const scheduleRetry = (loadFn: () => void) => {
-      if (cancelled || hasLoadedRef.current) return;
+      if (cancelled || hasLoadedRef.current || !isOperationCurrent(generation)) return;
       if (retryCountRef.current >= MAX_RETRIES) {
         const error = "Secrets sync failed after 10 retries. Please sign in again or check your Clerk JWT template.";
         emitStatus('error', { error, retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
@@ -183,24 +248,43 @@ export const useSecretsSync = ({
       const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 15000);
       retryCountRef.current += 1;
       emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
-      retryTimeout.current = window.setTimeout(loadFn, delay);
+      retryTimeout.current = window.setTimeout(() => {
+        if (isOperationCurrent(generation)) loadFn();
+      }, delay);
     };
 
     const load = async () => {
+      if (!isOperationCurrent(generation)) return;
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
       try {
-        const token = await getToken();
+        let token = await getTokenRef.current();
+        if (!isOperationCurrent(generation)) return;
+        if (!token) {
+          token = await getTokenRef.current({ skipCache: true });
+          if (!isOperationCurrent(generation)) return;
+        }
         if (!token) {
           scheduleRetry(load);
           return;
         }
-        const res = await fetch(buildApiUrl("/api/secrets"), {
+        const executeLoad = (authToken: string) => fetch(buildApiUrl("/api/secrets"), {
           headers: {
-            authorization: `Bearer ${token}`,
+            authorization: `Bearer ${authToken}`,
             "x-device-id": deviceIdRef.current
           }
         });
+
+        let res = await executeLoad(token);
+        if (!isOperationCurrent(generation)) return;
+        if (res.status === 401 || res.status === 403) {
+          const refreshedToken = await getTokenRef.current({ skipCache: true });
+          if (!isOperationCurrent(generation)) return;
+          if (refreshedToken) {
+            res = await executeLoad(refreshedToken);
+            if (!isOperationCurrent(generation)) return;
+          }
+        }
         if (res.status === 404) {
           lastSentRef.current = { textApiKey: '', multiApiKey: '', videoApiKey: '' };
           hasLoadedRef.current = true;
@@ -214,8 +298,8 @@ export const useSecretsSync = ({
           return;
         }
         const data = await res.json();
-        if (cancelled) return;
-        const secrets: SecretsPayload = data?.secrets || {};
+        if (cancelled || !isOperationCurrent(generation)) return;
+        const secrets = normalizeSecretsPayload(data?.secrets);
         lastSentRef.current = secrets;
         hasLoadedRef.current = true;
         if (typeof data.updatedAt === "number") {
@@ -225,15 +309,17 @@ export const useSecretsSync = ({
         emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
         setConfig(prev => ({
           ...prev,
-          textConfig: { ...prev.textConfig, apiKey: secrets.textApiKey || prev.textConfig.apiKey },
-          multimodalConfig: { ...prev.multimodalConfig, apiKey: secrets.multiApiKey || prev.multimodalConfig.apiKey },
-          videoConfig: { ...prev.videoConfig, apiKey: secrets.videoApiKey || prev.videoConfig.apiKey }
+          textConfig: { ...prev.textConfig, apiKey: secrets.textApiKey ?? '' },
+          multimodalConfig: { ...prev.multimodalConfig, apiKey: secrets.multiApiKey ?? '' },
+          videoConfig: { ...prev.videoConfig, apiKey: secrets.videoApiKey ?? '' }
         }));
       } catch {
-        scheduleRetry(load);
-        emitStatus('error', { error: "Failed to load secrets", retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
+        if (isOperationCurrent(generation)) {
+          scheduleRetry(load);
+          emitStatus('error', { error: "Failed to load secrets", retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
+        }
       } finally {
-        isLoadingRef.current = false;
+        if (isOperationCurrent(generation)) isLoadingRef.current = false;
       }
     };
     load();
@@ -241,14 +327,17 @@ export const useSecretsSync = ({
       cancelled = true;
       if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
     };
-  }, [config.syncApiKeys, getToken, isLoaded, isSignedIn, setConfig, onStatusChange]);
+  }, [accountScope, config.syncApiKeys, isLoaded, isSignedIn, setConfig]);
 
   // 保存云端密钥
   useEffect(() => {
     if (!isSignedIn || !isLoaded || !config.syncApiKeys || !hasLoadedRef.current) return;
+    const generation = generationRef.current;
+    if (!isOperationCurrent(generation)) return;
     if (saveTimeout.current) window.clearTimeout(saveTimeout.current);
 
     saveTimeout.current = window.setTimeout(() => {
+      if (!isOperationCurrent(generation)) return;
       const payload: SecretsPayload = {
         textApiKey: config.textConfig.apiKey || '',
         multiApiKey: config.multimodalConfig.apiKey || '',
@@ -267,5 +356,5 @@ export const useSecretsSync = ({
     return () => {
       if (saveTimeout.current) window.clearTimeout(saveTimeout.current);
     };
-  }, [config.syncApiKeys, config.textConfig.apiKey, config.multimodalConfig.apiKey, config.videoConfig.apiKey, debounceMs, isLoaded, isSignedIn, enqueueSave]);
+  }, [accountScope, config.syncApiKeys, config.textConfig.apiKey, config.multimodalConfig.apiKey, config.videoConfig.apiKey, debounceMs, isLoaded, isSignedIn]);
 };

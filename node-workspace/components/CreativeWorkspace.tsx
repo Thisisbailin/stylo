@@ -39,6 +39,7 @@ import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 
 interface CreativeWorkspaceProps {
+  accountScope: string;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   config: AppConfig;
@@ -312,6 +313,7 @@ const getPatternDefinitions = (
 };
 
 const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
+  accountScope,
   projectData,
   setProjectData,
   config,
@@ -331,7 +333,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   accountInfo,
 }) => {
   const qalamProjectId = resolveQalamProjectId(projectData);
-  const allowLegacyQalamMigration = qalamProjectId === (projectData.flowProjects?.[0]?.id || qalamProjectId);
   const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -924,8 +925,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const qalamGlobalHeader = (
     <QalamAgent
       key={qalamProjectId}
+      accountScope={accountScope}
       projectId={qalamProjectId}
       projectData={projectData}
+      config={config}
       setProjectData={setProjectData}
       getAuthToken={getAuthToken}
       onOpenStats={() => openProjectSettingsPanel("provider")}
@@ -947,7 +950,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onScriptEditProposals={handleAgentScriptEditProposals}
       renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
-      allowLegacyConversationMigration={allowLegacyQalamMigration}
+      allowLegacyConversationMigration={false}
     />
   );
 
@@ -1059,6 +1062,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
       <ProjectSettingsPanel
         key={qalamProjectId}
+        accountScope={accountScope}
         projectId={qalamProjectId}
         isOpen={showProjectSettings}
         onClose={() => setShowProjectSettings(false)}
