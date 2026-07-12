@@ -22,7 +22,7 @@ import { CanvasBackgroundField } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
-import { LookbookPanel } from "./LookbookPanel";
+import { LookbookLeafPanel } from "./LookbookLeafPanel";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
@@ -347,7 +347,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   accountInfo,
 }) => {
   const qalamProjectId = resolveQalamProjectId(projectData);
-  const [bgTheme, setBgTheme] = useState<ThemeKey>("dark");
+  const [bgTheme, setBgTheme] = useState<ThemeKey>("light");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
@@ -366,9 +366,16 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
   const [writingSideWidth, setWritingSideWidth] = useState(getInitialWritingSideWidth);
+  const [isWritingInfoOpen, setIsWritingInfoOpen] = useState(false);
   const writingResizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [composerInput, setComposerInput] = useState("");
   const isQalamFirstMode = isQalamFirstManual;
+  const handleOpenScriptDocument = useCallback((nodeId: string) => {
+    setEditingScriptNodeId(nodeId);
+    setIsWritingInfoOpen(false);
+    setIsQalamCollapsed(true);
+    setQalamCloseRequest((count) => count + 1);
+  }, []);
   useEffect(() => {
     setQalamSubmitRequest(null);
     setAgentScriptEditProposals(null);
@@ -712,7 +719,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const flowSurface = useFlowSurface({
     projectData,
     setProjectData,
-    onOpenScriptDocument: (nodeId) => setEditingScriptNodeId(nodeId),
+    onOpenScriptDocument: handleOpenScriptDocument,
     onOpenLookbook: (nodeId) => setActiveLookbookNodeId(nodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
@@ -1001,7 +1008,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
       onSendingChange={setIsQalamSending}
       onScriptEditProposals={handleAgentScriptEditProposals}
-      renderCollapsedTrigger
+      renderCollapsedTrigger={editingScriptNodeId === null}
       agentFirstMode={isQalamFirstMode}
       allowLegacyConversationMigration={false}
     />
@@ -1139,7 +1146,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         foundationNodeView={flowSurface.actions?.foundationNodeView}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
-      {editingScriptNodeId !== null && isQalamCollapsed ? (
+      {editingScriptNodeId !== null ? (
         <WritingPanel
           projectData={projectData}
           setProjectData={setProjectData}
@@ -1152,11 +1159,15 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
           onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
+          onInfoPanelOpenChange={setIsWritingInfoOpen}
           onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
-          onClose={() => setEditingScriptNodeId(null)}
+          onClose={() => {
+            setEditingScriptNodeId(null);
+            setIsWritingInfoOpen(false);
+          }}
         />
       ) : null}
-      {editingScriptNodeId !== null ? (
+      {editingScriptNodeId !== null && isWritingInfoOpen ? (
         <button
           type="button"
           aria-label="调整剧本侧栏宽度"
@@ -1175,7 +1186,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         />
       ) : null}
       {activeLookbookNodeId !== null ? (
-        <LookbookPanel
+        <LookbookLeafPanel
           projectData={projectData}
           identityNodeId={activeLookbookNodeId}
           onClose={() => setActiveLookbookNodeId(null)}

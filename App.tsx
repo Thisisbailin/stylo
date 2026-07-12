@@ -247,7 +247,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const { config, setConfig } = useConfig(configStorageKey);
 
-  const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, true);
+  const { isDarkMode, setIsDarkMode, toggleTheme } = useTheme(THEME_STORAGE_KEY, false);
 
   // Sync global theme classes for both Tailwind dark styles and CSS variable themes
   useEffect(() => {

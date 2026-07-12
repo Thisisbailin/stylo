@@ -379,7 +379,7 @@ export interface NodeFlowNode {
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
-  relation?: "foundation-membership";
+  relation?: "foundation-membership" | "lookbook-membership";
 }
 
 export interface NodeFlowLink {

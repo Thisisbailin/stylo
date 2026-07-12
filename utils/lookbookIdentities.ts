@@ -153,6 +153,7 @@ const makeIdentityNode = (role: ProjectRoleIdentity, sourceNode: NodeFlowNode | 
     id: `identity-${role.id}`,
     type: "identityCard",
     position: { x: origin.x + (order % 2) * 760, y: origin.y + 360 + Math.floor(order / 2) * 520 },
+    style: { width: 240, height: 280 },
     data: {
       title: `${role.displayName || role.name} · 身份卡`,
       identityId: role.id,
@@ -263,12 +264,23 @@ export const syncLookbookIdentitiesFromFountain = (
 export const getLookbookMemberNodes = (projectData: ProjectData, identityNodeId: string) => {
   const flow = projectData.flow || { links: [] };
   const supportedTypes = new Set(["mdText", "text", "imageInput", "audioInput", "videoInput"]);
-  const connectedIds = new Set(
-    flow.links.flatMap((link) => {
-      if (link.source === identityNodeId) return [link.target];
-      if (link.target === identityNodeId) return [link.source];
-      return [];
-    })
-  );
-  return (flow.flowNodes || []).filter((node) => connectedIds.has(node.id) && supportedTypes.has(node.type));
+  const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
+  const seen = new Set<string>();
+  return flow.links.flatMap((link) => {
+    const connectedId = link.source === identityNodeId
+      ? link.target
+      : link.target === identityNodeId
+        ? link.source
+        : "";
+    const node = connectedId ? nodeById.get(connectedId) : undefined;
+    if (!node || seen.has(node.id) || !supportedTypes.has(node.type)) return [];
+    seen.add(node.id);
+    return [node];
+  });
 };
+
+export const getFirstLookbookImageNode = (projectData: ProjectData, identityNodeId: string) =>
+  getLookbookMemberNodes(projectData, identityNodeId).find((node) => node.type === "imageInput");
+
+export const getVisibleLookbookMemberNodes = (projectData: ProjectData, identityNodeId: string) =>
+  getLookbookMemberNodes(projectData, identityNodeId).filter((node) => node.data?.lookbookRole !== "index");

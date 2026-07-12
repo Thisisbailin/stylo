@@ -4,6 +4,8 @@ import type { ProjectData } from "../types";
 import {
   LOOKBOOK_MEMBERSHIP_RELATION,
   getLookbookMemberNodes,
+  getFirstLookbookImageNode,
+  getVisibleLookbookMemberNodes,
   parseFountainIdentityCandidates,
   syncLookbookIdentitiesFromFountain,
 } from "../utils/lookbookIdentities";
@@ -106,19 +108,26 @@ test("Lookbook projection includes only directly connected archive and media nod
   project.flow!.flowNodes!.push(
     { id: "identity-1", type: "identityCard", position: { x: 0, y: 0 }, data: { title: "身份", identityId: "role-1" } },
     { id: "archive-1", type: "mdText", position: { x: 0, y: 0 }, data: { title: "档案", text: "记录" } },
+    { id: "index-1", type: "mdText", position: { x: 0, y: 0 }, data: { title: "索引", text: "系统索引", lookbookRole: "index" } },
     { id: "image-1", type: "imageInput", position: { x: 0, y: 0 }, data: { image: "image:data", filename: "look.jpg", dimensions: null } },
     { id: "video-1", type: "videoInput", position: { x: 0, y: 0 }, data: { video: "video:data", filename: "look.mp4" } },
     { id: "generator-1", type: "imageGen", position: { x: 0, y: 0 }, data: { inputImages: [], outputImage: null, status: "idle", error: null, aspectRatio: "1:1" } }
   );
   project.flow!.links.push(
-    { id: "archive-link", source: "identity-1", target: "archive-1" },
+    { id: "index-link", source: "identity-1", target: "index-1" },
     { id: "image-link", source: "image-1", target: "identity-1" },
+    { id: "archive-link", source: "identity-1", target: "archive-1" },
     { id: "video-link", source: "identity-1", target: "video-1" },
     { id: "generator-link", source: "identity-1", target: "generator-1" }
   );
 
   assert.deepEqual(
     getLookbookMemberNodes(project, "identity-1").map((node) => node.id),
-    ["archive-1", "image-1", "video-1"]
+    ["index-1", "image-1", "archive-1", "video-1"]
   );
+  assert.deepEqual(
+    getVisibleLookbookMemberNodes(project, "identity-1").map((node) => node.id),
+    ["image-1", "archive-1", "video-1"]
+  );
+  assert.equal(getFirstLookbookImageNode(project, "identity-1")?.id, "image-1");
 });

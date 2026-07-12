@@ -53,6 +53,7 @@ export type CanvasSurfaceConfig = {
   onConnectStart?: OnConnectStart;
   onConnectEnd?: OnConnectEnd;
   onNodeClick?: (event: React.MouseEvent, node: Node) => void;
+  onNodeDoubleClick?: (event: React.MouseEvent, node: Node) => void;
   onNodeDragStart?: (event: React.MouseEvent, node: Node) => void;
   onNodeDrag?: (event: React.MouseEvent, node: Node) => void;
   onNodeDragStop?: (event: React.MouseEvent, node: Node) => void;

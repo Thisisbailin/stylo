@@ -1417,6 +1417,7 @@ export const QalamAgent: React.FC<Props> = ({
           style={{ top: titleOrigin.y, minHeight: titleOrigin.height }}
         >
           <div className="flex min-w-0 items-center gap-3">
+            {(!collapsed || renderCollapsedTrigger) ? (
             <button
               type="button"
               onClick={collapsed ? openPanel : closePanel}
@@ -1426,6 +1427,7 @@ export const QalamAgent: React.FC<Props> = ({
             >
               {qalamMark}
             </button>
+            ) : null}
             {!effectiveCollapsed && showUsageBadge && (
               <button
                 type="button"

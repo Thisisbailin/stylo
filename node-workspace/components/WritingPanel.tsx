@@ -21,6 +21,7 @@ type Props = {
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
   onOpenQalam?: () => void;
   onCloseQalam?: () => void;
+  onInfoPanelOpenChange?: (open: boolean) => void;
   onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
 };
 
@@ -806,6 +807,7 @@ export const WritingPanel: React.FC<Props> = ({
   onCommitScriptDocument,
   onOpenQalam,
   onCloseQalam,
+  onInfoPanelOpenChange,
   onSubmitToQalam,
 }) => {
   const scriptNode = useMemo(
@@ -828,7 +830,7 @@ export const WritingPanel: React.FC<Props> = ({
       : { width: 1440, height: 960 }
   );
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
-  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(!isQalamOpen);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [isFormatGuideOpen, setIsFormatGuideOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(true);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -987,8 +989,12 @@ export const WritingPanel: React.FC<Props> = ({
   }, []);
 
   useEffect(() => {
-    setIsInfoPanelOpen(!isQalamOpen);
+    if (isQalamOpen) setIsInfoPanelOpen(false);
   }, [isQalamOpen]);
+
+  useEffect(() => {
+    onInfoPanelOpenChange?.(isInfoPanelOpen);
+  }, [isInfoPanelOpen, onInfoPanelOpenChange]);
 
   useEffect(() => {
     if (!agentLine) return;
@@ -1604,16 +1610,30 @@ export const WritingPanel: React.FC<Props> = ({
     ? isCompactLayout
       ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
       : { paddingLeft: `${qalamPanelWidth + 44}px` }
-    : { paddingLeft: `${sidePanelWidth + 3}px` };
-  const switchSidePanel = () => {
+    : isInfoPanelOpen
+      ? { paddingLeft: `${sidePanelWidth + 3}px` }
+      : undefined;
+  const toggleAgentPanel = () => {
+    if (isQalamOpen) {
+      onCloseQalam?.();
+      return;
+    }
+    setIsInfoPanelOpen(false);
+    onOpenQalam?.();
+  };
+  const toggleInfoPanel = () => {
     if (isInfoPanelOpen) {
       setIsInfoPanelOpen(false);
-      onOpenQalam?.();
       return;
     }
     onCloseQalam?.();
     setIsInfoPanelOpen(true);
   };
+  const activeSideInset = isQalamOpen && !isCompactLayout
+    ? qalamPanelWidth + 44
+    : isInfoPanelOpen
+      ? sidePanelWidth
+      : 0;
   const handleClose = () => {
     applyToProject();
     onClose?.();
@@ -1637,11 +1657,19 @@ export const WritingPanel: React.FC<Props> = ({
                   <div className="writing-header-actions">
                     <button
                       type="button"
-                      onClick={switchSidePanel}
-                      className="writing-icon-button writing-more-button"
-                      title={isInfoPanelOpen ? "切换到 Agent" : "切换到稿纸信息"}
+                      onClick={toggleAgentPanel}
+                      className={`writing-icon-button writing-more-button ${isQalamOpen ? "is-active" : ""}`}
+                      title={isQalamOpen ? "关闭 Agent" : "打开 Agent"}
                     >
-                      {isInfoPanelOpen ? <MessageSquare size={17} strokeWidth={1.8} /> : <Info size={17} strokeWidth={1.8} />}
+                      <MessageSquare size={17} strokeWidth={1.8} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={toggleInfoPanel}
+                      className={`writing-icon-button ${isInfoPanelOpen ? "is-active" : ""}`}
+                      title={isInfoPanelOpen ? "关闭稿纸信息" : "打开稿纸信息"}
+                    >
+                      <Info size={17} strokeWidth={1.8} />
                     </button>
                     <button
                       type="button"
@@ -1864,7 +1892,7 @@ export const WritingPanel: React.FC<Props> = ({
                   className="writing-format-dock"
                   role="dialog"
                   aria-label="Fountain 格式引导"
-                  style={{ paddingLeft: isQalamOpen && !isCompactLayout ? qalamPanelWidth + 62 : sidePanelWidth + 18 }}
+                  style={{ paddingLeft: activeSideInset + 18 }}
                 >
                   <button
                     type="button"
@@ -2001,7 +2029,15 @@ export const WritingPanel: React.FC<Props> = ({
                     <strong>稿纸 Info</strong>
                     <span>{draft.title}</span>
                   </div>
-                  <button type="button" onClick={switchSidePanel} title="切换到 Agent" aria-label="切换到 Agent">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInfoPanelOpen(false);
+                      onOpenQalam?.();
+                    }}
+                    title="切换到 Agent"
+                    aria-label="切换到 Agent"
+                  >
                     <MessageSquare size={16} strokeWidth={1.8} />
                   </button>
                 </header>

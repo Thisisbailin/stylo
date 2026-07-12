@@ -461,6 +461,7 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   position: node.position || getDefaultFlowNodePosition(index),
   measured: sanitizeScriptMeasured(node.measured),
   selected: false,
+  style: node.type === "identityCard" ? { ...node.style, width: 240, height: 280 } : node.style,
   data: {
     ...createDefaultNodeFlowNodeData(node.type),
     ...(node.data || {}),
@@ -802,6 +803,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isFoundationGatewayOpen, setIsFoundationGatewayOpen] = useState(false);
   const [projectDraft, setProjectDraft] = useState<ScriptFoundationProjectDraft | null>(null);
   const [pendingDeleteProjectId, setPendingDeleteProjectId] = useState<string | null>(null);
+  const [isFoundationExpanded, setIsFoundationExpanded] = useState(false);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
@@ -1080,6 +1082,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
     setNodeCreateMenu((current) =>
       current ? null : { x: event.clientX, y: event.clientY }
     );
+    setIsFoundationExpanded(false);
     setMenuState(null);
     setEditingTarget(null);
     setIsFoundationGatewayOpen(false);
@@ -1113,6 +1116,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       {!isFoundationGatewayOpen ? (
       <div
         className={`script-foundation-dock script-foundation-filmstrip ${isAgentTailOpen ? "is-agent-open" : ""} ${isAxisSwitching ? "is-axis-switching" : ""}`}
+        data-foundation-expanded={isFoundationExpanded && !isAgentTailOpen}
         aria-label="剧本基地"
       >
         <div
@@ -1121,7 +1125,39 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
           aria-label="Account control"
         />
 
-        <div className={`script-foundation-axis-body ${isAgentTailOpen ? "is-axis-collapsed" : ""}`}>
+        <button
+          type="button"
+          className={`script-foundation-bar-label script-foundation-bar-label--foundation ${isFoundationExpanded && !isAgentTailOpen ? "is-active" : ""}`}
+          onClick={() => {
+            setIsFoundationExpanded((current) => !current);
+            setIsAgentTailOpen(false);
+            setNodeCreateMenu(null);
+            setMenuState(null);
+            setEditingTarget(null);
+            setIsFoundationGatewayOpen(false);
+          }}
+          title={isFoundationExpanded && !isAgentTailOpen ? "收起 Foundation" : "展开 Foundation"}
+          aria-expanded={isFoundationExpanded && !isAgentTailOpen}
+        >
+          <span className="script-foundation-bar-label__icon" aria-hidden="true">
+            {activeAxis === "time" ? (
+              <Clock3 size={15} strokeWidth={1.9} />
+            ) : activeAxis === "space" ? (
+              <MapIcon size={15} strokeWidth={1.9} />
+            ) : activeAxis === "character" ? (
+              <UserRound size={15} strokeWidth={1.9} />
+            ) : (
+              <Clapperboard size={15} strokeWidth={1.9} />
+            )}
+          </span>
+          <span className="script-foundation-bar-label__text">
+            <strong>Foundation</strong>
+            <small>{activeAxisDefinition.label}</small>
+          </span>
+        </button>
+
+        {isFoundationExpanded && !isAgentTailOpen ? (
+        <div className="script-foundation-axis-body">
           <div className="script-foundation-ribbon-background" aria-hidden="true" />
           <button
             type="button"
@@ -1146,8 +1182,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             </span>
           </button>
 
-          {!isAgentTailOpen ? (
-            <div ref={trackRef} className="script-foundation-track">
+          <div ref={trackRef} className="script-foundation-track">
               {activeAxisBlocks.map((block, axisIndex, axisBlocks) => {
                 const weightedWidthTotal = activeAxis === "time"
                   ? 1
@@ -1238,12 +1273,27 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 );
               })}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <div className={`script-foundation-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
           {isAgentTailOpen ? (
             <div className="script-foundation-tail-composer qalam-surface">
+              <button
+                type="button"
+                className="script-foundation-bar-label script-foundation-bar-label--agent is-active"
+                onClick={() => setIsAgentTailOpen(false)}
+                title="收起 Agent"
+                aria-expanded="true"
+              >
+                <span className="script-foundation-bar-label__icon" aria-hidden="true">
+                  <Bot size={15} strokeWidth={1.85} />
+                </span>
+                <span className="script-foundation-bar-label__text">
+                  <strong>Agent</strong>
+                  <small>Qalam</small>
+                </span>
+              </button>
               <textarea
                 ref={agentComposerRef}
                 value={agentComposerValue}
@@ -1292,13 +1342,28 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             </div>
           ) : (
             <div className="script-foundation-tail-labels">
-              <button type="button" onClick={handleTailNodeClick} title="新增节点" aria-label="新增节点">
-                <Network size={15} strokeWidth={1.85} />
+              <button
+                type="button"
+                className={`script-foundation-bar-label script-foundation-bar-label--nodes ${nodeCreateMenu ? "is-active" : ""}`}
+                onClick={handleTailNodeClick}
+                title="新增节点"
+                aria-label="新增节点"
+                aria-expanded={!!nodeCreateMenu}
+              >
+                <span className="script-foundation-bar-label__icon" aria-hidden="true">
+                  <Network size={15} strokeWidth={1.85} />
+                </span>
+                <span className="script-foundation-bar-label__text">
+                  <strong>Nodes</strong>
+                  <small>Add</small>
+                </span>
               </button>
               <button
                 type="button"
+                className="script-foundation-bar-label script-foundation-bar-label--agent"
                 onClick={() => {
                   setIsAgentTailOpen(true);
+                  setIsFoundationExpanded(false);
                   setMenuState(null);
                   setNodeCreateMenu(null);
                   setEditingTarget(null);
@@ -1306,8 +1371,15 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 }}
                 title="打开轴尾 Agent"
                 aria-label="打开轴尾 Agent"
+                aria-expanded="false"
               >
-                <Bot size={15} strokeWidth={1.85} />
+                <span className="script-foundation-bar-label__icon" aria-hidden="true">
+                  <Bot size={15} strokeWidth={1.85} />
+                </span>
+                <span className="script-foundation-bar-label__text">
+                  <strong>Agent</strong>
+                  <small>Qalam</small>
+                </span>
               </button>
             </div>
           )}
@@ -1979,6 +2051,7 @@ export const useFlowSurface = ({
       .map((node, index) => ({
         ...node,
         position: node.position || getDefaultFlowNodePosition(index),
+        style: node.type === "identityCard" ? { ...node.style, width: 240, height: 280 } : node.style,
         selected: selectedNodeIds.has(node.id),
         data: {
           ...createDefaultNodeFlowNodeData(node.type),
