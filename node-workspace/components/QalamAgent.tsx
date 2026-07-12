@@ -59,6 +59,7 @@ type Props = {
   allowLegacyConversationMigration?: boolean;
   conversationResetToken?: number;
   panelStyleOverride?: React.CSSProperties;
+  writingDock?: { active: boolean; width: number };
   showUsageBadge?: boolean;
   onScriptEditProposals?: (batch: AgentScriptEditProposalBatch) => void;
 };
@@ -517,6 +518,7 @@ export const QalamAgent: React.FC<Props> = ({
   allowLegacyConversationMigration = false,
   conversationResetToken,
   panelStyleOverride,
+  writingDock,
   showUsageBadge = true,
   onScriptEditProposals,
 }) => {
@@ -1182,7 +1184,8 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
-  const panelClassName = "pointer-events-auto qalam-panel";
+  const isWritingDock = writingDock?.active === true;
+  const panelClassName = `pointer-events-auto qalam-panel ${isWritingDock ? "qalam-panel--writing-dock" : ""}`;
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const handleApprovalChoice = useCallback(
@@ -1269,7 +1272,9 @@ export const QalamAgent: React.FC<Props> = ({
     },
     [approveExecution, dismissExecutionApproval, setApprovalPreferences, setMessages]
   );
-  const qalamVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.65));
+  const qalamVisibleMaxHeight = isWritingDock
+    ? Math.max(280, viewportSize.height - 92)
+    : Math.max(280, Math.floor(viewportSize.height * 0.65));
   const qalamChromeHeight = 62;
   const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
   const qalamGlassConfig = useMemo(
@@ -1301,11 +1306,14 @@ export const QalamAgent: React.FC<Props> = ({
   const qalamGlassTop = glassAnchorFrame.top + qalamGlassOffsetY;
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
-    top: dockInset,
-    left: dockInset,
-    width: agentFirstMode
-      ? Math.max(320, viewportSize.width - dockInset * 2)
-      : Math.min(420, Math.max(320, viewportSize.width - dockInset * 2)),
+    top: isWritingDock ? 3 : dockInset,
+    bottom: isWritingDock ? 3 : undefined,
+    left: isWritingDock ? 3 : dockInset,
+    width: isWritingDock
+      ? Math.max(280, writingDock?.width || 420) - 3
+      : agentFirstMode
+        ? Math.max(320, viewportSize.width - dockInset * 2)
+        : Math.min(420, Math.max(320, viewportSize.width - dockInset * 2)),
     maxWidth: `calc(100vw - ${dockInset * 2}px)`,
     zIndex: 80,
   };
@@ -1350,7 +1358,7 @@ export const QalamAgent: React.FC<Props> = ({
 
   const isOpenPhase = panelPhase === "open";
   const qalamGlassOverlay =
-    typeof document !== "undefined" && !effectiveCollapsed && qalamGlassWidth > 0 && qalamGlassHeight > 0
+    !isWritingDock && typeof document !== "undefined" && !effectiveCollapsed && qalamGlassWidth > 0 && qalamGlassHeight > 0
       ? createPortal(
           <div
             className="pointer-events-none fixed z-[79] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
@@ -1403,15 +1411,18 @@ export const QalamAgent: React.FC<Props> = ({
           ...resolvedPanelStyle,
           transition: `opacity ${PANEL_ANIMATION_MS}ms cubic-bezier(0.16,1,0.3,1)`,
           pointerEvents: "none",
-          overflow: "visible",
-          background: "transparent",
-          boxShadow: "none",
+          overflow: isWritingDock ? "hidden" : "visible",
+          background: isWritingDock ? "var(--app-panel)" : "transparent",
+          border: isWritingDock ? "1px solid var(--app-border)" : "none",
+          borderRadius: isWritingDock ? 18 : undefined,
+          boxShadow: isWritingDock ? "0 30px 80px rgba(0,0,0,0.24)" : "none",
           backdropFilter: "none",
           WebkitBackdropFilter: "none",
+          opacity: isWritingDock && effectiveCollapsed ? 0 : 1,
           fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
         }}
       >
-        <div className="relative">
+        <div className={isWritingDock ? "relative h-full" : "relative"}>
         <div
           className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
           style={{ top: titleOrigin.y, minHeight: titleOrigin.height }}
@@ -1439,7 +1450,7 @@ export const QalamAgent: React.FC<Props> = ({
           </div>
         </div>
         <div
-          className={`px-4 pb-4 pt-[38px] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`${isWritingDock ? "h-full px-5 pb-5 pt-[66px]" : "px-4 pb-4 pt-[38px]"} transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             effectiveCollapsed ? "pointer-events-none opacity-0" : "pointer-events-auto opacity-100"
           }`}
         >

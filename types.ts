@@ -99,7 +99,7 @@ export interface FlowLink {
   targetHandle?: HandleType;
   data?: {
     hasPause?: boolean;
-    relation?: "foundation-membership";
+    relation?: "foundation-membership" | "lookbook-membership";
     [key: string]: unknown;
   };
 }
@@ -184,6 +184,10 @@ export interface ProjectRoleIdentity {
   assetPriority?: "high" | "medium" | "low";
   avatarUrl?: string;
   portraits: ProjectRolePortrait[];
+  profileDocumentId?: string;
+  profileNodeId?: string;
+  sourceDocumentIds?: string[];
+  lastDerivedAt?: number;
 }
 
 export type DesignAssetCategory = "identity";

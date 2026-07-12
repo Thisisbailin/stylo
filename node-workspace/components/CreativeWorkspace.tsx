@@ -22,6 +22,7 @@ import { CanvasBackgroundField } from "./CanvasBackgroundField";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { WritingPanel } from "./WritingPanel";
+import { LookbookPanel } from "./LookbookPanel";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
@@ -37,6 +38,19 @@ import type {
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
+import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
+
+const WRITING_SIDE_WIDTH_STORAGE_KEY = "qalam_writing_side_width_v1";
+const clampWritingSideWidth = (width: number) => {
+  if (typeof window === "undefined") return Math.max(320, width);
+  return Math.round(Math.min(Math.max(320, window.innerWidth * 0.56), Math.max(280, width)));
+};
+
+const getInitialWritingSideWidth = () => {
+  if (typeof window === "undefined") return 420;
+  const stored = Number(window.localStorage.getItem(WRITING_SIDE_WIDTH_STORAGE_KEY));
+  return clampWritingSideWidth(Number.isFinite(stored) && stored > 0 ? stored : Math.round(window.innerWidth * 0.4));
+};
 
 interface CreativeWorkspaceProps {
   accountScope: string;
@@ -337,6 +351,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
+  const [activeLookbookNodeId, setActiveLookbookNodeId] = useState<string | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [projectSettingsPanel, setProjectSettingsPanel] = useState<ProjectSettingsPanelKey>("provider");
@@ -350,6 +365,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [agentScriptEditProposals, setAgentScriptEditProposals] = useState<AgentScriptEditProposalBatch | null>(null);
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
+  const [writingSideWidth, setWritingSideWidth] = useState(getInitialWritingSideWidth);
+  const writingResizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [composerInput, setComposerInput] = useState("");
   const isQalamFirstMode = isQalamFirstManual;
   useEffect(() => {
@@ -358,6 +375,37 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setComposerInput("");
     setIsQalamSending(false);
   }, [qalamProjectId]);
+  useEffect(() => {
+    window.localStorage.setItem(WRITING_SIDE_WIDTH_STORAGE_KEY, String(writingSideWidth));
+  }, [writingSideWidth]);
+  useEffect(() => {
+    const syncWidth = () => setWritingSideWidth((current) => clampWritingSideWidth(current));
+    window.addEventListener("resize", syncWidth);
+    return () => window.removeEventListener("resize", syncWidth);
+  }, []);
+  useEffect(() => {
+    if (editingScriptNodeId === null) return;
+    const move = (event: PointerEvent) => {
+      const active = writingResizeRef.current;
+      if (!active || event.pointerId !== active.pointerId) return;
+      setWritingSideWidth(clampWritingSideWidth(active.startWidth + event.clientX - active.startX));
+    };
+    const stop = (event: PointerEvent) => {
+      const active = writingResizeRef.current;
+      if (!active || event.pointerId !== active.pointerId) return;
+      writingResizeRef.current = null;
+      document.body.classList.remove("qalam-resizing");
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      document.body.classList.remove("qalam-resizing");
+    };
+  }, [editingScriptNodeId]);
   const handleAgentScriptEditProposals = useCallback((batch: AgentScriptEditProposalBatch) => {
     setAgentScriptEditProposals((current) => {
       const nextNodeIds = new Set(batch.proposals.map((proposal) => proposal.nodeId));
@@ -466,8 +514,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             },
           };
         });
-        if (!didUpdate) return previous;
-        const nextData: ProjectData = {
+        if (!didUpdate && !content.trim()) return previous;
+        const nextData = syncLookbookIdentitiesFromFountain({
           ...previous,
           rawScript: "",
           episodes: [],
@@ -475,7 +523,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             ...flow,
             flowNodes,
           },
-        };
+        }, {
+          sourceNodeId: nodeId,
+          content,
+          now: updatedAt,
+        });
         return {
           ...nextData,
           flowProjects: previous.flowProjects?.length
@@ -661,6 +713,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     projectData,
     setProjectData,
     onOpenScriptDocument: (nodeId) => setEditingScriptNodeId(nodeId),
+    onOpenLookbook: (nodeId) => setActiveLookbookNodeId(nodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
     isActive: true,
@@ -951,6 +1004,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       renderCollapsedTrigger
       agentFirstMode={isQalamFirstMode}
       allowLegacyConversationMigration={false}
+      writingDock={{ active: editingScriptNodeId !== null, width: writingSideWidth }}
     />
   );
 
@@ -979,6 +1033,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onConnectStart={flowSurface.onConnectStart}
           onConnectEnd={flowSurface.onConnectEnd}
           onNodeClick={flowSurface.onNodeClick}
+          onNodeDoubleClick={flowSurface.onNodeDoubleClick}
           onNodeDragStart={flowSurface.onNodeDragStart}
           onNodeDrag={flowSurface.onNodeDrag}
           onNodeDragStop={flowSurface.onNodeDragStop}
@@ -1092,12 +1147,39 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           getAuthToken={getAuthToken}
           initialScriptNodeId={editingScriptNodeId}
           isQalamOpen={!isQalamCollapsed}
+          sidePanelWidth={writingSideWidth}
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
+          onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
           onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
           onClose={() => setEditingScriptNodeId(null)}
+        />
+      ) : null}
+      {editingScriptNodeId !== null ? (
+        <button
+          type="button"
+          aria-label="调整剧本侧栏宽度"
+          className="writing-split-resizer fixed bottom-[3px] top-[3px] z-[82] w-3 -translate-x-1/2 cursor-col-resize touch-none bg-transparent"
+          style={{ left: writingSideWidth }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            writingResizeRef.current = {
+              pointerId: event.pointerId,
+              startX: event.clientX,
+              startWidth: writingSideWidth,
+            };
+            document.body.classList.add("qalam-resizing");
+          }}
+        />
+      ) : null}
+      {activeLookbookNodeId !== null ? (
+        <LookbookPanel
+          projectData={projectData}
+          identityNodeId={activeLookbookNodeId}
+          onClose={() => setActiveLookbookNodeId(null)}
         />
       ) : null}
       <div

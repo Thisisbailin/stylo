@@ -73,7 +73,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
     case "scriptBoard":
       return { inputs: [], outputs: ["text"] };
     case "identityCard":
-      return { inputs: [], outputs: ["text"] };
+      return { inputs: ["multi", "image", "audio", "video", "text"], outputs: ["text"] };
     case "imageGen":
     case "nanoBananaImageGen":
       return { inputs: ["multi", "image", "text"], outputs: ["image"] };

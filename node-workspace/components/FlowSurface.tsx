@@ -256,6 +256,7 @@ type Props = {
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onOpenScriptDocument: (nodeId: string) => void;
+  onOpenLookbook?: (nodeId: string) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
   isActive?: boolean;
@@ -1733,6 +1734,7 @@ export const useFlowSurface = ({
   projectData,
   setProjectData,
   onOpenScriptDocument,
+  onOpenLookbook,
   canvasControls,
   screenToFlowPosition,
   isActive = false,
@@ -3510,6 +3512,13 @@ export const useFlowSurface = ({
     [allFoundationBlocks, onOpenScriptDocument]
   );
 
+  const handleScriptNodeDoubleClick = useCallback(
+    (node: FlowRenderNode) => {
+      if (node.type === "identityCard") onOpenLookbook?.(node.id);
+    },
+    [onOpenLookbook]
+  );
+
   const overlays = (
     <>
       {connectionDrop ? (
@@ -3602,6 +3611,7 @@ export const useFlowSurface = ({
     onConnectStart: handleConnectStart,
     onConnectEnd: handleConnectEnd,
     onNodeClick: (_, node) => handleScriptNodeClick(node as FlowRenderNode),
+    onNodeDoubleClick: (_, node) => handleScriptNodeDoubleClick(node as FlowRenderNode),
     onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
     onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
     onNodeDragStop: () => onAlignmentGuideChange(null),

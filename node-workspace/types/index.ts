@@ -31,6 +31,8 @@ export interface BaseNodeData extends Record<string, unknown> {
   title?: string;
   qalamNodeRef?: string;
   foundationContainerId?: string;
+  lookbookIdentityId?: string;
+  lookbookRole?: "index" | "member";
 }
 
 export interface ImageInputNodeData extends BaseNodeData {
@@ -205,6 +207,7 @@ export interface ScriptBoardNodeData extends BaseNodeData {
 export interface IdentityCardNodeData extends BaseNodeData {
   title: string;
   identityId?: string;
+  lookbookIndexNodeId?: string;
   avatarOverrides?: Record<string, string>;
 }
 

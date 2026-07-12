@@ -1,5 +1,5 @@
 import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Check, CheckCheck, Download, Focus, Minimize2, MoreHorizontal, Quote, RotateCcw, SendHorizontal, Trash2, X, XCircle } from "lucide-react";
+import { BarChart3, Check, CheckCheck, Download, Focus, Info, MessageSquare, Minimize2, Quote, RotateCcw, SendHorizontal, Trash2, X, XCircle } from "lucide-react";
 import type { ProjectData } from "../../types";
 import type { NodeFlowNode } from "../types";
 import { projectRolesToCharacters } from "../../utils/projectRoles";
@@ -15,10 +15,12 @@ type Props = {
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   initialScriptNodeId?: string | null;
   isQalamOpen?: boolean;
+  sidePanelWidth?: number;
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
   onOpenQalam?: () => void;
+  onCloseQalam?: () => void;
   onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
 };
 
@@ -798,10 +800,12 @@ export const WritingPanel: React.FC<Props> = ({
   onClose,
   initialScriptNodeId,
   isQalamOpen = false,
+  sidePanelWidth = 420,
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
   onOpenQalam,
+  onCloseQalam,
   onSubmitToQalam,
 }) => {
   const scriptNode = useMemo(
@@ -818,13 +822,9 @@ export const WritingPanel: React.FC<Props> = ({
   const [cursorPos, setCursorPos] = useState(0);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [dismissedMentionStart, setDismissedMentionStart] = useState<number | null>(null);
-  const [viewportSize, setViewportSize] = useState(
-    typeof window !== "undefined"
-      ? { width: window.innerWidth, height: window.innerHeight }
-      : { width: 1440, height: 960 }
-  );
   const [agentLine, setAgentLine] = useState<AgentLineState | null>(null);
-  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(!isQalamOpen);
+  const [isFormatGuideOpen, setIsFormatGuideOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(true);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubbleState | null>(null);
@@ -975,11 +975,8 @@ export const WritingPanel: React.FC<Props> = ({
   }, [agentScriptEditProposals, commitDraftToProject, onResolveAgentScriptEditProposal, scriptNode?.id]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleResize = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    setIsInfoPanelOpen(!isQalamOpen);
+  }, [isQalamOpen]);
 
   useEffect(() => {
     if (!agentLine) return;
@@ -1363,6 +1360,11 @@ export const WritingPanel: React.FC<Props> = ({
   );
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Escape" && isFormatGuideOpen) {
+      event.preventDefault();
+      setIsFormatGuideOpen(false);
+      return;
+    }
     if (mentionState && filteredCharacters.length) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1398,7 +1400,7 @@ export const WritingPanel: React.FC<Props> = ({
     if (event.key === "Tab") {
       event.preventDefault();
       setDismissedMentionStart(null);
-      completeCurrentLineFromSuggestions(event.currentTarget, event.shiftKey ? -1 : 1);
+      setIsFormatGuideOpen(true);
       return;
     }
 
@@ -1548,10 +1550,6 @@ export const WritingPanel: React.FC<Props> = ({
     setSelectionBubble(null);
   }, [draft.title, onSubmitToQalam, openWritingQalam, scriptNode, selectionBubble]);
 
-  const isCompactLayout = viewportSize.width < 1180;
-  const qalamPanelWidth = isCompactLayout
-    ? Math.max(320, viewportSize.width - 32)
-    : Math.min(440, Math.max(360, Math.floor(viewportSize.width * 0.3)));
   const screenplayLineCount = useMemo(
     () => Math.max(1, draft.body.split(/\r?\n/).length),
     [draft.body]
@@ -1586,11 +1584,16 @@ export const WritingPanel: React.FC<Props> = ({
     { label: "地点", value: locationCount },
     { label: "问题", value: parserIssues.length },
   ];
-  const stageStyle = isQalamOpen
-    ? isCompactLayout
-      ? { paddingTop: `${Math.max(316, Math.floor(viewportSize.height * 0.36))}px` }
-      : { paddingLeft: `${qalamPanelWidth + 44}px` }
-    : undefined;
+  const stageStyle = { paddingLeft: `${sidePanelWidth + 3}px` };
+  const switchSidePanel = () => {
+    if (isInfoPanelOpen) {
+      setIsInfoPanelOpen(false);
+      onOpenQalam?.();
+      return;
+    }
+    onCloseQalam?.();
+    setIsInfoPanelOpen(true);
+  };
   const handleClose = () => {
     applyToProject();
     onClose?.();
@@ -1608,17 +1611,17 @@ export const WritingPanel: React.FC<Props> = ({
             className="writing-stage pointer-events-auto h-[calc(100dvh-40px)] min-h-0 w-full transition-[padding] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
             style={stageStyle}
           >
-            <div className={`writing-studio-grid ${isInfoPanelOpen ? "is-info-open" : ""}`}>
+            <div className="writing-studio-grid">
               <section className="writing-script-shell">
                 <header className="writing-floating-header" aria-label="Script editor actions">
                   <div className="writing-header-actions">
                     <button
                       type="button"
-                      onClick={() => setIsInfoPanelOpen((current) => !current)}
+                      onClick={switchSidePanel}
                       className="writing-icon-button writing-more-button"
-                      title={isInfoPanelOpen ? "隐藏信息" : "显示信息"}
+                      title={isInfoPanelOpen ? "切换到 Agent" : "切换到稿纸信息"}
                     >
-                      {isInfoPanelOpen ? <X size={18} strokeWidth={1.8} /> : <MoreHorizontal size={18} strokeWidth={1.8} />}
+                      {isInfoPanelOpen ? <MessageSquare size={17} strokeWidth={1.8} /> : <Info size={17} strokeWidth={1.8} />}
                     </button>
                     <button
                       type="button"
@@ -1836,8 +1839,29 @@ export const WritingPanel: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="writing-format-dock">
+                {isFormatGuideOpen ? (
+                <div
+                  className="writing-format-dock"
+                  role="dialog"
+                  aria-label="Fountain 格式引导"
+                  style={{ paddingLeft: sidePanelWidth + 18 }}
+                >
+                  <button
+                    type="button"
+                    className="writing-format-dock__backdrop"
+                    onClick={() => setIsFormatGuideOpen(false)}
+                    aria-label="关闭 Fountain 格式引导"
+                  />
                   <div className="writing-format-dock__content">
+                    <div className="writing-format-dock__header">
+                      <div>
+                        <strong>Fountain 格式</strong>
+                        <span>选择当前行类型，Esc 关闭</span>
+                      </div>
+                      <button type="button" onClick={() => setIsFormatGuideOpen(false)} aria-label="关闭格式引导">
+                        <X size={14} strokeWidth={1.9} />
+                      </button>
+                    </div>
                     {currentSceneHeadingSlots ? (
                       <div className="writing-scene-format-fields" aria-label="Current scene heading">
                         <label className="writing-scene-format-field is-choice">
@@ -1947,10 +1971,20 @@ export const WritingPanel: React.FC<Props> = ({
                     </div>
                   </div>
                 </div>
+                ) : null}
               </section>
 
               {isInfoPanelOpen ? (
-              <aside className="writing-card writing-info-card">
+              <aside className="writing-card writing-info-card" style={{ width: sidePanelWidth - 3 }}>
+                <header className="writing-info-panel-header">
+                  <div>
+                    <strong>稿纸 Info</strong>
+                    <span>{draft.title}</span>
+                  </div>
+                  <button type="button" onClick={switchSidePanel} title="切换到 Agent" aria-label="切换到 Agent">
+                    <MessageSquare size={16} strokeWidth={1.8} />
+                  </button>
+                </header>
                 <div className="writing-side-section">
                   <div className="writing-side-label">操作</div>
                   <div className="writing-side-actions">

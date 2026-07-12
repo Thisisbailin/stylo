@@ -149,7 +149,7 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
 
   if (!activeIdentity) {
     return (
-      <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
+      <BaseNode title={nodeTitle} inputs={["multi", "image", "audio", "video", "text"]} outputs={["text"]} selected={selected}>
         <div className="flex min-h-[220px] items-center justify-center rounded-[24px] border border-dashed border-[var(--node-border)] text-[12px] text-[var(--node-text-secondary)]">
           当前项目还没有可展示的身份证。
         </div>
@@ -169,7 +169,7 @@ export const IdentityCardNode: React.FC<Props & { selected?: boolean }> = ({ id,
   const hasVoice = !!activeIdentity.voiceReferenceAudioUrl;
 
   return (
-    <BaseNode title={nodeTitle} outputs={["text"]} selected={selected}>
+    <BaseNode title={nodeTitle} inputs={["multi", "image", "audio", "video", "text"]} outputs={["text"]} selected={selected}>
       <div className="flex min-h-0 flex-col gap-3">
         <div className="flex items-center justify-between gap-3 border-b border-[var(--node-border)] pb-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
