@@ -22,13 +22,11 @@ import {
 export type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
 
 type HeaderProps = {
-  title: string;
   saveState: SaveState;
   isFocusMode: boolean;
   isNavigatorOpen: boolean;
   isInspectorOpen: boolean;
   isQalamOpen: boolean;
-  onTitleChange: (title: string) => void;
   onToggleFocus: () => void;
   onToggleNavigator: () => void;
   onToggleInspector: () => void;
@@ -46,13 +44,11 @@ const SAVE_LABELS: Record<SaveState, string> = {
 };
 
 export const ScreenplayHeader: React.FC<HeaderProps> = ({
-  title,
   saveState,
   isFocusMode,
   isNavigatorOpen,
   isInspectorOpen,
   isQalamOpen,
-  onTitleChange,
   onToggleFocus,
   onToggleNavigator,
   onToggleInspector,
@@ -62,21 +58,18 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
 }) => (
   <header className="screenplay-header">
     <div className="screenplay-header__leading">
-      <button type="button" className={isNavigatorOpen ? "is-active" : ""} onClick={onToggleNavigator} aria-label="切换场景导航">
-        <SidebarSimple size={18} />
-      </button>
-      <div className="screenplay-header__identity">
-        <span>SCREENPLAY</span>
-        <input value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="未命名剧本" aria-label="剧本标题" />
-      </div>
-    </div>
-
-    <div className={`screenplay-save-state is-${saveState}`} role="status" aria-live="polite">
-      {saveState === "saved" ? <CheckCircle size={14} weight="fill" /> : null}
-      <span>{SAVE_LABELS[saveState]}</span>
+      <div className="screenplay-header__app-title">Qalam</div>
     </div>
 
     <div className="screenplay-header__actions">
+      <div className={`screenplay-save-state is-${saveState}`} role="status" aria-live="polite">
+        {saveState === "saved" ? <CheckCircle size={14} weight="fill" /> : null}
+        <span>{SAVE_LABELS[saveState]}</span>
+      </div>
+      <span className="screenplay-header__divider" />
+      <button type="button" className={isNavigatorOpen ? "is-active" : ""} onClick={onToggleNavigator} title="场景导航">
+        <SidebarSimple size={18} />
+      </button>
       <button type="button" className={isQalamOpen ? "is-active" : ""} onClick={onToggleQalam} title="Qalam 助手">
         <Robot size={18} />
       </button>
@@ -101,9 +94,10 @@ type NavigatorProps = {
   analysis: ScreenplayAnalysis;
   activeLineIndex: number;
   onNavigate: (lineIndex: number) => void;
+  onClose: () => void;
 };
 
-export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, activeLineIndex, onNavigate }) => {
+export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, activeLineIndex, onNavigate, onClose }) => {
   const [query, setQuery] = useState("");
   const filteredScenes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -124,7 +118,10 @@ export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, active
           <span>OUTLINE</span>
           <strong>场景导航</strong>
         </div>
-        <small>{analysis.scenes.length}</small>
+        <div className="screenplay-panel-heading__actions">
+          <small>{analysis.scenes.length}</small>
+          <button type="button" onClick={onClose} aria-label="关闭场景导航"><X size={13} /></button>
+        </div>
       </div>
       <label className="screenplay-search">
         <MagnifyingGlass size={14} />

@@ -358,15 +358,16 @@ export const WritingPanel: React.FC<Props> = ({
   };
 
   return (
-    <div className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""}`}>
+    <div
+      className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""} ${isInspectorOpen ? "is-inspector-open" : ""}`}
+      style={{ "--screenplay-agent-inset": isQalamOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
+    >
       <ScreenplayHeader
-        title={draft.title}
         saveState={saveState}
         isFocusMode={isFocusMode}
         isNavigatorOpen={isNavigatorOpen}
         isInspectorOpen={isInspectorOpen}
         isQalamOpen={isQalamOpen}
-        onTitleChange={(title) => setDraft((current) => ({ ...current, title }))}
         onToggleFocus={() => setIsFocusMode((active) => !active)}
         onToggleNavigator={() => setIsNavigatorOpen((open) => {
           const next = !open;
@@ -383,12 +384,14 @@ export const WritingPanel: React.FC<Props> = ({
         onClose={handleClose}
       />
 
-      <div
-        className="screenplay-layout"
-        style={{ "--screenplay-agent-inset": isQalamOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
-      >
+      <div className="screenplay-layout">
         {isNavigatorOpen ? (
-          <ScreenplayNavigator analysis={analysis} activeLineIndex={activeLine.index} onNavigate={navigateToLine} />
+          <ScreenplayNavigator
+            analysis={analysis}
+            activeLineIndex={activeLine.index}
+            onNavigate={navigateToLine}
+            onClose={() => setIsNavigatorOpen(false)}
+          />
         ) : null}
 
         <main className="screenplay-document-viewport">
@@ -396,7 +399,12 @@ export const WritingPanel: React.FC<Props> = ({
             <header className="screenplay-document__masthead">
               <div>
                 <span>QALAM SCREENPLAY</span>
-                <strong>{draft.title || "未命名剧本"}</strong>
+                <input
+                  value={draft.title}
+                  onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="未命名剧本"
+                  aria-label="剧本标题"
+                />
               </div>
               <small>{analysis.stats.estimatedPages} PAGE · {analysis.stats.scenes} SCENE</small>
             </header>
