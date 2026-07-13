@@ -848,6 +848,57 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     { key: "diagonal", label: "Diagonal" },
     { key: "none", label: "None" },
   ];
+  const miniMapTheme = useMemo(
+    () => ({
+      surface: activeTheme.panelStrong,
+      border: activeTheme.border,
+      shadow: activeTheme.panelShadowStrong,
+      mask: activeTheme.scheme === "light" ? "rgba(255, 255, 255, 0.56)" : "rgba(6, 8, 10, 0.48)",
+      maskStroke: activeTheme.scheme === "light" ? "rgba(24, 24, 23, 0.16)" : "rgba(255, 255, 255, 0.14)",
+      node: activeTheme.accent,
+      nodeStroke: activeTheme.accentStrong,
+    }),
+    [activeTheme]
+  );
+
+  const handleMiniMapJump = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const targetNodes = flowSurface.nodes.filter((node) => node.hidden !== true);
+      if (!targetNodes.length) return;
+      const host = canvasViewportRef.current;
+      if (!host) return;
+
+      const miniMapBounds = event.currentTarget.getBoundingClientRect();
+      const canvasBounds = host.getBoundingClientRect();
+      const nodeBounds = getNodesBounds(targetNodes);
+      if (!nodeBounds.width || !nodeBounds.height || !canvasBounds.width || !canvasBounds.height) return;
+
+      const padding = Math.max(80, Math.min(nodeBounds.width, nodeBounds.height) * 0.12);
+      const paddedBounds = {
+        x: nodeBounds.x - padding,
+        y: nodeBounds.y - padding,
+        width: nodeBounds.width + padding * 2,
+        height: nodeBounds.height + padding * 2,
+      };
+      const ratioX = Math.min(1, Math.max(0, (event.clientX - miniMapBounds.left) / miniMapBounds.width));
+      const ratioY = Math.min(1, Math.max(0, (event.clientY - miniMapBounds.top) / miniMapBounds.height));
+      const targetX = paddedBounds.x + paddedBounds.width * ratioX;
+      const targetY = paddedBounds.y + paddedBounds.height * ratioY;
+      const currentViewport = getViewport();
+      const nextViewport = {
+        x: canvasBounds.width / 2 - targetX * currentViewport.zoom,
+        y: canvasBounds.height / 2 - targetY * currentViewport.zoom,
+        zoom: currentViewport.zoom,
+      };
+
+      void Promise.resolve(setViewport(nextViewport, { duration: 260 })).then(() => {
+        const committedViewport = getViewport();
+        handleSharedViewportChange(committedViewport, { commit: true });
+        evaluateCanvasContentLocation(committedViewport);
+      });
+    },
+    [evaluateCanvasContentLocation, flowSurface.nodes, getNodesBounds, getViewport, handleSharedViewportChange, setViewport]
+  );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1124,14 +1175,26 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             <div
               className="nodeflow-minimap-drawer"
               data-open={showMiniMap}
-              style={{ position: "absolute", right: 24, bottom: 76, pointerEvents: "auto" }}
+              style={{
+                "--nodeflow-minimap-bg": miniMapTheme.surface,
+                "--nodeflow-minimap-border": miniMapTheme.border,
+                "--nodeflow-minimap-shadow": miniMapTheme.shadow,
+              } as React.CSSProperties}
             >
               <MiniMap
                 className="nodeflow-minimap"
-                style={{ height: 130, width: 180, background: "#0b0d10", borderRadius: 16, border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 18px 40px rgba(0,0,0,0.35)" }}
-                maskColor="rgba(255,255,255,0.04)"
-                nodeStrokeColor="#38bdf8"
-                nodeColor="#0ea5e9"
+                maskColor={miniMapTheme.mask}
+                maskStrokeColor={miniMapTheme.maskStroke}
+                maskStrokeWidth={1.2}
+                nodeStrokeColor={miniMapTheme.nodeStroke}
+                nodeColor={miniMapTheme.node}
+              />
+              <button
+                type="button"
+                className="nodeflow-minimap-hitbox"
+                aria-label="跳转到小地图位置"
+                title="跳转到小地图位置"
+                onClick={handleMiniMapJump}
               />
             </div>
           )}

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CaretRight, Check, Checks, TerminalWindow, Wrench, X } from "@phosphor-icons/react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CaretRight, Check, Checks, X } from "@phosphor-icons/react";
 import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload } from "./types";
 import {
   buildStyloMessageTimeline,
@@ -11,6 +11,11 @@ import { renderStyloInlineMarkdown, renderStyloMarkdown } from "./StyloMarkdown"
 import { renderStyloToolOutput } from "./StyloToolOutput";
 import { findStyloToolDescriptor } from "../../../agents/runtime/toolCatalog";
 import { resolveToolDisplayOutcome, type ToolDisplayOutcome } from "./toolDisplayOutcome";
+import { StyloMessageIcon } from "./StyloMessageIcon";
+import {
+  STYLO_PRIMARY_MESSAGE_VISUALS,
+  resolveStyloToolMessageVisual,
+} from "./messageVisualPolicy";
 
 type Props = {
   messages: Message[];
@@ -32,16 +37,16 @@ const toolStatusLabel: Record<ToolDisplayOutcome, string> = {
 };
 
 const toolStatusClass: Record<ToolDisplayOutcome, string> = {
-  queued: "text-slate-400",
-  running: "text-amber-300",
-  success: "text-emerald-300",
-  error: "text-rose-400",
-  skipped: "text-amber-300",
-  no_change: "text-[var(--app-text-muted)]",
+  queued: "stylo-tool-status stylo-tool-status--queued",
+  running: "stylo-tool-status stylo-tool-status--running",
+  success: "stylo-tool-status stylo-tool-status--success",
+  error: "stylo-tool-status stylo-tool-status--error",
+  skipped: "stylo-tool-status stylo-tool-status--skipped",
+  no_change: "stylo-tool-status stylo-tool-status--no-change",
 };
 
 const lineSummaryClass =
-  "w-full px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
+  "stylo-work-detail-row w-full px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
 const styloBodyTextClass =
   "text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed";
@@ -92,28 +97,22 @@ const buildToolActionLabel = (tool: ToolPayload) => {
 const renderDisclosureHeader = ({
   icon,
   label,
-  toneClass,
   meta,
   expandable,
-  animate = false,
 }: {
   icon: React.ReactNode;
   label: string;
-  toneClass: string;
   meta?: React.ReactNode;
   expandable?: boolean;
-  animate?: boolean;
 }) => (
   <div className="inline-flex max-w-full items-center gap-2 align-top">
-    <span className={`inline-flex shrink-0 items-center justify-center ${toneClass} ${animate ? "animate-pulse" : ""}`}>
-      {icon}
-    </span>
-    <span className="shrink min-w-0 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
-    {meta ? <span className="shrink-0 text-[11px] font-medium">{meta}</span> : null}
+    {icon}
+    <span className="stylo-disclosure-label shrink min-w-0 text-[13px] font-medium text-[var(--app-text-primary)]">{label}</span>
+    {meta ? <span className="stylo-disclosure-meta shrink-0 text-[11px] font-medium">{meta}</span> : null}
     {expandable ? (
       <CaretRight
         size={14}
-        className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-90"
+        className="stylo-disclosure-caret shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-90"
         weight="bold"
       />
     ) : null}
@@ -172,12 +171,12 @@ const renderToolExpansion = (thread: ToolThread) => {
   return (
     <div className="mt-2 space-y-2">
       {toolOutputView ? (
-        <div className="rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3">
+        <div className="stylo-tool-detail-surface px-3.5 py-3">
           {toolOutputView}
         </div>
       ) : null}
       {content ? (
-        <pre className="max-h-[280px] overflow-auto rounded-[16px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
+        <pre className="stylo-tool-detail-surface max-h-[280px] overflow-auto px-3.5 py-3 text-[11.5px] leading-6 text-[var(--app-text-secondary)] whitespace-pre-wrap">
           <code>{content}</code>
         </pre>
       ) : null}
@@ -196,15 +195,15 @@ const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) 
   const actionLabel = buildToolActionLabel(effectiveTool);
   const status = resolveToolDisplayOutcome(thread.request?.tool, thread.result?.tool);
   const statusText = toolStatusLabel[status];
+  const visual = resolveStyloToolMessageVisual(effectiveTool.name);
 
   if (!hasDetails && !thread.result) {
     return (
-      <div className={lineSummaryClass}>
+      <div className={`${lineSummaryClass} stylo-work-detail-row--tool`}>
         <div className="inline-flex max-w-full items-center gap-2">
           {renderDisclosureHeader({
-            icon: <Wrench size={12} weight="duotone" />,
+            icon: <StyloMessageIcon visual={visual} status={status} compact active={status === "running"} />,
             label: actionLabel,
-            toneClass: "text-[var(--app-text-secondary)]",
             meta: <span className={toolStatusClass[status]}>{statusText}</span>,
           })}
         </div>
@@ -213,12 +212,11 @@ const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) 
   }
 
   return (
-    <details className={`${lineSummaryClass} group`} open={expanded || undefined}>
+    <details className={`${lineSummaryClass} stylo-work-detail-row--tool group`} open={expanded || undefined}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
-          icon: <Wrench size={12} weight="duotone" />,
+          icon: <StyloMessageIcon visual={visual} status={status} compact active={status === "running"} />,
           label: actionLabel,
-          toneClass: "text-[var(--app-text-secondary)]",
           meta: <span className={toolStatusClass[status]}>{statusText}</span>,
           expandable: true,
         })}
@@ -238,22 +236,24 @@ const buildThinkingLabel = (status: StatusMessage["statusCard"]) => {
 const renderStatusLine = (message: StatusMessage, options?: { expanded?: boolean }) => {
   const expanded = options?.expanded || false;
   const status = message.statusCard;
-  const iconToneClass =
-    status.status === "error"
-      ? "text-rose-300"
-      : status.status === "success"
-        ? "text-emerald-300"
-        : "text-sky-300";
+  const visual = status.isThinking
+    ? STYLO_PRIMARY_MESSAGE_VISUALS.thinking
+    : STYLO_PRIMARY_MESSAGE_VISUALS.response;
 
   if (!status.steps.length && !status.detail) {
     return (
-      <div className={lineSummaryClass}>
+      <div className={`${lineSummaryClass} stylo-work-detail-row--status`}>
         <div className="inline-flex max-w-full items-center gap-2">
           {renderDisclosureHeader({
-            icon: <Brain size={12} weight="duotone" />,
+            icon: (
+              <StyloMessageIcon
+                visual={visual}
+                status={status.status}
+                compact
+                active={status.status === "running"}
+              />
+            ),
             label: buildThinkingLabel(status),
-            toneClass: iconToneClass,
-            animate: status.isThinking && status.status === "running",
           })}
         </div>
       </div>
@@ -261,14 +261,19 @@ const renderStatusLine = (message: StatusMessage, options?: { expanded?: boolean
   }
 
   return (
-    <details className={`${lineSummaryClass} group`} open={expanded || undefined}>
+    <details className={`${lineSummaryClass} stylo-work-detail-row--status group`} open={expanded || undefined}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
-          icon: <Brain size={12} weight="duotone" />,
+          icon: (
+            <StyloMessageIcon
+              visual={visual}
+              status={status.status}
+              compact
+              active={status.status === "running"}
+            />
+          ),
           label: buildThinkingLabel(status),
-          toneClass: iconToneClass,
           expandable: true,
-          animate: status.isThinking && status.status === "running",
         })}
       </summary>
       {renderThinkingExpansion(status)}
@@ -285,8 +290,7 @@ const renderAssistantPanel = (message: ChatMessage) => {
     <div className="w-full space-y-3 px-1">
       {(searchEnabled || searchUsed) && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--app-panel-muted)] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+          <span className="stylo-assistant-tag inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
             {searchUsed ? "已搜索" : "搜索开启"}
           </span>
         </div>
@@ -348,34 +352,31 @@ const renderApprovalPanel = (
         : approval.status === "executing"
           ? "执行中"
           : "待确认";
-  const statusTone =
-    approval.status === "completed"
-      ? "text-emerald-200/90"
-      : approval.status === "failed"
-        ? "text-rose-200/90"
-        : approval.status === "rejected"
-          ? "text-white/70"
-          : approval.status === "executing"
-            ? "text-sky-200/90"
-            : approval.status === "approved"
-              ? "text-emerald-200/90"
-              : "text-amber-200/80";
+  const statusTone = `stylo-approval-status stylo-approval-status--${approval.status}`;
   return (
-    <div className="w-full space-y-3 rounded-[18px] border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
+    <div className="stylo-approval-panel w-full space-y-3 px-4 py-3" data-status={approval.status}>
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-amber-300/80">询问</div>
-          <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
-            {approval.action === "video_generation" ? "是否批准启动视频生成任务？" : "是否批准启动图片生成任务？"}
+        <div className="flex min-w-0 items-start gap-2.5">
+          <StyloMessageIcon
+            visual={STYLO_PRIMARY_MESSAGE_VISUALS.approval}
+            status={approval.status === "failed" ? "error" : approval.status === "completed" ? "success" : "idle"}
+          />
+          <div className="min-w-0">
+            <div className="text-[10px] font-medium text-[var(--app-text-muted)]">
+              {approval.action === "video_generation" ? "视频生成" : "图片生成"}
+            </div>
+            <div className="mt-1 text-[13px] font-semibold text-[var(--app-text-primary)]">
+              {approval.action === "video_generation" ? "是否批准启动视频生成任务？" : "是否批准启动图片生成任务？"}
+            </div>
           </div>
         </div>
-        <div className={`text-[10px] font-black uppercase tracking-[0.16em] ${statusTone}`}>{statusLabel}</div>
+        <div className={`shrink-0 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone}`}>{statusLabel}</div>
       </div>
       <div className="space-y-1 text-[12px] text-[var(--app-text-secondary)]">
         <div><span className="text-[var(--app-text-muted)]">节点：</span>{approval.nodeTitle}</div>
         <div><span className="text-[var(--app-text-muted)]">模型：</span>{approval.providerLabel} · {approval.modelLabel}</div>
         {approval.promptPreview ? (
-          <div className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2 text-[var(--app-text-primary)]">
+          <div className="stylo-approval-inset px-3 py-2 text-[var(--app-text-primary)]">
             {approval.promptPreview}
           </div>
         ) : null}
@@ -384,7 +385,7 @@ const renderApprovalPanel = (
             {approval.inputSummary.map((item) => (
               <span
                 key={item}
-                className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-[var(--app-text-primary)]"
+                className="stylo-approval-chip px-2 py-1 text-[10px] text-[var(--app-text-primary)]"
               >
                 {item}
               </span>
@@ -393,12 +394,12 @@ const renderApprovalPanel = (
         ) : null}
       </div>
       {approval.summary ? (
-        <div className="rounded-[14px] border border-white/8 bg-black/15 px-3 py-2 text-[12px] leading-relaxed text-[var(--app-text-primary)]">
+        <div className="stylo-approval-inset px-3 py-2 text-[12px] leading-relaxed text-[var(--app-text-primary)]">
           {approval.summary}
         </div>
       ) : null}
       {approval.steps?.length ? (
-        <div className="space-y-2 rounded-[14px] border border-white/8 bg-white/[0.03] px-3 py-3">
+        <div className="stylo-approval-steps space-y-2 px-3 py-3">
           {approval.steps.map((step, index) => (
             <div key={step.id} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -410,10 +411,10 @@ const renderApprovalPanel = (
                         ? "bg-rose-400"
                         : step.status === "running"
                           ? "bg-sky-400"
-                          : "bg-white/30"
+                          : "bg-[var(--app-border-strong)]"
                   }`}
                 />
-                {index < approval.steps.length - 1 ? <span className="mt-1 h-full w-px bg-white/10" /> : null}
+                {index < approval.steps.length - 1 ? <span className="mt-1 h-full w-px bg-[var(--app-border)]" /> : null}
               </div>
               <div className="min-w-0 flex-1 pb-2">
                 <div className="text-[11px] font-semibold text-[var(--app-text-primary)]">{step.label}</div>
@@ -426,11 +427,11 @@ const renderApprovalPanel = (
         </div>
       ) : null}
       {pending ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="stylo-approval-actions flex flex-wrap gap-2 pt-2">
           <button
             type="button"
             onClick={() => onApprovalChoice?.(approval, "approve_once")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/85 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white"
+            className="stylo-approval-action stylo-approval-action--primary inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-transform active:translate-y-px"
           >
             <Check size={12} />
             同意一次
@@ -438,7 +439,7 @@ const renderApprovalPanel = (
           <button
             type="button"
             onClick={() => onApprovalChoice?.(approval, "approve_always")}
-            className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-sky-200"
+            className="stylo-approval-action stylo-approval-action--secondary inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-transform active:translate-y-px"
           >
             <Checks size={12} />
             以后都同意
@@ -446,7 +447,7 @@ const renderApprovalPanel = (
           <button
             type="button"
             onClick={() => onApprovalChoice?.(approval, "reject_once")}
-            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--app-text-secondary)]"
+            className="stylo-approval-action inline-flex items-center gap-1.5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-transform active:translate-y-px"
           >
             <X size={12} />
             拒绝本次
@@ -473,11 +474,6 @@ const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
   const itemLabel = stage.toolCount > 0
     ? `${stage.toolCount} 项工具操作`
     : `${stage.items.length} 个工作阶段`;
-  const toneClass = stage.hasError
-    ? "text-rose-400"
-    : stage.isRunning
-      ? "text-[var(--accent-strong)]"
-      : "text-[var(--app-text-muted)]";
   const panelId = `${stage.key}-content`;
 
   return (
@@ -490,10 +486,15 @@ const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
         className="flex cursor-pointer list-none items-center gap-2.5 px-1 py-2 text-left [&::-webkit-details-marker]:hidden"
         aria-controls={panelId}
       >
-        <TerminalWindow size={15} weight="regular" className={`shrink-0 ${toneClass}`} aria-hidden="true" />
+        <StyloMessageIcon
+          visual={STYLO_PRIMARY_MESSAGE_VISUALS.work}
+          status={stage.hasError ? "error" : stage.isRunning ? "running" : "success"}
+          compact
+          active={stage.isRunning}
+        />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--app-text-secondary)]">
           {headline}
-          <span className="ml-1.5 font-normal text-[var(--app-text-muted)]">· {itemLabel}</span>
+          <span className="stylo-work-stage__meta ml-1.5 font-normal text-[var(--app-text-muted)]">· {itemLabel}</span>
         </span>
         <CaretRight
           size={14}
@@ -502,10 +503,10 @@ const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
           aria-hidden="true"
         />
       </summary>
-      <div id={panelId} className="ml-[7px] border-l border-[var(--app-border)] pb-1 pl-4 pt-1">
-        <div className="space-y-1.5">
+      <div id={panelId} className="stylo-work-stage__content ml-[7px] border-l border-[var(--app-border)] pb-1 pl-4 pt-1">
+        <div>
           {stage.items.map((item) => (
-            <div key={item.key} className="min-w-0">
+            <div key={item.key} className="stylo-work-stage__item min-w-0" data-work-kind={item.kind}>
               {item.kind === "status"
                 ? renderStatusLine(item.message, { expanded: false })
                 : item.kind === "tool"
@@ -523,6 +524,101 @@ const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
   );
 };
 
+const areWorkStageChildrenEqual = (
+  left: StyloWorkStage["items"][number],
+  right: StyloWorkStage["items"][number]
+) => {
+  if (left.kind !== right.kind || left.key !== right.key) return false;
+  if (left.kind === "status" && right.kind === "status") return left.message === right.message;
+  if (left.kind === "chat" && right.kind === "chat") return left.message === right.message;
+  if (left.kind === "tool" && right.kind === "tool") {
+    return left.thread.request === right.thread.request && left.thread.result === right.thread.result;
+  }
+  return false;
+};
+
+const areDisplayMessagesEqual = (left: DisplayMessageItem, right: DisplayMessageItem) => {
+  if (left.kind !== right.kind || left.key !== right.key || left.order !== right.order) return false;
+  if (left.kind === "chat" && right.kind === "chat") return left.message === right.message;
+  if (left.kind === "status" && right.kind === "status") return left.message === right.message;
+  if (left.kind === "approval" && right.kind === "approval") return left.message === right.message;
+  if (left.kind === "tool" && right.kind === "tool") {
+    return left.thread.request === right.thread.request && left.thread.result === right.thread.result;
+  }
+  if (left.kind === "work" && right.kind === "work") {
+    return left.durationMs === right.durationMs &&
+      left.toolCount === right.toolCount &&
+      left.hasFinalAnswer === right.hasFinalAnswer &&
+      left.isRunning === right.isRunning &&
+      left.hasError === right.hasError &&
+      left.items.length === right.items.length &&
+      left.items.every((item, index) => areWorkStageChildrenEqual(item, right.items[index]));
+  }
+  return false;
+};
+
+type MessageItemViewProps = {
+  item: DisplayMessageItem;
+  expanded: boolean;
+  attachRef: boolean;
+  currentItemRef: React.MutableRefObject<HTMLDivElement | null>;
+  onApprovalChoice?: (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => void;
+};
+
+const MessageItemView = memo(function MessageItemView({
+  item,
+  expanded,
+  attachRef,
+  currentItemRef,
+  onApprovalChoice,
+}: MessageItemViewProps) {
+  const isUser = item.kind === "chat" && item.message.role === "user";
+  const isAssistantPanel = item.kind === "chat" && !isUser;
+
+  return (
+    <div
+      ref={attachRef ? currentItemRef : null}
+      className={`stylo-message-item flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
+      data-current={attachRef}
+      data-message-kind={item.kind}
+    >
+      {item.kind === "work" ? (
+        <WorkStageView stage={item} />
+      ) : item.kind === "status" ? (
+        renderStatusLine(item.message, { expanded })
+      ) : item.kind === "tool" ? (
+        renderToolThread(item.thread, { expanded })
+      ) : item.kind === "approval" ? (
+        renderApprovalPanel(item.message, onApprovalChoice)
+      ) : isUser ? (
+        <div className="flex max-w-[92%] items-end gap-2 md:max-w-[86%]">
+          <div className="stylo-user-message px-4 py-3.5 text-[15px] leading-7 text-[var(--app-text-primary)] md:py-3 md:text-[13px] md:leading-relaxed">
+            {item.message.text}
+          </div>
+          <StyloMessageIcon visual={STYLO_PRIMARY_MESSAGE_VISUALS.user} compact />
+        </div>
+      ) : (
+        <div className="stylo-assistant-answer flex w-full items-start gap-2.5">
+          <StyloMessageIcon
+            visual={STYLO_PRIMARY_MESSAGE_VISUALS.assistant}
+            status={item.message.meta?.isStreaming ? "running" : "success"}
+            active={item.message.meta?.isStreaming}
+          />
+          <div className="min-w-0 flex-1 space-y-3">
+            {renderAssistantPanel(item.message)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}, (previous, next) =>
+  previous.expanded === next.expanded &&
+  previous.attachRef === next.attachRef &&
+  previous.currentItemRef === next.currentItemRef &&
+  previous.onApprovalChoice === next.onApprovalChoice &&
+  areDisplayMessagesEqual(previous.item, next.item)
+);
+
 export const StyloChatContent: React.FC<Props> = ({
   messages,
   isSending,
@@ -536,6 +632,8 @@ export const StyloChatContent: React.FC<Props> = ({
   const currentItemRef = useRef<HTMLDivElement | null>(null);
   const previousItemCountRef = useRef(0);
   const previousCurrentKeyRef = useRef<string | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const isPinnedToCurrentRef = useRef(true);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
   const [currentShiftTick, setCurrentShiftTick] = useState(0);
   const displayMessages = useMemo(() => buildStyloMessageTimeline(messages), [messages]);
@@ -545,8 +643,8 @@ export const StyloChatContent: React.FC<Props> = ({
     return displayMessages[displayMessages.length - 1];
   }, [displayMessages]);
 
-  const getCurrentAnchorScrollTop = useMemo(
-    () => (node: HTMLDivElement, currentNode: HTMLDivElement) => {
+  const getCurrentAnchorScrollTop = useCallback(
+    (node: HTMLDivElement, currentNode: HTMLDivElement) => {
       const topInset = revealMode === "latest" ? 2 : 6;
       const headerTarget = Math.max(0, currentNode.offsetTop - topInset);
       const bottomTarget = Math.max(0, currentNode.offsetTop + currentNode.offsetHeight - node.clientHeight);
@@ -555,8 +653,8 @@ export const StyloChatContent: React.FC<Props> = ({
     [revealMode]
   );
 
-  const isPinnedToCurrentAnchor = useMemo(
-    () => (node: HTMLDivElement, currentNode: HTMLDivElement) => {
+  const isPinnedToCurrentAnchor = useCallback(
+    (node: HTMLDivElement, currentNode: HTMLDivElement) => {
       const topInset = revealMode === "latest" ? 2 : 6;
       const headerTarget = Math.max(0, currentNode.offsetTop - topInset);
       const bottomTarget = Math.max(0, currentNode.offsetTop + currentNode.offsetHeight - node.clientHeight);
@@ -577,6 +675,7 @@ export const StyloChatContent: React.FC<Props> = ({
     }
     if (previousCurrentKeyRef.current !== nextKey) {
       previousCurrentKeyRef.current = nextKey;
+      isPinnedToCurrentRef.current = true;
       setIsPinnedToCurrent(true);
       setCurrentShiftTick((value) => value + 1);
     }
@@ -590,10 +689,17 @@ export const StyloChatContent: React.FC<Props> = ({
     const nextCount = displayMessages.length;
     const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
     previousItemCountRef.current = nextCount;
-    requestAnimationFrame(() => {
+    if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
       const targetTop = getCurrentAnchorScrollTop(node, currentNode);
       node.scrollTo({ top: targetTop, behavior });
     });
+    return () => {
+      if (scrollFrameRef.current == null) return;
+      cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    };
   }, [messages, currentShiftTick, displayMessages.length, getCurrentAnchorScrollTop, isPinnedToCurrent, isSending, revealMode]);
 
   useEffect(() => {
@@ -603,7 +709,10 @@ export const StyloChatContent: React.FC<Props> = ({
     const handleScroll = () => {
       const currentNode = currentItemRef.current;
       if (!currentNode) return;
-      setIsPinnedToCurrent(isPinnedToCurrentAnchor(node, currentNode));
+      const nextPinned = isPinnedToCurrentAnchor(node, currentNode);
+      if (nextPinned === isPinnedToCurrentRef.current) return;
+      isPinnedToCurrentRef.current = nextPinned;
+      setIsPinnedToCurrent(nextPinned);
     };
     node.addEventListener("scroll", handleScroll, { passive: true });
     return () => node.removeEventListener("scroll", handleScroll);
@@ -613,41 +722,6 @@ export const StyloChatContent: React.FC<Props> = ({
     if (revealMode !== "latest" && revealMode !== "scroll") return;
     previousItemCountRef.current = displayMessages.length;
   }, [displayMessages.length, revealMode]);
-
-  const renderMessageItem = (
-    item: DisplayMessageItem,
-    expanded: boolean,
-    attachRef: boolean
-  ) => {
-    const isUser = item.kind === "chat" && item.message.role === "user";
-    const isAssistantPanel = item.kind === "chat" && !isUser;
-
-    return (
-      <div
-        key={item.key}
-        ref={attachRef ? currentItemRef : null}
-        className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
-      >
-        {item.kind === "work" ? (
-          <WorkStageView stage={item} />
-        ) : item.kind === "status" ? (
-          renderStatusLine(item.message, { expanded })
-        ) : item.kind === "tool" ? (
-          renderToolThread(item.thread, { expanded })
-        ) : item.kind === "approval" ? (
-          renderApprovalPanel(item.message, onApprovalChoice)
-        ) : isUser ? (
-          <div className="max-w-[88%] rounded-[22px] bg-[var(--app-panel-soft)] px-4 py-3.5 text-[15px] leading-7 text-[var(--app-text-primary)] shadow-[0_10px_24px_-20px_rgba(0,0,0,0.18)] md:max-w-[82%] md:py-3 md:text-[13px] md:leading-relaxed">
-            {item.message.text}
-          </div>
-        ) : (
-          <div className="w-full space-y-3">
-            {renderAssistantPanel(item.message)}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   return (
     <div
@@ -672,7 +746,16 @@ export const StyloChatContent: React.FC<Props> = ({
         ) : displayMessages.map((item) => {
           const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;
           const isLatestListItem = item === displayMessages[displayMessages.length - 1];
-          return renderMessageItem(item, isCurrentReveal, revealMode === "latest" ? isCurrentReveal : isLatestListItem);
+          return (
+            <MessageItemView
+              key={item.key}
+              item={item}
+              expanded={isCurrentReveal}
+              attachRef={revealMode === "latest" ? isCurrentReveal : isLatestListItem}
+              currentItemRef={currentItemRef}
+              onApprovalChoice={onApprovalChoice}
+            />
+          );
         })}
       </div>
     </div>

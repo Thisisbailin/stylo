@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { performance } from "node:perf_hooks";
 import { StyloMessageEventState } from "../agents/react/styloMessageState";
 import {
   normalizeMessagesForDeepSeek,
@@ -23,6 +24,11 @@ import { buildDisabledTools } from "../agents/runtime/toolPolicy";
 import { normalizeStyloToolSettings } from "../agents/runtime/toolSettings";
 import type { AgentRuntimeEvent, StyloRunResult } from "../agents/runtime/types";
 import { buildStyloMessageTimeline } from "../node-workspace/components/stylo/messageTimeline";
+import {
+  STYLO_PRIMARY_MESSAGE_VISUALS,
+  STYLO_TOOL_MESSAGE_VISUALS,
+  resolveStyloToolMessageVisual,
+} from "../node-workspace/components/stylo/messageVisualPolicy";
 import { normalizeSafeExternalUrl } from "../node-workspace/components/stylo/safeExternalUrl";
 import { resolveToolDisplayOutcome } from "../node-workspace/components/stylo/toolDisplayOutcome";
 import {
@@ -115,6 +121,36 @@ test("tool metadata is unique and drives lookup, mutation, cache, and budget beh
   assert.equal(snapshot.lookupCalls, 1);
   assert.equal(snapshot.mutationCalls, 1);
   assert.throws(() => getStyloToolDescriptor("unknown_tool"), /Unknown Stylo tool/);
+});
+
+test("every registered Agent tool has a distinct message icon and unknown tools degrade safely", () => {
+  const catalogNames = STYLO_TOOL_CATALOG.map((tool) => tool.name).sort();
+  const visualNames = Object.keys(STYLO_TOOL_MESSAGE_VISUALS).sort();
+  const toolIcons = Object.values(STYLO_TOOL_MESSAGE_VISUALS).map((visual) => visual.icon);
+  const primaryIcons = Object.values(STYLO_PRIMARY_MESSAGE_VISUALS).map((visual) => visual.icon);
+
+  assert.deepEqual(visualNames, catalogNames);
+  assert.equal(new Set(toolIcons).size, toolIcons.length);
+  assert.equal(new Set(primaryIcons).size, primaryIcons.length);
+  assert.equal(resolveStyloToolMessageVisual("unknown_tool").icon, "tool_generic");
+});
+
+test("Agent message rendering binds themed visual identities to every major message kind", () => {
+  const source = readFileSync(
+    "node-workspace/components/stylo/StyloChatContent.tsx",
+    "utf8"
+  );
+  const iconSource = readFileSync(
+    "node-workspace/components/stylo/StyloMessageIcon.tsx",
+    "utf8"
+  );
+
+  for (const visualKey of ["user", "assistant", "thinking", "response", "work", "approval"] as const) {
+    assert.match(source, new RegExp(`STYLO_PRIMARY_MESSAGE_VISUALS\\.${visualKey}`));
+  }
+  assert.match(source, /resolveStyloToolMessageVisual\(effectiveTool\.name\)/);
+  assert.match(iconSource, /data-tone=\{visual\.tone\}/);
+  assert.match(iconSource, /weight="duotone"/);
 });
 
 test("tool settings are normalized in runtime and disable complete capability groups", () => {
@@ -262,7 +298,7 @@ test("message timeline pairs tool transactions in O(n) projection order", () => 
   assert.equal(timeline[0].kind === "work" && timeline[0].hasFinalAnswer, true);
 });
 
-test("message timeline collapses run work while preserving final answers and approvals", () => {
+test("message timeline collapses run work, removes redundant completion status, and preserves primary messages", () => {
   const messages: Message[] = [
     {
       role: "assistant",
@@ -294,6 +330,20 @@ test("message timeline collapses run work while preserving final answers and app
     },
     {
       role: "assistant",
+      kind: "status",
+      order: 3.5,
+      statusCard: {
+        id: "response-1",
+        runId: "run-1",
+        status: "success",
+        headline: "本轮内容已生成",
+        steps: [],
+        startedAt: 1_100,
+        updatedAt: 1_200,
+      },
+    },
+    {
+      role: "assistant",
       kind: "approval",
       order: 4,
       approval: {
@@ -322,8 +372,12 @@ test("message timeline collapses run work while preserving final answers and app
   const work = timeline.find((item) => item.kind === "work");
   assert.ok(work && work.kind === "work");
   assert.equal(work.items.length, 3);
+  assert.equal(
+    work.items.some((item) => item.kind === "status" && item.message.statusCard.id === "response-1"),
+    false
+  );
   assert.equal(work.toolCount, 1);
-  assert.equal(work.durationMs, 1_000);
+  assert.equal(work.durationMs, 1_100);
   assert.equal(work.hasFinalAnswer, true);
   assert.equal(timeline.some((item) => item.kind === "approval"), true);
   assert.equal(
@@ -334,6 +388,98 @@ test("message timeline collapses run work while preserving final answers and app
     timeline.some((item) => item.kind === "chat" && item.message.text === "继续处理。"),
     false
   );
+});
+
+test("message timeline projects a synthetic long conversation within the rendering budget", () => {
+  const messages: Message[] = [];
+  for (let index = 0; index < 2_000; index += 1) {
+    const runId = `run-${index}`;
+    const callId = `call-${index}`;
+    const order = index * 5;
+    messages.push(
+      { role: "user", kind: "chat", order, text: `任务 ${index}` },
+      {
+        role: "assistant",
+        kind: "status",
+        order: order + 1,
+        statusCard: {
+          id: `status-${index}`,
+          runId,
+          status: "success",
+          headline: "思考",
+          steps: [],
+          startedAt: order,
+          updatedAt: order + 10,
+          isThinking: true,
+        },
+      },
+      {
+        role: "assistant",
+        kind: "tool",
+        order: order + 2,
+        tool: { callId, runId, name: "read_document", status: "running" },
+      },
+      {
+        role: "assistant",
+        kind: "tool_result",
+        order: order + 3,
+        tool: { callId, runId, name: "read_document", status: "success" },
+      },
+      {
+        role: "assistant",
+        kind: "chat",
+        order: order + 4,
+        text: `完成 ${index}`,
+        meta: { runId, messageId: `answer-${index}`, isFinal: true },
+      }
+    );
+  }
+
+  const startedAt = performance.now();
+  const timeline = buildStyloMessageTimeline(messages);
+  const elapsedMs = performance.now() - startedAt;
+
+  assert.equal(timeline.length, 6_000);
+  assert.ok(elapsedMs < 1_000, `10,000-message timeline projection took ${elapsedMs.toFixed(1)}ms`);
+});
+
+test("Agent history rendering coalesces scroll frames and isolates offscreen message work", () => {
+  const componentSource = readFileSync("node-workspace/components/stylo/StyloChatContent.tsx", "utf8");
+  const styleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
+
+  assert.match(componentSource, /const MessageItemView = memo/);
+  assert.match(componentSource, /cancelAnimationFrame\(scrollFrameRef\.current\)/);
+  assert.match(componentSource, /nextPinned === isPinnedToCurrentRef\.current/);
+  assert.match(styleSource, /\.stylo-message-item:not\(\[data-current="true"\]\)[\s\S]*content-visibility:\s*auto/);
+  assert.match(styleSource, /contain-intrinsic-block-size:\s*auto 76px/);
+});
+
+test("Agent icons stay editorial while message surfaces follow Account theme panels", () => {
+  const styleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
+  const iconRule = styleSource.match(/\.stylo-message-icon\s*\{([^}]+)\}/)?.[1] || "";
+  const approvalRule = styleSource.match(/\.stylo-approval-panel\s*\{([^}]+)\}/)?.[1] || "";
+
+  assert.match(iconRule, /border-radius:\s*0/);
+  assert.match(iconRule, /background:\s*transparent/);
+  assert.match(iconRule, /box-shadow:\s*none/);
+  assert.doesNotMatch(iconRule, /radial-gradient|filter:|text-shadow/);
+  assert.match(approvalRule, /border-radius:\s*14px/);
+  assert.match(approvalRule, /var\(--app-panel-muted\)/);
+  assert.doesNotMatch(approvalRule, /radial-gradient|filter:|text-shadow/);
+});
+
+test("Agent mixed-message hierarchy keeps answers and decisions primary over work details", () => {
+  const componentSource = readFileSync("node-workspace/components/stylo/StyloChatContent.tsx", "utf8");
+  const styleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
+
+  assert.match(componentSource, /className="stylo-assistant-answer/);
+  assert.match(componentSource, /className="stylo-work-stage__content/);
+  assert.match(componentSource, /data-status=\{approval\.status\}/);
+  assert.match(styleSource, /\.stylo-assistant-answer\s*\{[\s\S]*var\(--app-panel-muted\)/);
+  assert.match(styleSource, /\.stylo-work-stage__content\s*\{[\s\S]*border-color:/);
+  assert.match(styleSource, /\.stylo-work-detail-row \.stylo-message-icon\s*\{[\s\S]*opacity:\s*0\.58/);
+  assert.match(styleSource, /\.stylo-approval-panel\[data-status="pending"\]\s*\{[\s\S]*border-color:\s*var\(--app-border-strong\)/);
+  assert.doesNotMatch(styleSource, /\.stylo-approval-panel\[data-status="pending"\]\s*\{[^}]*inset 3px/);
 });
 
 test("tool display outcomes do not present budget skips or no-ops as success", () => {

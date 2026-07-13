@@ -889,7 +889,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       const target = event.target as HTMLElement | null;
       if (
         target?.closest(
-          ".script-foundation-floating-menu, .script-foundation-block-menu-wrap, .script-foundation-node-popover, .script-foundation-block, .script-foundation-head-block, .script-foundation-tail"
+          ".script-foundation-floating-menu, .script-foundation-block-menu-wrap, .script-foundation-node-menu-wrap, .script-foundation-node-popover, .script-foundation-block, .script-foundation-head-block, .script-foundation-tail"
         )
       ) {
         return;
@@ -1386,7 +1386,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       ) : null}
 
       {nodeCreateMenu ? (
-        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 430)}>
+        <div
+          className="script-foundation-node-menu-wrap"
+          style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 430)}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <section className="script-foundation-floating-menu script-foundation-node-popover script-foundation-node-palette">
             <header className="script-foundation-node-palette__head">
               <span>新增节点</span>

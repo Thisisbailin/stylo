@@ -37,7 +37,7 @@ test("Foundation expansion rail grows above the anchored operation bar", () => {
 });
 
 test("narrow screens change spacing without moving the expanded operation bar", () => {
-  const narrowLayout = finalLayout.slice(finalLayout.lastIndexOf("@media (max-width: 760px)"));
+  const narrowLayout = finalLayout.slice(finalLayout.indexOf("@media (max-width: 760px)"));
   const dockRule = readRule(".script-foundation-dock", narrowLayout);
   const expandedRule = readRule('.script-foundation-dock[data-foundation-expanded="true"]', narrowLayout);
   const axisBodyRule = readRule(".script-foundation-axis-body", narrowLayout);

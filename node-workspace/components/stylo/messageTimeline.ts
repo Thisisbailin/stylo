@@ -72,42 +72,53 @@ const belongsInWorkStage = (item: StyloTimelineLeaf) => {
     item.message.meta?.isFinal === false;
 };
 
+const isRedundantFinalResponseStatus = (item: StyloWorkStageChild) =>
+  item.kind === "status" &&
+  item.message.statusCard.status === "success" &&
+  item.message.statusCard.isThinking !== true &&
+  /(?:最终回答|本轮内容|生成|回复)/.test(item.message.statusCard.headline);
+
 const summarizeWorkStage = (
   runId: string,
   items: StyloWorkStageChild[],
   hasFinalAnswer: boolean
 ): StyloWorkStage => {
-  const statuses = items.filter((item): item is Extract<StyloWorkStageChild, { kind: "status" }> => item.kind === "status");
-  const tools = items.filter((item): item is Extract<StyloWorkStageChild, { kind: "tool" }> => item.kind === "tool");
-  const startedAt = statuses.reduce(
-    (earliest, item) => Math.min(earliest, item.message.statusCard.startedAt),
-    Number.POSITIVE_INFINITY
-  );
-  const updatedAt = statuses.reduce(
-    (latest, item) => Math.max(latest, item.message.statusCard.updatedAt),
-    0
-  );
-  const isRunning = items.some((item) => {
-    if (item.kind === "status") return item.message.statusCard.status === "running";
-    if (item.kind === "tool") {
-      return !item.thread.result && item.thread.request?.tool.status === "running";
+  let startedAt = Number.POSITIVE_INFINITY;
+  let updatedAt = 0;
+  let firstOrder = Number.POSITIVE_INFINITY;
+  let toolCount = 0;
+  let isRunning = false;
+  let hasError = false;
+
+  items.forEach((item) => {
+    firstOrder = Math.min(firstOrder, item.order);
+    if (item.kind === "status") {
+      startedAt = Math.min(startedAt, item.message.statusCard.startedAt);
+      updatedAt = Math.max(updatedAt, item.message.statusCard.updatedAt);
+      isRunning ||= item.message.statusCard.status === "running";
+      hasError ||= item.message.statusCard.status === "error";
+      return;
     }
-    return item.message.meta?.isStreaming === true;
-  });
-  const hasError = items.some((item) => {
-    if (item.kind === "status") return item.message.statusCard.status === "error";
     if (item.kind === "tool") {
-      return (item.thread.result?.tool.status || item.thread.request?.tool.status) === "error";
+      toolCount += 1;
+      isRunning ||= !item.thread.result && item.thread.request?.tool.status === "running";
+      hasError ||= (item.thread.result?.tool.status || item.thread.request?.tool.status) === "error";
+      return;
     }
-    return false;
+    isRunning ||= item.message.meta?.isStreaming === true;
   });
+
+  const displayItems = hasFinalAnswer
+    ? items.filter((item) => !isRedundantFinalResponseStatus(item))
+    : items;
+
   return {
     kind: "work",
     key: `work-${runId}`,
-    order: Math.min(...items.map((item) => item.order)),
+    order: Number.isFinite(firstOrder) ? firstOrder : 0,
     runId,
-    items,
-    toolCount: tools.length,
+    items: displayItems,
+    toolCount,
     durationMs: Number.isFinite(startedAt) && updatedAt >= startedAt ? updatedAt - startedAt : 0,
     hasFinalAnswer,
     isRunning,
@@ -172,27 +183,34 @@ export const buildStyloMessageTimeline = (messages: Message[]): StyloDisplayMess
       .filter((runId): runId is string => Boolean(runId))
   );
   const workByRun = new Map<string, StyloWorkStageChild[]>();
-  const result: StyloDisplayMessage[] = [];
 
+  leaves.forEach((item) => {
+    const runId = runIdOf(item);
+    if (!runId || !belongsInWorkStage(item)) return;
+    const existing = workByRun.get(runId);
+    if (existing) {
+      existing.push(item as StyloWorkStageChild);
+      return;
+    }
+    workByRun.set(runId, [item as StyloWorkStageChild]);
+  });
+
+  const emittedRuns = new Set<string>();
+  const result: StyloDisplayMessage[] = [];
   leaves.forEach((item) => {
     const runId = runIdOf(item);
     if (!runId || !belongsInWorkStage(item)) {
       result.push(item);
       return;
     }
-    const existing = workByRun.get(runId);
-    if (existing) {
-      existing.push(item as StyloWorkStageChild);
-      return;
-    }
-    const workItems = [item as StyloWorkStageChild];
-    workByRun.set(runId, workItems);
-    result.push(summarizeWorkStage(runId, workItems, finalRunIds.has(runId)));
+    if (emittedRuns.has(runId)) return;
+    emittedRuns.add(runId);
+    const workStage = summarizeWorkStage(
+      runId,
+      workByRun.get(runId) || [item as StyloWorkStageChild],
+      finalRunIds.has(runId)
+    );
+    if (workStage.items.length > 0) result.push(workStage);
   });
-
-  return result
-    .map((item) => item.kind === "work"
-      ? summarizeWorkStage(item.runId, workByRun.get(item.runId) || item.items, finalRunIds.has(item.runId))
-      : item)
-    .sort((left, right) => left.order - right.order);
+  return result;
 };
