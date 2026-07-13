@@ -38,7 +38,7 @@ import type {
   StyloSubmitRequest,
   ScriptDocumentCommit,
 } from "./stylo/interactionTypes";
-import { isFoundationStructuralNode, saveActiveFlowIntoProjects } from "../foundation/scaffold";
+import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
@@ -826,7 +826,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
   const hasUserFlowNodes = useMemo(
-    () => flowSurface.nodes.some((node) => !isFoundationStructuralNode(node)),
+    () => flowSurface.nodes.some((node) => {
+      const data = node.data as Record<string, unknown> | undefined;
+      return !data?.foundationRole;
+    }),
     [flowSurface.nodes]
   );
   const patternDefinitions = useMemo(
@@ -1147,7 +1150,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           </div>
         ) : null}
 
-        {canvasContentDirection ? (
+        {canvasContentDirection && hasUserFlowNodes ? (
           <CanvasContentLocator
             direction={canvasContentDirection}
             leftInset={effectiveAgentDockWidth}
