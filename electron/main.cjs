@@ -8,6 +8,12 @@ const DESKTOP_CHROME_CSS = `
   html.qalam-desktop {
     --qalam-window-control-width: 138px;
     --qalam-window-drag-height: 36px;
+    --qalam-window-drag-left: 0px;
+  }
+
+  html.qalam-desktop-darwin {
+    --qalam-window-control-width: 0px;
+    --qalam-window-drag-left: 88px;
   }
 
   html.qalam-desktop body {
@@ -17,7 +23,7 @@ const DESKTOP_CHROME_CSS = `
   html.qalam-desktop #qalam-desktop-window-drag-region {
     position: fixed;
     top: 0;
-    left: 0;
+    left: var(--qalam-window-drag-left);
     right: var(--qalam-window-control-width);
     height: var(--qalam-window-drag-height);
     z-index: 2147483000;
@@ -144,14 +150,19 @@ const DESKTOP_CHROME_CSS = `
 
 const DESKTOP_WINDOW_CONTROLS_JS = `
   (() => {
-    if (document.getElementById("qalam-desktop-window-controls")) return;
+    if (document.getElementById("qalam-desktop-window-drag-region")) return;
 
     const api = window.qalamDesktop;
-    if (!api || typeof api.windowControl !== "function") return;
+    const isMac = document.documentElement.classList.contains("qalam-desktop-darwin");
 
     const dragRegion = document.createElement("div");
     dragRegion.id = "qalam-desktop-window-drag-region";
     dragRegion.setAttribute("aria-hidden", "true");
+
+    document.body.appendChild(dragRegion);
+    if (isMac) return;
+
+    if (!api || typeof api.windowControl !== "function") return;
 
     const controls = document.createElement("div");
     controls.id = "qalam-desktop-window-controls";
@@ -180,7 +191,6 @@ const DESKTOP_WINDOW_CONTROLS_JS = `
       api.windowControl(button.dataset.windowAction).then(syncWindowState).catch(() => {});
     });
 
-    document.body.appendChild(dragRegion);
     document.body.appendChild(controls);
     api.windowControl("get-state").then(syncWindowState).catch(() => {});
     if (typeof api.onWindowStateChange === "function") {
@@ -263,15 +273,22 @@ ipcMain.handle("qalam-window-control", (event, action) => {
 
 const createMainWindow = () => {
   const startUrl = getStartUrl();
+  const isMac = process.platform === "darwin";
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1100,
     minHeight: 720,
     title: "Qalam · Flow Workspace",
-    backgroundColor: "#0f1115",
+    backgroundColor: "#f6f6f4",
     show: false,
-    frame: false,
+    frame: isMac,
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset",
+          trafficLightPosition: { x: 16, y: 16 }
+        }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

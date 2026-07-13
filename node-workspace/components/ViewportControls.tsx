@@ -13,6 +13,7 @@ type Props = {
   onToggleMiniMap?: () => void;
   readingMode?: NodeFlowReadingMode;
   onToggleReadingMode?: () => void;
+  variant?: "floating" | "dock";
 };
 
 export const ViewportControls: React.FC<Props> = ({
@@ -26,13 +27,94 @@ export const ViewportControls: React.FC<Props> = ({
   onToggleMiniMap,
   readingMode,
   onToggleReadingMode,
+  variant = "floating",
 }) => {
+  const [isDockExpanded, setIsDockExpanded] = React.useState(false);
   const step = 0.25;
   const lockDisabled = isLocked === true;
 
   const clamp = (value: number) => Math.min(maxZoom, Math.max(minZoom, value));
   const handleMinus = () => onZoomChange(clamp(zoom - step));
   const handlePlus = () => onZoomChange(clamp(zoom + step));
+  const hasSecondaryControls = Boolean(onToggleLock || onToggleReadingMode || onToggleMiniMap);
+
+  if (variant === "dock") {
+    return (
+      <div className="script-foundation-viewport-control" data-expanded={isDockExpanded}>
+        <button
+          type="button"
+          onClick={() => setIsDockExpanded((value) => !value)}
+          className={`script-foundation-bar-label script-foundation-bar-label--viewport ${isDockExpanded ? "is-active" : ""}`}
+          aria-label={isDockExpanded ? "收起视口控件" : "展开视口控件"}
+          aria-expanded={isDockExpanded}
+          title={isDockExpanded ? "收起视口控件" : "展开视口控件"}
+        >
+          <span className="script-foundation-bar-label__icon" aria-hidden="true">
+            <LibraryBig size={15} strokeWidth={1.85} />
+          </span>
+        </button>
+
+        {isDockExpanded ? (
+          <div className="script-foundation-viewport-actions">
+            <button
+              type="button"
+              onClick={handleMinus}
+              className="script-foundation-viewport-button"
+              aria-label="缩小"
+              title="缩小"
+              disabled={lockDisabled}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={handlePlus}
+              className="script-foundation-viewport-button"
+              aria-label="放大"
+              title="放大"
+              disabled={lockDisabled}
+            >
+              <Plus size={14} />
+            </button>
+            {hasSecondaryControls ? <span className="script-foundation-viewport-divider" aria-hidden="true" /> : null}
+            {onToggleLock ? (
+              <button
+                type="button"
+                onClick={onToggleLock}
+                className={`script-foundation-viewport-button ${isLocked ? "is-active" : ""}`}
+                aria-label={isLocked ? "解锁画布" : "锁定画布"}
+                title={isLocked ? "解锁画布" : "锁定画布"}
+              >
+                {isLocked ? <LockKeyhole size={14} /> : <UnlockKeyhole size={14} />}
+              </button>
+            ) : null}
+            {onToggleReadingMode ? (
+              <button
+                type="button"
+                onClick={onToggleReadingMode}
+                className={`script-foundation-viewport-button ${readingMode === "identity" ? "is-active" : ""}`}
+                aria-label={readingMode === "identity" ? "切换到完整节点视图" : "切换到统一读取视图"}
+                title={readingMode === "identity" ? "切换到完整节点视图" : "切换到统一读取视图"}
+              >
+                {readingMode === "identity" ? <Rows3 size={14} /> : <LibraryBig size={14} />}
+              </button>
+            ) : null}
+            {onToggleMiniMap ? (
+              <button
+                type="button"
+                onClick={onToggleMiniMap}
+                className={`script-foundation-viewport-button ${showMiniMap ? "is-active" : ""}`}
+                aria-label={showMiniMap ? "隐藏地图" : "显示地图"}
+                title={showMiniMap ? "隐藏地图" : "显示地图"}
+              >
+                <Map size={14} />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="qalam-surface inline-flex w-11 flex-col items-center gap-1 rounded-full p-1">

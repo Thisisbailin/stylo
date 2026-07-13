@@ -1151,6 +1151,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
               <Clapperboard size={15} strokeWidth={1.9} />
             )}
           </span>
+          <span className="script-foundation-bar-label__text">
+            <strong>Foundation</strong>
+            <small>{activeAxisDefinition.label}</small>
+          </span>
         </button>
 
         {isFoundationExpanded && !isAgentTailOpen ? (
@@ -1272,6 +1276,12 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             </div>
           </div>
         ) : null}
+
+        <div
+          id="script-foundation-viewport-host"
+          className="script-foundation-viewport-host"
+          aria-label="Viewport controls"
+        />
 
         <div className={`script-foundation-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
           {isAgentTailOpen ? (

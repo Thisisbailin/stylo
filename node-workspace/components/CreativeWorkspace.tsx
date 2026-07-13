@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   ReactFlow,
   MiniMap,
@@ -417,8 +418,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const maxZoom = 4;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
-  const keepPeripheralWidgetsOpen = showMiniMap;
   const [isLocked, setIsLocked] = useState(false);
+  const [foundationViewportHost, setFoundationViewportHost] = useState<HTMLElement | null>(null);
   const [snapToGrid] = useState(true);
   const [snapGuide, setSnapGuide] = useState<EdgeAlignmentGuide | null>(null);
   const initialCanvasViewport = projectData.canvas?.viewport || null;
@@ -643,6 +644,16 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const handleToggleLock = useCallback(() => {
     setIsLocked((prev) => !prev);
   }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const syncHost = () => {
+      setFoundationViewportHost(document.getElementById("script-foundation-viewport-host"));
+    };
+    syncHost();
+    const frame = window.requestAnimationFrame(syncHost);
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingScriptNodeId]);
 
   const handleToggleReadingMode = useCallback(() => {
     setReadingMode(readingMode === "identity" ? "full" : "identity");
@@ -1076,6 +1087,25 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         variant="embedded"
       />
 
+      {foundationViewportHost
+        ? createPortal(
+            <ViewportControls
+              variant="dock"
+              zoom={zoomValue}
+              minZoom={minZoom}
+              maxZoom={maxZoom}
+              onZoomChange={handleZoomChange}
+              isLocked={isLocked}
+              onToggleLock={handleToggleLock}
+              showMiniMap={showMiniMap}
+              onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
+              readingMode={readingMode}
+              onToggleReadingMode={handleToggleReadingMode}
+            />,
+            foundationViewportHost
+          )
+        : null}
+
       <ProjectSettingsPanel
         key={qalamProjectId}
         accountScope={accountScope}
@@ -1125,38 +1155,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onClose={() => setActiveLookbookNodeId(null)}
         />
       ) : null}
-      <div
-        className="qalam-viewport-control-zone fixed bottom-0 left-0 z-[80] h-64 w-28 pointer-events-auto"
-        data-keep-open={keepPeripheralWidgetsOpen && !isQalamFirstMode}
-        data-qalam-first={isQalamFirstMode}
-      >
-        <div className="absolute bottom-4 left-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-end gap-3 qalam-bottom-agent">
-            <div
-              className={`qalam-bottom-controls transition duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                keepPeripheralWidgetsOpen && !isQalamFirstMode
-                  ? "opacity-100"
-                  : !isQalamFirstMode
-                    ? "opacity-0"
-                    : "opacity-0"
-              }`}
-            >
-              <ViewportControls
-                zoom={zoomValue}
-                minZoom={minZoom}
-                maxZoom={maxZoom}
-                onZoomChange={handleZoomChange}
-                isLocked={isLocked}
-                onToggleLock={handleToggleLock}
-                showMiniMap={showMiniMap}
-                onToggleMiniMap={() => setShowMiniMap((prev) => !prev)}
-                readingMode={readingMode}
-                onToggleReadingMode={handleToggleReadingMode}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
       <Toast />
       <AnnotationModal />
       {showThemeModal && (
