@@ -4,8 +4,8 @@ import {
   GlassDiffusionField,
   GlassDiffusionPresetKey,
   MaterialGlassShadow,
-  QALAM_GLASS_LAB_CONFIG,
-  QALAM_GLASS_LAB_SHADOW,
+  STYLO_GLASS_LAB_CONFIG,
+  STYLO_GLASS_LAB_SHADOW,
 } from "./GlassDiffusionField";
 
 type Props = {
@@ -25,25 +25,25 @@ const controlChipClass =
   "pointer-events-auto rounded-[22px] border border-white/10 bg-[rgba(20,22,25,0.56)] px-4 py-3 text-white/88 shadow-[0_12px_30px_rgba(0,0,0,0.16)] backdrop-blur-xl";
 
 export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
-  const [preset, setPreset] = useState<GlassDiffusionPresetKey>("qalam");
+  const [preset, setPreset] = useState<GlassDiffusionPresetKey>("stylo");
   const [posX, setPosX] = useState(36);
   const [posY, setPosY] = useState(82);
-  const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.qalam.width);
-  const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.qalam.height);
-  const [blur, setBlur] = useState(QALAM_GLASS_LAB_CONFIG.blur);
-  const [fillAlpha, setFillAlpha] = useState(QALAM_GLASS_LAB_CONFIG.fillAlpha);
-  const [saturate, setSaturate] = useState(QALAM_GLASS_LAB_CONFIG.saturate);
-  const [fadeInsetX, setFadeInsetX] = useState(QALAM_GLASS_LAB_CONFIG.fadeInsetX);
-  const [fadeInsetY, setFadeInsetY] = useState(QALAM_GLASS_LAB_CONFIG.fadeInsetY);
-  const [fade, setFade] = useState(QALAM_GLASS_LAB_CONFIG.fade);
-  const [edgeAlpha, setEdgeAlpha] = useState(QALAM_GLASS_LAB_CONFIG.edgeAlpha);
-  const [curve, setCurve] = useState(QALAM_GLASS_LAB_CONFIG.curve);
+  const [width, setWidth] = useState(GLASS_DIFFUSION_PRESETS.stylo.width);
+  const [height, setHeight] = useState(GLASS_DIFFUSION_PRESETS.stylo.height);
+  const [blur, setBlur] = useState(STYLO_GLASS_LAB_CONFIG.blur);
+  const [fillAlpha, setFillAlpha] = useState(STYLO_GLASS_LAB_CONFIG.fillAlpha);
+  const [saturate, setSaturate] = useState(STYLO_GLASS_LAB_CONFIG.saturate);
+  const [fadeInsetX, setFadeInsetX] = useState(STYLO_GLASS_LAB_CONFIG.fadeInsetX);
+  const [fadeInsetY, setFadeInsetY] = useState(STYLO_GLASS_LAB_CONFIG.fadeInsetY);
+  const [fade, setFade] = useState(STYLO_GLASS_LAB_CONFIG.fade);
+  const [edgeAlpha, setEdgeAlpha] = useState(STYLO_GLASS_LAB_CONFIG.edgeAlpha);
+  const [curve, setCurve] = useState(STYLO_GLASS_LAB_CONFIG.curve);
   const [showMaterialShadow, setShowMaterialShadow] = useState(true);
-  const [shadowX, setShadowX] = useState(QALAM_GLASS_LAB_SHADOW.offsetX);
-  const [shadowY, setShadowY] = useState(QALAM_GLASS_LAB_SHADOW.offsetY);
-  const [shadowBlur, setShadowBlur] = useState(QALAM_GLASS_LAB_SHADOW.blur);
-  const [shadowAlpha, setShadowAlpha] = useState(QALAM_GLASS_LAB_SHADOW.alpha);
-  const [shadowSpread, setShadowSpread] = useState(QALAM_GLASS_LAB_SHADOW.spread);
+  const [shadowX, setShadowX] = useState(STYLO_GLASS_LAB_SHADOW.offsetX);
+  const [shadowY, setShadowY] = useState(STYLO_GLASS_LAB_SHADOW.offsetY);
+  const [shadowBlur, setShadowBlur] = useState(STYLO_GLASS_LAB_SHADOW.blur);
+  const [shadowAlpha, setShadowAlpha] = useState(STYLO_GLASS_LAB_SHADOW.alpha);
+  const [shadowSpread, setShadowSpread] = useState(STYLO_GLASS_LAB_SHADOW.spread);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showField, setShowField] = useState(true);
   const dragStateRef = useRef<DragState>(null);
@@ -71,12 +71,12 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
     setFade(next.fade);
     setEdgeAlpha(next.edgeAlpha);
     setCurve(next.curve);
-    if (key === "qalam") {
-      setShadowX(QALAM_GLASS_LAB_SHADOW.offsetX);
-      setShadowY(QALAM_GLASS_LAB_SHADOW.offsetY);
-      setShadowBlur(QALAM_GLASS_LAB_SHADOW.blur);
-      setShadowAlpha(QALAM_GLASS_LAB_SHADOW.alpha);
-      setShadowSpread(QALAM_GLASS_LAB_SHADOW.spread);
+    if (key === "stylo") {
+      setShadowX(STYLO_GLASS_LAB_SHADOW.offsetX);
+      setShadowY(STYLO_GLASS_LAB_SHADOW.offsetY);
+      setShadowBlur(STYLO_GLASS_LAB_SHADOW.blur);
+      setShadowAlpha(STYLO_GLASS_LAB_SHADOW.alpha);
+      setShadowSpread(STYLO_GLASS_LAB_SHADOW.spread);
     }
   };
 
@@ -170,7 +170,7 @@ export const GlassEffectLab: React.FC<Props> = ({ isOpen, onClose }) => {
         <button type="button" onClick={onClose} className={`${controlChipClass} text-[11px] uppercase tracking-[0.2em] text-white/72`}>
           Close Glass Lab
         </button>
-        {(["bare", "mist", "veil", "qalam"] as GlassDiffusionPresetKey[]).map((key) => (
+        {(["bare", "mist", "veil", "stylo"] as GlassDiffusionPresetKey[]).map((key) => (
           <button
             key={key}
             type="button"

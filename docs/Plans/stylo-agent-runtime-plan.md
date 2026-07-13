@@ -1,4 +1,4 @@
-# Plan — Qalam Agent Runtime
+# Plan — Stylo Agent Runtime
 
 ## Architecture Intent Block
 

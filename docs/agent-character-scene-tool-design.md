@@ -140,4 +140,4 @@
 ## 实现提示（参考文件）
 - 数据结构：`types.ts`
 - 资产编辑与 refId 逻辑：`components/AssetsBoard.tsx`
-- Agent UI：`node-workspace/components/QalamAgent.tsx`
+- Agent UI：`node-workspace/components/StyloAgent.tsx`

@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { getNodeHandles } from "../utils/handles";
 import { resolveNodeFlowNodeStatus, resolveNodeFlowNodeTitle } from "./titles";
+import { isNodeRefField, readStyloNodeRef } from "./compatibility";
 
 export type NodeFlowNodeRecord = {
   id: string;
@@ -70,7 +71,7 @@ const summarizeScreenplayStats = (value: unknown) => {
 
 const getNodeData = (node: NodeFlowNode) => (node.data || {}) as Record<string, unknown>;
 
-export const getNodeFlowNodeRef = (node: NodeFlowNode) => trimString(getNodeData(node).qalamNodeRef) || node.id;
+export const getNodeFlowNodeRef = (node: NodeFlowNode) => trimString(readStyloNodeRef(getNodeData(node))) || node.id;
 
 export const getNodeFlowNodePlane = (_node: NodeFlowNode): NodeFlowNodeRecord["plane"] => "execution";
 
@@ -177,7 +178,7 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
       };
     default:
       return Object.fromEntries(
-        Object.entries(data).filter(([key]) => key !== "qalamNodeRef" && key !== "title" && key !== "label")
+        Object.entries(data).filter(([key]) => !isNodeRefField(key) && key !== "title" && key !== "label")
       );
   }
 };

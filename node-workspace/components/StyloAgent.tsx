@@ -10,16 +10,16 @@ import {
   GLASS_DIFFUSION_PRESETS,
   GlassDiffusionField,
   MaterialGlassShadow,
-  QALAM_GLASS_LAB_CONFIG,
-  QALAM_GLASS_LAB_SHADOW,
+  STYLO_GLASS_LAB_CONFIG,
+  STYLO_GLASS_LAB_SHADOW,
 } from "./GlassDiffusionField";
-import { QalamChatContent } from "./qalam/QalamChatContent";
-import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./qalam/types";
+import { StyloChatContent } from "./stylo/StyloChatContent";
+import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./stylo/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import type { QalamAgentBridge } from "../../agents/bridge/qalamBridge";
-import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
-import { createHttpQalamAgentRuntime } from "../../agents/runtime/httpClient";
-import { useQalamAgent } from "../../agents/react/useQalamAgent";
+import type { StyloAgentBridge } from "../../agents/bridge/styloBridge";
+import { createStyloAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
+import { createHttpStyloAgentRuntime } from "../../agents/runtime/httpClient";
+import { useStyloAgent } from "../../agents/react/useStyloAgent";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import type { NodeFlowExecutionApprovalProposal } from "../nodeflow/approvals";
 import { parseNodeFlowFile } from "../nodeflow/schema";
@@ -29,18 +29,18 @@ import {
   buildAgentRevisionConflictMessage,
   reconcileStaleAgentMessages,
   shouldRejectStaleAgentResult,
-} from "./qalam/agentResultReconciliation";
+} from "./stylo/agentResultReconciliation";
 import {
-  buildQalamAccountSessionId,
-  buildQalamAccountStorageKeys,
-  buildQalamScopedProjectData,
-  resolveQalamProjectId,
+  buildStyloAccountSessionId,
+  buildStyloAccountStorageKeys,
+  buildStyloScopedProjectData,
+  resolveStyloProjectId,
 } from "../../agents/runtime/projectScope";
 import type {
   AgentScriptEditProposal,
   AgentScriptEditProposalBatch,
-  QalamSubmitRequest,
-} from "./qalam/interactionTypes";
+  StyloSubmitRequest,
+} from "./stylo/interactionTypes";
 
 type Props = {
   accountScope: string;
@@ -53,7 +53,7 @@ type Props = {
   settingsOpen?: boolean;
   openRequest?: number;
   closeRequest?: number;
-  submitRequest?: QalamSubmitRequest | null;
+  submitRequest?: StyloSubmitRequest | null;
   cancelRequest?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
   onDockFrameChange?: (frame: { dockWidth: number; isSplit: boolean; collapsed: boolean }) => void;
@@ -111,7 +111,7 @@ const buildNodeFlowFileFromProjectData = (
   return {
     version: 2,
     revision: typeof flow.revision === "number" ? flow.revision : fallback.revision + 1,
-    name: data.fileName || "Qalam Flow Workspace",
+    name: data.fileName || "Stylo Flow Workspace",
     nodes: flow.flowNodes,
     links: Array.isArray(flow.links) ? flow.links : [],
     graphLinks: Array.isArray(flow.graphLinks) ? flow.graphLinks : [],
@@ -500,7 +500,7 @@ const createConversationRecord = (messages: Message[] = []): ConversationRecord 
   };
 };
 
-export const QalamAgent: React.FC<Props> = ({
+export const StyloAgent: React.FC<Props> = ({
   accountScope,
   projectId,
   projectData,
@@ -526,12 +526,12 @@ export const QalamAgent: React.FC<Props> = ({
   onScriptEditProposals,
 }) => {
   const PANEL_ANIMATION_MS = 460;
-  const accountStorageKeys = buildQalamAccountStorageKeys(accountScope, projectId);
+  const accountStorageKeys = buildStyloAccountStorageKeys(accountScope, projectId);
   const effectiveConversationStorageKey = conversationStorageKey || accountStorageKeys.conversationStorageKey;
   const activityStorageKey = accountStorageKeys.activityStorageKey;
   const approvalPreferenceStorageKey = accountScope === "guest"
-    ? "qalam_execution_approval_prefs_v1"
-    : `qalam_execution_approval_prefs_v1:${encodeURIComponent(accountScope)}`;
+    ? "stylo_execution_approval_prefs_v1"
+    : `stylo_execution_approval_prefs_v1:${encodeURIComponent(accountScope)}`;
   const addNode = useNodeFlowStore((state) => state.addNode);
   const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
   const moveNode = useNodeFlowStore((state) => state.moveNode);
@@ -654,13 +654,13 @@ export const QalamAgent: React.FC<Props> = ({
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
   const [glassAnchorFrame, setGlassAnchorFrame] = useState({ left: 0, top: 0 });
   const effectiveCollapsed = collapsed;
-  const bridge = useMemo<QalamAgentBridge>(
-    () => createQalamAgentBridge({
+  const bridge = useMemo<StyloAgentBridge>(
+    () => createStyloAgentBridge({
       getProjectData: () => projectData,
       getNodeFlowSnapshot: () => ({
         version: 2,
         revision,
-        name: projectData.fileName || "Qalam Flow Workspace",
+        name: projectData.fileName || "Stylo Flow Workspace",
         nodes,
         links,
         graphLinks,
@@ -689,7 +689,7 @@ export const QalamAgent: React.FC<Props> = ({
   );
   const edgeRuntime = useMemo(
     () =>
-      createHttpQalamAgentRuntime({
+      createHttpStyloAgentRuntime({
         endpoint: buildApiUrl("/api/agent"),
         getRuntimeConfig: () => ({
           provider: config.textConfig?.agentProvider || "deepseek",
@@ -697,10 +697,10 @@ export const QalamAgent: React.FC<Props> = ({
           baseUrl:
             config.textConfig?.agentBaseUrl ||
             (config.textConfig?.agentProvider === config.textConfig?.provider ? config.textConfig?.baseUrl : undefined),
-          qalamTools: config.textConfig?.qalamTools,
+          styloTools: config.textConfig?.styloTools,
         }),
         getAuthToken,
-        getProjectDataSnapshot: () => buildQalamScopedProjectData(projectData, projectId),
+        getProjectDataSnapshot: () => buildStyloScopedProjectData(projectData, projectId),
         getNodeFlowSnapshot: () =>
           buildNodeFlowFileFromProjectData(projectData, {
             revision,
@@ -712,7 +712,7 @@ export const QalamAgent: React.FC<Props> = ({
           ({
             version: 2,
             revision,
-            name: projectData.fileName || "Qalam Flow Workspace",
+            name: projectData.fileName || "Stylo Flow Workspace",
             nodes,
             links,
             graphLinks,
@@ -731,7 +731,7 @@ export const QalamAgent: React.FC<Props> = ({
       config.textConfig?.baseUrl,
       config.textConfig?.model,
       config.textConfig?.provider,
-      config.textConfig?.qalamTools,
+      config.textConfig?.styloTools,
       linkStyle,
       links,
       graphLinks,
@@ -798,13 +798,13 @@ export const QalamAgent: React.FC<Props> = ({
         })),
     [mentionIndex]
   );
-  const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useQalamAgent({
+  const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useStyloAgent({
     runtime,
     projectId,
-    sessionId: buildQalamAccountSessionId(
+    sessionId: buildStyloAccountSessionId(
       accountScope,
       projectId,
-      activeConversation?.id || conversationState.activeId || "qalam-default"
+      activeConversation?.id || conversationState.activeId || "stylo-default"
     ),
     activityStorageKey,
     setMessages,
@@ -858,7 +858,7 @@ export const QalamAgent: React.FC<Props> = ({
     if (conversationState.items.length) return;
     try {
       if (allowLegacyConversationMigration) {
-        const legacyConversations = localStorage.getItem("qalam_conversations_v1");
+        const legacyConversations = localStorage.getItem("stylo_conversations_v1");
         if (legacyConversations) {
           const parsed = JSON.parse(legacyConversations);
           if (parsed && typeof parsed === "object" && Array.isArray(parsed.items) && parsed.items.length) {
@@ -866,18 +866,18 @@ export const QalamAgent: React.FC<Props> = ({
               activeId: typeof parsed.activeId === "string" ? parsed.activeId : parsed.items[0]?.id || "",
               items: parsed.items,
             });
-            localStorage.removeItem("qalam_conversations_v1");
+            localStorage.removeItem("stylo_conversations_v1");
             return;
           }
         }
       }
-      const stored = localStorage.getItem("qalam_messages_v1");
+      const stored = localStorage.getItem("stylo_messages_v1");
       if (allowLegacyConversationMigration && stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length) {
           const migrated = createConversationRecord(clampMessages(parsed));
           setConversationState({ activeId: migrated.id, items: [migrated] });
-          localStorage.removeItem("qalam_messages_v1");
+          localStorage.removeItem("stylo_messages_v1");
           return;
         }
       }
@@ -904,10 +904,10 @@ export const QalamAgent: React.FC<Props> = ({
     if (handledConversationResetRef.current === conversationResetToken) return;
     handledConversationResetRef.current = conversationResetToken;
     const created = createConversationRecord();
-    setConversationState((prev) => ({
+    setConversationState({
       activeId: created.id,
-      items: [created, ...prev.items.filter((item) => item.id !== created.id)].slice(0, 12),
-    }));
+      items: [created],
+    });
   }, [conversationResetToken, setConversationState]);
 
   useEffect(() => {
@@ -1094,7 +1094,7 @@ export const QalamAgent: React.FC<Props> = ({
       if (
         !isRunAccountCurrent() ||
         runResult.projectId !== runProjectId ||
-        resolveQalamProjectId(projectDataRef.current) !== runProjectId
+        resolveStyloProjectId(projectDataRef.current) !== runProjectId
       ) {
         return;
       }
@@ -1164,7 +1164,7 @@ export const QalamAgent: React.FC<Props> = ({
         setExecutionApprovals(runResult.updatedExecutionApprovals);
       }
     } catch (err: any) {
-      if (err?.qalamAlreadyDisplayed) {
+      if (err?.styloAlreadyDisplayed) {
         return;
       }
       const message = String(err?.message || err || "");
@@ -1196,7 +1196,7 @@ export const QalamAgent: React.FC<Props> = ({
     }
   }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
-  const panelClassName = "pointer-events-auto qalam-panel";
+  const panelClassName = "pointer-events-auto stylo-panel";
   const dockInset = 16;
   const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
   const handleApprovalChoice = useCallback(
@@ -1283,36 +1283,36 @@ export const QalamAgent: React.FC<Props> = ({
     },
     [approveExecution, dismissExecutionApproval, setApprovalPreferences, setMessages]
   );
-  const qalamVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.8));
-  const qalamChromeHeight = 62;
-  const messageViewportHeight = Math.max(180, qalamVisibleMaxHeight - qalamChromeHeight);
-  const qalamGlassConfig = useMemo(
+  const styloVisibleMaxHeight = Math.max(280, Math.floor(viewportSize.height * 0.8));
+  const styloChromeHeight = 62;
+  const messageViewportHeight = Math.max(180, styloVisibleMaxHeight - styloChromeHeight);
+  const styloGlassConfig = useMemo(
     () => ({
-      ...GLASS_DIFFUSION_PRESETS.qalam,
-      ...QALAM_GLASS_LAB_CONFIG,
+      ...GLASS_DIFFUSION_PRESETS.stylo,
+      ...STYLO_GLASS_LAB_CONFIG,
     }),
     []
   );
-  const qalamGlassShadow = QALAM_GLASS_LAB_SHADOW;
-  const qalamTitleBandHeight = titleOrigin.y + titleOrigin.height + 10;
-  const qalamUnifiedBaseWidth = Math.max(0, messagePanelSize.width);
-  const qalamGlassBaseHeight = Math.min(
-    qalamVisibleMaxHeight,
-    Math.max(qalamChromeHeight + 12, qalamChromeHeight + messagePanelSize.height)
+  const styloGlassShadow = STYLO_GLASS_LAB_SHADOW;
+  const styloTitleBandHeight = titleOrigin.y + titleOrigin.height + 10;
+  const styloUnifiedBaseWidth = Math.max(0, messagePanelSize.width);
+  const styloGlassBaseHeight = Math.min(
+    styloVisibleMaxHeight,
+    Math.max(styloChromeHeight + 12, styloChromeHeight + messagePanelSize.height)
   );
-  const qalamUnifiedBaseHeight = qalamGlassBaseHeight + qalamTitleBandHeight;
-  const qalamGlassSafeInsetX = qalamGlassConfig.fadeInsetX + 12;
-  const qalamGlassSafeInsetTop = qalamGlassConfig.fadeInsetY + 24;
-  const qalamGlassSafeInsetBottom = qalamGlassConfig.fadeInsetY + 14;
-  const qalamGlassWidth = Math.max(0, Math.round(qalamUnifiedBaseWidth + qalamGlassSafeInsetX * 2));
-  const qalamGlassHeight = Math.max(
+  const styloUnifiedBaseHeight = styloGlassBaseHeight + styloTitleBandHeight;
+  const styloGlassSafeInsetX = styloGlassConfig.fadeInsetX + 12;
+  const styloGlassSafeInsetTop = styloGlassConfig.fadeInsetY + 24;
+  const styloGlassSafeInsetBottom = styloGlassConfig.fadeInsetY + 14;
+  const styloGlassWidth = Math.max(0, Math.round(styloUnifiedBaseWidth + styloGlassSafeInsetX * 2));
+  const styloGlassHeight = Math.max(
     0,
-    Math.round(qalamUnifiedBaseHeight + qalamGlassSafeInsetTop + qalamGlassSafeInsetBottom)
+    Math.round(styloUnifiedBaseHeight + styloGlassSafeInsetTop + styloGlassSafeInsetBottom)
   );
-  const qalamGlassOffsetX = -qalamGlassSafeInsetX;
-  const qalamGlassOffsetY = -qalamTitleBandHeight - qalamGlassSafeInsetTop;
-  const qalamGlassLeft = glassAnchorFrame.left + qalamGlassOffsetX;
-  const qalamGlassTop = glassAnchorFrame.top + qalamGlassOffsetY;
+  const styloGlassOffsetX = -styloGlassSafeInsetX;
+  const styloGlassOffsetY = -styloTitleBandHeight - styloGlassSafeInsetTop;
+  const styloGlassLeft = glassAnchorFrame.left + styloGlassOffsetX;
+  const styloGlassTop = glassAnchorFrame.top + styloGlassOffsetY;
   const panelStyle: React.CSSProperties | undefined = {
     position: "fixed",
     top: dockInset,
@@ -1333,13 +1333,14 @@ export const QalamAgent: React.FC<Props> = ({
   }, [projectData]);
 
   const formatNumber = (n: number) => n.toLocaleString();
-  const qalamMark = (
+  const styloMark = (
     <span
-      className={`qalam-wordmark inline-block text-[30px] font-semibold tracking-[-0.065em] transition duration-500 ${
-        !effectiveCollapsed || isSending || isRevealing ? "qalam-wordmark--active opacity-100 blur-0" : "opacity-96"
+      className={`stylo-wordmark inline-flex items-center gap-2.5 text-[30px] font-semibold tracking-[-0.065em] transition duration-500 ${
+        !effectiveCollapsed || isSending || isRevealing ? "stylo-wordmark--active opacity-100 blur-0" : "opacity-96"
       }`}
     >
-      Stylo
+      <img className="h-8 w-8 rounded-[9px] object-cover" src="/icon-128.png" alt="" />
+      <span>Stylo</span>
     </span>
   );
 
@@ -1363,45 +1364,45 @@ export const QalamAgent: React.FC<Props> = ({
   }, [openPanel, projectId, submitRequest, submitText]);
 
   const isOpenPhase = panelPhase === "open";
-  const qalamGlassOverlay =
-    typeof document !== "undefined" && !effectiveCollapsed && qalamGlassWidth > 0 && qalamGlassHeight > 0
+  const styloGlassOverlay =
+    typeof document !== "undefined" && !effectiveCollapsed && styloGlassWidth > 0 && styloGlassHeight > 0
       ? createPortal(
           <div
             className="pointer-events-none fixed z-[79] transition-opacity duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
             style={{
-              left: qalamGlassLeft,
-              top: qalamGlassTop,
-              width: qalamGlassWidth,
-              height: qalamGlassHeight,
+              left: styloGlassLeft,
+              top: styloGlassTop,
+              width: styloGlassWidth,
+              height: styloGlassHeight,
               opacity: effectiveCollapsed ? 0 : 1,
             }}
             aria-hidden="true"
           >
             <GlassDiffusionField
               className="absolute inset-0"
-              width={qalamGlassWidth}
-              height={qalamGlassHeight}
+              width={styloGlassWidth}
+              height={styloGlassHeight}
               config={{
-                blur: qalamGlassConfig.blur,
-                fillAlpha: qalamGlassConfig.fillAlpha,
-                saturate: qalamGlassConfig.saturate,
-                fadeInsetX: qalamGlassConfig.fadeInsetX,
-                fadeInsetY: qalamGlassConfig.fadeInsetY,
-                fade: qalamGlassConfig.fade,
-                edgeAlpha: qalamGlassConfig.edgeAlpha,
-                curve: qalamGlassConfig.curve,
+                blur: styloGlassConfig.blur,
+                fillAlpha: styloGlassConfig.fillAlpha,
+                saturate: styloGlassConfig.saturate,
+                fadeInsetX: styloGlassConfig.fadeInsetX,
+                fadeInsetY: styloGlassConfig.fadeInsetY,
+                fade: styloGlassConfig.fade,
+                edgeAlpha: styloGlassConfig.edgeAlpha,
+                curve: styloGlassConfig.curve,
               }}
               showBoundary={false}
             />
             <MaterialGlassShadow
-              width={qalamGlassWidth}
-              height={qalamGlassHeight}
-              curve={qalamGlassConfig.curve}
-              offsetX={qalamGlassShadow.offsetX}
-              offsetY={qalamGlassShadow.offsetY}
-              blur={qalamGlassShadow.blur}
-              alpha={qalamGlassShadow.alpha}
-              spread={qalamGlassShadow.spread}
+              width={styloGlassWidth}
+              height={styloGlassHeight}
+              curve={styloGlassConfig.curve}
+              offsetX={styloGlassShadow.offsetX}
+              offsetY={styloGlassShadow.offsetY}
+              blur={styloGlassShadow.blur}
+              alpha={styloGlassShadow.alpha}
+              spread={styloGlassShadow.spread}
             />
           </div>,
           document.body
@@ -1410,7 +1411,7 @@ export const QalamAgent: React.FC<Props> = ({
 
   return (
     <>
-      {qalamGlassOverlay}
+      {styloGlassOverlay}
       <div
         className={panelClassName}
         style={{
@@ -1427,7 +1428,7 @@ export const QalamAgent: React.FC<Props> = ({
       >
         <div className="relative">
         <div
-          className="qalam-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
+          className="stylo-header-shell absolute left-4 right-4 z-20 flex items-center justify-between gap-3"
           style={{ top: titleOrigin.y, minHeight: titleOrigin.height }}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -1436,10 +1437,10 @@ export const QalamAgent: React.FC<Props> = ({
               type="button"
               onClick={collapsed ? openPanel : closePanel}
               className="pointer-events-auto inline-flex items-center transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px"
-              aria-label={collapsed ? "Open Qalam" : "Close Qalam"}
-              title={collapsed ? "Open Qalam" : "Close Qalam"}
+              aria-label={collapsed ? "Open Stylo" : "Close Stylo"}
+              title={collapsed ? "Open Stylo" : "Close Stylo"}
             >
-              {qalamMark}
+              {styloMark}
             </button>
             ) : null}
             {!effectiveCollapsed && showUsageBadge && (
@@ -1464,7 +1465,7 @@ export const QalamAgent: React.FC<Props> = ({
               ref={messagePanelRef}
               className="relative z-10 rounded-[30px] bg-transparent"
             >
-              <QalamChatContent
+              <StyloChatContent
                 messages={messages}
                 isSending={isSending}
                 onApprovalChoice={handleApprovalChoice}

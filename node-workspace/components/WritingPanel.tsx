@@ -35,7 +35,7 @@ import {
   ScreenplayInspector,
   type SaveState,
 } from "./screenplay/ScreenplayChrome";
-import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./qalam/interactionTypes";
+import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./stylo/interactionTypes";
 import "../styles/screenplay.css";
 
 type Props = {
@@ -43,12 +43,12 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onClose?: () => void;
   initialScriptNodeId?: string | null;
-  isQalamOpen?: boolean;
+  isStyloOpen?: boolean;
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
-  onOpenQalam?: () => void;
-  onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
+  onOpenStylo?: () => void;
+  onSubmitToStylo?: (text: string, uiContext?: AgentUiContext) => void;
 };
 
 type WritingDraft = {
@@ -120,12 +120,12 @@ export const WritingPanel: React.FC<Props> = ({
   setProjectData,
   onClose,
   initialScriptNodeId,
-  isQalamOpen = false,
+  isStyloOpen = false,
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
-  onOpenQalam,
-  onSubmitToQalam,
+  onOpenStylo,
+  onSubmitToStylo,
 }) => {
   const characterRoles = useMemo(
     () => (projectData.roles || []).filter((role) => role.kind === "person"),
@@ -412,8 +412,8 @@ export const WritingPanel: React.FC<Props> = ({
   const submitSelectionCommand = useCallback(() => {
     if (!selectionCommand?.message.trim() || !scriptNode?.id) return;
     const data = (scriptNode.data || {}) as Record<string, unknown>;
-    if (!isQalamOpen) onOpenQalam?.();
-    onSubmitToQalam?.(selectionCommand.message.trim(), {
+    if (!isStyloOpen) onOpenStylo?.();
+    onSubmitToStylo?.(selectionCommand.message.trim(), {
       documentSelection: {
         kind: "script",
         nodeId: scriptNode.id,
@@ -424,7 +424,7 @@ export const WritingPanel: React.FC<Props> = ({
       },
     });
     setSelectionCommand(null);
-  }, [draft.title, isQalamOpen, onOpenQalam, onSubmitToQalam, scriptNode, selectionCommand]);
+  }, [draft.title, isStyloOpen, onOpenStylo, onSubmitToStylo, scriptNode, selectionCommand]);
 
   const handleClose = () => {
     if (externalConflict) return;
@@ -433,7 +433,7 @@ export const WritingPanel: React.FC<Props> = ({
   };
 
   const handleShare = async () => {
-    const baseName = (projectData.fileName || draft.title || "qalam-script").replace(/\.[^/.]+$/, "");
+    const baseName = (projectData.fileName || draft.title || "stylo-script").replace(/\.[^/.]+$/, "");
     const filename = `${baseName}.fountain`;
     const content = prepareScreenplayDraftForSave(draft).body;
     const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
@@ -451,7 +451,7 @@ export const WritingPanel: React.FC<Props> = ({
   return (
     <div
       className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""} ${isInspectorOpen ? "is-inspector-open" : ""}`}
-      style={{ "--screenplay-agent-inset": isQalamOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
+      style={{ "--screenplay-agent-inset": isStyloOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
     >
       <ScreenplayHeader
         saveState={saveState}
@@ -512,10 +512,10 @@ export const WritingPanel: React.FC<Props> = ({
             autoFocus
             value={selectionCommand.message}
             onChange={(event) => setSelectionCommand((current) => current ? { ...current, message: event.target.value } : current)}
-            placeholder="让 Qalam 重写、压缩或检查这段内容"
-            aria-label="针对选中文本向 Qalam 提问"
+            placeholder="让 Stylo 重写、压缩或检查这段内容"
+            aria-label="针对选中文本向 Stylo 提问"
           />
-          <button type="submit" className="is-primary" disabled={!selectionCommand.message.trim()} aria-label="发送给 Qalam">
+          <button type="submit" className="is-primary" disabled={!selectionCommand.message.trim()} aria-label="发送给 Stylo">
             <PaperPlaneTilt size={15} weight="fill" />
           </button>
           <button type="button" onClick={() => setSelectionCommand(null)} aria-label="关闭">
@@ -559,16 +559,16 @@ export const WritingPanel: React.FC<Props> = ({
       {lastReviewedSnapshot && !pendingPatch ? (
         <button type="button" className="screenplay-review-undo" onClick={undoReviewedPatch}>
           <ArrowCounterClockwise size={14} />
-          撤销 Qalam 修改
+          撤销 Stylo 修改
         </button>
       ) : null}
 
       {pendingPatch ? (
-        <div className="screenplay-patch-review" role="dialog" aria-modal="true" aria-label="Qalam 修改审核">
+        <div className="screenplay-patch-review" role="dialog" aria-modal="true" aria-label="Stylo 修改审核">
           <div className="screenplay-patch-review__dialog">
             <header className="screenplay-patch-review__header">
               <div>
-                <strong>审核 Qalam 修改</strong>
+                <strong>审核 Stylo 修改</strong>
                 <span>{pendingPatch.lines.filter((line) => line.kind !== "equal").length} 项变更，逐项决定后才会写入剧本</span>
               </div>
             </header>

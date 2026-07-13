@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Brain, CaretRight, Check, Checks, Wrench, X } from "@phosphor-icons/react";
-import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
+import { Brain, CaretRight, Check, Checks, TerminalWindow, Wrench, X } from "@phosphor-icons/react";
+import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload } from "./types";
 import {
-  buildQalamMessageTimeline,
-  type QalamDisplayMessage as DisplayMessageItem,
+  buildStyloMessageTimeline,
+  type StyloDisplayMessage as DisplayMessageItem,
+  type StyloWorkStage,
   type ToolMessageThread as ToolThread,
 } from "./messageTimeline";
-import { renderQalamInlineMarkdown, renderQalamMarkdown } from "./QalamMarkdown";
-import { renderQalamToolOutput } from "./QalamToolOutput";
-import { findQalamToolDescriptor } from "../../../agents/runtime/toolCatalog";
+import { renderStyloInlineMarkdown, renderStyloMarkdown } from "./StyloMarkdown";
+import { renderStyloToolOutput } from "./StyloToolOutput";
+import { findStyloToolDescriptor } from "../../../agents/runtime/toolCatalog";
+import { resolveToolDisplayOutcome, type ToolDisplayOutcome } from "./toolDisplayOutcome";
 
 type Props = {
   messages: Message[];
@@ -20,31 +22,32 @@ type Props = {
   latestBlockMaxHeight?: number;
 };
 
-const toolStatusLabel: Record<ToolStatus, string> = {
+const toolStatusLabel: Record<ToolDisplayOutcome, string> = {
   queued: "等待中",
   running: "执行中",
   success: "成功",
   error: "失败",
+  skipped: "已跳过",
+  no_change: "未变更",
 };
 
-const toolStatusClass: Record<ToolStatus, string> = {
+const toolStatusClass: Record<ToolDisplayOutcome, string> = {
   queued: "text-slate-400",
   running: "text-amber-300",
   success: "text-emerald-300",
   error: "text-rose-400",
+  skipped: "text-amber-300",
+  no_change: "text-[var(--app-text-muted)]",
 };
 
 const lineSummaryClass =
   "w-full px-1 py-1 text-[12px] text-[var(--app-text-muted)]";
 
-const qalamBodyTextClass =
+const styloBodyTextClass =
   "text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed";
 
-const qalamSecondaryTextClass =
+const styloSecondaryTextClass =
   "text-[14px] leading-6 text-[var(--app-text-secondary)] md:text-[12px] md:leading-relaxed";
-
-const qalamMetaTextClass =
-  "text-[13px] leading-6 text-[var(--app-text-muted)] md:text-[11px] md:leading-relaxed";
 
 const renderFoldoutSurface = (title: string, children: React.ReactNode) => (
   <div className="ml-3 mt-2 border-l-2 border-[var(--app-border)] pl-4">
@@ -76,7 +79,7 @@ const trimToolSummary = (summary?: string, fallback?: string) => {
 };
 
 const buildToolActionLabel = (tool: ToolPayload) => {
-  const descriptor = findQalamToolDescriptor(tool.name);
+  const descriptor = findStyloToolDescriptor(tool.name);
   if (!tool.summary?.trim()) return descriptor?.label || tool.name;
   const subject = trimToolSummary(tool.summary, descriptor?.label || tool.name);
   const interaction = descriptor?.interaction;
@@ -151,7 +154,7 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
   if (!lines.length) return null;
   return (
     <div className="mt-2 border-l-2 border-[var(--app-border)] pl-4">
-      <div className={`space-y-2 ${qalamSecondaryTextClass}`}>
+      <div className={`space-y-2 ${styloSecondaryTextClass}`}>
         {lines.map((line, index) => (
           <div key={`${index}-${line.slice(0, 16)}`} className="whitespace-pre-wrap">
             {line}
@@ -163,7 +166,7 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
 };
 
 const renderToolExpansion = (thread: ToolThread) => {
-  const toolOutputView = thread.result?.tool ? renderQalamToolOutput(thread.result.tool) : null;
+  const toolOutputView = thread.result?.tool ? renderStyloToolOutput(thread.result.tool) : null;
   const content = buildToolDetailsText(thread);
   if (!toolOutputView && !content) return null;
   return (
@@ -191,7 +194,7 @@ const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) 
     !!thread.result?.tool.summary ||
     !!thread.result?.tool.evidence?.length;
   const actionLabel = buildToolActionLabel(effectiveTool);
-  const status = thread.result?.tool.status || thread.request?.tool.status || "queued";
+  const status = resolveToolDisplayOutcome(thread.request?.tool, thread.result?.tool);
   const statusText = toolStatusLabel[status];
 
   if (!hasDetails && !thread.result) {
@@ -210,7 +213,7 @@ const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) 
   }
 
   return (
-    <details className={`${lineSummaryClass} group`} open={expanded}>
+    <details className={`${lineSummaryClass} group`} open={expanded || undefined}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Wrench size={12} weight="duotone" />,
@@ -235,12 +238,6 @@ const buildThinkingLabel = (status: StatusMessage["statusCard"]) => {
 const renderStatusLine = (message: StatusMessage, options?: { expanded?: boolean }) => {
   const expanded = options?.expanded || false;
   const status = message.statusCard;
-  const toneClass =
-    status.status === "error"
-      ? "text-rose-400"
-      : status.status === "success"
-        ? "text-emerald-400"
-        : "text-sky-400";
   const iconToneClass =
     status.status === "error"
       ? "text-rose-300"
@@ -264,7 +261,7 @@ const renderStatusLine = (message: StatusMessage, options?: { expanded?: boolean
   }
 
   return (
-    <details className={`${lineSummaryClass} group`} open={expanded}>
+    <details className={`${lineSummaryClass} group`} open={expanded || undefined}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <Brain size={12} weight="duotone" />,
@@ -295,13 +292,13 @@ const renderAssistantPanel = (message: ChatMessage) => {
         </div>
       )}
       {searchQueries.length > 0 && (
-        <details className={qalamSecondaryTextClass}>
+        <details className={styloSecondaryTextClass}>
           <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">
             搜索记录
           </summary>
           {renderFoldoutSurface(
             "搜索记录",
-            <ul className={`list-disc space-y-1 pl-5 ${qalamSecondaryTextClass}`}>
+            <ul className={`list-disc space-y-1 pl-5 ${styloSecondaryTextClass}`}>
               {searchQueries.map((q, idx) => (
                 <li key={`${idx}-${q.slice(0, 8)}`}>{q}</li>
               ))}
@@ -310,19 +307,19 @@ const renderAssistantPanel = (message: ChatMessage) => {
         </details>
       )}
       {planItems.length > 0 ? (
-        <details className={qalamSecondaryTextClass}>
+        <details className={styloSecondaryTextClass}>
           <summary className="cursor-pointer marker:text-[var(--app-text-muted)]">查看计划</summary>
           {renderFoldoutSurface(
             "计划",
-            <ul className={`list-decimal space-y-1 pl-5 ${qalamBodyTextClass}`}>
+            <ul className={`list-decimal space-y-1 pl-5 ${styloBodyTextClass}`}>
               {planItems.map((item, idx) => (
-                <li key={`${idx}-${item.slice(0, 8)}`}>{renderQalamInlineMarkdown(item)}</li>
+                <li key={`${idx}-${item.slice(0, 8)}`}>{renderStyloInlineMarkdown(item)}</li>
               ))}
             </ul>
           )}
         </details>
       ) : null}
-      {message.text ? renderQalamMarkdown(message.text) : null}
+      {message.text ? renderStyloMarkdown(message.text) : null}
       {message.meta?.isStreaming ? (
         <div className="inline-flex items-center gap-2 text-[11px] text-[var(--app-text-muted)]" role="status">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" aria-hidden="true" />
@@ -460,7 +457,73 @@ const renderApprovalPanel = (
   );
 };
 
-export const QalamChatContent: React.FC<Props> = ({
+const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
+  const [expanded, setExpanded] = useState(!stage.hasFinalAnswer);
+
+  useEffect(() => {
+    if (stage.hasFinalAnswer) setExpanded(false);
+  }, [stage.hasFinalAnswer]);
+
+  const durationLabel = stage.durationMs > 0 ? formatWorkedDuration(stage.durationMs) : null;
+  const headline = stage.hasFinalAnswer
+    ? `已处理${durationLabel ? ` ${durationLabel}` : ""}`
+    : stage.hasError && !stage.isRunning
+      ? "处理未完成"
+      : "正在处理";
+  const itemLabel = stage.toolCount > 0
+    ? `${stage.toolCount} 项工具操作`
+    : `${stage.items.length} 个工作阶段`;
+  const toneClass = stage.hasError
+    ? "text-rose-400"
+    : stage.isRunning
+      ? "text-[var(--accent-strong)]"
+      : "text-[var(--app-text-muted)]";
+  const panelId = `${stage.key}-content`;
+
+  return (
+    <details
+      className="stylo-work-stage group w-full"
+      open={expanded}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary
+        className="flex cursor-pointer list-none items-center gap-2.5 px-1 py-2 text-left [&::-webkit-details-marker]:hidden"
+        aria-controls={panelId}
+      >
+        <TerminalWindow size={15} weight="regular" className={`shrink-0 ${toneClass}`} aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--app-text-secondary)]">
+          {headline}
+          <span className="ml-1.5 font-normal text-[var(--app-text-muted)]">· {itemLabel}</span>
+        </span>
+        <CaretRight
+          size={14}
+          weight="bold"
+          className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-90"
+          aria-hidden="true"
+        />
+      </summary>
+      <div id={panelId} className="ml-[7px] border-l border-[var(--app-border)] pb-1 pl-4 pt-1">
+        <div className="space-y-1.5">
+          {stage.items.map((item) => (
+            <div key={item.key} className="min-w-0">
+              {item.kind === "status"
+                ? renderStatusLine(item.message, { expanded: false })
+                : item.kind === "tool"
+                  ? renderToolThread(item.thread, { expanded: false })
+                  : (
+                    <div className="px-1 py-2 text-[var(--app-text-secondary)]">
+                      {renderAssistantPanel(item.message)}
+                    </div>
+                  )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+};
+
+export const StyloChatContent: React.FC<Props> = ({
   messages,
   isSending,
   onApprovalChoice,
@@ -475,18 +538,7 @@ export const QalamChatContent: React.FC<Props> = ({
   const previousCurrentKeyRef = useRef<string | null>(null);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
   const [currentShiftTick, setCurrentShiftTick] = useState(0);
-  const displayMessages = useMemo(() => buildQalamMessageTimeline(messages), [messages]);
-
-  const runDurationMap = useMemo(() => {
-    const durations = new Map<string, number>();
-    displayMessages.forEach((item) => {
-      if (item.kind !== "status") return;
-      const { runId, startedAt, updatedAt } = item.message.statusCard;
-      const existing = durations.get(runId) ?? 0;
-      durations.set(runId, Math.max(existing, updatedAt - startedAt));
-    });
-    return durations;
-  }, [displayMessages]);
+  const displayMessages = useMemo(() => buildStyloMessageTimeline(messages), [messages]);
 
   const latestRevealItem = useMemo(() => {
     if (!displayMessages.length) return null;
@@ -569,10 +621,6 @@ export const QalamChatContent: React.FC<Props> = ({
   ) => {
     const isUser = item.kind === "chat" && item.message.role === "user";
     const isAssistantPanel = item.kind === "chat" && !isUser;
-    const workedDuration =
-      isAssistantPanel && item.message.meta?.runId
-        ? runDurationMap.get(item.message.meta.runId)
-        : undefined;
 
     return (
       <div
@@ -580,7 +628,9 @@ export const QalamChatContent: React.FC<Props> = ({
         ref={attachRef ? currentItemRef : null}
         className={`flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
       >
-        {item.kind === "status" ? (
+        {item.kind === "work" ? (
+          <WorkStageView stage={item} />
+        ) : item.kind === "status" ? (
           renderStatusLine(item.message, { expanded })
         ) : item.kind === "tool" ? (
           renderToolThread(item.thread, { expanded })
@@ -592,13 +642,6 @@ export const QalamChatContent: React.FC<Props> = ({
           </div>
         ) : (
           <div className="w-full space-y-3">
-            {workedDuration ? (
-              <div className={`flex items-center gap-4 px-1 ${qalamMetaTextClass}`}>
-                <div className="h-px flex-1 bg-[var(--app-border)]" />
-                <span>{`Worked for ${formatWorkedDuration(workedDuration)}`}</span>
-                <div className="h-px flex-1 bg-[var(--app-border)]" />
-              </div>
-            ) : null}
             {renderAssistantPanel(item.message)}
           </div>
         )}
@@ -613,8 +656,8 @@ export const QalamChatContent: React.FC<Props> = ({
       aria-live="polite"
       aria-relevant="additions text"
       aria-busy={isSending}
-      aria-label="Qalam Agent 对话"
-      className={`qalam-scrollbar qalam-scroll-fade min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
+      aria-label="Stylo Agent 对话"
+      className={`stylo-scrollbar stylo-scroll-fade min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
       style={{
         ...style,
         maxHeight: revealMode === "latest" && latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : style?.maxHeight,
@@ -623,7 +666,7 @@ export const QalamChatContent: React.FC<Props> = ({
       <div className="space-y-3">
         {displayMessages.length === 0 ? (
           <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-            Qalam 已准备好。你可以直接描述目标，Agent 会在需要时查阅或操作当前 Flow。
+            Stylo 已准备好。你可以直接描述目标，Agent 会在需要时查阅或操作当前 Flow。
           </div>
         ) : displayMessages.map((item) => {
           const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;

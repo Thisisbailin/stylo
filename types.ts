@@ -435,10 +435,10 @@ export interface TextServiceConfig {
   voiceDubbingModel?: string;
   // Tooling / advanced options (provider-specific)
   tools?: any[];
-  qalamTools?: QalamToolSettings;
+  styloTools?: StyloToolSettings;
 }
 
-export type QalamToolSettings = {
+export type StyloToolSettings = {
   projectData?: {
     enabled?: boolean;
   };

@@ -13,11 +13,11 @@ authModule.getUserId = async () => "test-user";
 rateLimitModule.enforceRateLimit = async () => undefined;
 
 const makeContext = (target: string) => ({
-  request: new Request("https://qalam.test/api/proxy", {
+  request: new Request("https://stylo.test/api/proxy", {
     method: "GET",
     headers: {
       authorization: "Bearer provider-secret",
-      "x-qalam-authorization": "Bearer qalam-session",
+      "x-stylo-authorization": "Bearer stylo-session",
       "x-proxy-url": target,
     },
   }),

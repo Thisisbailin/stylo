@@ -1,6 +1,6 @@
 import type { FlowState, ProjectData } from "../../types";
 import type { NodeFlowNode } from "../../node-workspace/types";
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import { ensureFlow, findScriptResourceNode } from "./scriptResources";
 
 export const EDIT_SCRIPT_ENTITIES = ["archive", "folder"] as const;
@@ -217,7 +217,7 @@ export const editScriptResourceToolDef = {
   description:
     "Edit ordinary Flow resources exposed through the script map. Archives are markdown nodes; folders are ordinary folder nodes.",
   parameters: editScriptResourceParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
 
     if (args.entity === "archive" && args.action === "create") {

@@ -1,11 +1,11 @@
 import { OpenAIProvider, type ModelSettings } from "@openai/agents";
 import OpenAI from "openai";
 import { installDeepSeekChatCompletionsCompatibility } from "./deepseekCompat";
-import type { QalamAgentApiMode, QalamAgentProvider } from "./providerConfig";
+import type { StyloAgentApiMode, StyloAgentProvider } from "./providerConfig";
 
-export type QalamProviderRuntimeConfig = {
-  provider: QalamAgentProvider;
-  apiMode: QalamAgentApiMode;
+export type StyloProviderRuntimeConfig = {
+  provider: StyloAgentProvider;
+  apiMode: StyloAgentApiMode;
   model: string;
   apiKey: string;
   baseUrl: string;
@@ -13,14 +13,14 @@ export type QalamProviderRuntimeConfig = {
   allowBrowserClient: boolean;
 };
 
-export type QalamProviderRuntime = {
+export type StyloProviderRuntime = {
   client: OpenAI;
   modelProvider: OpenAIProvider;
   modelSettings: ModelSettings;
   close: () => Promise<void>;
 };
 
-const buildModelSettings = (config: QalamProviderRuntimeConfig): ModelSettings => ({
+const buildModelSettings = (config: StyloProviderRuntimeConfig): ModelSettings => ({
   toolChoice: "auto",
   parallelToolCalls: false,
   store: false,
@@ -34,7 +34,7 @@ const buildModelSettings = (config: QalamProviderRuntimeConfig): ModelSettings =
     : {}),
 });
 
-export const createQalamProviderRuntime = (config: QalamProviderRuntimeConfig): QalamProviderRuntime => {
+export const createStyloProviderRuntime = (config: StyloProviderRuntimeConfig): StyloProviderRuntime => {
   const client = new OpenAI({
     apiKey: config.apiKey,
     baseURL: config.baseUrl,

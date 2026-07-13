@@ -257,7 +257,7 @@ export const probeSeedanceApiKey = async (
     };
   }
 
-  const fallbackResponse = await fetchViaProxy(`${baseUrl}/contents/generations/tasks/qalam-api-key-probe`, {
+  const fallbackResponse = await fetchViaProxy(`${baseUrl}/contents/generations/tasks/stylo-api-key-probe`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey}`,

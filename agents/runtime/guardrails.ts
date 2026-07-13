@@ -7,9 +7,9 @@ import {
   type ToolInputGuardrailDefinition,
   type ToolOutputGuardrailDefinition,
 } from "@openai/agents";
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
-export type QalamGuardrailContext = {
+export type StyloGuardrailContext = {
   runtimeMode: "browser" | "edge_full";
 };
 
@@ -63,7 +63,7 @@ const parseRecoverableToolErrorOutput = (value: unknown) => {
 const stringArg = (args: Record<string, unknown>, snake: string, camel = snake) =>
   typeof (args[snake] ?? args[camel]) === "string" ? String(args[snake] ?? args[camel]).trim() : "";
 
-export const createQalamInputGuardrails = (): InputGuardrail[] => [
+export const createStyloInputGuardrails = (): InputGuardrail[] => [
   {
     name: "input_size_guardrail",
     runInParallel: false,
@@ -89,7 +89,7 @@ export const createQalamInputGuardrails = (): InputGuardrail[] => [
   },
 ];
 
-export const createQalamOutputGuardrails = (): OutputGuardrail[] => [
+export const createStyloOutputGuardrails = (): OutputGuardrail[] => [
   {
     name: "non_empty_output_guardrail",
     execute: async ({ agentOutput }) => {
@@ -110,9 +110,9 @@ export const createQalamOutputGuardrails = (): OutputGuardrail[] => [
   },
 ];
 
-export const createQalamToolInputGuardrails = (
+export const createStyloToolInputGuardrails = (
   toolName: string,
-  bridge: QalamAgentBridge
+  bridge: StyloAgentBridge
 ): ToolInputGuardrailDefinition[] => {
   void bridge;
 
@@ -331,7 +331,7 @@ export const createQalamToolInputGuardrails = (
   return [];
 };
 
-export const createQalamToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
+export const createStyloToolOutputGuardrails = (toolName: string): ToolOutputGuardrailDefinition[] => {
   if (toolName === "operate_project_resource") {
     return [
       defineToolOutputGuardrail({

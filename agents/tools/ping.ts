@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 type PingArgs = {
   message?: string;
@@ -29,7 +29,7 @@ export const pingToolDef = {
   name: "ping_tool",
   description: "Minimal verification tool used to confirm that function calling works end-to-end.",
   parameters: pingParameters,
-  execute: (input: unknown, _bridge: QalamAgentBridge) => {
+  execute: (input: unknown, _bridge: StyloAgentBridge) => {
     const args = parsePingArgs(input);
     return {
       ok: true,

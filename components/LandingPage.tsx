@@ -13,8 +13,9 @@ import {
   Stack,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { PRODUCT_REPOSITORIES } from "../constants/productRepositories";
 
-type ArchitectureKey = "screenplay" | "foundation" | "lookbook" | "cinewor" | "agent";
+type ArchitectureKey = "manus" | "foundation" | "lookbook" | "cinewor" | "agent";
 
 type ArchitectureItem = {
   id: ArchitectureKey;
@@ -30,13 +31,14 @@ type ArchitectureItem = {
 
 const architectureItems: ArchitectureItem[] = [
   {
-    id: "screenplay",
+    id: "manus",
     index: "01",
-    name: "稿纸",
-    label: "Screenplay wrapper",
-    description: "把 Flow 包装成面向剧本写作的专业稿纸。结构化处理场景、动作、对白与人物，并提供完整 Fountain 支持。",
+    name: "Manus",
+    label: "Screenplay writing wrapper",
+    description: "Manus 将 Flow 组织成面向剧本写作的专业界面，结构化处理场景、动作、对白与人物，并提供完整 Fountain 支持。",
     note: "Flow stays visible; writing becomes the interface.",
-    state: "In Stylo",
+    state: "Independent",
+    href: PRODUCT_REPOSITORIES.manus,
     Icon: FilmScript,
   },
   {
@@ -57,7 +59,7 @@ const architectureItems: ArchitectureItem[] = [
     description: "面向前期美术的角色与场景视觉册，让视觉探索、身份设定和项目资料在同一套 Flow 语义上工作。",
     note: "Developed independently; planned for integration.",
     state: "Independent",
-    href: "https://github.com/Thisisbailin/LookBook",
+    href: PRODUCT_REPOSITORIES.lookbook,
     Icon: Images,
   },
   {
@@ -68,12 +70,12 @@ const architectureItems: ArchitectureItem[] = [
     description: "面向调度与镜头设计的工作层，把空间、节奏和制作意图组织为可推演的视觉调度。",
     note: "Developed independently; planned for integration.",
     state: "Independent",
-    href: "https://github.com/Thisisbailin/cinewor",
+    href: PRODUCT_REPOSITORIES.cinewor,
     Icon: GitBranch,
   },
 ];
 
-const sourceHref = "https://github.com/Thisisbailin/qalam";
+const sourceHref = PRODUCT_REPOSITORIES.stylo;
 
 const Reveal = memo(function Reveal({
   children,
@@ -198,7 +200,7 @@ export const LandingPage: React.FC = () => {
         </a>
         <div className="stylo-nav__right">
           <span className="stylo-nav__status"><i />Desktop in development</span>
-          <SourceLink href={sourceHref}>Thisisbailin/qalam</SourceLink>
+          <SourceLink href={sourceHref}>Stylo source</SourceLink>
         </div>
       </header>
 
@@ -276,7 +278,7 @@ export const LandingPage: React.FC = () => {
           <Reveal className="stylo-core-diagram" delay={0.12}>
             <div className="stylo-core-diagram__axis"><span>wrappers</span><i /></div>
             <div className="stylo-core-diagram__modules">
-              <span>稿纸</span><span>Foundation</span><span>LookBook</span><span>Cinewor</span>
+              <span>Manus</span><span>Foundation</span><span>LookBook</span><span>Cinewor</span>
             </div>
             <div className="stylo-core-diagram__brain"><Brain size={18} weight="duotone" /><span>Agent reads & operates the same graph</span></div>
             <div className="stylo-core-diagram__base">
@@ -307,9 +309,10 @@ export const LandingPage: React.FC = () => {
           <p>Desktop creative system. The web edition is currently closed while its sharing experience is rebuilt.</p>
         </div>
         <div className="stylo-footer__sources">
-          <SourceLink href={sourceHref}>Stylo / Qalam</SourceLink>
-          <SourceLink href="https://github.com/Thisisbailin/LookBook">LookBook</SourceLink>
-          <SourceLink href="https://github.com/Thisisbailin/cinewor">Cinewor</SourceLink>
+          <SourceLink href={sourceHref}>Stylo</SourceLink>
+          <SourceLink href={PRODUCT_REPOSITORIES.manus}>Manus</SourceLink>
+          <SourceLink href={PRODUCT_REPOSITORIES.lookbook}>LookBook</SourceLink>
+          <SourceLink href={PRODUCT_REPOSITORIES.cinewor}>Cinewor</SourceLink>
         </div>
         <div className="stylo-footer__note">Open-source creative tooling<br />Designed for the desktop</div>
       </footer>

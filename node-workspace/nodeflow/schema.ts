@@ -98,7 +98,7 @@ const migrateNodeFlowEnvelope = (value: unknown) => {
     revision: Number.isInteger(value.revision) && Number(value.revision) >= 0
       ? Number(value.revision)
       : 1,
-    name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : "Imported Qalam Project",
+    name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : "Imported Stylo Project",
     nodes: Array.isArray(value.nodes) ? value.nodes : [],
     links: Array.isArray(value.links)
       ? value.links

@@ -7,17 +7,17 @@ import {
   ToolOutputGuardrailTripwireTriggered,
   type Session,
 } from "@openai/agents";
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
-import { createQalamTools } from "../tools";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
+import { createStyloTools } from "../tools";
 import { buildAgentEnvironment } from "./environment";
-import { createQalamInputGuardrails, createQalamOutputGuardrails } from "./guardrails";
+import { createStyloInputGuardrails, createStyloOutputGuardrails } from "./guardrails";
 import { composeAgentInstructions } from "./instructions";
 import { buildAgentMemorySnapshot, buildRunInputItems } from "./memory";
-import { formatModelAccessError, isModelAccessError, type QalamAgentApiMode, type QalamAgentProvider } from "./providerConfig";
-import { createQalamProviderRuntime } from "./providerRuntime";
+import { formatModelAccessError, isModelAccessError, type StyloAgentApiMode, type StyloAgentProvider } from "./providerConfig";
+import { createStyloProviderRuntime } from "./providerRuntime";
 import { AgentMessageStreamProjector, extractTextFromModelOutput } from "./streamProjector";
-import { createQalamToolBudgetPolicy } from "./toolBudget";
-import { getQalamToolDescriptor } from "./toolCatalog";
+import { createStyloToolBudgetPolicy } from "./toolBudget";
+import { getStyloToolDescriptor } from "./toolCatalog";
 import type {
   AgentExecutedToolCall,
   AgentRuntimeEvent,
@@ -25,11 +25,11 @@ import type {
   AgentTraceStage,
   AgentTraceStatus,
   AgentSessionMessage,
-  QalamAgentConfig,
-  QalamRunContext,
-  QalamRunInput,
-  QalamRunResult,
-  QalamResolvedSkill,
+  StyloAgentConfig,
+  StyloRunContext,
+  StyloRunInput,
+  StyloRunResult,
+  StyloResolvedSkill,
 } from "./types";
 
 const createTraceEntry = (
@@ -52,7 +52,7 @@ const summarizeSuccessfulToolCalls = (toolCalls: AgentExecutedToolCall[]) => {
   const successfulCalls = toolCalls.filter((toolCall) => toolCall.status === "success" && toolCall.summary?.trim());
   if (!successfulCalls.length) return "";
   const prioritizedCalls = successfulCalls.filter((toolCall) => {
-    const category = getQalamToolDescriptor(toolCall.name).category;
+    const category = getStyloToolDescriptor(toolCall.name).category;
     return category === "mutation" || category === "approval";
   });
   const source = prioritizedCalls.length ? prioritizedCalls : successfulCalls;
@@ -62,30 +62,30 @@ const summarizeSuccessfulToolCalls = (toolCalls: AgentExecutedToolCall[]) => {
   return uniqueSummaries.slice(-3).join("\n");
 };
 
-type ResolvedRuntimeConfig = Pick<QalamAgentConfig, "defaultHeaders" | "qalamTools"> & {
-  provider: QalamAgentProvider;
-  apiMode?: QalamAgentApiMode;
+type ResolvedRuntimeConfig = Pick<StyloAgentConfig, "defaultHeaders" | "styloTools"> & {
+  provider: StyloAgentProvider;
+  apiMode?: StyloAgentApiMode;
   model: string;
   apiKey: string;
   baseUrl: string;
 };
 
-type RunQalamAgentCoreOptions = {
-  input: QalamRunInput;
+type RunStyloAgentCoreOptions = {
+  input: StyloRunInput;
   config: ResolvedRuntimeConfig;
-  bridge: QalamAgentBridge;
+  bridge: StyloAgentBridge;
   session: Session;
   sessionMessages: AgentSessionMessage[];
-  runtimeMode: QalamRunContext["runtimeMode"];
+  runtimeMode: StyloRunContext["runtimeMode"];
   runtimeLabel: string;
   workflowName: string;
-  enabledSkills: QalamResolvedSkill[];
+  enabledSkills: StyloResolvedSkill[];
   disabledTools?: string[];
   maxTurns?: number;
   signal?: AbortSignal;
   onEvent?: (event: AgentRuntimeEvent) => void;
   onDebug?: (label: string, payload?: unknown) => void;
-  getExtraResult?: () => Partial<QalamRunResult>;
+  getExtraResult?: () => Partial<StyloRunResult>;
   runStartedMeta?: Pick<Extract<AgentRuntimeEvent, { type: "run_started" }>, "traceId" | "tracingEnabled">;
   recoverFallbackOnAnyError?: boolean;
   traceId?: string;
@@ -95,7 +95,7 @@ type RunQalamAgentCoreOptions = {
   traceIncludeSensitiveData?: boolean;
 };
 
-export const runQalamAgentCore = async ({
+export const runStyloAgentCore = async ({
   input,
   config,
   bridge,
@@ -118,7 +118,7 @@ export const runQalamAgentCore = async ({
   traceMetadata,
   tracingDisabled,
   traceIncludeSensitiveData,
-}: RunQalamAgentCoreOptions): Promise<QalamRunResult> => {
+}: RunStyloAgentCoreOptions): Promise<StyloRunResult> => {
   const runId = `${runtimeMode === "edge_full" ? "edge-run" : "run"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let runtimeEventSequence = 0;
   const emitRuntimeEvent = (event: AgentRuntimeEvent) => {
@@ -163,7 +163,7 @@ export const runQalamAgentCore = async ({
   emitTrace("runtime", "running", "Run started", `session=${input.sessionId}`);
 
   const apiMode = config.apiMode || "responses";
-  const providerRuntime = createQalamProviderRuntime({
+  const providerRuntime = createStyloProviderRuntime({
     provider: config.provider,
     apiMode,
     model: config.model,
@@ -174,7 +174,7 @@ export const runQalamAgentCore = async ({
   });
 
   const toolEvents: AgentExecutedToolCall[] = [];
-  const toolBudget = createQalamToolBudgetPolicy();
+  const toolBudget = createStyloToolBudgetPolicy();
   const messageProjector = new AgentMessageStreamProjector(runId, emitRuntimeEvent);
 
   const emitToolEvent = (
@@ -194,7 +194,7 @@ export const runQalamAgentCore = async ({
     emitRuntimeEvent({ ...event, runId } as AgentRuntimeEvent);
   };
 
-  const tools = createQalamTools({
+  const tools = createStyloTools({
     bridge,
     emitEvent: emitToolEvent,
     disabledTools,
@@ -202,7 +202,7 @@ export const runQalamAgentCore = async ({
   });
   const agentMemory = buildAgentMemorySnapshot(sessionMessages);
   const initialToolBudgetSnapshot = toolBudget.snapshot();
-  const runContext: QalamRunContext = {
+  const runContext: StyloRunContext = {
     runtimeMode,
     agentEnvironment: buildAgentEnvironment({
       projectData: bridge.getProjectData(),
@@ -243,16 +243,16 @@ export const runQalamAgentCore = async ({
     }, null, 2)
   );
 
-  const agent = new Agent<QalamRunContext>({
+  const agent = new Agent<StyloRunContext>({
     name: runtimeLabel,
     instructions: composeAgentInstructions({
       enabledSkills,
     }),
-    handoffDescription: "Single all-purpose Qalam creative agent.",
+    handoffDescription: "Single all-purpose Stylo creative agent.",
     model: config.model,
     modelSettings: { ...providerRuntime.modelSettings, toolChoice: resolvedToolChoice },
-    inputGuardrails: createQalamInputGuardrails(),
-    outputGuardrails: createQalamOutputGuardrails(),
+    inputGuardrails: createStyloInputGuardrails(),
+    outputGuardrails: createStyloOutputGuardrails(),
     resetToolChoice: true,
     tools,
   });
@@ -301,7 +301,7 @@ export const runQalamAgentCore = async ({
       messageProjector.streamedText.trim() ||
       synthesizedToolText;
 
-    const runResult: QalamRunResult = {
+    const runResult: StyloRunResult = {
       projectId: input.projectId,
       finalText,
       sessionId: input.sessionId,
@@ -355,7 +355,7 @@ export const runQalamAgentCore = async ({
     const synthesizedToolText = summarizeSuccessfulToolCalls(toolEvents);
     const hasSuccessfulAction = toolEvents.some((toolCall) => {
       if (toolCall.status !== "success") return false;
-      const category = getQalamToolDescriptor(toolCall.name).category;
+      const category = getStyloToolDescriptor(toolCall.name).category;
       return category === "mutation" || category === "approval";
     });
     const fallbackText = messageProjector.streamedResponseText.trim() || messageProjector.streamedText.trim() || synthesizedToolText;
@@ -384,7 +384,7 @@ export const runQalamAgentCore = async ({
 
     if (shouldRecover) {
       const recoveredText = fallbackText;
-      const runResult: QalamRunResult = {
+      const runResult: StyloRunResult = {
         projectId: input.projectId,
         finalText: recoveredText,
         sessionId: input.sessionId,

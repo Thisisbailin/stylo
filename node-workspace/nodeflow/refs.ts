@@ -1,4 +1,5 @@
 import type { NodeFlowNode } from "../types";
+import { readStyloNodeRef, stripLegacyNodeRef } from "./compatibility";
 
 export const normalizeNodeRef = (value?: string | null) => {
   if (typeof value !== "string") return "";
@@ -6,7 +7,7 @@ export const normalizeNodeRef = (value?: string | null) => {
 };
 
 export const getNodeFlowRef = (node?: NodeFlowNode | null) => {
-  const ref = normalizeNodeRef((node?.data as Record<string, unknown> | undefined)?.qalamNodeRef as string | undefined);
+  const ref = normalizeNodeRef(readStyloNodeRef(node?.data as Record<string, unknown> | undefined));
   return ref || undefined;
 };
 
@@ -14,8 +15,8 @@ export const setNodeFlowRef = <T extends Record<string, unknown>>(data: T | unde
   const resolved = normalizeNodeRef(nodeRef);
   if (!resolved) return { ...(data || {}) } as T;
   return {
-    ...(data || {}),
-    qalamNodeRef: resolved,
+    ...stripLegacyNodeRef({ ...(data || {}) }),
+    styloNodeRef: resolved,
   } as unknown as T;
 };
 

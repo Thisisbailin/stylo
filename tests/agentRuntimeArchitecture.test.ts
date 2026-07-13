@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { QalamMessageEventState } from "../agents/react/qalamMessageState";
+import { StyloMessageEventState } from "../agents/react/styloMessageState";
 import {
   normalizeMessagesForDeepSeek,
   normalizeRequestForDeepSeek,
@@ -10,27 +10,28 @@ import {
 } from "../agents/runtime/deepseekCompat";
 import { AgentEventSequenceGuard, parseAgentStreamPacket } from "../agents/runtime/httpProtocol";
 import { resolveAgentProvider, resolveApiMode } from "../agents/runtime/providerConfig";
-import { createQalamProviderRuntime } from "../agents/runtime/providerRuntime";
+import { createStyloProviderRuntime } from "../agents/runtime/providerRuntime";
 import {
   compactAgentSessionItems,
   projectAgentItemsToSessionMessages,
 } from "../agents/runtime/sessionProjection";
 import { drainAgentSseBuffer } from "../agents/runtime/sseProtocol";
 import { AgentMessageStreamProjector } from "../agents/runtime/streamProjector";
-import { createQalamToolBudgetPolicy } from "../agents/runtime/toolBudget";
-import { QALAM_TOOL_CATALOG, getQalamToolDescriptor } from "../agents/runtime/toolCatalog";
+import { createStyloToolBudgetPolicy } from "../agents/runtime/toolBudget";
+import { STYLO_TOOL_CATALOG, getStyloToolDescriptor } from "../agents/runtime/toolCatalog";
 import { buildDisabledTools } from "../agents/runtime/toolPolicy";
-import { normalizeQalamToolSettings } from "../agents/runtime/toolSettings";
-import type { AgentRuntimeEvent, QalamRunResult } from "../agents/runtime/types";
-import { buildQalamMessageTimeline } from "../node-workspace/components/qalam/messageTimeline";
-import { normalizeSafeExternalUrl } from "../node-workspace/components/qalam/safeExternalUrl";
+import { normalizeStyloToolSettings } from "../agents/runtime/toolSettings";
+import type { AgentRuntimeEvent, StyloRunResult } from "../agents/runtime/types";
+import { buildStyloMessageTimeline } from "../node-workspace/components/stylo/messageTimeline";
+import { normalizeSafeExternalUrl } from "../node-workspace/components/stylo/safeExternalUrl";
+import { resolveToolDisplayOutcome } from "../node-workspace/components/stylo/toolDisplayOutcome";
 import {
   reconcileStaleAgentMessages,
   shouldRejectStaleAgentResult,
-} from "../node-workspace/components/qalam/agentResultReconciliation";
-import type { Message } from "../node-workspace/components/qalam/types";
+} from "../node-workspace/components/stylo/agentResultReconciliation";
+import type { Message } from "../node-workspace/components/stylo/types";
 
-const emptyResult = (projectId = "project-1"): QalamRunResult => ({
+const emptyResult = (projectId = "project-1"): StyloRunResult => ({
   projectId,
   sessionId: "session-1",
   finalText: "done",
@@ -53,8 +54,8 @@ test("provider runtimes own isolated SDK clients and DeepSeek model settings", a
     baseUrl: "https://example.invalid",
     allowBrowserClient: false,
   };
-  const first = createQalamProviderRuntime(config);
-  const second = createQalamProviderRuntime(config);
+  const first = createStyloProviderRuntime(config);
+  const second = createStyloProviderRuntime(config);
   try {
     assert.notEqual(first.client, second.client);
     assert.notEqual(first.modelProvider, second.modelProvider);
@@ -97,27 +98,27 @@ test("DeepSeek compatibility preserves reasoning across SDK assistant tool-call 
 });
 
 test("tool metadata is unique and drives lookup, mutation, cache, and budget behavior", () => {
-  const names = QALAM_TOOL_CATALOG.map((tool) => tool.name);
+  const names = STYLO_TOOL_CATALOG.map((tool) => tool.name);
   assert.equal(new Set(names).size, names.length);
-  assert.equal(getQalamToolDescriptor("operate_foundation").category, "mutation");
-  assert.equal(getQalamToolDescriptor("create_document").interaction, "edit");
-  assert.equal(getQalamToolDescriptor("create_document").label, "创建文档");
-  assert.equal(getQalamToolDescriptor("access_github_repository").capability, "external_read");
+  assert.equal(getStyloToolDescriptor("operate_foundation").category, "mutation");
+  assert.equal(getStyloToolDescriptor("create_document").interaction, "edit");
+  assert.equal(getStyloToolDescriptor("create_document").label, "创建文档");
+  assert.equal(getStyloToolDescriptor("access_github_repository").capability, "external_read");
 
-  const policy = createQalamToolBudgetPolicy();
-  assert.equal(policy.reserve("access_github_repository", { owner: "qalam", repo: "app" }).allowed, true);
-  const duplicate = policy.reserve("access_github_repository", { repo: "app", owner: "qalam" });
+  const policy = createStyloToolBudgetPolicy();
+  assert.equal(policy.reserve("access_github_repository", { owner: "stylo", repo: "app" }).allowed, true);
+  const duplicate = policy.reserve("access_github_repository", { repo: "app", owner: "stylo" });
   assert.equal(duplicate.allowed, false);
   assert.match(duplicate.allowed ? "" : duplicate.reason, /Duplicate lookup blocked/);
   assert.equal(policy.reserve("operate_foundation", { action: "rename" }).allowed, true);
   const snapshot = policy.snapshot();
   assert.equal(snapshot.lookupCalls, 1);
   assert.equal(snapshot.mutationCalls, 1);
-  assert.throws(() => getQalamToolDescriptor("unknown_tool"), /Unknown Qalam tool/);
+  assert.throws(() => getStyloToolDescriptor("unknown_tool"), /Unknown Stylo tool/);
 });
 
 test("tool settings are normalized in runtime and disable complete capability groups", () => {
-  const normalized = normalizeQalamToolSettings({
+  const normalized = normalizeStyloToolSettings({
     projectData: { enabled: false },
     workflowBuilder: { enabled: false },
     runtimeIntelligence: { enabled: false },
@@ -127,7 +128,7 @@ test("tool settings are normalized in runtime and disable complete capability gr
   assert.equal(normalized.runtimeIntelligence.webSearchEnabled, true);
 
   const disabled = new Set(buildDisabledTools({
-    qalamTools: {
+    styloTools: {
       projectData: { enabled: false },
       workflowBuilder: { enabled: false },
       runtimeIntelligence: { enabled: false },
@@ -194,7 +195,7 @@ test("SDK stream projection merges deltas and emits a single final completion", 
 });
 
 test("React message projection is idempotent for replayed terminal events and trips on distinct repeated failures", () => {
-  const state = new QalamMessageEventState();
+  const state = new StyloMessageEventState();
   let messages: Message[] = [];
   const apply = (event: AgentRuntimeEvent) => {
     const projected = state.apply(messages, event);
@@ -248,13 +249,111 @@ test("message timeline pairs tool transactions in O(n) projection order", () => 
       order: 2,
       tool: { callId: "call-1", runId: "run-1", name: "read_document", status: "running" },
     },
-    { role: "assistant", kind: "chat", order: 4, text: "done", meta: { runId: "run-1" } },
+    { role: "assistant", kind: "chat", order: 4, text: "done", meta: { runId: "run-1", isFinal: true } },
   ];
-  const timeline = buildQalamMessageTimeline(messages);
+  const timeline = buildStyloMessageTimeline(messages);
   assert.equal(timeline.length, 2);
-  assert.equal(timeline[0].kind, "tool");
-  assert.equal(timeline[0].kind === "tool" && timeline[0].thread.request?.tool.callId, "call-1");
-  assert.equal(timeline[0].kind === "tool" && timeline[0].thread.result?.tool.callId, "call-1");
+  assert.equal(timeline[0].kind, "work");
+  const tool = timeline[0].kind === "work"
+    ? timeline[0].items.find((item) => item.kind === "tool")
+    : undefined;
+  assert.equal(tool?.kind === "tool" && tool.thread.request?.tool.callId, "call-1");
+  assert.equal(tool?.kind === "tool" && tool.thread.result?.tool.callId, "call-1");
+  assert.equal(timeline[0].kind === "work" && timeline[0].hasFinalAnswer, true);
+});
+
+test("message timeline collapses run work while preserving final answers and approvals", () => {
+  const messages: Message[] = [
+    {
+      role: "assistant",
+      kind: "status",
+      order: 1,
+      statusCard: {
+        id: "thinking-1",
+        runId: "run-1",
+        status: "success",
+        headline: "思考",
+        steps: [],
+        startedAt: 100,
+        updatedAt: 1_100,
+        isThinking: true,
+      },
+    },
+    {
+      role: "assistant",
+      kind: "tool_result",
+      order: 2,
+      tool: { callId: "call-1", runId: "run-1", name: "read_document", status: "success" },
+    },
+    {
+      role: "assistant",
+      kind: "chat",
+      order: 3,
+      text: "继续处理。",
+      meta: { runId: "run-1", messageId: "progress-1", isFinal: false },
+    },
+    {
+      role: "assistant",
+      kind: "approval",
+      order: 4,
+      approval: {
+        id: "approval-1",
+        nodeId: "node-1",
+        nodeTitle: "镜头图",
+        action: "image_generation",
+        providerLabel: "Image",
+        modelLabel: "model",
+        status: "pending",
+        steps: [],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    },
+    {
+      role: "assistant",
+      kind: "chat",
+      order: 5,
+      text: "最终结果。",
+      meta: { runId: "run-1", messageId: "final-1", isFinal: true },
+    },
+  ];
+
+  const timeline = buildStyloMessageTimeline(messages);
+  const work = timeline.find((item) => item.kind === "work");
+  assert.ok(work && work.kind === "work");
+  assert.equal(work.items.length, 3);
+  assert.equal(work.toolCount, 1);
+  assert.equal(work.durationMs, 1_000);
+  assert.equal(work.hasFinalAnswer, true);
+  assert.equal(timeline.some((item) => item.kind === "approval"), true);
+  assert.equal(
+    timeline.some((item) => item.kind === "chat" && item.message.text === "最终结果。"),
+    true
+  );
+  assert.equal(
+    timeline.some((item) => item.kind === "chat" && item.message.text === "继续处理。"),
+    false
+  );
+});
+
+test("tool display outcomes do not present budget skips or no-ops as success", () => {
+  assert.equal(resolveToolDisplayOutcome(undefined, {
+    name: "operate_foundation",
+    status: "success",
+    summary: "Tool skipped: Tool budget exhausted",
+    output: JSON.stringify({ target: "tool_budget", action: "skip", skipped: true }),
+  }), "skipped");
+  assert.equal(resolveToolDisplayOutcome(undefined, {
+    name: "update_document",
+    status: "success",
+    summary: "Document not updated",
+    output: JSON.stringify({ target: "document", action: "update", updated: false }),
+  }), "no_change");
+  assert.equal(resolveToolDisplayOutcome(undefined, {
+    name: "read_document",
+    status: "success",
+    output: JSON.stringify({ target: "document", action: "read" }),
+  }), "success");
 });
 
 test("Agent markdown accepts only HTTP(S) links", () => {
@@ -264,7 +363,7 @@ test("Agent markdown accepts only HTTP(S) links", () => {
 });
 
 test("stale durable Agent results cannot overwrite a newer Flow revision", () => {
-  const result: QalamRunResult = {
+  const result: StyloRunResult = {
     ...emptyResult(),
     updatedProjectPatch: { activeFlowProjectId: "project-1" },
     toolCalls: [
@@ -321,7 +420,7 @@ test("SSE decoder handles CRLF frames, comments, and multi-line data", () => {
 test("runtime core does not mutate process-wide OpenAI Agents SDK defaults", () => {
   const source = readFileSync("agents/runtime/core.ts", "utf8");
   assert.doesNotMatch(source, /setDefaultOpenAIClient|setOpenAIAPI/);
-  assert.match(source, /createQalamProviderRuntime/);
+  assert.match(source, /createStyloProviderRuntime/);
 });
 
 test("prompt catalog follows the registered tool graph and excludes legacy tool files", () => {

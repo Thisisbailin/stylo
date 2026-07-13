@@ -109,7 +109,7 @@ export const sendMessage = async (
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${resolvedApiKey}`,
                 "HTTP-Referer": window.location.origin,
-                "X-Title": "Qalam"
+                "X-Title": "Stylo"
             },
             body: JSON.stringify(payload),
             signal,

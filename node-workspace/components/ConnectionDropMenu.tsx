@@ -24,7 +24,7 @@ type Props<T extends string = NodeType> = {
 };
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
-    { label: "剧本文档", hint: "Fountain 稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain" },
+    { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain" },
     { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive" },
     { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile" },
     { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input" },

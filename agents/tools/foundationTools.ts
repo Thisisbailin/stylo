@@ -1,5 +1,5 @@
 import type { NodeFlowFile, NodeFlowNode } from "../../node-workspace/types";
-import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
+import type { NodeFlowHandle, StyloAgentBridge } from "../bridge/styloBridge";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 import {
   FOUNDATION_AXES,
@@ -258,7 +258,7 @@ const nodeStorageName = (node: NodeFlowNode) =>
   (typeof node.data?.label === "string" && node.data.label.trim()) ||
   node.id;
 
-const reindexAxisOrders = (bridge: QalamAgentBridge, axis: FoundationAxis, preferredOrder?: string[]) => {
+const reindexAxisOrders = (bridge: StyloAgentBridge, axis: FoundationAxis, preferredOrder?: string[]) => {
   const workflow = bridge.getNodeFlowSnapshot();
   const blocks = axisBlockFolders(workflow, axis);
   const ordered = preferredOrder?.length
@@ -272,7 +272,7 @@ const reindexAxisOrders = (bridge: QalamAgentBridge, axis: FoundationAxis, prefe
   });
 };
 
-const createBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
+const createBlock = (bridge: StyloAgentBridge, args: ReturnType<typeof parseArgs>) => {
   if (!args.axis) throw new Error("create_block 需要 axis。");
   const workflow = bridge.getNodeFlowSnapshot();
   const axisNode = findAxisNode(workflow, args.axis);
@@ -354,7 +354,7 @@ const createBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs
   };
 };
 
-const deleteBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
+const deleteBlock = (bridge: StyloAgentBridge, args: ReturnType<typeof parseArgs>) => {
   const workflow = bridge.getNodeFlowSnapshot();
   const block = findBlockFolder(workflow, args);
   const axis = getFoundationAxis(block);
@@ -378,7 +378,7 @@ const deleteBlock = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs
   };
 };
 
-const updateBlockDocument = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
+const updateBlockDocument = (bridge: StyloAgentBridge, args: ReturnType<typeof parseArgs>) => {
   const workflow = bridge.getNodeFlowSnapshot();
   const block = findBlockFolder(workflow, args);
   const axis = getFoundationAxis(block);
@@ -437,7 +437,7 @@ const updateBlockDocument = (bridge: QalamAgentBridge, args: ReturnType<typeof p
   };
 };
 
-const connectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
+const connectBoundary = (bridge: StyloAgentBridge, args: ReturnType<typeof parseArgs>) => {
   const workflow = bridge.getNodeFlowSnapshot();
   const block = findBlockFolder(workflow, args);
   const external = findNodeByIdOrRef(workflow, {
@@ -483,7 +483,7 @@ const connectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof parse
   };
 };
 
-const disconnectBoundary = (bridge: QalamAgentBridge, args: ReturnType<typeof parseArgs>) => {
+const disconnectBoundary = (bridge: StyloAgentBridge, args: ReturnType<typeof parseArgs>) => {
   const workflow = bridge.getNodeFlowSnapshot();
   const block = findBlockFolder(workflow, args);
   const external = args.externalNodeId || args.externalNodeRef
@@ -522,7 +522,7 @@ export const operateFoundationToolDef = {
   description:
     "Operate the four-axis Foundation container: create/delete blocks, update block documents, and assign document or media nodes to one block folder. Project root and project index are read-only.",
   parameters: foundationParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     if (args.action === "create_block") return createBlock(bridge, args);
     if (args.action === "delete_block") return deleteBlock(bridge, args);

@@ -1,4 +1,5 @@
-const CREDENTIAL_PROTOCOL_PREFIX = "qalam-auth.";
+const CREDENTIAL_PROTOCOL_PREFIX = "stylo-auth.";
+const LEGACY_CREDENTIAL_PROTOCOL_PREFIX = "qalam-auth.";
 
 const toBase64Url = (value: string) => {
   const bytes = new TextEncoder().encode(value);
@@ -29,7 +30,13 @@ export const readWebSocketCredential = (protocolHeader: string | null) => {
   const protocol = (protocolHeader || "")
     .split(",")
     .map((value) => value.trim())
-    .find((value) => value.startsWith(CREDENTIAL_PROTOCOL_PREFIX));
+    .find((value) =>
+      value.startsWith(CREDENTIAL_PROTOCOL_PREFIX) ||
+      value.startsWith(LEGACY_CREDENTIAL_PROTOCOL_PREFIX)
+    );
   if (!protocol) return "";
-  return fromBase64Url(protocol.slice(CREDENTIAL_PROTOCOL_PREFIX.length)).trim();
+  const prefix = protocol.startsWith(CREDENTIAL_PROTOCOL_PREFIX)
+    ? CREDENTIAL_PROTOCOL_PREFIX
+    : LEGACY_CREDENTIAL_PROTOCOL_PREFIX;
+  return fromBase64Url(protocol.slice(prefix.length)).trim();
 };

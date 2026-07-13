@@ -11,6 +11,7 @@ import {
   Eye,
   FileText,
   Globe,
+  Github,
   Layers,
   Loader2,
   ScanSearch,
@@ -25,7 +26,7 @@ import { AgentTextProvider, AppConfig, ProjectData, SyncState, type SeedanceKeyP
 import {
   ARK_DEFAULT_MODEL,
   ARK_RESPONSES_BASE_URL,
-  DEFAULT_QALAM_TOOL_SETTINGS,
+  DEFAULT_STYLO_TOOL_SETTINGS,
   DEEPSEEK_CHAT_BASE_URL,
   DEEPSEEK_DEFAULT_MODEL,
   DEEPSEEK_PRO_MODEL,
@@ -43,8 +44,8 @@ import {
   SEEDANCE_FAST_MODEL,
   VIDU_DEFAULT_BASE_URL,
 } from "../../constants";
-import { normalizeQalamToolSettings } from "../../agents/runtime/toolSettings";
-import { listQalamToolNames } from "../../agents/runtime/toolCatalog";
+import { normalizeStyloToolSettings } from "../../agents/runtime/toolSettings";
+import { listStyloToolNames } from "../../agents/runtime/toolCatalog";
 import {
   AGENT_ACTIVITY_STORAGE_UPDATED_EVENT,
   readAgentToolActivity,
@@ -62,9 +63,10 @@ import { InfoPanel } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel } from "./SyncPanel";
 import type { ModuleKey } from "./ModuleBar";
+import { PRODUCT_REPOSITORIES } from "../../constants/productRepositories";
 import {
-  buildQalamAccountSessionId,
-  buildQalamAccountStorageKeys,
+  buildStyloAccountSessionId,
+  buildStyloAccountStorageKeys,
 } from "../../agents/runtime/projectScope";
 
 type Props = {
@@ -205,7 +207,7 @@ const TOOL_ITEMS: ToolItem[] = [
     capability: "read",
     title: "read",
     description: "Agent 通过统一的读接口查阅当前 Flow 文档节点、档案节点和同一画布上的节点关系。",
-    tools: listQalamToolNames(["project_read"]),
+    tools: listStyloToolNames(["project_read"]),
     surfaces: ["script document", "archive document", "script map", "canvas node", "canvas link", "canvas map"],
     boundary: "只读，不允许直接修改项目状态。",
     artifact: "返回 Flow 文档 / 档案 / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
@@ -216,8 +218,8 @@ const TOOL_ITEMS: ToolItem[] = [
     key: "runtime-intelligence",
     capability: "research",
     title: "research",
-    description: "Agent 可以读取运行手册、搜索网页，并实时查看 Qalam GitHub 仓库的完整代码状态。",
-    tools: listQalamToolNames(["runtime_read", "external_read"]).filter((name) => name !== "ping_tool"),
+    description: "Agent 可以读取运行手册、搜索网页，并实时查看 Stylo GitHub 仓库的完整代码状态。",
+    tools: listStyloToolNames(["runtime_read", "external_read"]).filter((name) => name !== "ping_tool"),
     surfaces: ["runtime manual", "web search", "github repository", "source tree", "source file"],
     boundary: "默认只读认知权限；不直接修改远程仓库代码。",
     artifact: "返回运行诊断规则、网页搜索结果、仓库默认分支状态、文件树、源码内容和搜索命中。",
@@ -229,7 +231,7 @@ const TOOL_ITEMS: ToolItem[] = [
     capability: "operate",
     title: "operate",
     description: "Agent 通过统一操作接口在 Flow Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
-    tools: listQalamToolNames(["project_write", "generation_approval"]),
+    tools: listStyloToolNames(["project_write", "generation_approval"]),
     surfaces: ["script node", "archive node", "text node", "image node", "audio node", "video node", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
     artifact: "输出可继续编辑和执行的节点 scaffold，承接“查阅”和“编辑”的结果。",
@@ -471,7 +473,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   foundationNodeView = false,
   onOpenVisualLab,
 }) => {
-  const { conversationStorageKey, activityStorageKey } = buildQalamAccountStorageKeys(
+  const { conversationStorageKey, activityStorageKey } = buildStyloAccountStorageKeys(
     accountScope,
     projectId
   );
@@ -529,24 +531,24 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       return { activeId: "", items: [] };
     },
   });
-  const qalamToolSettings = useMemo(() => {
-    return normalizeQalamToolSettings({
-      ...DEFAULT_QALAM_TOOL_SETTINGS,
-      ...config.textConfig.qalamTools,
+  const styloToolSettings = useMemo(() => {
+    return normalizeStyloToolSettings({
+      ...DEFAULT_STYLO_TOOL_SETTINGS,
+      ...config.textConfig.styloTools,
       projectData: {
-        ...DEFAULT_QALAM_TOOL_SETTINGS.projectData,
-        ...config.textConfig.qalamTools?.projectData,
+        ...DEFAULT_STYLO_TOOL_SETTINGS.projectData,
+        ...config.textConfig.styloTools?.projectData,
       },
       workflowBuilder: {
-        ...DEFAULT_QALAM_TOOL_SETTINGS.workflowBuilder,
-        ...config.textConfig.qalamTools?.workflowBuilder,
+        ...DEFAULT_STYLO_TOOL_SETTINGS.workflowBuilder,
+        ...config.textConfig.styloTools?.workflowBuilder,
       },
       runtimeIntelligence: {
-        ...DEFAULT_QALAM_TOOL_SETTINGS.runtimeIntelligence,
-        ...config.textConfig.qalamTools?.runtimeIntelligence,
+        ...DEFAULT_STYLO_TOOL_SETTINGS.runtimeIntelligence,
+        ...config.textConfig.styloTools?.runtimeIntelligence,
       },
     });
-  }, [config.textConfig.qalamTools]);
+  }, [config.textConfig.styloTools]);
   const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
   const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || "deepseek";
   const activeAgentBaseUrl =
@@ -646,7 +648,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       if (event && event.pointerId !== activeResize.pointerId) return;
       panelResizeRef.current = null;
       setIsResizingPanel(false);
-      document.body.classList.remove("qalam-resizing");
+      document.body.classList.remove("stylo-resizing");
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", stopResizing);
       window.removeEventListener("pointercancel", stopResizing);
@@ -661,20 +663,20 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", stopResizing);
     window.addEventListener("pointercancel", stopResizing);
-    document.body.classList.add("qalam-resizing");
+    document.body.classList.add("stylo-resizing");
 
     return () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", stopResizing);
       window.removeEventListener("pointercancel", stopResizing);
-      document.body.classList.remove("qalam-resizing");
+      document.body.classList.remove("stylo-resizing");
     };
   }, [isResizingPanel, leftOffset]);
 
   useEffect(
     () => () => {
       panelResizeRef.current = null;
-      document.body.classList.remove("qalam-resizing");
+      document.body.classList.remove("stylo-resizing");
     },
     []
   );
@@ -694,7 +696,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
       const params = new URLSearchParams({
         projectId,
-        sessionId: buildQalamAccountSessionId(accountScope, projectId, activeConversation.id),
+        sessionId: buildStyloAccountSessionId(accountScope, projectId, activeConversation.id),
       });
       const traceId = (traceIdOverride || selectedTraceId || "").trim();
       if (traceId) params.set("traceId", traceId);
@@ -732,16 +734,16 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     setTraceSearch("");
   }, [activeConversation?.id]);
 
-  const updateProjectToolSettings = (patch: Partial<typeof qalamToolSettings.projectData>) => {
+  const updateProjectToolSettings = (patch: Partial<typeof styloToolSettings.projectData>) => {
     setConfig((prev) => {
-      const existing = prev.textConfig.qalamTools?.projectData || {};
+      const existing = prev.textConfig.styloTools?.projectData || {};
       const next = { ...existing, ...patch };
       return {
         ...prev,
         textConfig: {
           ...prev.textConfig,
-          qalamTools: {
-            ...(prev.textConfig.qalamTools || {}),
+          styloTools: {
+            ...(prev.textConfig.styloTools || {}),
             projectData: next,
           },
         },
@@ -749,16 +751,16 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     });
   };
 
-  const updateWorkflowToolSettings = (patch: Partial<typeof qalamToolSettings.workflowBuilder>) => {
+  const updateWorkflowToolSettings = (patch: Partial<typeof styloToolSettings.workflowBuilder>) => {
     setConfig((prev) => {
-      const existing = prev.textConfig.qalamTools?.workflowBuilder || {};
+      const existing = prev.textConfig.styloTools?.workflowBuilder || {};
       const next = { ...existing, ...patch };
       return {
         ...prev,
         textConfig: {
           ...prev.textConfig,
-          qalamTools: {
-            ...(prev.textConfig.qalamTools || {}),
+          styloTools: {
+            ...(prev.textConfig.styloTools || {}),
             workflowBuilder: next,
           },
         },
@@ -766,15 +768,15 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     });
   };
 
-  const updateRuntimeToolSettings = (patch: Partial<typeof qalamToolSettings.runtimeIntelligence>) => {
+  const updateRuntimeToolSettings = (patch: Partial<typeof styloToolSettings.runtimeIntelligence>) => {
     setConfig((prev) => {
-      const existing = prev.textConfig.qalamTools?.runtimeIntelligence || {};
+      const existing = prev.textConfig.styloTools?.runtimeIntelligence || {};
       return {
         ...prev,
         textConfig: {
           ...prev.textConfig,
-          qalamTools: {
-            ...(prev.textConfig.qalamTools || {}),
+          styloTools: {
+            ...(prev.textConfig.styloTools || {}),
             runtimeIntelligence: {
               ...existing,
               ...patch,
@@ -963,7 +965,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       pointerId: event.pointerId,
     };
     setIsResizingPanel(true);
-    document.body.classList.add("qalam-resizing");
+    document.body.classList.add("stylo-resizing");
   };
 
   const handleFetchTextModels = async () => {
@@ -1193,7 +1195,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     { key: "provider", label: "Provider", Icon: Sparkles, meta: "3" },
     { key: "ability", label: "Ability", Icon: Code2, meta: `${TOOL_ITEMS.length + availableAgentSkills.length}` },
     { key: "assets", label: "Assets", Icon: Boxes, meta: `${imageAssetCount + videoAssetCount + promptAssetCount + (projectData.roles?.length || 0)}` },
-    { key: "lab", label: "Lab", Icon: ScanSearch, meta: "5" },
+    { key: "lab", label: "Lab", Icon: ScanSearch, meta: "6" },
     { key: "history", label: "History", Icon: Cloud, meta: `${conversationState.items.length}` },
     { key: "sync", label: "Sync", Icon: Cloud, meta: syncState?.project.status || "local" },
     { key: "info", label: "Info", Icon: FileText },
@@ -2080,7 +2082,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
                             <input
                               type="checkbox"
-                              checked={qalamToolSettings.projectData.enabled}
+                              checked={styloToolSettings.projectData.enabled}
                               onChange={(e) => updateProjectToolSettings({ enabled: e.target.checked })}
                               className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
                             />
@@ -2134,13 +2136,13 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                           <div>
                             <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">认知开关</div>
                             <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以读取运行手册、搜索网页，并查看 Qalam GitHub 仓库实时源码。
+                              控制 Agent 是否可以读取运行手册、搜索网页，并查看 Stylo GitHub 仓库实时源码。
                             </div>
                           </div>
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
                             <input
                               type="checkbox"
-                              checked={qalamToolSettings.runtimeIntelligence.enabled}
+                              checked={styloToolSettings.runtimeIntelligence.enabled}
                               onChange={(e) => updateRuntimeToolSettings({ enabled: e.target.checked })}
                               className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
                             />
@@ -2158,7 +2160,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                               </span>
                               <input
                                 type="checkbox"
-                                checked={qalamToolSettings.runtimeIntelligence.webSearchEnabled}
+                                checked={styloToolSettings.runtimeIntelligence.webSearchEnabled}
                                 onChange={(e) => updateRuntimeToolSettings({ webSearchEnabled: e.target.checked })}
                                 className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
                               />
@@ -2174,7 +2176,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                               </span>
                               <input
                                 type="checkbox"
-                                checked={qalamToolSettings.runtimeIntelligence.githubAccessEnabled}
+                                checked={styloToolSettings.runtimeIntelligence.githubAccessEnabled}
                                 onChange={(e) => updateRuntimeToolSettings({ githubAccessEnabled: e.target.checked })}
                                 className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
                               />
@@ -2194,7 +2196,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                           <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
                             <input
                               type="checkbox"
-                              checked={qalamToolSettings.workflowBuilder.enabled}
+                              checked={styloToolSettings.workflowBuilder.enabled}
                               onChange={(e) => updateWorkflowToolSettings({ enabled: e.target.checked })}
                               className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
                             />
@@ -2697,7 +2699,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                                             </span>
                                           </div>
                                           <div className="mt-1 text-[11px] text-[var(--app-text-secondary)] break-all">
-                                            {trace.workflowName || "Qalam Edge Agent"}
+                                            {trace.workflowName || "Stylo Edge Agent"}
                                           </div>
                                           <div className="mt-1 text-[10px] text-[var(--app-text-muted)]">
                                             {trace.spanCount} spans
@@ -2735,7 +2737,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                                   </div>
                                   <div>
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Workflow</div>
-                                    <div className="mt-1">{selectedCloudTrace.workflowName || "Qalam Edge Agent"}</div>
+                                    <div className="mt-1">{selectedCloudTrace.workflowName || "Stylo Edge Agent"}</div>
                                   </div>
                                   <div>
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Updated</div>
@@ -2847,7 +2849,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                     </div>
                   )}
                   <div className="text-[11px] text-[var(--app-text-muted)]">
-                    仅对 Qalam 对话生效。当前主链以 Cloudflare edge session 与 SDK trace 为准。
+                    仅对 Stylo 对话生效。当前主链以 Cloudflare edge session 与 SDK trace 为准。
                   </div>
                 </div>
               )}
@@ -2864,22 +2866,24 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
 
               {selectedPanel === "lab" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {[
+                  {([
                     { key: "glassLab", actionKey: "glassLab" as const, title: "Glass Lab", detail: "调试玻璃、折射与悬浮面板的视觉参数。", Icon: ScanSearch, status: "independent lab" },
                     { key: "filmRollLab", actionKey: "filmRollLab" as const, title: "Film Lab", detail: "校准胶卷盒、leader、阴影和胶片实验室视觉系统。", Icon: ScanSearch, status: "independent lab" },
                     { key: "agentLab", actionKey: "agentLab" as const, title: "Agent Lab", detail: "检查 Agent runtime、工具调用与实验性能力面板。", Icon: Braces, status: "independent lab" },
-                    { key: "lookbookLab", title: "Lookbook Lab", detail: "前期美术设定占位：把角色或场景相关内容组织成类似时尚行业 lookbook 的视觉册。", Icon: FileText, status: "placeholder" },
-                    { key: "cinewor", title: "Cinewor", detail: "后期镜头调度占位：未来探索以 3D 空间预览 AI 演员、机位和电影镜头调度。", Icon: Video, status: "placeholder" },
-                  ].map((lab) => (
-                    <button
-                      key={lab.key}
-                      type="button"
-                      onClick={() => {
-                        if (lab.actionKey) onOpenVisualLab?.(lab.actionKey);
-                      }}
-                      disabled={!lab.actionKey || !onOpenVisualLab}
-                      className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
+                    { key: "manus", title: "Manus", detail: "剧本写作包装器：Fountain 解析、专业格式编辑、角色绑定与保存协调。", Icon: FileText, status: "source repository", href: PRODUCT_REPOSITORIES.manus },
+                    { key: "lookbookLab", title: "LookBook", detail: "前期美术包装器：组织角色、场景身份与视觉开发资料。", Icon: FileText, status: "source repository", href: PRODUCT_REPOSITORIES.lookbook },
+                    { key: "cinewor", title: "Cinewor", detail: "电影调度包装器：以 3D 空间组织演员、机位与镜头设计。", Icon: Video, status: "source repository", href: PRODUCT_REPOSITORIES.cinewor },
+                  ] as Array<{
+                    key: string;
+                    title: string;
+                    detail: string;
+                    Icon: React.ComponentType<{ size?: number }>;
+                    status: string;
+                    actionKey?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab">;
+                    href?: string;
+                  }>).map((lab) => {
+                    const content = (
+                      <>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)]">
                           <lab.Icon size={16} />
@@ -2890,8 +2894,40 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                         </div>
                       </div>
                       <div className="mt-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">{lab.detail}</div>
-                    </button>
-                  ))}
+                      {lab.href ? (
+                        <div className="mt-3 flex items-center gap-2 border-t border-[var(--app-border)] pt-3 text-[10px] font-medium text-[var(--app-text-primary)]">
+                          <Github size={14} />
+                          <span>Open repository</span>
+                        </div>
+                      ) : null}
+                      </>
+                    );
+                    if (lab.href) {
+                      return (
+                        <a
+                          key={lab.key}
+                          href={lab.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-left transition hover:-translate-y-px hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-0"
+                          aria-label={`打开 ${lab.title} GitHub 仓库`}
+                        >
+                          {content}
+                        </a>
+                      );
+                    }
+                    return (
+                      <button
+                        key={lab.key}
+                        type="button"
+                        onClick={() => lab.actionKey && onOpenVisualLab?.(lab.actionKey)}
+                        disabled={!lab.actionKey || !onOpenVisualLab}
+                        className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {content}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 

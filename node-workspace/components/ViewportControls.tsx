@@ -117,7 +117,7 @@ export const ViewportControls: React.FC<Props> = ({
   }
 
   return (
-    <div className="qalam-surface inline-flex w-11 flex-col items-center gap-1 rounded-full p-1">
+    <div className="stylo-surface inline-flex w-11 flex-col items-center gap-1 rounded-full p-1">
       <button
         type="button"
         onClick={handleMinus}

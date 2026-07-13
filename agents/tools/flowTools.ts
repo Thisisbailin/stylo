@@ -1,4 +1,4 @@
-import type { NodeFlowHandle, QalamAgentBridge } from "../bridge/qalamBridge";
+import type { NodeFlowHandle, StyloAgentBridge } from "../bridge/styloBridge";
 import { assertGenericWriteAllowedForNode, findNodeByIdOrRef } from "./foundationAccess";
 
 const HANDLE_VALUES = ["image", "text", "audio", "video", "multi"] as const;
@@ -117,7 +117,7 @@ export const moveFlowNodeToolDef = {
   name: "move_flow_node",
   description: "Move an existing Flow node to an explicit canvas position.",
   parameters: moveFlowNodeParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseMoveArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     assertGenericWriteAllowedForNode(
@@ -151,7 +151,7 @@ export const connectFlowNodesToolDef = {
   name: "connect_flow_nodes",
   description: "Connect two existing Flow nodes with a visible canvas connection or semantic reference link.",
   parameters: connectFlowNodesParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseConnectArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     assertGenericWriteAllowedForNode(

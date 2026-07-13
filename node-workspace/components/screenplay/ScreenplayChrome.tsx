@@ -66,7 +66,7 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
       <button type="button" className={isFocusMode ? "is-active" : ""} onClick={onToggleFocus} title="专注模式">
         <Crosshair size={18} />
       </button>
-      <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="稿纸信息">
+      <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="Manus 信息">
         <Info size={18} />
       </button>
       <button type="button" onClick={onShare} title="分享 Fountain">
@@ -164,11 +164,11 @@ export const ScreenplayInspector: React.FC<InspectorProps> = ({
 }) => {
   const activeScene = [...analysis.scenes].reverse().find((scene) => scene.lineIndex <= activeLine.index);
   return (
-    <aside className="screenplay-inspector" aria-label="稿纸信息">
+    <aside className="screenplay-inspector" aria-label="Manus 信息">
       <div className="screenplay-panel-heading">
         <div>
           <span>INFO</span>
-          <strong>稿纸信息</strong>
+          <strong>Manus 信息</strong>
         </div>
         <small>L{activeLine.index + 1}</small>
       </div>

@@ -1,18 +1,18 @@
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile } from "../../node-workspace/types";
-import type { QalamToolSettings } from "../../types";
-import type { AgentRuntimeEvent, QalamRunInput, QalamRunResult } from "./types";
+import type { StyloToolSettings } from "../../types";
+import type { AgentRuntimeEvent, StyloRunInput, StyloRunResult } from "./types";
 import { parseNodeFlowFile } from "../../node-workspace/nodeflow/schema";
 
 export type AgentHttpRuntimeConfig = {
   provider?: "qwen" | "openrouter" | "ark" | "deepseek";
   model: string;
   baseUrl?: string;
-  qalamTools?: QalamToolSettings;
+  styloTools?: StyloToolSettings;
 };
 
 export type AgentHttpRunRequest = {
-  run: QalamRunInput;
+  run: StyloRunInput;
   runtime: AgentHttpRuntimeConfig;
   projectData?: ProjectData;
   nodeFlow: NodeFlowFile;
@@ -20,7 +20,7 @@ export type AgentHttpRunRequest = {
 
 export type AgentHttpStreamPacket =
   | { kind: "event"; event: AgentRuntimeEvent }
-  | { kind: "result"; result: QalamRunResult }
+  | { kind: "result"; result: StyloRunResult }
   | { kind: "error"; error: string };
 
 export const AGENT_HTTP_STREAM_CONTENT_TYPE = "text/event-stream; charset=utf-8";
@@ -50,7 +50,7 @@ const parseToolCall = (value: unknown) => {
   return value;
 };
 
-const parseRunResult = (value: unknown): QalamRunResult => {
+const parseRunResult = (value: unknown): StyloRunResult => {
   if (
     !isRecord(value) ||
     !isNonEmptyString(value.projectId) ||
@@ -62,7 +62,7 @@ const parseRunResult = (value: unknown): QalamRunResult => {
     return failMalformedPacket();
   }
   value.toolCalls.forEach(parseToolCall);
-  const result = value as unknown as QalamRunResult;
+  const result = value as unknown as StyloRunResult;
   return {
     ...result,
     ...(result.updatedNodeFlow !== undefined

@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 export const LEGACY_GET_EPISODE_SCRIPT_DISABLED = true;
 
@@ -46,7 +46,7 @@ export const getEpisodeScriptToolDef = {
   name: "get_episode_script",
   description: "LEGACY DISABLED. Use list_project_resources/read_project_resource over script document nodes instead.",
   parameters: getEpisodeScriptParameters,
-  execute: (_input: unknown, _bridge: QalamAgentBridge) => {
+  execute: (_input: unknown, _bridge: StyloAgentBridge) => {
     throw new Error(
       "get_episode_script is a disabled legacy episode tool. Use read_project_resource with layer=script and entity=node for Flow document nodes."
     );

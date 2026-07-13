@@ -83,7 +83,7 @@ export const assertPatchDoesNotTouchFoundationMeta = (patch: Record<string, unkn
     "foundationOrder",
     "locked",
     "readOnly",
-    "qalamNodeRef",
+    "styloNodeRef",
     "documentId",
     "documentKind",
   ];

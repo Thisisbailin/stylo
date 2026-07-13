@@ -422,7 +422,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
             nodeType={isScriptDocument ? "script-document" : isDocumentTextNode ? "text-document" : "text"}
             headerActions={
                 isAgentReviewPending ? (
-                    <span className="text-node-review-status" title="Qalam 修改待审核">
+                    <span className="text-node-review-status" title="Stylo 修改待审核">
                         <FileDiff size={12} strokeWidth={1.9} />
                         <span>待审核</span>
                     </span>

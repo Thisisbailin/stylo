@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 const DEFAULT_MAX_CHARS = 8000;
 
@@ -50,7 +50,7 @@ export const searchWebToolDef = {
   description:
     "Search the public web for fresh information. Prefer primary sources when technical, legal, financial, or product accuracy matters.",
   parameters: searchWebParameters,
-  execute: async (input: unknown, _bridge: QalamAgentBridge) => {
+  execute: async (input: unknown, _bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(args.query)}`;
     const readerUrl = `https://r.jina.ai/http://r.jina.ai/http://${searchUrl}`;

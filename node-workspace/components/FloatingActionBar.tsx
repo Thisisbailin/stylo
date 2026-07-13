@@ -48,7 +48,7 @@ type Props = {
   onResetProject?: () => void;
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
-  onOpenQalam?: () => void;
+  onOpenStylo?: () => void;
   variant?: "dock" | "embedded";
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   showGlobalAccountTrigger?: boolean;
@@ -76,7 +76,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onResetProject,
   onSignOut,
   accountInfo,
-  onOpenQalam,
+  onOpenStylo,
   variant = "dock",
   onAssetLoad,
   showGlobalAccountTrigger = false,
@@ -269,7 +269,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   ];
   const accountLoaded = accountInfo?.isLoaded ?? true;
   const accountSignedIn = accountLoaded && !!accountInfo?.isSignedIn;
-  const accountName = accountInfo?.name || accountInfo?.email || "Qalam User";
+  const accountName = accountInfo?.name || accountInfo?.email || "Stylo User";
   const accountEmail = accountInfo?.email || accountInfo?.name || "登录以启用同步和项目管理";
   const handleSignOut = accountInfo?.onSignOut || onSignOut;
   const handleUploadAvatar = accountInfo?.onUploadAvatar;
@@ -788,16 +788,16 @@ export const FloatingActionBar: React.FC<Props> = ({
 
             <button
               type="button"
-              onClick={onOpenQalam}
+              onClick={onOpenStylo}
               className="group flex min-h-[72px] w-full items-center gap-3 rounded-[22px] border border-[var(--app-border)] bg-[linear-gradient(180deg,var(--app-panel),var(--app-panel-soft))] px-4 py-3 text-left transition hover:border-[var(--app-border-strong)] hover:bg-[linear-gradient(180deg,var(--app-panel-strong),var(--app-panel-soft))] active:translate-y-px"
-              title="Open Qalam"
+              title="Open Stylo"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[var(--app-border)] bg-[var(--app-panel-strong)] text-[var(--app-accent-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                <MessageSquare size={15} />
+              <div className="h-10 w-10 shrink-0 overflow-hidden rounded-[14px] border border-[var(--app-border)] bg-[var(--app-panel-strong)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                <img className="h-full w-full object-cover" src="/icon-128.png" alt="" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-                  Qalam
+                  Stylo
                 </div>
                 <div className="mt-1 text-[13px] font-medium tracking-[-0.01em] text-[var(--app-text-primary)]">
                   Ask, revise, or build on the canvas

@@ -1,3 +1,4 @@
+# Current external Cloudflare identifiers; rename after the platform migration.
 name = "qalam"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-03-30"

@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import {
   buildScriptResourceNodes,
   buildScriptResourceSearchText,
@@ -308,7 +308,7 @@ const resolveDocumentLocator = (raw: Record<string, unknown>) => {
   };
 };
 
-const resolveDocumentNode = (bridge: QalamAgentBridge, input: unknown) => {
+const resolveDocumentNode = (bridge: StyloAgentBridge, input: unknown) => {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Document tool needs an object argument.");
   }
@@ -328,7 +328,7 @@ export const findDocumentsToolDef = {
   name: "find_documents",
   description: "Find or list Flow document nodes. Prefer this before reading or updating documents when the target is unknown.",
   parameters: findDocumentsParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const raw = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
     const query = trim(raw.query);
     const documentKind = normalizeKind(raw.document_kind ?? raw.documentKind);
@@ -361,7 +361,7 @@ export const readDocumentToolDef = {
   name: "read_document",
   description: "Read a concrete Flow document by document_ref, document_id, or node_id.",
   parameters: readDocumentParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const raw = input as Record<string, unknown>;
     const node = resolveDocumentNode(bridge, input);
     const view = trim(raw?.view).toLowerCase() || "detail";
@@ -425,7 +425,7 @@ export const createDocumentToolDef = {
   name: "create_document",
   description: "Create a script, archive, or note document node in Flow.",
   parameters: createDocumentParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error("create_document needs an object argument.");
     }
@@ -474,7 +474,7 @@ export const updateDocumentToolDef = {
   name: "update_document",
   description: "Update an existing Flow document node by document_ref, document_id, or node_id.",
   parameters: updateDocumentParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error("update_document needs an object argument.");
     }

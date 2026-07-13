@@ -35,11 +35,11 @@ type PackageResource = {
 };
 
 type PackageNodeData = NodeFlowNodeData & {
-  qalamPackageResources?: Record<string, PackageResource>;
+  styloPackageResources?: Record<string, PackageResource>;
 };
 
-type QalamPackageManifest = {
-  format: "qalam-project-package";
+type StyloPackageManifest = {
+  format: "stylo-project-package";
   version: 1;
   createdAt: string;
   packageRoot: string;
@@ -48,12 +48,21 @@ type QalamPackageManifest = {
   unresolvedAssetCount: number;
 };
 
+type ImportPackageManifest = Omit<StyloPackageManifest, "format"> & {
+  format: StyloPackageManifest["format"] | "qalam-project-package";
+};
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-const QALAM_PACKAGE_NODEFLOW_PATH = ".qalam/nodeflow.json";
-const QALAM_PACKAGE_MANIFEST_PATH = ".qalam/manifest.json";
-const QALAM_RESOURCE_FIELD = "qalamPackageResources";
+const STYLO_PACKAGE_NODEFLOW_PATH = ".stylo/nodeflow.json";
+const STYLO_PACKAGE_MANIFEST_PATH = ".stylo/manifest.json";
+const STYLO_RESOURCE_FIELD = "styloPackageResources";
+const LEGACY_PACKAGE_NODEFLOW_PATH = ".qalam/nodeflow.json";
+const LEGACY_PACKAGE_MANIFEST_PATH = ".qalam/manifest.json";
+const LEGACY_RESOURCE_FIELD = "qalamPackageResources";
+const STYLO_PACKAGE_URL_PREFIX = "stylo-package://";
+const LEGACY_PACKAGE_URL_PREFIX = "qalam-package://";
 const MAX_PACKAGE_BYTES = 192 * 1024 * 1024;
 const MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
 const MAX_RESOURCE_BYTES = 64 * 1024 * 1024;
@@ -222,7 +231,7 @@ const assertSafeZipPath = (path: string) => {
 const inflateRaw = async (data: Uint8Array) => {
   const DecompressionStreamCtor = (globalThis as { DecompressionStream?: new (format: string) => TransformStream }).DecompressionStream;
   if (!DecompressionStreamCtor) {
-    throw new Error("当前浏览器不支持读取压缩 zip，请使用 Qalam 导出的项目包或无压缩 zip。");
+    throw new Error("当前浏览器不支持读取压缩 zip，请使用 Stylo 导出的项目包或无压缩 zip。");
   }
   const stream = new Blob([data]).stream().pipeThrough(new DecompressionStreamCtor("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -480,8 +489,8 @@ const addResource = (
   const data = node.data as PackageNodeData;
   node.data = {
     ...data,
-    [QALAM_RESOURCE_FIELD]: {
-      ...(data[QALAM_RESOURCE_FIELD] || {}),
+    [STYLO_RESOURCE_FIELD]: {
+      ...(data[STYLO_RESOURCE_FIELD] || {}),
       [field]: resource,
     },
   } as NodeFlowNodeData;
@@ -603,7 +612,7 @@ const packGlobalAssetHistory = async (
     entries.push({ path, data: resolved.bytes, mimeType: resolved.mimeType });
     nextHistory.push({
       ...item,
-      src: `qalam-package://${path}`,
+      src: `stylo-package://${path}`,
     });
   }
   nodeFlow.globalAssetHistory = nextHistory;
@@ -612,7 +621,7 @@ const packGlobalAssetHistory = async (
 
 export const buildNodeFlowPackageBlob = async (nodeFlow: NodeFlowFile) => {
   const packageFlow = cloneNodeFlow(nodeFlow);
-  const packageRoot = sanitizePathSegment(packageFlow.name || "Qalam Project", "Qalam Project");
+  const packageRoot = sanitizePathSegment(packageFlow.name || "Stylo Project", "Stylo Project");
   const occupiedPaths = new Set<string>();
   const resolveFolderPath = createPathResolver(packageFlow);
   const entries: ZipEntryInput[] = [];
@@ -625,7 +634,7 @@ export const buildNodeFlowPackageBlob = async (nodeFlow: NodeFlowFile) => {
     const documentEntry = packDocumentNode(node, folderPath, occupiedPaths);
     if (documentEntry) entries.push(documentEntry);
     const mediaEntries = await packMediaFields(node, folderPath, occupiedPaths);
-    unresolvedAssetCount += Object.values(((node.data as PackageNodeData)[QALAM_RESOURCE_FIELD] || {}))
+    unresolvedAssetCount += Object.values(((node.data as PackageNodeData)[STYLO_RESOURCE_FIELD] || {}))
       .filter((resource) => resource.kind === "media" && !resource.path && resource.originalValue)
       .length;
     entries.push(...mediaEntries);
@@ -633,23 +642,23 @@ export const buildNodeFlowPackageBlob = async (nodeFlow: NodeFlowFile) => {
 
   entries.push(...(await packGlobalAssetHistory(packageFlow, occupiedPaths)));
 
-  const manifest: QalamPackageManifest = {
-    format: "qalam-project-package",
+  const manifest: StyloPackageManifest = {
+    format: "stylo-project-package",
     version: 1,
     createdAt: new Date().toISOString(),
     packageRoot,
-    nodeFlowPath: `${packageRoot}/${QALAM_PACKAGE_NODEFLOW_PATH}`,
-    assetCount: entries.filter((entry) => !entry.path.startsWith(".qalam/")).length,
+    nodeFlowPath: `${packageRoot}/${STYLO_PACKAGE_NODEFLOW_PATH}`,
+    assetCount: entries.filter((entry) => !entry.path.startsWith(".stylo/")).length,
     unresolvedAssetCount,
   };
   const jsonEntries: ZipEntryInput[] = [
     {
-      path: QALAM_PACKAGE_NODEFLOW_PATH,
+      path: STYLO_PACKAGE_NODEFLOW_PATH,
       data: textEncoder.encode(JSON.stringify(packageFlow, null, 2)),
       mimeType: "application/json",
     },
     {
-      path: QALAM_PACKAGE_MANIFEST_PATH,
+      path: STYLO_PACKAGE_MANIFEST_PATH,
       data: textEncoder.encode(JSON.stringify(manifest, null, 2)),
       mimeType: "application/json",
     },
@@ -670,7 +679,7 @@ export const downloadNodeFlowPackage = async (nodeFlow: NodeFlowFile) => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${sanitizePathSegment(nodeFlow.name || "qalam-project", "qalam-project")}.qalam.zip`;
+  link.download = `${sanitizePathSegment(nodeFlow.name || "stylo-project", "stylo-project")}.stylo.zip`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -681,7 +690,8 @@ const hydratePackageResources = async (nodeFlow: NodeFlowFile, entries: Map<stri
   const nodes: NodeFlowNode[] = [];
   let hydratedBytes = 0;
   for (const node of nodeFlow.nodes || []) {
-    const rawResources = (node.data as Record<string, unknown>)?.[QALAM_RESOURCE_FIELD];
+    const nodeData = node.data as Record<string, unknown>;
+    const rawResources = nodeData?.[STYLO_RESOURCE_FIELD] ?? nodeData?.[LEGACY_RESOURCE_FIELD];
     if (rawResources === undefined) {
       nodes.push(node);
       continue;
@@ -739,7 +749,8 @@ const hydratePackageResources = async (nodeFlow: NodeFlowFile, entries: Map<stri
         );
       }
     }
-    delete nextData[QALAM_RESOURCE_FIELD];
+    delete nextData[STYLO_RESOURCE_FIELD];
+    delete (nextData as Record<string, unknown>)[LEGACY_RESOURCE_FIELD];
     nodes.push({ ...node, data: nextData });
   }
   nodeFlow.nodes = nodes;
@@ -747,11 +758,16 @@ const hydratePackageResources = async (nodeFlow: NodeFlowFile, entries: Map<stri
   if (Array.isArray(nodeFlow.globalAssetHistory)) {
     const hydratedHistory: GlobalAssetHistoryItem[] = [];
     for (const item of nodeFlow.globalAssetHistory) {
-      if (!item.src?.startsWith("qalam-package://")) {
+      const packageUrlPrefix = item.src?.startsWith(STYLO_PACKAGE_URL_PREFIX)
+        ? STYLO_PACKAGE_URL_PREFIX
+        : item.src?.startsWith(LEGACY_PACKAGE_URL_PREFIX)
+          ? LEGACY_PACKAGE_URL_PREFIX
+          : null;
+      if (!packageUrlPrefix) {
         hydratedHistory.push(item);
         continue;
       }
-      const path = item.src.replace("qalam-package://", "");
+      const path = item.src.slice(packageUrlPrefix.length);
       assertSafeZipPath(path);
       const bytes = await readZipEntry(entries, path, packageRoot);
       hydratedBytes += bytes.byteLength;
@@ -773,10 +789,14 @@ const parseJsonDocument = (text: string, label: string): unknown => {
   }
 };
 
-const parsePackageManifest = (value: unknown): Partial<QalamPackageManifest> | null => {
+const parsePackageManifest = (value: unknown): Partial<ImportPackageManifest> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const manifest = value as Record<string, unknown>;
-  if (manifest.format !== undefined && manifest.format !== "qalam-project-package") {
+  if (
+    manifest.format !== undefined &&
+    manifest.format !== "stylo-project-package" &&
+    manifest.format !== "qalam-project-package"
+  ) {
     throw new Error("项目包 manifest 格式不受支持。");
   }
   if (manifest.version !== undefined && manifest.version !== 1) {
@@ -789,7 +809,7 @@ const parsePackageManifest = (value: unknown): Partial<QalamPackageManifest> | n
     assertSafeZipPath(manifest.nodeFlowPath);
   }
   return {
-    format: manifest.format as QalamPackageManifest["format"] | undefined,
+    format: manifest.format as ImportPackageManifest["format"] | undefined,
     version: manifest.version as 1 | undefined,
     createdAt: typeof manifest.createdAt === "string" ? manifest.createdAt : undefined,
     packageRoot: typeof manifest.packageRoot === "string" ? manifest.packageRoot : undefined,
@@ -802,6 +822,7 @@ const parsePackageManifest = (value: unknown): Partial<QalamPackageManifest> | n
 export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> => {
   const isZip =
     file.name.toLocaleLowerCase().endsWith(".zip") ||
+    file.name.toLocaleLowerCase().endsWith(".stylo") ||
     file.name.toLocaleLowerCase().endsWith(".qalam") ||
     file.type === "application/zip" ||
     file.type === "application/x-zip-compressed";
@@ -813,8 +834,12 @@ export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> 
   }
   const entries = await readZip(file);
   const manifestEntry =
-    entries.get(QALAM_PACKAGE_MANIFEST_PATH) ||
-    Array.from(entries.values()).find((entry) => entry.path.endsWith(`/${QALAM_PACKAGE_MANIFEST_PATH}`));
+    entries.get(STYLO_PACKAGE_MANIFEST_PATH) ||
+    entries.get(LEGACY_PACKAGE_MANIFEST_PATH) ||
+    Array.from(entries.values()).find((entry) =>
+      entry.path.endsWith(`/${STYLO_PACKAGE_MANIFEST_PATH}`) ||
+      entry.path.endsWith(`/${LEGACY_PACKAGE_MANIFEST_PATH}`)
+    );
   const manifest = manifestEntry
     ? parsePackageManifest(
         parseJsonDocument(
@@ -823,16 +848,24 @@ export const readNodeFlowImportFile = async (file: File): Promise<NodeFlowFile> 
         )
       )
     : null;
-  const packageRoot =
-    manifestEntry?.path.endsWith(`/${QALAM_PACKAGE_MANIFEST_PATH}`)
-      ? manifestEntry.path.slice(0, -QALAM_PACKAGE_MANIFEST_PATH.length - 1)
-      : manifest?.packageRoot || "";
+  const manifestNamespacePath = manifestEntry?.path.endsWith(STYLO_PACKAGE_MANIFEST_PATH)
+    ? STYLO_PACKAGE_MANIFEST_PATH
+    : manifestEntry?.path.endsWith(LEGACY_PACKAGE_MANIFEST_PATH)
+      ? LEGACY_PACKAGE_MANIFEST_PATH
+      : null;
+  const packageRoot = manifestEntry && manifestNamespacePath && manifestEntry.path !== manifestNamespacePath
+    ? manifestEntry.path.slice(0, -manifestNamespacePath.length - 1)
+    : manifest?.packageRoot || "";
   const nodeFlowEntry =
     (manifest?.nodeFlowPath ? entries.get(manifest.nodeFlowPath) : undefined) ||
-    entries.get(QALAM_PACKAGE_NODEFLOW_PATH) ||
+    entries.get(STYLO_PACKAGE_NODEFLOW_PATH) ||
+    entries.get(LEGACY_PACKAGE_NODEFLOW_PATH) ||
     entries.get("nodeflow.json") ||
-    Array.from(entries.values()).find((entry) => entry.path.endsWith(`/${QALAM_PACKAGE_NODEFLOW_PATH}`));
-  if (!nodeFlowEntry) throw new Error("项目包缺少 .qalam/nodeflow.json。");
+    Array.from(entries.values()).find((entry) =>
+      entry.path.endsWith(`/${STYLO_PACKAGE_NODEFLOW_PATH}`) ||
+      entry.path.endsWith(`/${LEGACY_PACKAGE_NODEFLOW_PATH}`)
+    );
+  if (!nodeFlowEntry) throw new Error("项目包缺少 Stylo nodeflow.json。");
   if (nodeFlowEntry.uncompressedSize > NODE_FLOW_IMPORT_LIMITS.jsonBytes) {
     throw new Error("项目包中的 nodeflow.json 过大。");
   }

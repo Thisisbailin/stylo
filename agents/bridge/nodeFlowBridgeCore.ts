@@ -38,14 +38,14 @@ import type {
   NodeFlowHandle,
   NodeFlowNodeLookupInput,
   NodeFlowNodeLookupResult,
-  QalamAgentBridge,
+  StyloAgentBridge,
   RemoveNodeFlowLinkInput,
   RemoveNodeFlowLinkResult,
   RemoveNodeFlowNodeInput,
   RemoveNodeFlowNodeResult,
   UpdateNodeFlowNodeInput,
   UpdateNodeFlowNodeResult,
-} from "./qalamBridge";
+} from "./styloBridge";
 
 type NodeFlowBridgeDeps = {
   getProjectData: () => ProjectData;
@@ -636,7 +636,7 @@ const clearNodeFlowExecutionApproval = (
   return { nodeId: node.id };
 };
 
-export const createQalamAgentBridge = (deps: NodeFlowBridgeDeps): QalamAgentBridge => ({
+export const createStyloAgentBridge = (deps: NodeFlowBridgeDeps): StyloAgentBridge => ({
   getProjectData: deps.getProjectData,
   getNodeFlowSnapshot: deps.getNodeFlowSnapshot,
   getPendingNodeFlowExecutionApprovals: () => deps.getPendingExecutionApprovals?.() || [],

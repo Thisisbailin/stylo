@@ -176,7 +176,7 @@ const createAsset = async (
   }
 
   let groupId = authorizedGroupId || defaultGroupId;
-  const name = normalizeText(payload?.name, `qalam-aigc-${Date.now()}`).slice(0, 80);
+  const name = normalizeText(payload?.name, `stylo-aigc-${Date.now()}`).slice(0, 80);
 
   if (!groupId) {
     const group = await callArkAction({
@@ -187,7 +187,7 @@ const createAsset = async (
         GroupType: "AIGC",
         Name: name,
         Title: name,
-        Description: "Qalam AIGC synthetic portrait review",
+        Description: "Stylo AIGC synthetic portrait review",
         ProjectName: projectName,
       },
     });

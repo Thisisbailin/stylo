@@ -25,7 +25,12 @@ export const useConfig = (key: string) => {
       };
       const rememberApiKeys = parsed.rememberApiKeys ?? INITIAL_REMEMBER_KEYS;
       const syncApiKeys = parsed.syncApiKeys ?? INITIAL_SYNC_KEYS;
-      const safeText = rememberApiKeys ? parsed.textConfig : { ...parsed.textConfig, apiKey: '' };
+      const parsedTextConfig = parsed.textConfig || {};
+      const legacyToolSettings = parsedTextConfig["qalamTools"];
+      const migratedTextConfig = parsedTextConfig.styloTools || !legacyToolSettings
+        ? parsedTextConfig
+        : { ...parsedTextConfig, styloTools: legacyToolSettings };
+      const safeText = rememberApiKeys ? migratedTextConfig : { ...migratedTextConfig, apiKey: '' };
       const allowedProviders = ["openrouter", "qwen"];
       const allowedAgentProviders = ["openrouter", "qwen", "ark", "deepseek"];
       const safeProvider =

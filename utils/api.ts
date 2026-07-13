@@ -15,7 +15,7 @@ export const fetchViaProxy = async (url: string, init: RequestInit = {}) => {
   if (init.signal?.aborted) throw init.signal.reason;
   const headers = await buildAuthorizedHeaders(
     init.headers,
-    "x-qalam-authorization",
+    "x-stylo-authorization",
     lease.generation
   );
   lease.assertCurrent();

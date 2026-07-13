@@ -1,4 +1,4 @@
-const BROWSER_DEBUG_STORAGE_KEY = "qalam:agent-debug";
+const BROWSER_DEBUG_STORAGE_KEY = "stylo:agent-debug";
 const FORCE_BROWSER_AGENT_DEBUG = false;
 
 const isTruthy = (value?: string | null) => {
@@ -21,7 +21,7 @@ export const isBrowserAgentDebugEnabled = () => {
 
 export const browserAgentDebug = (label: string, payload?: unknown) => {
   if (!isBrowserAgentDebugEnabled() || typeof console === "undefined") return;
-  const prefix = `[Qalam][agent-debug] ${label}`;
+  const prefix = `[Stylo][agent-debug] ${label}`;
   if (payload === undefined) {
     console.debug(prefix);
     return;
@@ -31,7 +31,7 @@ export const browserAgentDebug = (label: string, payload?: unknown) => {
 
 export const browserAgentDebugError = (label: string, payload?: unknown) => {
   if (!isBrowserAgentDebugEnabled() || typeof console === "undefined") return;
-  const prefix = `[Qalam][agent-debug] ${label}`;
+  const prefix = `[Stylo][agent-debug] ${label}`;
   if (payload === undefined) {
     console.error(prefix);
     return;

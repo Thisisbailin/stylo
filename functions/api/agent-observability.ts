@@ -1,5 +1,5 @@
 import { getUserId, jsonResponse } from "./_auth";
-import { buildQalamSessionPrefix, isQalamSessionInProject } from "../../agents/runtime/projectScope";
+import { buildStyloSessionPrefix, isStyloSessionInProject } from "../../agents/runtime/projectScope";
 
 type Env = {
   DB: any;
@@ -99,10 +99,10 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     if (!projectId) {
       return jsonResponse({ error: "Missing projectId" }, { status: 400 });
     }
-    if (sessionId && !isQalamSessionInProject(sessionId, projectId)) {
+    if (sessionId && !isStyloSessionInProject(sessionId, projectId)) {
       return jsonResponse({ error: "Session does not belong to this project" }, { status: 409 });
     }
-    const sessionPrefix = buildQalamSessionPrefix(projectId);
+    const sessionPrefix = buildStyloSessionPrefix(projectId);
 
     const sessionRows = await context.env.DB.prepare(
       "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND instr(session_id, ?2) = 1 ORDER BY updated_at DESC LIMIT 30"

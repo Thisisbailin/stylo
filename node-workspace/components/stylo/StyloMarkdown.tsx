@@ -2,10 +2,10 @@ import React from "react";
 import { GlobeHemisphereWest } from "@phosphor-icons/react";
 import { normalizeSafeExternalUrl } from "./safeExternalUrl";
 
-const qalamBodyTextClass =
+const styloBodyTextClass =
   "text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed";
 
-const qalamSecondaryTextClass =
+const styloSecondaryTextClass =
   "text-[14px] leading-6 text-[var(--app-text-secondary)] md:text-[12px] md:leading-relaxed";
 
 const sanitizeUrl = (value: string) => {
@@ -26,7 +26,7 @@ const extractUrls = (text: string) => {
 const stripUrls = (text: string) =>
   text.replace(/https?:\/\/[^\s)]+/g, "").replace(/\s{2,}/g, " ").trim();
 
-export const renderQalamInlineMarkdown = (text: string) => {
+export const renderStyloInlineMarkdown = (text: string) => {
   const nodes: React.ReactNode[] = [];
   let i = 0;
   while (i < text.length) {
@@ -143,7 +143,7 @@ const renderLinkCard = (url: string, idx: number) => {
   );
 };
 
-export const renderQalamMarkdown = (text: string) => {
+export const renderStyloMarkdown = (text: string) => {
   const lines = (text || "").split("\n");
   const blocks: React.ReactNode[] = [];
   let i = 0;
@@ -196,7 +196,7 @@ export const renderQalamMarkdown = (text: string) => {
               : "text-[15px] md:text-[12px]";
       blocks.push(
         <div key={`h-${i}`} className={`font-semibold ${size} text-[var(--app-text-primary)]`}>
-          {renderQalamInlineMarkdown(title)}
+          {renderStyloInlineMarkdown(title)}
         </div>
       );
       i += 1;
@@ -212,9 +212,9 @@ export const renderQalamMarkdown = (text: string) => {
       blocks.push(
         <blockquote
           key={`q-${i}`}
-          className={`whitespace-pre-wrap border-l-2 border-[var(--app-border-strong)] pl-3 ${qalamSecondaryTextClass}`}
+          className={`whitespace-pre-wrap border-l-2 border-[var(--app-border-strong)] pl-3 ${styloSecondaryTextClass}`}
         >
-          {renderQalamInlineMarkdown(quoteLines.join("\n"))}
+          {renderStyloInlineMarkdown(quoteLines.join("\n"))}
         </blockquote>
       );
       continue;
@@ -233,7 +233,7 @@ export const renderQalamMarkdown = (text: string) => {
       blocks.push(
         <ul key={`t-${i}`} className="space-y-1">
           {tasks.map((task, idx) => (
-            <li key={`${idx}-${task.text.slice(0, 8)}`} className={`flex items-start gap-2 ${qalamSecondaryTextClass}`}>
+            <li key={`${idx}-${task.text.slice(0, 8)}`} className={`flex items-start gap-2 ${styloSecondaryTextClass}`}>
               <span
                 className={`mt-0.5 h-3.5 w-3.5 rounded border ${
                   task.checked ? "bg-emerald-500/70 border-emerald-400" : "border-[var(--app-border)]"
@@ -242,7 +242,7 @@ export const renderQalamMarkdown = (text: string) => {
               <span
                 className={`text-[var(--app-text-primary)] ${task.checked ? "line-through opacity-70" : ""}`}
               >
-                {renderQalamInlineMarkdown(task.text)}
+                {renderStyloInlineMarkdown(task.text)}
               </span>
             </li>
           ))}
@@ -279,7 +279,7 @@ export const renderQalamMarkdown = (text: string) => {
                       key={`${idx}-${h}`}
                       className="text-left font-semibold text-[var(--app-text-primary)] border-b border-[var(--app-border)] pb-1 pr-4"
                     >
-                      {renderQalamInlineMarkdown(h)}
+                      {renderStyloInlineMarkdown(h)}
                     </th>
                   ))}
                 </tr>
@@ -289,7 +289,7 @@ export const renderQalamMarkdown = (text: string) => {
                   <tr key={`r-${rIdx}`}>
                     {row.map((cell, cIdx) => (
                       <td key={`${rIdx}-${cIdx}`} className="py-1 pr-4 text-[var(--app-text-secondary)]">
-                        {renderQalamInlineMarkdown(cell)}
+                        {renderStyloInlineMarkdown(cell)}
                       </td>
                     ))}
                   </tr>
@@ -319,7 +319,7 @@ export const renderQalamMarkdown = (text: string) => {
       blocks.push(
         <ListTag key={`l-${i}`} className={`space-y-1 pl-5 text-[14px] leading-6 md:text-[12px] md:leading-relaxed ${ordered ? "list-decimal" : "list-disc"}`}>
           {items.map((item, idx) => (
-            <li key={`${idx}-${item.slice(0, 8)}`}>{renderQalamInlineMarkdown(item)}</li>
+            <li key={`${idx}-${item.slice(0, 8)}`}>{renderStyloInlineMarkdown(item)}</li>
           ))}
         </ListTag>
       );
@@ -341,8 +341,8 @@ export const renderQalamMarkdown = (text: string) => {
     const stripped = stripUrls(paragraphText);
     if (stripped) {
       blocks.push(
-        <div key={`p-${i}`} className={`whitespace-pre-wrap ${qalamBodyTextClass}`}>
-          {renderQalamInlineMarkdown(paragraphText)}
+        <div key={`p-${i}`} className={`whitespace-pre-wrap ${styloBodyTextClass}`}>
+          {renderStyloInlineMarkdown(paragraphText)}
         </div>
       );
     }

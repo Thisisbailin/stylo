@@ -98,7 +98,7 @@ export const AssetsPanel: React.FC<Props> = ({
   const anchorClass = inlineAnchor ? "relative h-12 flex items-center" : floating ? "fixed bottom-4 right-4 z-[60]" : "";
   const accountLoaded = accountInfo?.isLoaded ?? true;
   const accountSignedIn = accountLoaded && !!accountInfo?.isSignedIn;
-  const accountName = accountInfo?.name || accountInfo?.email || "Qalam User";
+  const accountName = accountInfo?.name || accountInfo?.email || "Stylo User";
   const accountEmail = accountInfo?.email || accountInfo?.name || "登录以启用同步和项目管理";
 
   const updateCollapsed = (next: boolean) => {
@@ -137,7 +137,7 @@ export const AssetsPanel: React.FC<Props> = ({
       ? createPortal(
           <>
             <div className="fixed inset-0 z-[58]" onClick={() => setShowAccountMenu(false)} />
-            <div className="qalam-surface fixed bottom-[72px] right-4 z-[61] w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-[24px] p-4">
+            <div className="stylo-surface fixed bottom-[72px] right-4 z-[61] w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-[24px] p-4">
               {!accountLoaded ? (
                 <div className="flex items-center gap-3 animate-pulse">
                   <div className="h-12 w-12 rounded-[16px] bg-[var(--app-panel-soft)]" />
@@ -277,7 +277,7 @@ export const AssetsPanel: React.FC<Props> = ({
     return (
       <div className={anchorClass}>
         {accountMenu}
-        <div className="qalam-surface flex h-11 items-center gap-1 rounded-full px-1.5">
+        <div className="stylo-surface flex h-11 items-center gap-1 rounded-full px-1.5">
           <button
             type="button"
             onClick={() => updateCollapsed(false)}
@@ -302,7 +302,7 @@ export const AssetsPanel: React.FC<Props> = ({
   }
 
   const panelCore = (
-    <div className="qalam-surface flex max-h-[calc(100vh-140px)] w-[380px] flex-col overflow-hidden rounded-[26px]">
+    <div className="stylo-surface flex max-h-[calc(100vh-140px)] w-[380px] flex-col overflow-hidden rounded-[26px]">
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--app-border)]">
         <div className="flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-[var(--app-accent-soft)] via-transparent to-transparent border border-[var(--app-border)] flex items-center justify-center">

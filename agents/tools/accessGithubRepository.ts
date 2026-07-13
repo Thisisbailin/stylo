@@ -1,6 +1,7 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 const GITHUB_OWNER = "Thisisbailin";
+// Current external slug; update after the repository itself is renamed.
 const GITHUB_REPO = "qalam";
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
@@ -233,9 +234,9 @@ const searchRepository = async (input: {
 export const accessGithubRepositoryToolDef = {
   name: "access_github_repository",
   description:
-    "Read the live Qalam GitHub repository with broad read-only access: latest default-branch status, recursive file tree, arbitrary file contents, and repository search.",
+    "Read the live Stylo GitHub repository with broad read-only access: latest default-branch status, recursive file tree, arbitrary file contents, and repository search.",
   parameters: githubRepositoryParameters,
-  execute: async (input: unknown, _bridge: QalamAgentBridge) => {
+  execute: async (input: unknown, _bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     if (args.action === "status") {
       return {

@@ -87,7 +87,7 @@ export const LookbookPanel: React.FC<Props> = ({ projectData, identityNodeId, on
           <ArrowLeft size={17} weight="bold" />
           <span>返回 Flow</span>
         </button>
-        <div className="lookbook-wordmark">QALAM LOOKBOOK</div>
+        <div className="lookbook-wordmark">STYLO LOOKBOOK</div>
         <div className="lookbook-issue">ISSUE {issueNumber} / {typeLabel}</div>
       </header>
 
@@ -213,7 +213,7 @@ export const LookbookPanel: React.FC<Props> = ({ projectData, identityNodeId, on
         </section>
 
         <footer className="lookbook-footer">
-          <span>QALAM / IDENTITY WRAPPER</span>
+          <span>STYLO / IDENTITY WRAPPER</span>
           <span>{identity.name} / @{identity.mention}</span>
         </footer>
       </main>

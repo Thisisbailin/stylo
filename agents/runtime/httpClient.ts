@@ -1,4 +1,4 @@
-import type { QalamAgentRuntime, QalamRunInput, QalamRunOptions, QalamRunResult } from "./types";
+import type { StyloAgentRuntime, StyloRunInput, StyloRunOptions, StyloRunResult } from "./types";
 import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
   AgentEventSequenceGuard,
@@ -79,7 +79,7 @@ const summarizeRawPacketForDebug = (rawPacket: string) => {
   }
 };
 
-const summarizeResultForDebug = (result: QalamRunResult) => ({
+const summarizeResultForDebug = (result: StyloRunResult) => ({
   sessionId: result.sessionId,
   finalTextChars: typeof result.finalText === "string" ? result.finalText.length : 0,
   toolCalls: result.toolCalls.length,
@@ -118,17 +118,17 @@ const decodeStreamChunks = async (
   }
 };
 
-export const createHttpQalamAgentRuntime = ({
+export const createHttpStyloAgentRuntime = ({
   endpoint,
   getRuntimeConfig,
   getProjectDataSnapshot,
   getNodeFlowSnapshot,
   getAuthToken,
-}: HttpRuntimeDeps): QalamAgentRuntime => ({
-  async run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult> {
+}: HttpRuntimeDeps): StyloAgentRuntime => ({
+  async run(input: StyloRunInput, options?: StyloRunOptions): Promise<StyloRunResult> {
     const nodeFlow = getNodeFlowSnapshot?.();
     if (!nodeFlow) {
-      throw new Error("Qalam HTTP runtime requires a NodeFlow snapshot.");
+      throw new Error("Stylo HTTP runtime requires a NodeFlow snapshot.");
     }
     const requestBody: AgentHttpRunRequest = {
       run: input,
@@ -182,7 +182,7 @@ export const createHttpQalamAgentRuntime = ({
       throw new Error(message || `Agent 请求失败：HTTP ${response.status}`);
     }
 
-    let finalResult: QalamRunResult | null = null;
+    let finalResult: StyloRunResult | null = null;
     let streamedError: string | null = null;
     let lastEventType: string | null = null;
     let lastFinalMessageCompletedText = "";
@@ -258,7 +258,7 @@ export const createHttpQalamAgentRuntime = ({
     }
     if (finalResult.projectId !== input.projectId) {
       throw new Error(
-        `Qalam 返回了其它项目的结果：expected ${input.projectId}, received ${finalResult.projectId || "missing"}。`
+        `Stylo 返回了其它项目的结果：expected ${input.projectId}, received ${finalResult.projectId || "missing"}。`
       );
     }
     browserAgentDebug("httpClient completed", {

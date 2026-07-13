@@ -1,26 +1,26 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import { readPersistedAgentSessionMessages } from "./session";
-import { runQalamAgentCore } from "./core";
+import { runStyloAgentCore } from "./core";
 import { resolveAgentProvider, resolveApiMode, resolveBaseUrl } from "./providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "./skills";
 import { buildDisabledTools } from "./toolPolicy";
 import type {
-  QalamAgentConfigProvider,
-  QalamAgentRuntime,
-  QalamAgentTracer,
-  QalamRunOptions,
-  QalamSessionStore,
-  QalamSkillLoader,
+  StyloAgentConfigProvider,
+  StyloAgentRuntime,
+  StyloAgentTracer,
+  StyloRunOptions,
+  StyloSessionStore,
+  StyloSkillLoader,
 } from "./types";
 
 const AGENT_MAX_TURNS = 50;
 
 type RuntimeDeps = {
-  bridge: QalamAgentBridge;
-  skillLoader: QalamSkillLoader;
-  configProvider: QalamAgentConfigProvider;
-  sessionStore: QalamSessionStore;
-  tracer?: QalamAgentTracer;
+  bridge: StyloAgentBridge;
+  skillLoader: StyloSkillLoader;
+  configProvider: StyloAgentConfigProvider;
+  sessionStore: StyloSessionStore;
+  tracer?: StyloAgentTracer;
 };
 
 const resolveApiKey = (provider: "qwen" | "openrouter" | "ark" | "deepseek", apiKey?: string) => {
@@ -33,7 +33,7 @@ const resolveApiKey = (provider: "qwen" | "openrouter" | "ark" | "deepseek", api
 
 const debugLog = (label: string, payload?: unknown) => {
   if (typeof console === "undefined") return;
-  const prefix = "[Qalam][browser-core]";
+  const prefix = "[Stylo][browser-core]";
   if (payload === undefined) {
     console.debug(prefix, label);
     return;
@@ -43,7 +43,7 @@ const debugLog = (label: string, payload?: unknown) => {
 
 const debugGroupStart = (label: string) => {
   if (typeof console === "undefined" || typeof console.groupCollapsed !== "function") return;
-  console.groupCollapsed(`[Qalam][browser-core] ${label}`);
+  console.groupCollapsed(`[Stylo][browser-core] ${label}`);
 };
 
 const debugGroupEnd = () => {
@@ -51,14 +51,14 @@ const debugGroupEnd = () => {
   console.groupEnd();
 };
 
-export const createQalamAgentRuntime = ({
+export const createStyloAgentRuntime = ({
   bridge,
   skillLoader,
   configProvider,
   sessionStore,
   tracer,
-}: RuntimeDeps): QalamAgentRuntime => ({
-  async run(input, options?: QalamRunOptions) {
+}: RuntimeDeps): StyloAgentRuntime => ({
+  async run(input, options?: StyloRunOptions) {
     debugGroupStart("Agent run");
     try {
       const rawConfig = await configProvider.getConfig();
@@ -90,7 +90,7 @@ export const createQalamAgentRuntime = ({
       });
 
       tracer?.onRunStarted(input);
-      const runResult = await runQalamAgentCore({
+      const runResult = await runStyloAgentCore({
         input,
         config: {
           provider,
@@ -99,14 +99,14 @@ export const createQalamAgentRuntime = ({
           apiKey: resolvedConfig.apiKey,
           baseUrl: resolvedConfig.baseUrl,
           defaultHeaders: resolvedConfig.defaultHeaders,
-          qalamTools: resolvedConfig.qalamTools,
+          styloTools: resolvedConfig.styloTools,
         },
         bridge,
         session,
         sessionMessages,
         runtimeMode: "browser",
-        runtimeLabel: "Qalam Agent",
-        workflowName: "Qalam Browser Agent",
+        runtimeLabel: "Stylo Agent",
+        workflowName: "Stylo Browser Agent",
         enabledSkills: enabledSkills as any,
         disabledTools,
         maxTurns: AGENT_MAX_TURNS,

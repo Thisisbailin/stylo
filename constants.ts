@@ -1,5 +1,5 @@
 
-import { ProjectData, TextServiceConfig, VideoServiceConfig, MultimodalConfig, ViduServiceConfig, QalamToolSettings } from './types';
+import { ProjectData, TextServiceConfig, VideoServiceConfig, MultimodalConfig, ViduServiceConfig, StyloToolSettings } from './types';
 
 export const INITIAL_PROJECT_DATA: ProjectData = {
   fileName: '',
@@ -41,7 +41,7 @@ export const WUYINKEJI_ASYNC_DETAIL_ENDPOINT = 'https://api.wuyinkeji.com/api/as
 export const NANOBANANA_PRO_MODEL = 'nano banana pro';
 export const NANOBANANA_IDENTITY_PROMPT = '生成全身三视图以及一张面部特写(最左边占满三分之一的位置是超大的面部特写，右边三分之二放正视图、侧视图、后视图，纯白背景,';
 
-export const DEFAULT_QALAM_TOOL_SETTINGS: QalamToolSettings = {
+export const DEFAULT_STYLO_TOOL_SETTINGS: StyloToolSettings = {
   projectData: {
     enabled: true,
   },
@@ -68,7 +68,7 @@ export const INITIAL_TEXT_CONFIG: TextServiceConfig = {
   qwenModels: [],
   voiceDesignModel: "",
   voiceDubbingModel: "",
-  qalamTools: DEFAULT_QALAM_TOOL_SETTINGS,
+  styloTools: DEFAULT_STYLO_TOOL_SETTINGS,
 };
 
 export const VIDU_DEFAULT_BASE_URL = "https://api.vidu.cn/ent/v2";

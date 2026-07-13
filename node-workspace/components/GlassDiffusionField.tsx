@@ -1,6 +1,6 @@
 import React, { useId, useMemo } from "react";
 
-export type GlassDiffusionPresetKey = "bare" | "mist" | "veil" | "qalam";
+export type GlassDiffusionPresetKey = "bare" | "mist" | "veil" | "stylo";
 
 export type GlassDiffusionConfig = {
   width: number;
@@ -78,7 +78,7 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
     edgeAlpha: 0.36,
     curve: 24.2,
   },
-  qalam: {
+  stylo: {
     width: 380,
     height: 560,
     blur: 12,
@@ -92,7 +92,7 @@ export const GLASS_DIFFUSION_PRESETS: Record<GlassDiffusionPresetKey, GlassDiffu
   },
 };
 
-export const QALAM_GLASS_LAB_CONFIG: Omit<GlassDiffusionConfig, "width" | "height"> = {
+export const STYLO_GLASS_LAB_CONFIG: Omit<GlassDiffusionConfig, "width" | "height"> = {
   blur: 12,
   fillAlpha: 0,
   saturate: 113,
@@ -103,7 +103,7 @@ export const QALAM_GLASS_LAB_CONFIG: Omit<GlassDiffusionConfig, "width" | "heigh
   curve: 5.4,
 };
 
-export const QALAM_GLASS_LAB_SHADOW = {
+export const STYLO_GLASS_LAB_SHADOW = {
   offsetX: 24,
   offsetY: 18,
   blur: 96,

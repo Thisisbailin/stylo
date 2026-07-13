@@ -1024,6 +1024,12 @@ export const ensureFoundationGraphSkeleton = (
   flow: FlowState,
   project: Pick<FlowProject, "rootNodeId" | "title" | "durationMin">
 ): FlowState => {
+  const isPristineInitialization =
+    (flow.revision || 0) === 0 &&
+    (flow.flowNodes?.length || 0) === 0 &&
+    flow.links.length === 0 &&
+    (flow.graphLinks?.length || 0) === 0 &&
+    (flow.globalAssetHistory?.length || 0) === 0;
   const seed = buildFoundationGraphSeed(project.title, project.durationMin, project.rootNodeId);
   const legacyAxisIndexIds = getLegacyAxisIndexIds(project.rootNodeId);
   let changed = false;
@@ -1248,7 +1254,7 @@ export const ensureFoundationGraphSkeleton = (
   });
   return {
     ...finalFlow,
-    revision: (flow.revision || 0) + 1,
+    revision: isPristineInitialization ? 0 : (flow.revision || 0) + 1,
   };
 };
 

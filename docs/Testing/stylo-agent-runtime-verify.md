@@ -1,4 +1,4 @@
-# Verify — Qalam Agent Runtime
+# Verify — Stylo Agent Runtime
 
 Date: 2026-07-13
 
@@ -59,6 +59,6 @@ PASS — no whitespace errors, exit 0
 
 ## Rollback
 
-- Provider runtime and stream projector can be reverted independently behind the existing `runQalamAgent` contract.
+- Provider runtime and stream projector can be reverted independently behind the existing `runStyloAgent` contract.
 - Tool metadata can be reverted without changing individual tool implementations.
 - React controller/reducer preserves the external hook contract, so the presentation boundary can be rolled back without changing backend protocol types.

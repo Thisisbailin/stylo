@@ -3,6 +3,7 @@ import type { NodeFlowLink, NodeFlowNode, NodeFlowNodeData, NodeFlowNodeStyle } 
 import { createNodeFlowLink, removeNodeFlowLink, toggleNodeFlowLinkPause } from "./links";
 import { normalizeNodeFlowNodePositions } from "./placement";
 import { ensureUniqueNodeRef, normalizeNodeRef, setNodeFlowRef } from "./refs";
+import { readStyloNodeRef } from "./compatibility";
 
 export type NodeFlowMutableState = {
   revision: number;
@@ -26,7 +27,7 @@ export const patchNodeFlowNodeData = (
   nodeId: string,
   data: Partial<NodeFlowNodeData>
 ) => {
-  const requestedRef = normalizeNodeRef((data as Record<string, unknown>)?.qalamNodeRef as string | undefined);
+  const requestedRef = normalizeNodeRef(readStyloNodeRef(data as Record<string, unknown>));
   return {
     ...state,
     revision: bumpRevision(state),
@@ -114,7 +115,7 @@ export const appendNodesAndLinksToNodeFlow = (
     nodes,
   });
   const nextNodes = placedNodes.map((node) => {
-    const requestedRef = normalizeNodeRef((node.data as Record<string, unknown> | undefined)?.qalamNodeRef as string | undefined);
+    const requestedRef = normalizeNodeRef(readStyloNodeRef(node.data as Record<string, unknown> | undefined));
     const uniqueRef = requestedRef
       ? ensureUniqueNodeRef({
           desiredRef: requestedRef,

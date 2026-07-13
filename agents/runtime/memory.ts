@@ -1,5 +1,5 @@
 import type { AgentInputItem } from "@openai/agents";
-import type { AgentSessionMessage, QalamAgentMemory, QalamRunInput } from "./types";
+import type { AgentSessionMessage, StyloAgentMemory, StyloRunInput } from "./types";
 
 const MAX_RECENT_TOOLS = 6;
 const MAX_MEMORY_TEXT = 220;
@@ -10,7 +10,7 @@ const clipText = (value: string, limit = MAX_MEMORY_TEXT) => {
   return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit)}...`;
 };
 
-const buildUserMessageContent = (input: QalamRunInput) => {
+const buildUserMessageContent = (input: StyloRunInput) => {
   const content: Array<Record<string, unknown>> = [
     {
       type: "input_text",
@@ -30,14 +30,14 @@ const buildUserMessageContent = (input: QalamRunInput) => {
   return content;
 };
 
-export const buildRunInputItems = (input: QalamRunInput): AgentInputItem[] => [
+export const buildRunInputItems = (input: StyloRunInput): AgentInputItem[] => [
   {
     role: "user",
     content: buildUserMessageContent(input) as any,
   } as AgentInputItem,
 ];
 
-export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undefined): QalamAgentMemory => {
+export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undefined): StyloAgentMemory => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return {
       recentSuccessfulTools: [],

@@ -1,9 +1,9 @@
 import { tool } from "@openai/agents";
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import type { AgentExecutedToolCall } from "../runtime/types";
-import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
-import type { QalamToolBudgetPolicy } from "../runtime/toolBudget";
-import { getQalamToolDescriptor, listQalamToolNames } from "../runtime/toolCatalog";
+import { createStyloToolInputGuardrails, createStyloToolOutputGuardrails } from "../runtime/guardrails";
+import type { StyloToolBudgetPolicy } from "../runtime/toolBudget";
+import { getStyloToolDescriptor, listStyloToolNames } from "../runtime/toolCatalog";
 import {
   createDocumentToolDef,
   findDocumentsToolDef,
@@ -64,16 +64,16 @@ const LEGACY_DISABLED_TOOL_NAMES = new Set([
 const assertNoLegacyTools = () => {
   const legacyTool = TOOL_DEFS.find((toolDef) => LEGACY_DISABLED_TOOL_NAMES.has(toolDef.name));
   if (legacyTool) {
-    throw new Error(`Legacy Qalam tool must not be registered in TOOL_DEFS: ${legacyTool.name}`);
+    throw new Error(`Legacy Stylo tool must not be registered in TOOL_DEFS: ${legacyTool.name}`);
   }
 };
 
 assertNoLegacyTools();
 
 const registeredNames = new Set(TOOL_DEFS.map((toolDef) => toolDef.name));
-const catalogNames = new Set<string>(listQalamToolNames());
+const catalogNames = new Set<string>(listStyloToolNames());
 if (registeredNames.size !== catalogNames.size || [...registeredNames].some((name) => !catalogNames.has(name))) {
-  throw new Error("Qalam tool definitions and tool catalog are out of sync");
+  throw new Error("Stylo tool definitions and tool catalog are out of sync");
 }
 
 const stableSerialize = (value: unknown): string => {
@@ -168,16 +168,16 @@ const createRecoverableToolErrorOutput = (toolName: string, error: unknown) => {
   };
 };
 
-export const createQalamTools = ({
+export const createStyloTools = ({
   bridge,
   emitEvent,
   disabledTools = [],
   toolBudget,
 }: {
-  bridge: QalamAgentBridge;
+  bridge: StyloAgentBridge;
   emitEvent?: (event: ToolLifecycleEvent) => void;
   disabledTools?: string[];
-  toolBudget?: QalamToolBudgetPolicy;
+  toolBudget?: StyloToolBudgetPolicy;
 }) => {
   const disabled = new Set(disabledTools);
   const lookupCache = new Map<string, { output: unknown; summary: string }>();
@@ -187,8 +187,8 @@ export const createQalamTools = ({
       name: toolDef.name,
       description: toolDef.description,
       parameters: toolDef.parameters as any,
-      inputGuardrails: createQalamToolInputGuardrails(toolDef.name, bridge),
-      outputGuardrails: createQalamToolOutputGuardrails(toolDef.name),
+      inputGuardrails: createStyloToolInputGuardrails(toolDef.name, bridge),
+      outputGuardrails: createStyloToolOutputGuardrails(toolDef.name),
       errorFunction: (_context, error) => {
         if (isAbortLikeToolError(error)) throw error;
         return JSON.stringify(createRecoverableToolErrorOutput(toolDef.name, error));
@@ -203,7 +203,7 @@ export const createQalamTools = ({
         };
         emitEvent?.({ type: "tool_called", call: runningCall });
         try {
-          const descriptor = getQalamToolDescriptor(toolDef.name);
+          const descriptor = getStyloToolDescriptor(toolDef.name);
           const shouldCache = descriptor.cacheWithinRun;
           const lookupSignature = shouldCache ? `${toolDef.name}:${stableSerialize(input)}` : "";
 

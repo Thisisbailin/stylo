@@ -17,12 +17,13 @@ import { NodeType, VideoGenNodeData } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { ProjectSettingsPanel, type ProjectSettingsPanelKey } from "./ProjectSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
-import { QalamAgent } from "./QalamAgent";
+import { StyloAgent } from "./StyloAgent";
 import { useFlowSurface } from "./FlowSurface";
 import { CanvasBackgroundField } from "./CanvasBackgroundField";
+import { CanvasContentLocator } from "./CanvasContentLocator";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
-import { WritingPanel } from "./WritingPanel";
+import { ManusPanel } from "./ManusPanel";
 import { LookbookLeafPanel } from "./LookbookLeafPanel";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
@@ -31,13 +32,14 @@ import type { ModuleKey } from "./ModuleBar";
 import { FileText, List } from "lucide-react";
 import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
 import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
+import { locateCanvasContent, type CanvasContentDirection } from "./canvas/contentLocator";
 import type {
   AgentScriptEditProposalBatch,
-  QalamSubmitRequest,
+  StyloSubmitRequest,
   ScriptDocumentCommit,
-} from "./qalam/interactionTypes";
+} from "./stylo/interactionTypes";
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
-import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
+import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 
@@ -58,6 +60,7 @@ interface CreativeWorkspaceProps {
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
   onResetProject?: () => void;
+  projectResetToken?: number;
   onSignOut?: () => void;
   accountInfo?: {
     isLoaded: boolean;
@@ -332,10 +335,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   onOpenModule,
   syncIndicator,
   onResetProject,
+  projectResetToken = 0,
   onSignOut,
   accountInfo,
 }) => {
-  const qalamProjectId = resolveQalamProjectId(projectData);
+  const styloProjectId = resolveStyloProjectId(projectData);
   const [bgTheme, setBgTheme] = useState<ThemeKey>("light");
   const [bgPattern, setBgPattern] = useState<PatternKey>("grid");
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -346,27 +350,35 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [projectSettingsPanel, setProjectSettingsPanel] = useState<ProjectSettingsPanelKey>("provider");
   const [projectSettingsAssetsSection, setProjectSettingsAssetsSection] = useState<MaterialsSectionKey | undefined>();
   const [agentDockWidth, setAgentDockWidth] = useState(0);
-  const [isQalamCollapsed, setIsQalamCollapsed] = useState(true);
-  const [isQalamSending, setIsQalamSending] = useState(false);
-  const [qalamOpenRequest, setQalamOpenRequest] = useState(0);
-  const [qalamCloseRequest, setQalamCloseRequest] = useState(0);
-  const [qalamSubmitRequest, setQalamSubmitRequest] = useState<QalamSubmitRequest | null>(null);
+  const [isStyloCollapsed, setIsStyloCollapsed] = useState(true);
+  const [isStyloSending, setIsStyloSending] = useState(false);
+  const [styloOpenRequest, setStyloOpenRequest] = useState(0);
+  const [styloCloseRequest, setStyloCloseRequest] = useState(0);
+  const [styloSubmitRequest, setStyloSubmitRequest] = useState<StyloSubmitRequest | null>(null);
   const [agentScriptEditProposals, setAgentScriptEditProposals] = useState<AgentScriptEditProposalBatch | null>(null);
-  const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
-  const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
+  const [styloCancelRequest, setStyloCancelRequest] = useState(0);
+  const [isStyloFirstManual, setIsStyloFirstManual] = useState(false);
   const [composerInput, setComposerInput] = useState("");
-  const isQalamFirstMode = isQalamFirstManual;
+  const isStyloFirstMode = isStyloFirstManual;
   const handleOpenScriptDocument = useCallback((nodeId: string) => {
     setEditingScriptNodeId(nodeId);
-    setIsQalamCollapsed(true);
-    setQalamCloseRequest((count) => count + 1);
+    setIsStyloCollapsed(true);
+    setStyloCloseRequest((count) => count + 1);
   }, []);
   useEffect(() => {
-    setQalamSubmitRequest(null);
+    setStyloSubmitRequest(null);
     setAgentScriptEditProposals(null);
     setComposerInput("");
-    setIsQalamSending(false);
-  }, [qalamProjectId]);
+    setIsStyloSending(false);
+  }, [styloProjectId]);
+  useEffect(() => {
+    if (projectResetToken <= 0) return;
+    setStyloCancelRequest((count) => count + 1);
+    setStyloSubmitRequest(null);
+    setAgentScriptEditProposals(null);
+    setComposerInput("");
+    setIsStyloSending(false);
+  }, [projectResetToken]);
   const handleAgentScriptEditProposals = useCallback((batch: AgentScriptEditProposalBatch) => {
     setAgentScriptEditProposals((current) => {
       const nextNodeIds = new Set(batch.proposals.map((proposal) => proposal.nodeId));
@@ -412,11 +424,12 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     addToGlobalHistory,
     globalAssetHistory,
   } = useNodeFlowStore();
-  const { setViewport, screenToFlowPosition, getViewport, fitView, zoomTo } = useReactFlow();
+  const { setViewport, screenToFlowPosition, getViewport, getNodesBounds, fitView, zoomTo } = useReactFlow();
 
   const minZoom = 0.25;
   const maxZoom = 4;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [foundationViewportHost, setFoundationViewportHost] = useState<HTMLElement | null>(null);
@@ -425,6 +438,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const initialCanvasViewport = projectData.canvas?.viewport || null;
   const [zoomValue, setZoomValue] = useState(() => initialCanvasViewport?.zoom ?? getViewport().zoom ?? 1);
   const [liveViewport, setLiveViewport] = useState(() => initialCanvasViewport || getViewport());
+  const [canvasContentDirection, setCanvasContentDirection] = useState<CanvasContentDirection | null>(null);
 
   useEffect(() => {
     setAppConfig(config);
@@ -509,13 +523,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     if (!snapToGrid) setSnapGuide(null);
   }, [snapToGrid]);
 
-  const toggleQalamFirstMode = useCallback(() => {
-    setIsQalamFirstManual((prev) => {
+  const toggleStyloFirstMode = useCallback(() => {
+    setIsStyloFirstManual((prev) => {
       const next = !prev;
       if (next) {
-        setQalamOpenRequest((count) => count + 1);
+        setStyloOpenRequest((count) => count + 1);
       } else {
-        setQalamCloseRequest((count) => count + 1);
+        setStyloCloseRequest((count) => count + 1);
       }
       return next;
     });
@@ -570,19 +584,19 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setViewportState(savedViewport);
   }, [projectData.canvas?.viewport, setViewport, setViewportState]);
 
-  const handleQalamComposerAction = useCallback(() => {
+  const handleStyloComposerAction = useCallback(() => {
     const text = composerInput.trim();
-    if (isQalamSending && !text) {
-      setQalamCancelRequest((prev) => prev + 1);
+    if (isStyloSending && !text) {
+      setStyloCancelRequest((prev) => prev + 1);
       return;
     }
     if (!text) {
-      toggleQalamFirstMode();
+      toggleStyloFirstMode();
       return;
     }
     setComposerInput("");
-    setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text });
-  }, [composerInput, isQalamSending, qalamProjectId, toggleQalamFirstMode]);
+    setStyloSubmitRequest({ id: Date.now(), projectId: styloProjectId, text });
+  }, [composerInput, isStyloSending, styloProjectId, toggleStyloFirstMode]);
 
   useEffect(() => {
     if (didInitFitRef.current) return;
@@ -696,17 +710,75 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     isWritingEditorOpen: editingScriptNodeId !== null,
     onCollapseCanvasCards: handleCollapseCanvasCards,
     onRestoreCanvasCards: handleRestoreCanvasCards,
-    onOpenAgent: () => setQalamOpenRequest((count) => count + 1),
-    onSubmitAgentMessage: (text) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text }),
+    onOpenAgent: () => setStyloOpenRequest((count) => count + 1),
+    onSubmitAgentMessage: (text) => setStyloSubmitRequest({ id: Date.now(), projectId: styloProjectId, text }),
     agentComposerValue: composerInput,
     onAgentComposerChange: setComposerInput,
-    onAgentComposerAction: handleQalamComposerAction,
-    isAgentSending: isQalamSending,
-    isAgentFirstMode: isQalamFirstMode,
+    onAgentComposerAction: handleStyloComposerAction,
+    isAgentSending: isStyloSending,
+    isAgentFirstMode: isStyloFirstMode,
     onOpenProjectSettingsPanel: (panel, assetsSection) => openProjectSettingsPanel(panel, assetsSection),
     onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
     pendingScriptReviewNodeIds,
   });
+
+  const effectiveAgentDockWidth = isStyloCollapsed ? 0 : agentDockWidth;
+  const canvasNodeRects = useMemo(
+    () => flowSurface.nodes
+      .filter((node) => node.hidden !== true)
+      .map((node) => getNodesBounds([node])),
+    [flowSurface.nodes, getNodesBounds]
+  );
+
+  const evaluateCanvasContentLocation = useCallback(
+    (nextViewport: SharedCanvasViewport) => {
+      const host = canvasViewportRef.current;
+      if (!host) return;
+      const bounds = host.getBoundingClientRect();
+      const location = locateCanvasContent({
+        viewport: nextViewport,
+        canvasWidth: bounds.width,
+        canvasHeight: bounds.height,
+        nodeRects: canvasNodeRects,
+        leftInset: effectiveAgentDockWidth,
+        bottomInset: 84,
+      });
+      const nextDirection = location.status === "offscreen" ? location.direction : null;
+      setCanvasContentDirection((current) => current === nextDirection ? current : nextDirection);
+    },
+    [canvasNodeRects, effectiveAgentDockWidth]
+  );
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => evaluateCanvasContentLocation(getViewport()));
+    return () => window.cancelAnimationFrame(frame);
+  }, [evaluateCanvasContentLocation, getViewport]);
+
+  useEffect(() => {
+    const host = canvasViewportRef.current;
+    if (!host || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => evaluateCanvasContentLocation(getViewport()));
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [evaluateCanvasContentLocation, getViewport]);
+
+  const handleReturnToCanvasContent = useCallback(() => {
+    const targetNodes = flowSurface.nodes.filter((node) => node.hidden !== true);
+    if (!targetNodes.length) return;
+    setCanvasContentDirection(null);
+    void fitView({
+      nodes: targetNodes,
+      padding: 0.22,
+      duration: 360,
+      minZoom,
+      maxZoom: Math.min(maxZoom, 1.35),
+    }).then((didFit) => {
+      if (!didFit) return;
+      const nextViewport = getViewport();
+      handleSharedViewportChange(nextViewport, { commit: true });
+      evaluateCanvasContentLocation(nextViewport);
+    });
+  }, [evaluateCanvasContentLocation, fitView, flowSurface.nodes, getViewport, handleSharedViewportChange, maxZoom, minZoom]);
 
   const getToolbarNodePosition = useCallback(
     (fallback: XYPosition): XYPosition => {
@@ -745,7 +817,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         })
         .catch((err) => {
           console.error("Failed to import Flow package", err);
-          alert("Failed to import Qalam project package");
+          alert("Failed to import Stylo project package");
         });
       event.target.value = "";
     },
@@ -819,7 +891,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       "node-shadow": activeTheme.nodeShadow,
       "node-shadow-strong": activeTheme.nodeShadowStrong,
       "node-header-bg": activeTheme.nodeHeaderBg,
-      "qalam-wordmark-glow": activeTheme.accentSoft,
+      "stylo-wordmark-glow": activeTheme.accentSoft,
     };
     Object.entries(mapping).forEach(([key, value]) => {
       root.style.setProperty(`--${key}`, value);
@@ -951,41 +1023,43 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     [activeTheme, bgPattern, bgTheme, patternOptions, patternPreviewDefinitions]
   );
 
-  const qalamGlobalHeader = (
-    <QalamAgent
-      key={qalamProjectId}
+  const styloGlobalHeader = (
+    <StyloAgent
+      key={styloProjectId}
       accountScope={accountScope}
-      projectId={qalamProjectId}
+      projectId={styloProjectId}
       projectData={projectData}
       config={config}
       setProjectData={setProjectData}
       getAuthToken={getAuthToken}
       onOpenStats={() => openProjectSettingsPanel("provider")}
       settingsOpen={showProjectSettings}
-      openRequest={qalamOpenRequest}
-      closeRequest={qalamCloseRequest}
-      submitRequest={qalamSubmitRequest}
-      cancelRequest={qalamCancelRequest}
+      openRequest={styloOpenRequest}
+      closeRequest={styloCloseRequest}
+      submitRequest={styloSubmitRequest}
+      cancelRequest={styloCancelRequest}
       onCollapsedChange={(collapsed) => {
-        setIsQalamCollapsed(collapsed);
+        setIsStyloCollapsed(collapsed);
         if (collapsed) {
-          if (isQalamFirstMode) {
-            setIsQalamFirstManual(false);
+          if (isStyloFirstMode) {
+            setIsStyloFirstManual(false);
           }
         }
       }}
       onDockFrameChange={({ dockWidth }) => setAgentDockWidth(dockWidth)}
-      onSendingChange={setIsQalamSending}
+      onSendingChange={setIsStyloSending}
       onScriptEditProposals={handleAgentScriptEditProposals}
       renderCollapsedTrigger
-      agentFirstMode={isQalamFirstMode}
+      agentFirstMode={isStyloFirstMode}
       allowLegacyConversationMigration={false}
+      conversationResetToken={projectResetToken}
     />
   );
 
   return (
     <div className="h-full w-full flex flex-col app-text-primary" style={backgroundStyle}>
       <div
+        ref={canvasViewportRef}
         className="flex-1 relative node-flow-canvas"
         data-zoomed={zoomValue > 1}
         data-connecting={false}
@@ -1012,7 +1086,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onNodeDragStart={flowSurface.onNodeDragStart}
           onNodeDrag={flowSurface.onNodeDrag}
           onNodeDragStop={flowSurface.onNodeDragStop}
+          onMove={(_, vp) => evaluateCanvasContentLocation(vp)}
           onMoveEnd={(_, vp) => {
+            evaluateCanvasContentLocation(vp);
             handleSharedViewportChange(vp, { commit: true });
           }}
           minZoom={minZoom}
@@ -1055,13 +1131,21 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         </ReactFlow>
         {flowSurface.overlays}
 
+        {canvasContentDirection ? (
+          <CanvasContentLocator
+            direction={canvasContentDirection}
+            leftInset={effectiveAgentDockWidth}
+            onReturn={handleReturnToCanvasContent}
+          />
+        ) : null}
+
         {snapToGrid ? (
           <EdgeAlignmentGuides guide={snapGuide} viewport={liveViewport} />
         ) : null}
 
       </div>
 
-      {qalamGlobalHeader}
+      {styloGlobalHeader}
 
       <FloatingActionBar
         onAddText={() => handleFlowAddNode("text", { x: 100, y: 100 })}
@@ -1110,9 +1194,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         : null}
 
       <ProjectSettingsPanel
-        key={qalamProjectId}
+        key={styloProjectId}
         accountScope={accountScope}
-        projectId={qalamProjectId}
+        projectId={styloProjectId}
         isOpen={showProjectSettings}
         onClose={() => setShowProjectSettings(false)}
         leftOffset={agentDockWidth}
@@ -1135,16 +1219,16 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
       {editingScriptNodeId !== null ? (
-        <WritingPanel
+        <ManusPanel
           projectData={projectData}
           setProjectData={setProjectData}
           initialScriptNodeId={editingScriptNodeId}
-          isQalamOpen={!isQalamCollapsed}
+          isStyloOpen={!isStyloCollapsed}
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
-          onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
-          onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
+          onOpenStylo={() => setStyloOpenRequest((count) => count + 1)}
+          onSubmitToStylo={(text, uiContext) => setStyloSubmitRequest({ id: Date.now(), projectId: styloProjectId, text, uiContext })}
           onClose={() => {
             setEditingScriptNodeId(null);
           }}
@@ -1260,7 +1344,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".qalam.zip,.zip,.json,application/json,application/zip"
+        accept=".stylo.zip,.qalam.zip,.zip,.json,application/json,application/zip"
         className="hidden"
         onChange={handleFileImport}
       />

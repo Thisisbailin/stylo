@@ -1,5 +1,5 @@
 import type { AgentInputItem, Session } from "@openai/agents";
-import type { AgentSessionMessage, QalamSessionRecord, QalamSessionStore } from "./types";
+import type { AgentSessionMessage, StyloSessionRecord, StyloSessionStore } from "./types";
 import { trimSessionItemsSafely } from "./sessionRepair";
 import {
   AGENT_SESSION_LIMITS,
@@ -8,8 +8,8 @@ import {
   projectAgentItemsToSessionMessages,
 } from "./sessionProjection";
 
-export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "qalam_agent_sessions_v1";
-export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "qalam:agent-session-storage-updated";
+export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "stylo_agent_sessions_v1";
+export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "stylo:agent-session-storage-updated";
 
 type PersistedAgentSessionRecord = {
   id: string;
@@ -17,6 +17,8 @@ type PersistedAgentSessionRecord = {
   messages: AgentSessionMessage[];
   updatedAt: number;
 };
+
+type AgentSessionStorage = Pick<Storage, "getItem" | "setItem">;
 
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
@@ -47,10 +49,14 @@ const emitStorageUpdated = () => {
   window.dispatchEvent(new CustomEvent(AGENT_SESSION_STORAGE_UPDATED_EVENT));
 };
 
-const readLocalStorageSessions = (storageKey: string): Record<string, PersistedAgentSessionRecord> => {
-  if (typeof window === "undefined") return {};
+const readLocalStorageSessions = (
+  storageKey: string,
+  storage?: AgentSessionStorage
+): Record<string, PersistedAgentSessionRecord> => {
+  const target = storage || (typeof window !== "undefined" ? window.localStorage : undefined);
+  if (!target) return {};
   try {
-    const raw = window.localStorage.getItem(storageKey);
+    const raw = target.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
@@ -64,9 +70,14 @@ const readLocalStorageSessions = (storageKey: string): Record<string, PersistedA
   }
 };
 
-const writeLocalStorageSessions = (storageKey: string, records: Record<string, PersistedAgentSessionRecord>) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(storageKey, JSON.stringify(records));
+const writeLocalStorageSessions = (
+  storageKey: string,
+  records: Record<string, PersistedAgentSessionRecord>,
+  storage?: AgentSessionStorage
+) => {
+  const target = storage || (typeof window !== "undefined" ? window.localStorage : undefined);
+  if (!target) return;
+  target.setItem(storageKey, JSON.stringify(records));
   emitStorageUpdated();
 };
 
@@ -81,7 +92,7 @@ const getOrCreateRecord = (
     updatedAt: Date.now(),
   };
 
-const toSessionRecordView = (record: PersistedAgentSessionRecord): QalamSessionRecord => ({
+const toSessionRecordView = (record: PersistedAgentSessionRecord): StyloSessionRecord => ({
   id: record.id,
   messages: record.messages,
   updatedAt: record.updatedAt,
@@ -89,7 +100,7 @@ const toSessionRecordView = (record: PersistedAgentSessionRecord): QalamSessionR
 
 export const listPersistedAgentSessions = (
   storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY
-): QalamSessionRecord[] =>
+): StyloSessionRecord[] =>
   Object.values(readLocalStorageSessions(storageKey))
     .map(toSessionRecordView)
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -97,7 +108,7 @@ export const listPersistedAgentSessions = (
 export const readPersistedAgentSession = (
   sessionId: string,
   storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY
-): QalamSessionRecord | null => {
+): StyloSessionRecord | null => {
   const record = readLocalStorageSessions(storageKey)[sessionId];
   return record ? toSessionRecordView(record) : null;
 };
@@ -115,6 +126,19 @@ export const clearPersistedAgentSession = (
   if (!(sessionId in sessions)) return;
   delete sessions[sessionId];
   writeLocalStorageSessions(storageKey, sessions);
+};
+
+export const clearPersistedAgentSessionsWhere = (
+  predicate: (sessionId: string) => boolean,
+  storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY,
+  storage?: AgentSessionStorage
+) => {
+  const sessions = readLocalStorageSessions(storageKey, storage);
+  const matchingIds = Object.keys(sessions).filter(predicate);
+  if (!matchingIds.length) return 0;
+  matchingIds.forEach((sessionId) => delete sessions[sessionId]);
+  writeLocalStorageSessions(storageKey, sessions, storage);
+  return matchingIds.length;
 };
 
 class LocalStorageAgentSession implements Session {
@@ -171,7 +195,7 @@ class LocalStorageAgentSession implements Session {
   }
 }
 
-export class InMemorySessionStore implements QalamSessionStore {
+export class InMemorySessionStore implements StyloSessionStore {
   private readonly sessions = new Map<string, Session>();
 
   getSession(sessionId: string): Session {
@@ -197,7 +221,7 @@ export class InMemorySessionStore implements QalamSessionStore {
   }
 }
 
-export class LocalStorageSessionStore implements QalamSessionStore {
+export class LocalStorageSessionStore implements StyloSessionStore {
   private readonly sessions = new Map<string, Session>();
 
   constructor(private readonly storageKey = DEFAULT_AGENT_SESSION_STORAGE_KEY) {}

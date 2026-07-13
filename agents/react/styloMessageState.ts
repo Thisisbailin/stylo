@@ -1,12 +1,12 @@
-import type { ChatMessage, Message, StatusMessage, ToolMessage } from "../../node-workspace/components/qalam/types";
-import { isToolMessage } from "../../node-workspace/components/qalam/types";
-import { buildAssistantChatMessage } from "../adapters/qalamMessageAdapter";
-import { findQalamToolDescriptor } from "../runtime/toolCatalog";
+import type { ChatMessage, Message, StatusMessage, ToolMessage } from "../../node-workspace/components/stylo/types";
+import { isToolMessage } from "../../node-workspace/components/stylo/types";
+import { buildAssistantChatMessage } from "../adapters/styloMessageAdapter";
+import { findStyloToolDescriptor } from "../runtime/toolCatalog";
 import type { AgentRuntimeEvent } from "../runtime/types";
 
 type StatusKind = "reasoning" | "response";
 
-export type QalamMessageProjectionResult = {
+export type StyloMessageProjectionResult = {
   messages: Message[];
   abortReason?: string;
   displayedError?: string;
@@ -20,7 +20,7 @@ const isAbortLikeError = (value: unknown) => {
   return /AbortError|aborted|已取消|用户已停止/i.test(message);
 };
 
-const humanizeToolName = (name: string) => findQalamToolDescriptor(name)?.label || name;
+const humanizeToolName = (name: string) => findStyloToolDescriptor(name)?.label || name;
 
 const upsertStatus = (
   messages: Message[],
@@ -78,7 +78,7 @@ const updateToolStatus = (
     : message
 );
 
-export class QalamMessageEventState {
+export class StyloMessageEventState {
   activeRunId: string | null = null;
   preflightStatusId: string | null = null;
   private readonly activeReasoning = new Map<string, string>();
@@ -197,7 +197,7 @@ export class QalamMessageEventState {
     if (this.activeRunId === runId) this.activeRunId = null;
   }
 
-  apply(messages: Message[], event: AgentRuntimeEvent): QalamMessageProjectionResult {
+  apply(messages: Message[], event: AgentRuntimeEvent): StyloMessageProjectionResult {
     const order = () => this.order(messages, event);
     if (event.type === "run_started") {
       this.activeRunId = event.runId;

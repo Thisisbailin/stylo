@@ -1,6 +1,6 @@
 import type { AgentUiContext } from "../../../agents/runtime/types";
 
-export type QalamSubmitRequest = {
+export type StyloSubmitRequest = {
   id: number;
   projectId?: string;
   text: string;

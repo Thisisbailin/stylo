@@ -4,7 +4,7 @@ import type {
   CreateNodeFlowMapInput,
   CreateNodeFlowMapNodeInput,
   CreateNodeFlowMapResult,
-} from "./qalamBridge";
+} from "./styloBridge";
 import type { NodeType, NodeFlowNodeData } from "../../node-workspace/types";
 import { buildNodeFlowLinkId } from "../../node-workspace/nodeflow/links";
 

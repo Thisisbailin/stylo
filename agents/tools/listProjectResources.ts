@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import {
   buildScriptResourceLinks,
   buildScriptResourceMaps,
@@ -100,7 +100,7 @@ export const listProjectResourcesToolDef = {
   description:
     "List project entities before reading them. Both script and nodeflow are access paths over the same Flow nodes and links.",
   parameters: listProjectResourcesParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     const projectData = bridge.getProjectData();

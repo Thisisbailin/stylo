@@ -284,7 +284,7 @@ export const FilmRollRibbon: React.FC<FilmRollRibbonProps> = ({
       </div>
       <div className="film-roll-ribbon__stamps">
         {frameMarks.map((_, index) => (
-          <span key={index}>QALAM SAFETY FILM {index + 1}A</span>
+          <span key={index}>STYLO SAFETY FILM {index + 1}A</span>
         ))}
       </div>
       <div className="film-roll-ribbon__numbers">

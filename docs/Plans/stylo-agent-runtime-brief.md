@@ -1,8 +1,8 @@
-# Mission Brief — Qalam Agent Runtime
+# Mission Brief — Stylo Agent Runtime
 
 ## Objective
 
-将 Qalam Agent 子系统重构为可并发隔离、可测试、可观测且可演进的分层架构，覆盖 Agents SDK 执行、DeepSeek 默认模型兼容、工具注册与预算、会话上下文和前端消息流。
+将 Stylo Agent 子系统重构为可并发隔离、可测试、可观测且可演进的分层架构，覆盖 Agents SDK 执行、DeepSeek 默认模型兼容、工具注册与预算、会话上下文和前端消息流。
 
 ## Out of scope
 
@@ -13,8 +13,8 @@
 
 ## Inputs / Outputs
 
-- 输入：`QalamRunInput`、项目/Flow 快照、Provider 配置、SDK `Session`、工具策略。
-- 输出：顺序稳定的 `AgentRuntimeEvent` 流与单一 `QalamRunResult`。
+- 输入：`StyloRunInput`、项目/Flow 快照、Provider 配置、SDK `Session`、工具策略。
+- 输出：顺序稳定的 `AgentRuntimeEvent` 流与单一 `StyloRunResult`。
 - UI 输入：运行时事件；UI 输出：规范化、可增量更新的消息时间线。
 
 ## Acceptance Criteria

@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 
-const DEEPSEEK_COMPAT_INSTALLED = Symbol.for("qalam.deepseek.chatCompletionsCompat");
+const DEEPSEEK_COMPAT_INSTALLED = Symbol.for("stylo.deepseek.chatCompletionsCompat");
 
 const isRecord = (value: unknown): value is Record<string, any> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);

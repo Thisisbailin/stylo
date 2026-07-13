@@ -38,7 +38,7 @@ const LeafPage: React.FC<{
   if (page.kind === "back") {
     return (
       <article className="lookbook-book__back-cover">
-        <span>QALAM</span>
+        <span>STYLO</span>
         <div><strong>{name}</strong><small>@{mention}</small></div>
         <span>END / {issue}</span>
       </article>
@@ -52,7 +52,7 @@ const LeafPage: React.FC<{
       <div className="lookbook-book__cover-meta">
         <span>@{mention}</span>
         <span>{identityKind === "person" ? "CHARACTER STUDY" : "SCENE STUDY"}</span>
-        <span>QALAM ARCHIVE</span>
+        <span>STYLO ARCHIVE</span>
       </div>
     </article>
   );
@@ -144,7 +144,7 @@ export const LookbookLeafPanel: React.FC<Props> = ({ projectData, identityNodeId
     <section className="lookbook-book" role="dialog" aria-modal="true" aria-label={`${name} Lookbook`}>
       <header className="lookbook-book__header">
         <button type="button" onClick={onClose}><ArrowLeft size={17} weight="bold" /><span>返回 Flow</span></button>
-        <span>QALAM / LOOKBOOK {issue}</span>
+        <span>STYLO / LOOKBOOK {issue}</span>
         <span>{identity.kind === "person" ? "CHARACTER" : "SCENE"} IDENTITY</span>
       </header>
 

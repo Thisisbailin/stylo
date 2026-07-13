@@ -1,7 +1,7 @@
 import React from "react";
 import type { ToolPayload } from "./types";
 
-const qalamSecondaryTextClass =
+const styloSecondaryTextClass =
   "text-[14px] leading-6 text-[var(--app-text-secondary)] md:text-[12px] md:leading-relaxed";
 
 const renderArtifactMetaPill = (label: string, value?: string | null) => {
@@ -95,7 +95,7 @@ const renderArtifactCard = (payload: Record<string, any>) => {
   );
 };
 
-export const renderQalamToolOutput = (tool: ToolPayload) => {
+export const renderStyloToolOutput = (tool: ToolPayload) => {
   if (!tool.output) return null;
   let parsed: any = null;
   try {
@@ -106,7 +106,7 @@ export const renderQalamToolOutput = (tool: ToolPayload) => {
 
   if (!parsed || typeof parsed === "string") {
     return (
-      <div className={`whitespace-pre-wrap ${qalamSecondaryTextClass}`}>
+      <div className={`whitespace-pre-wrap ${styloSecondaryTextClass}`}>
         {String(parsed || "")}
       </div>
     );

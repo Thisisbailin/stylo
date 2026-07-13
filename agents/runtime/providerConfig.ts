@@ -8,10 +8,10 @@ import {
   QWEN_RESPONSES_BASE_URL,
 } from "../../constants";
 
-export type QalamAgentProvider = "qwen" | "openrouter" | "ark" | "deepseek";
-export type QalamAgentApiMode = "responses" | "chat_completions";
+export type StyloAgentProvider = "qwen" | "openrouter" | "ark" | "deepseek";
+export type StyloAgentApiMode = "responses" | "chat_completions";
 
-export const resolveAgentProvider = (provider?: string): QalamAgentProvider =>
+export const resolveAgentProvider = (provider?: string): StyloAgentProvider =>
   provider === "openrouter"
     ? "openrouter"
     : provider === "ark"
@@ -20,10 +20,10 @@ export const resolveAgentProvider = (provider?: string): QalamAgentProvider =>
         ? "qwen"
         : "deepseek";
 
-export const resolveApiMode = (provider: QalamAgentProvider): QalamAgentApiMode =>
+export const resolveApiMode = (provider: StyloAgentProvider): StyloAgentApiMode =>
   provider === "deepseek" ? "chat_completions" : "responses";
 
-export const resolveBaseUrl = (provider: QalamAgentProvider, baseUrl?: string) => {
+export const resolveBaseUrl = (provider: StyloAgentProvider, baseUrl?: string) => {
   const configured = (baseUrl || "").trim();
   if (configured) return configured;
   if (provider === "deepseek") return DEEPSEEK_CHAT_BASE_URL;
@@ -32,7 +32,7 @@ export const resolveBaseUrl = (provider: QalamAgentProvider, baseUrl?: string) =
   return QWEN_RESPONSES_BASE_URL;
 };
 
-export const resolveProviderModel = (provider: QalamAgentProvider, requestedModel?: string) => {
+export const resolveProviderModel = (provider: StyloAgentProvider, requestedModel?: string) => {
   const model = (requestedModel || "").trim();
   if (provider === "ark") {
     if (!model || model.startsWith("qwen") || model.startsWith("doubao-lite-") || model.startsWith("doubao-pro-")) {
@@ -60,7 +60,7 @@ export const isModelAccessError = (message: string) =>
   /(does not exist|do not have access|not found|invalid|unsupported)/i.test(message);
 
 export const formatModelAccessError = (
-  provider: QalamAgentProvider,
+  provider: StyloAgentProvider,
   effectiveModel: string,
   message: string
 ) => {

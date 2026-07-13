@@ -24,21 +24,91 @@ const makeTextProject = (): NodeFlowFile => ({
   graphLinks: [],
 });
 
-test("Qalam package round-trip restores packed document content", async () => {
+const crc32 = (data: Uint8Array) => {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const replaceAscii = (bytes: Uint8Array, start: number, length: number, from: string, to: string) => {
+  assert.equal(from.length, to.length, "ZIP fixture replacements must preserve byte length");
+  const source = new TextEncoder().encode(from);
+  const replacement = new TextEncoder().encode(to);
+  const end = start + length - source.length;
+  for (let offset = start; offset <= end; offset += 1) {
+    if (!source.every((byte, index) => bytes[offset + index] === byte)) continue;
+    bytes.set(replacement, offset);
+    offset += source.length - 1;
+  }
+};
+
+const convertToLegacyQalamPackage = async (blob: Blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const checksums = new Map<number, number>();
+  let cursor = 0;
+
+  while (view.getUint32(cursor, true) === 0x04034b50) {
+    const compressedSize = view.getUint32(cursor + 18, true);
+    const nameLength = view.getUint16(cursor + 26, true);
+    const extraLength = view.getUint16(cursor + 28, true);
+    const dataOffset = cursor + 30 + nameLength + extraLength;
+    replaceAscii(bytes, cursor + 30, nameLength, "stylo", "qalam");
+    replaceAscii(bytes, dataOffset, compressedSize, "stylo", "qalam");
+    const checksum = crc32(bytes.subarray(dataOffset, dataOffset + compressedSize));
+    view.setUint32(cursor + 14, checksum, true);
+    checksums.set(cursor, checksum);
+    cursor = dataOffset + compressedSize;
+  }
+
+  while (view.getUint32(cursor, true) === 0x02014b50) {
+    const nameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localHeaderOffset = view.getUint32(cursor + 42, true);
+    replaceAscii(bytes, cursor + 46, nameLength, "stylo", "qalam");
+    view.setUint32(cursor + 16, checksums.get(localHeaderOffset) ?? 0, true);
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return new Blob([bytes], { type: "application/zip" });
+};
+
+test("Stylo package round-trip restores packed document content", async () => {
   const original = makeTextProject();
   const originalText = original.nodes[0]?.data.text;
   const blob = await buildNodeFlowPackageBlob(original);
   const imported = await readNodeFlowImportFile(new File(
     [blob],
-    "package-test.qalam.zip",
+    "package-test.stylo.zip",
     { type: "application/zip" }
   ));
 
   assert.equal(imported.version, 2);
   assert.equal(imported.revision, original.revision);
   assert.equal(imported.nodes[0]?.data.text, originalText);
-  assert.equal("qalamPackageResources" in (imported.nodes[0]?.data || {}), false);
+  assert.equal("styloPackageResources" in (imported.nodes[0]?.data || {}), false);
   assert.equal(original.nodes[0]?.data.text, originalText, "packing must not mutate the source project");
+});
+
+test("legacy Qalam packages remain importable during the Stylo migration", async () => {
+  const original = makeTextProject();
+  const currentPackage = await buildNodeFlowPackageBlob(original);
+  const legacyPackage = await convertToLegacyQalamPackage(currentPackage);
+  const imported = await readNodeFlowImportFile(new File(
+    [legacyPackage],
+    "package-test.qalam.zip",
+    { type: "application/zip" }
+  ));
+
+  assert.equal(imported.nodes[0]?.data.text, original.nodes[0]?.data.text);
+  assert.equal("qalamPackageResources" in (imported.nodes[0]?.data || {}), false);
+  assert.equal("styloPackageResources" in (imported.nodes[0]?.data || {}), false);
 });
 
 test("JSON imports use the same schema migration boundary", async () => {
@@ -89,16 +159,16 @@ test("package hydration cannot write resources into arbitrary node fields", asyn
   const malicious = makeTextProject();
   malicious.nodes[0].data = {
     ...malicious.nodes[0].data,
-    qalamPackageResources: {
+    styloPackageResources: {
       subjects: {
         kind: "document",
-        path: ".qalam/nodeflow.json",
+        path: ".stylo/nodeflow.json",
       },
     },
   } as never;
   const blob = await buildNodeFlowPackageBlob(malicious);
   await assert.rejects(
-    () => readNodeFlowImportFile(new File([blob], "malicious.qalam.zip", { type: "application/zip" })),
+    () => readNodeFlowImportFile(new File([blob], "malicious.stylo.zip", { type: "application/zip" })),
     /不允许资源字段 subjects/
   );
 });

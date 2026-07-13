@@ -42,6 +42,7 @@ import {
   getMaxNodeFlowNodeSuffix,
   hydrateImportedNodeFlow,
 } from "../nodeflow/serialization";
+import { readStyloNodeRef } from "../nodeflow/compatibility";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { parseNodeFlowFile } from "../nodeflow/schema";
 import { buildConnectedInputs, type NodeFlowConnectedInputs, validateNodeFlowState } from "../nodeflow/queries";
@@ -186,6 +187,13 @@ interface NodeFlowStore {
 let nodeIdCounter = 0;
 let accountAbortController = new AbortController();
 
+const rotateNodeFlowGeneration = () => {
+  accountAbortController.abort(new DOMException("NodeFlow project boundary changed", "AbortError"));
+  accountAbortController = new AbortController();
+  nodeIdCounter = 0;
+  return useNodeFlowStore.getState().accountGeneration + 1;
+};
+
 const assertExpectedRevision = (currentRevision: number, expectedRevision?: number) => {
   if (typeof expectedRevision !== "number") return;
   if (currentRevision !== expectedRevision) {
@@ -302,7 +310,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
         aspectRatio: sourceData.aspectRatio || null,
         resolution: sourceData.resolution || null,
         model: sourceData.model || null,
-        qalamNodeRef: sourceData.qalamNodeRef,
+        styloNodeRef: readStyloNodeRef(sourceData),
       } as NodeFlowNodeData;
 
       const nextNodes = state.nodes.map((item) =>
@@ -497,10 +505,7 @@ export const useNodeFlowStore = create<NodeFlowStore>((set, get) => ({
  * sessions through this module-level Zustand store.
  */
 export const resetNodeFlowAccountState = () => {
-  accountAbortController.abort(new DOMException("NodeFlow account scope changed", "AbortError"));
-  accountAbortController = new AbortController();
-  nodeIdCounter = 0;
-  const accountGeneration = useNodeFlowStore.getState().accountGeneration + 1;
+  const accountGeneration = rotateNodeFlowGeneration();
   useNodeFlowStore.setState({
     accountGeneration,
     revision: 0,
@@ -516,6 +521,29 @@ export const resetNodeFlowAccountState = () => {
     ...createEmptyNodeFlowApprovalState(),
     availableImageModels: [],
     availableVideoModels: [],
+    nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
+  });
+};
+
+/**
+ * Starts a genuinely empty project generation without discarding account-level
+ * provider configuration. Reset is a project boundary, so revision must return
+ * to zero instead of being treated as one more edit to the previous graph.
+ */
+export const resetNodeFlowProjectState = () => {
+  const accountGeneration = rotateNodeFlowGeneration();
+  useNodeFlowStore.setState({
+    accountGeneration,
+    revision: 0,
+    nodes: [],
+    links: [],
+    graphLinks: [],
+    linkStyle: "curved",
+    clipboard: null,
+    ...createIdleNodeFlowExecutionState(),
+    ...createEmptyNodeFlowAssetState(),
+    ...createEmptyNodeFlowCanvasState(),
+    ...createEmptyNodeFlowApprovalState(),
     nodeFlowContext: createEmptyNodeFlowContextSnapshot(),
   });
 };

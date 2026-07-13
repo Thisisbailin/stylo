@@ -1,8 +1,8 @@
-import { findQalamToolDescriptor } from "../../../agents/runtime/toolCatalog";
-import type { QalamRunResult } from "../../../agents/runtime/types";
+import { findStyloToolDescriptor } from "../../../agents/runtime/toolCatalog";
+import type { StyloRunResult } from "../../../agents/runtime/types";
 import { isToolMessage, type Message } from "./types";
 
-export const hasDurableAgentResult = (result: QalamRunResult) => Boolean(
+export const hasDurableAgentResult = (result: StyloRunResult) => Boolean(
   result.updatedProjectPatch ||
   result.updatedProjectData ||
   result.updatedNodeFlow ||
@@ -10,7 +10,7 @@ export const hasDurableAgentResult = (result: QalamRunResult) => Boolean(
 );
 
 export const shouldRejectStaleAgentResult = (
-  result: QalamRunResult,
+  result: StyloRunResult,
   baseRevision: number,
   currentRevision: number
 ) => hasDurableAgentResult(result) && baseRevision !== currentRevision;
@@ -20,13 +20,13 @@ export const buildAgentRevisionConflictMessage = (baseRevision: number, currentR
 
 export const reconcileStaleAgentMessages = (
   messages: Message[],
-  result: QalamRunResult,
+  result: StyloRunResult,
   conflictMessage: string
 ) => {
   const staleCallIds = new Set(
     result.toolCalls
       .filter((call) => {
-        const category = findQalamToolDescriptor(call.name)?.category;
+        const category = findStyloToolDescriptor(call.name)?.category;
         return category === "mutation" || category === "approval";
       })
       .map((call) => call.callId)

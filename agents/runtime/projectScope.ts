@@ -1,8 +1,8 @@
 import type { ProjectData } from "../../types";
 
-export const DEFAULT_QALAM_PROJECT_ID = "flow-project-main";
-export const QALAM_CONVERSATION_STORAGE_PREFIX = "qalam_conversations_v2";
-export const QALAM_ACTIVITY_STORAGE_PREFIX = "qalam_agent_tool_activity_v2";
+export const DEFAULT_STYLO_PROJECT_ID = "flow-project-main";
+export const STYLO_CONVERSATION_STORAGE_PREFIX = "stylo_conversations_v2";
+export const STYLO_ACTIVITY_STORAGE_PREFIX = "stylo_agent_tool_activity_v2";
 
 const normalizeScopePart = (value: string | undefined, fallback: string) => {
   const normalized = (value || "").trim();
@@ -11,14 +11,14 @@ const normalizeScopePart = (value: string | undefined, fallback: string) => {
 
 const encodeScopePart = (value: string) => encodeURIComponent(value);
 
-export const resolveQalamProjectId = (projectData: Pick<ProjectData, "activeFlowProjectId" | "flowProjects">) =>
+export const resolveStyloProjectId = (projectData: Pick<ProjectData, "activeFlowProjectId" | "flowProjects">) =>
   normalizeScopePart(
     projectData.activeFlowProjectId || projectData.flowProjects?.[0]?.id,
-    DEFAULT_QALAM_PROJECT_ID
+    DEFAULT_STYLO_PROJECT_ID
   );
 
-export const buildQalamScopedProjectData = (projectData: ProjectData, projectId: string): ProjectData => {
-  const normalizedProjectId = assertQalamProjectScope(projectId, projectData);
+export const buildStyloScopedProjectData = (projectData: ProjectData, projectId: string): ProjectData => {
+  const normalizedProjectId = assertStyloProjectScope(projectId, projectData);
   const activeProject = projectData.flowProjects?.find((project) => project.id === normalizedProjectId);
   const scopedFlow = activeProject?.flow || projectData.flow;
   return {
@@ -33,19 +33,19 @@ export const buildQalamScopedProjectData = (projectData: ProjectData, projectId:
   };
 };
 
-export const buildQalamConversationStorageKey = (projectId: string) =>
-  `${QALAM_CONVERSATION_STORAGE_PREFIX}:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_QALAM_PROJECT_ID))}`;
+export const buildStyloConversationStorageKey = (projectId: string) =>
+  `${STYLO_CONVERSATION_STORAGE_PREFIX}:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_STYLO_PROJECT_ID))}`;
 
-export const buildQalamActivityStorageKey = (projectId: string) =>
-  `${QALAM_ACTIVITY_STORAGE_PREFIX}:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_QALAM_PROJECT_ID))}`;
+export const buildStyloActivityStorageKey = (projectId: string) =>
+  `${STYLO_ACTIVITY_STORAGE_PREFIX}:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_STYLO_PROJECT_ID))}`;
 
-export const buildQalamSessionPrefix = (projectId: string) =>
-  `qalam:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_QALAM_PROJECT_ID))}:`;
+export const buildStyloSessionPrefix = (projectId: string) =>
+  `stylo:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_STYLO_PROJECT_ID))}:`;
 
-export const buildQalamSessionId = (projectId: string, conversationId: string) =>
-  `${buildQalamSessionPrefix(projectId)}${encodeScopePart(normalizeScopePart(conversationId, "default"))}`;
+export const buildStyloSessionId = (projectId: string, conversationId: string) =>
+  `${buildStyloSessionPrefix(projectId)}${encodeScopePart(normalizeScopePart(conversationId, "default"))}`;
 
-const qualifyQalamAccountScopePart = (
+const qualifyStyloAccountScopePart = (
   accountScope: string,
   value: string | undefined,
   fallback: string
@@ -59,15 +59,15 @@ const qualifyQalamAccountScopePart = (
  * Local Agent records are account data. Keep their storage namespace distinct
  * even when two Clerk accounts use the same project id on the same device.
  */
-export const buildQalamAccountStorageKeys = (accountScope: string, projectId: string) => {
-  const storageProjectScope = qualifyQalamAccountScopePart(
+export const buildStyloAccountStorageKeys = (accountScope: string, projectId: string) => {
+  const storageProjectScope = qualifyStyloAccountScopePart(
     accountScope,
     projectId,
-    DEFAULT_QALAM_PROJECT_ID
+    DEFAULT_STYLO_PROJECT_ID
   );
   return {
-    conversationStorageKey: buildQalamConversationStorageKey(storageProjectScope),
-    activityStorageKey: buildQalamActivityStorageKey(storageProjectScope),
+    conversationStorageKey: buildStyloConversationStorageKey(storageProjectScope),
+    activityStorageKey: buildStyloActivityStorageKey(storageProjectScope),
   };
 };
 
@@ -75,28 +75,40 @@ export const buildQalamAccountStorageKeys = (accountScope: string, projectId: st
  * Server sessions remain project-scoped for bridge validation, while the
  * conversation segment carries the account scope used by the local UI.
  */
-export const buildQalamAccountSessionId = (
+export const buildStyloAccountSessionId = (
   accountScope: string,
   projectId: string,
   conversationId: string
 ) =>
-  buildQalamSessionId(
+  buildStyloSessionId(
     projectId,
-    qualifyQalamAccountScopePart(accountScope, conversationId, "default")
+    qualifyStyloAccountScopePart(accountScope, conversationId, "default")
   );
 
-export const isQalamSessionInProject = (sessionId: string, projectId: string) =>
-  sessionId.startsWith(buildQalamSessionPrefix(projectId));
+export const buildStyloAccountSessionPrefix = (
+  accountScope: string,
+  projectId: string
+) =>
+  `${buildStyloSessionPrefix(projectId)}${encodeScopePart(normalizeScopePart(accountScope, "guest"))}%3A`;
 
-export const assertQalamProjectScope = (projectId: string, projectData?: Pick<ProjectData, "activeFlowProjectId">) => {
+export const isStyloAccountSessionInProject = (
+  sessionId: string,
+  accountScope: string,
+  projectId: string
+) => sessionId.startsWith(buildStyloAccountSessionPrefix(accountScope, projectId));
+
+export const isStyloSessionInProject = (sessionId: string, projectId: string) =>
+  sessionId.startsWith(buildStyloSessionPrefix(projectId));
+
+export const assertStyloProjectScope = (projectId: string, projectData?: Pick<ProjectData, "activeFlowProjectId">) => {
   const normalizedProjectId = normalizeScopePart(projectId, "");
   if (!normalizedProjectId) {
-    throw new Error("Qalam 请求缺少 projectId，已拒绝执行以避免跨项目混淆。");
+    throw new Error("Stylo 请求缺少 projectId，已拒绝执行以避免跨项目混淆。");
   }
   const activeProjectId = (projectData?.activeFlowProjectId || "").trim();
   if (activeProjectId && activeProjectId !== normalizedProjectId) {
     throw new Error(
-      `Qalam 项目作用域不匹配：请求项目 ${normalizedProjectId}，当前快照项目 ${activeProjectId}。`
+      `Stylo 项目作用域不匹配：请求项目 ${normalizedProjectId}，当前快照项目 ${activeProjectId}。`
     );
   }
   return normalizedProjectId;

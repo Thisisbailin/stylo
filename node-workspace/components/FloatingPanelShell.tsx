@@ -31,11 +31,11 @@ export const FloatingPanelShell: React.FC<Props> = ({
   React.useEffect(() => {
     if (!isRight || typeof document === "undefined") return undefined;
     const root = document.documentElement;
-    root.classList.add("qalam-right-panel-open");
-    root.style.setProperty("--qalam-right-panel-width", typeof resolvedWidth === "string" ? resolvedWidth : `${resolvedWidth}`);
+    root.classList.add("stylo-right-panel-open");
+    root.style.setProperty("--stylo-right-panel-width", typeof resolvedWidth === "string" ? resolvedWidth : `${resolvedWidth}`);
     return () => {
-      root.classList.remove("qalam-right-panel-open");
-      root.style.removeProperty("--qalam-right-panel-width");
+      root.classList.remove("stylo-right-panel-open");
+      root.style.removeProperty("--stylo-right-panel-width");
     };
   }, [isRight, resolvedWidth]);
 

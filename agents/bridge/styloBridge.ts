@@ -212,7 +212,7 @@ export type RemoveNodeFlowLinkResult =
       targetRef: string;
     };
 
-export interface QalamAgentBridge {
+export interface StyloAgentBridge {
   getProjectData(): ProjectData;
   getNodeFlowSnapshot(): NodeFlowFile;
   getPendingNodeFlowExecutionApprovals(): NodeFlowExecutionApprovalProposal[];

@@ -84,7 +84,7 @@ export const LookbookContentPage: React.FC<{ node: NodeFlowNode; pageNumber: num
           <h2>{title}</h2>
         </div>
         {src ? <audio src={src} controls preload="metadata" /> : <p>音频节点尚未写入内容。</p>}
-        <footer><span>QALAM AUDIO</span><span>AUDIO</span></footer>
+        <footer><span>STYLO AUDIO</span><span>AUDIO</span></footer>
       </article>
     );
   }
@@ -167,7 +167,7 @@ export const LookbookBookPanel: React.FC<Props> = ({ projectData, identityNodeId
     <section className="lookbook-book" role="dialog" aria-modal="true" aria-label={`${name} Lookbook`}>
       <header className="lookbook-book__header">
         <button type="button" onClick={onClose}><ArrowLeft size={17} weight="bold" /><span>返回 Flow</span></button>
-        <span>QALAM / LOOKBOOK {issue}</span>
+        <span>STYLO / LOOKBOOK {issue}</span>
         <span>{identity.kind === "person" ? "CHARACTER" : "SCENE"} IDENTITY</span>
       </header>
 
@@ -199,12 +199,12 @@ export const LookbookBookPanel: React.FC<Props> = ({ projectData, identityNodeId
                   <div className="lookbook-book__cover-meta">
                     <span>@{identity.mention}</span>
                     <span>{identity.kind === "person" ? "CHARACTER STUDY" : "SCENE STUDY"}</span>
-                    <span>QALAM ARCHIVE</span>
+                    <span>STYLO ARCHIVE</span>
                   </div>
                 </article>
               ) : activeSpread.kind === "back" ? (
                 <article className="lookbook-book__back-cover">
-                  <span>QALAM</span>
+                  <span>STYLO</span>
                   <div><strong>{name}</strong><small>@{identity.mention}</small></div>
                   <span>END / {issue}</span>
                 </article>

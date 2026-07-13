@@ -9,11 +9,13 @@ const __dirname = path.dirname(__filename);
 
 const readWebSocketCredential = (header: string | string[] | undefined) => {
   const rawHeader = Array.isArray(header) ? header.join(',') : header || '';
-  const encoded = rawHeader
+  const protocol = rawHeader
     .split(',')
     .map((value) => value.trim())
-    .find((value) => value.startsWith('qalam-auth.'))
-    ?.slice('qalam-auth.'.length);
+    .find((value) => value.startsWith('stylo-auth.') || value.startsWith('qalam-auth.'));
+  const encoded = protocol?.slice(
+    protocol.startsWith('stylo-auth.') ? 'stylo-auth.'.length : 'qalam-auth.'.length
+  );
   if (!encoded || !/^[A-Za-z0-9_-]+$/.test(encoded) || encoded.length > 8_192) return '';
   try {
     return Buffer.from(encoded, 'base64url').toString('utf8').trim();
@@ -58,15 +60,15 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: (id) => {
             if (!id.includes('/node_modules/')) {
-              if (id.includes('/agents/')) return 'qalam-core';
+              if (id.includes('/agents/')) return 'stylo-core';
               if (id.includes('/services/')) return 'provider-services';
               if (id.includes('/interactive-35mm-film-roll/')) return 'film-roll';
               if (id.includes('/node-workspace/nodes/')) return 'flow-nodes';
-              if (id.includes('/node-workspace/foundation/')) return 'qalam-core';
+              if (id.includes('/node-workspace/foundation/')) return 'stylo-core';
               if (
-                id.includes('/node-workspace/components/QalamAgent') ||
-                id.includes('/node-workspace/components/qalam/')
-              ) return 'qalam-core';
+                id.includes('/node-workspace/components/StyloAgent') ||
+                id.includes('/node-workspace/components/stylo/')
+              ) return 'stylo-core';
               if (
                 id.includes('/node-workspace/components/FlowSurface') ||
                 id.includes('/node-workspace/components/canvas/')

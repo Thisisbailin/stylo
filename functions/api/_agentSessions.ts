@@ -105,6 +105,33 @@ export const createAgentSessionKey = (projectId: string, sessionId: string, user
   return `${owner}:project:${encodeURIComponent(projectId)}:session:${sessionId}`;
 };
 
+const LEGACY_AGENT_SESSION_PREFIX = "qalam:";
+const CURRENT_AGENT_SESSION_PREFIX = "stylo:";
+
+export const migrateLegacyD1AgentSession = async (
+  env: EnvWithDb,
+  projectId: string,
+  sessionId: string,
+  userId: string | null
+) => {
+  if (!sessionId.startsWith(CURRENT_AGENT_SESSION_PREFIX)) return false;
+  const currentSessionKey = createAgentSessionKey(projectId, sessionId, userId);
+  const current = await readAgentSessionRecord(env, currentSessionKey);
+  if (current.updatedAt > 0) return false;
+  const legacySessionId = `${LEGACY_AGENT_SESSION_PREFIX}${sessionId.slice(CURRENT_AGENT_SESSION_PREFIX.length)}`;
+  const legacySessionKey = createAgentSessionKey(projectId, legacySessionId, userId);
+  const legacy = await readAgentSessionRecord(env, legacySessionKey);
+  if (legacy.updatedAt <= 0) return false;
+  return compareAndSetAgentSessionRecord(
+    env,
+    currentSessionKey,
+    sessionId,
+    userId,
+    0,
+    { ...legacy, updatedAt: Math.max(Date.now(), legacy.updatedAt + 1) }
+  );
+};
+
 export class D1EdgeSession implements Session {
   constructor(
     private readonly env: EnvWithDb,
@@ -195,17 +222,17 @@ export class D1EdgeSession implements Session {
   }
 }
 
-type QalamBoundedSessionOptions = {
+type StyloBoundedSessionOptions = {
   underlyingSession: Session;
   maxItems?: number;
 };
 
 const DEFAULT_BOUNDED_SESSION_ITEMS = 18;
 
-export class QalamBoundedSession implements Session {
+export class StyloBoundedSession implements Session {
   private readonly maxItems: number;
 
-  constructor(private readonly options: QalamBoundedSessionOptions) {
+  constructor(private readonly options: StyloBoundedSessionOptions) {
     this.maxItems = Math.max(6, options.maxItems ?? DEFAULT_BOUNDED_SESSION_ITEMS);
   }
 
@@ -230,7 +257,7 @@ export class QalamBoundedSession implements Session {
   }
 }
 
-type QalamChatCompactionSessionOptions = {
+type StyloChatCompactionSessionOptions = {
   underlyingSession: Session;
   model: string;
   apiKey: string;
@@ -261,14 +288,14 @@ const replaceSessionItemsAfterCompaction = async (
   return true;
 };
 
-export class QalamChatCompactionSession implements Session {
+export class StyloChatCompactionSession implements Session {
   private readonly client: OpenAI;
   private readonly maxItems: number;
   private readonly threshold: number;
   private readonly tailItems: number;
   private compacting = false;
 
-  constructor(private readonly options: QalamChatCompactionSessionOptions) {
+  constructor(private readonly options: StyloChatCompactionSessionOptions) {
     this.client = new OpenAI({
       apiKey: options.apiKey,
       baseURL: options.baseUrl,
@@ -447,7 +474,7 @@ const buildCompactionSummaryItem = (summaryText: string): AgentInputItem =>
     ],
   }) as AgentInputItem;
 
-type QalamResponsesCompactionSessionOptions = {
+type StyloResponsesCompactionSessionOptions = {
   underlyingSession: Session;
   model: string;
   apiKey: string;
@@ -457,12 +484,12 @@ type QalamResponsesCompactionSessionOptions = {
   tailItems?: number;
 };
 
-export class QalamResponsesCompactionSession implements OpenAIResponsesCompactionAwareSession {
+export class StyloResponsesCompactionSession implements OpenAIResponsesCompactionAwareSession {
   private readonly client: OpenAI;
   private readonly threshold: number;
   private readonly tailItems: number;
 
-  constructor(private readonly options: QalamResponsesCompactionSessionOptions) {
+  constructor(private readonly options: StyloResponsesCompactionSessionOptions) {
     this.client = new OpenAI({
       apiKey: options.apiKey,
       baseURL: options.baseUrl,

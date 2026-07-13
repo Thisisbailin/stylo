@@ -1,14 +1,14 @@
 import type { RunContext } from "@openai/agents";
 import type {
   AgentUiContext,
-  QalamAgentEnvironment,
-  QalamAgentMemory,
-  QalamRunContext,
-  QalamResolvedSkill,
+  StyloAgentEnvironment,
+  StyloAgentMemory,
+  StyloRunContext,
+  StyloResolvedSkill,
 } from "./types";
 
 const BASE_INSTRUCTION = [
-  "You are the Qalam creative operating agent.",
+  "You are the Stylo creative operating agent.",
   "You are a single all-purpose agent.",
   "Work in Chinese unless the user explicitly requests another language.",
   "Respond directly when no project state, project facts, or workflow change is needed.",
@@ -18,7 +18,7 @@ const BASE_INSTRUCTION = [
   "You receive a structured environment snapshot in run context. Treat it as your first project map.",
   "A compact runtime manual is available through read_runtime_manual. Do not preload it mentally; use it only when the user asks about this agent's own operation, tool ergonomics, cognitive load, runtime constraints, web-search policy, or source-code orientation.",
   "Web search is available by default through search_web unless the user disables it. Use it for current external facts, provider/API behavior, releases, prices, laws, or other time-sensitive claims; prefer primary sources.",
-  "Live read-only access to the full Qalam GitHub repository is available through access_github_repository. Use it when runtime self-assessment, source-level diagnosis, or implementation planning requires current project code.",
+  "Live read-only access to the full Stylo GitHub repository is available through access_github_repository. Use it when runtime self-assessment, source-level diagnosis, or implementation planning requires current project code.",
   "The environment contains exactly one active project scope. Treat project.projectId as immutable for the whole run; never infer, read, mention, or operate another project's state from session memory.",
   "You also receive a compact session memory snapshot. Treat it as compressed working memory, not as guaranteed project truth.",
   "Flow is the only project surface. All project content is represented as ordinary Flow nodes plus ordinary Flow links.",
@@ -104,10 +104,10 @@ const toJsonBlock = (label: string, value: unknown) => {
   return `[${label}]\n${JSON.stringify(value)}`;
 };
 
-const formatEnvironmentInstruction = (environment?: QalamAgentEnvironment) =>
+const formatEnvironmentInstruction = (environment?: StyloAgentEnvironment) =>
   environment ? toJsonBlock("Environment Snapshot", environment) : "";
 
-const formatMemoryInstruction = (memory?: QalamAgentMemory) => {
+const formatMemoryInstruction = (memory?: StyloAgentMemory) => {
   if (!memory) return "";
   const operationalMemory = {
     recentSuccessfulTools: memory.recentSuccessfulTools,
@@ -119,7 +119,7 @@ const formatMemoryInstruction = (memory?: QalamAgentMemory) => {
 export const composeAgentInstructions = ({
   enabledSkills,
 }: {
-  enabledSkills: QalamResolvedSkill[];
+  enabledSkills: StyloResolvedSkill[];
 }) => {
   const overlays = enabledSkills.flatMap((skill) =>
     (skill.overlays || []).map((overlay) => `# Skill: ${skill.title}\n${overlay.trim()}`)
@@ -128,7 +128,7 @@ export const composeAgentInstructions = ({
     .filter((skill) => Array.isArray(skill.preferredTools) && skill.preferredTools.length > 0)
     .map((skill) => `[Skill Tool Preference: ${skill.title}]\nPrefer these tools when they fit the task:\n${skill.preferredTools!.map((tool) => `- ${tool}`).join("\n")}`)
     .join("\n\n");
-  return (runContext: RunContext<QalamRunContext>) => {
+  return (runContext: RunContext<StyloRunContext>) => {
     const environmentBlock = formatEnvironmentInstruction(runContext.context?.agentEnvironment);
     const memoryBlock = formatMemoryInstruction(runContext.context?.agentMemory);
     const uiBlock = uiContextInstruction(runContext.context?.uiContext as AgentUiContext | undefined);

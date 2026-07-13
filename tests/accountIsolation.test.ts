@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  buildQalamAccountSessionId,
-  buildQalamAccountStorageKeys,
+  buildStyloAccountSessionId,
+  buildStyloAccountStorageKeys,
 } from "../agents/runtime/projectScope";
 import {
   buildAuthorizedHeaders,
@@ -10,14 +10,14 @@ import {
   setApiAuthTokenProvider,
 } from "../utils/authToken";
 
-test("guest and signed-in Qalam records use distinct local namespaces", () => {
-  const guest = buildQalamAccountStorageKeys("guest", "flow-project-main");
-  const user = buildQalamAccountStorageKeys("user:123", "flow-project-main");
+test("guest and signed-in Stylo records use distinct local namespaces", () => {
+  const guest = buildStyloAccountStorageKeys("guest", "flow-project-main");
+  const user = buildStyloAccountStorageKeys("user:123", "flow-project-main");
   assert.notEqual(guest.conversationStorageKey, user.conversationStorageKey);
   assert.match(guest.conversationStorageKey, /guest%3Aflow-project-main/);
   assert.notEqual(
-    buildQalamAccountSessionId("guest", "flow-project-main", "chat-1"),
-    buildQalamAccountSessionId("user:123", "flow-project-main", "chat-1")
+    buildStyloAccountSessionId("guest", "flow-project-main", "chat-1"),
+    buildStyloAccountSessionId("user:123", "flow-project-main", "chat-1")
   );
 });
 

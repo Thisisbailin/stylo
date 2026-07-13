@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 const cancelGenerationExecutionParameters = {
   type: "object",
@@ -23,7 +23,7 @@ export const cancelGenerationExecutionToolDef = {
   description:
     "Cancel a pending generation approval request for an image/video generation node.",
   parameters: cancelGenerationExecutionParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error("cancel_generation_execution 需要对象参数。");
     }

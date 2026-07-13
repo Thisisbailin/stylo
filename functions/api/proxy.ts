@@ -59,6 +59,7 @@ const buildCorsHeaders = (request: Request, env: Env) => {
       "HTTP-Referer",
       "X-DashScope-Async",
       "X-DashScope-SSE",
+      "X-Stylo-Authorization",
       "X-Qalam-Authorization",
       "X-Proxy-Url",
       "X-Title",
@@ -183,7 +184,10 @@ export const onRequest = async ({ request, env }: PagesContext<Env>) => {
   }
 
   try {
-    const userId = await getUserId(request, env, "x-qalam-authorization");
+    const authHeaderName = request.headers.has("x-stylo-authorization")
+      ? "x-stylo-authorization"
+      : "x-qalam-authorization";
+    const userId = await getUserId(request, env, authHeaderName);
     await enforceRateLimit({
       db: env.DB,
       namespace: "provider-proxy",

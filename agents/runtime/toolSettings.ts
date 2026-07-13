@@ -1,6 +1,6 @@
-import type { QalamToolSettings } from "../../types";
+import type { StyloToolSettings } from "../../types";
 
-export type NormalizedQalamToolSettings = {
+export type NormalizedStyloToolSettings = {
   projectData: { enabled: boolean };
   workflowBuilder: { enabled: boolean };
   runtimeIntelligence: {
@@ -10,9 +10,9 @@ export type NormalizedQalamToolSettings = {
   };
 };
 
-export const normalizeQalamToolSettings = (
-  value: QalamToolSettings | undefined
-): NormalizedQalamToolSettings => ({
+export const normalizeStyloToolSettings = (
+  value: StyloToolSettings | undefined
+): NormalizedStyloToolSettings => ({
   projectData: {
     enabled: value?.projectData?.enabled ?? true,
   },

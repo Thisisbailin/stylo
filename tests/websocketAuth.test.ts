@@ -9,7 +9,7 @@ test("WebSocket credentials round-trip Unicode without unsafe protocol character
   const credential = "sk-测试-🔐-with spaces";
   const protocol = encodeWebSocketCredential(credential);
 
-  assert.match(protocol, /^qalam-auth\.[A-Za-z0-9_-]+$/);
+  assert.match(protocol, /^stylo-auth\.[A-Za-z0-9_-]+$/);
   assert.equal(readWebSocketCredential(protocol), credential);
 });
 
@@ -25,6 +25,12 @@ test("WebSocket credentials are selected from a protocol list", () => {
 test("malformed or unrelated WebSocket protocols never produce credentials", () => {
   assert.equal(readWebSocketCredential(null), "");
   assert.equal(readWebSocketCredential("chat.v1, telemetry.v1"), "");
-  assert.equal(readWebSocketCredential("qalam-auth.***"), "");
-  assert.equal(readWebSocketCredential("qalam-auth.not-valid-utf8-_w"), "");
+  assert.equal(readWebSocketCredential("stylo-auth.***"), "");
+  assert.equal(readWebSocketCredential("stylo-auth.not-valid-utf8-_w"), "");
+});
+
+test("pre-release WebSocket credential protocols remain readable during migration", () => {
+  const current = encodeWebSocketCredential("legacy-token");
+  const legacy = current.replace(/^stylo-auth\./, "qalam-auth.");
+  assert.equal(readWebSocketCredential(legacy), "legacy-token");
 });

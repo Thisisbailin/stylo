@@ -1,7 +1,7 @@
 import type {
   NodeFlowHandle,
-  QalamAgentBridge,
-} from "../bridge/qalamBridge";
+  StyloAgentBridge,
+} from "../bridge/styloBridge";
 import { getNodeFlowRef } from "../runtime/nodeFlowRefs";
 import { assertGenericWriteAllowedForNode, findNodeByIdOrRef } from "./foundationAccess";
 
@@ -392,7 +392,7 @@ const defaultDocumentId = (args: Extract<ParsedArgs, { entity: "node"; action: "
   `${slugifyRefToken(args.nodeRef || args.title || "document", "document")}-${Date.now().toString(36)}`;
 
 const resolveNodeFlowRefForGraph = (
-  workflow: ReturnType<QalamAgentBridge["getNodeFlowSnapshot"]>,
+  workflow: ReturnType<StyloAgentBridge["getNodeFlowSnapshot"]>,
   nodeId?: string,
   nodeRef?: string
 ) => {
@@ -409,7 +409,7 @@ export const operateProjectResourceToolDef = {
   description:
     "Operate the visible Flow graph by performing atomic node or link actions. The internal layer key is nodeflow, but this is not a separate product mode.",
   parameters: operateProjectResourceParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     const expectedRevision = workflow.revision;

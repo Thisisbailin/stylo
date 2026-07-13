@@ -1,9 +1,9 @@
 **Comparison Target**
 
 - Source visual truth: `/Users/joe/Downloads/IMG_2775.jpg`
-- Implementation screenshot: `/Users/joe/Documents/APP/Qalam/.codex/foundation-flat-desktop.png`
-- Responsive screenshot: `/Users/joe/Documents/APP/Qalam/.codex/foundation-flat-mobile.png`
-- Focused comparison: `/Users/joe/Documents/APP/Qalam/.codex/foundation-flat-comparison.png`
+- Implementation screenshot: `/Users/joe/Documents/APP/Stylo/.codex/foundation-flat-desktop.png`
+- Responsive screenshot: `/Users/joe/Documents/APP/Stylo/.codex/foundation-flat-mobile.png`
+- Focused comparison: `/Users/joe/Documents/APP/Stylo/.codex/foundation-flat-comparison.png`
 - Viewports: default desktop preview and 390 x 844 responsive override
 - State: Foundation time axis visible; no Foundation menus open
 

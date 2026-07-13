@@ -18,17 +18,23 @@ import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
-import { resetNodeFlowAccountState } from './node-workspace/store/nodeFlowStore';
+import { resetNodeFlowAccountState, resetNodeFlowProjectState } from './node-workspace/store/nodeFlowStore';
 import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import {
-  buildQalamAccountStorageKeys,
-  DEFAULT_QALAM_PROJECT_ID,
-  QALAM_ACTIVITY_STORAGE_PREFIX,
-  QALAM_CONVERSATION_STORAGE_PREFIX,
+  buildStyloAccountStorageKeys,
+  DEFAULT_STYLO_PROJECT_ID,
+  STYLO_ACTIVITY_STORAGE_PREFIX,
+  STYLO_CONVERSATION_STORAGE_PREFIX,
+  resolveStyloProjectId,
 } from './agents/runtime/projectScope';
+import { resetStyloProjectAgentStorage } from './agents/runtime/projectReset';
+import {
+  LEGACY_PRODUCT_STORAGE,
+  migrateLegacyProductStorage,
+} from './utils/styloMigration';
 
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
@@ -36,26 +42,30 @@ const AgentLab = React.lazy(() =>
 
 type LabModalKey = ModuleKey;
 
-const PROJECT_STORAGE_KEY = 'qalam_project_v1';
-const CONFIG_STORAGE_KEY = 'qalam_config_v1';
-const THEME_STORAGE_KEY = 'qalam_theme_v1';
-const LOCAL_BACKUP_KEY = 'qalam_local_backup';
-const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
-const AVATAR_STORAGE_KEY = 'qalam_avatar_url';
+const PROJECT_STORAGE_KEY = 'stylo_project_v1';
+const CONFIG_STORAGE_KEY = 'stylo_config_v1';
+const THEME_STORAGE_KEY = 'stylo_theme_v1';
+const LOCAL_BACKUP_KEY = 'stylo_local_backup';
+const REMOTE_BACKUP_KEY = 'stylo_remote_backup';
+const AVATAR_STORAGE_KEY = 'stylo_avatar_url';
 
 type AccountScope = "guest" | `user:${string}`;
 
 const buildAccountStorageKey = (baseKey: string, accountScope: AccountScope) =>
   `${baseKey}:${encodeURIComponent(accountScope)}`;
 
-const LEGACY_MIGRATION_MARKER_PREFIX = "qalam_legacy_migration_v1";
+const LEGACY_MIGRATION_MARKER_PREFIX = "stylo_legacy_migration_v1";
 
-const isUnscopedLegacyQalamKey = (key: string | null) => {
+const isUnscopedLegacyStyloKey = (key: string | null) => {
   if (!key) return false;
-  const prefix = key.startsWith(`${QALAM_CONVERSATION_STORAGE_PREFIX}:`)
-    ? QALAM_CONVERSATION_STORAGE_PREFIX
-    : key.startsWith(`${QALAM_ACTIVITY_STORAGE_PREFIX}:`)
-      ? QALAM_ACTIVITY_STORAGE_PREFIX
+  const prefix = key.startsWith(`${STYLO_CONVERSATION_STORAGE_PREFIX}:`)
+    ? STYLO_CONVERSATION_STORAGE_PREFIX
+    : key.startsWith(`${STYLO_ACTIVITY_STORAGE_PREFIX}:`)
+      ? STYLO_ACTIVITY_STORAGE_PREFIX
+      : key.startsWith(`${LEGACY_PRODUCT_STORAGE.conversationsV2Prefix}:`)
+        ? LEGACY_PRODUCT_STORAGE.conversationsV2Prefix
+        : key.startsWith(`${LEGACY_PRODUCT_STORAGE.activityV2Prefix}:`)
+          ? LEGACY_PRODUCT_STORAGE.activityV2Prefix
       : null;
   if (!prefix) return false;
   try {
@@ -67,7 +77,7 @@ const isUnscopedLegacyQalamKey = (key: string | null) => {
 };
 
 const getLegacyProjectId = (rawProject: string | null) => {
-  if (!rawProject) return DEFAULT_QALAM_PROJECT_ID;
+  if (!rawProject) return DEFAULT_STYLO_PROJECT_ID;
   try {
     const project = JSON.parse(rawProject) as Record<string, unknown>;
     if (typeof project.activeFlowProjectId === "string" && project.activeFlowProjectId.trim()) {
@@ -80,7 +90,7 @@ const getLegacyProjectId = (rawProject: string | null) => {
   } catch {
     // Invalid legacy state remains quarantined and is never loaded implicitly.
   }
-  return DEFAULT_QALAM_PROJECT_ID;
+  return DEFAULT_STYLO_PROJECT_ID;
 };
 
 const migrateLegacyLocalState = (accountScope: AccountScope) => {
@@ -104,12 +114,12 @@ const migrateLegacyLocalState = (accountScope: AccountScope) => {
   const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
     .filter((key): key is string => Boolean(key));
   for (const key of allKeys) {
-    const prefix = key.startsWith(`${QALAM_CONVERSATION_STORAGE_PREFIX}:`)
-      ? QALAM_CONVERSATION_STORAGE_PREFIX
-      : key.startsWith(`${QALAM_ACTIVITY_STORAGE_PREFIX}:`)
-        ? QALAM_ACTIVITY_STORAGE_PREFIX
+    const prefix = key.startsWith(`${STYLO_CONVERSATION_STORAGE_PREFIX}:`)
+      ? STYLO_CONVERSATION_STORAGE_PREFIX
+      : key.startsWith(`${STYLO_ACTIVITY_STORAGE_PREFIX}:`)
+        ? STYLO_ACTIVITY_STORAGE_PREFIX
         : null;
-    if (!prefix || !isUnscopedLegacyQalamKey(key)) continue;
+    if (!prefix || !isUnscopedLegacyStyloKey(key)) continue;
     const encodedScope = key.slice(prefix.length + 1);
     let legacyProjectScope = "";
     try {
@@ -117,8 +127,8 @@ const migrateLegacyLocalState = (accountScope: AccountScope) => {
     } catch {
       continue;
     }
-    const targetKeys = buildQalamAccountStorageKeys(accountScope, legacyProjectScope);
-    const targetKey = prefix === QALAM_CONVERSATION_STORAGE_PREFIX
+    const targetKeys = buildStyloAccountStorageKeys(accountScope, legacyProjectScope);
+    const targetKey = prefix === STYLO_CONVERSATION_STORAGE_PREFIX
       ? targetKeys.conversationStorageKey
       : targetKeys.activityStorageKey;
     const value = localStorage.getItem(key);
@@ -126,10 +136,10 @@ const migrateLegacyLocalState = (accountScope: AccountScope) => {
     localStorage.removeItem(key);
   }
 
-  const targetConversationKey = buildQalamAccountStorageKeys(accountScope, projectId).conversationStorageKey;
+  const targetConversationKey = buildStyloAccountStorageKeys(accountScope, projectId).conversationStorageKey;
   if (localStorage.getItem(targetConversationKey) === null) {
-    const legacyConversation = localStorage.getItem("qalam_conversations_v1");
-    const legacyMessages = localStorage.getItem("qalam_messages_v1");
+    const legacyConversation = localStorage.getItem("stylo_conversations_v1");
+    const legacyMessages = localStorage.getItem("stylo_messages_v1");
     if (legacyConversation) {
       localStorage.setItem(targetConversationKey, legacyConversation);
     } else if (legacyMessages) {
@@ -148,8 +158,8 @@ const migrateLegacyLocalState = (accountScope: AccountScope) => {
       }
     }
   }
-  localStorage.removeItem("qalam_conversations_v1");
-  localStorage.removeItem("qalam_messages_v1");
+  localStorage.removeItem("stylo_conversations_v1");
+  localStorage.removeItem("stylo_messages_v1");
 };
 
 const decodeJwtExpiry = (token: string) => {
@@ -269,6 +279,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   });
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [syncRefreshKey, setSyncRefreshKey] = useState(0);
+  const [projectResetToken, setProjectResetToken] = useState(0);
   const conflictQueueRef = useRef<Array<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' }>>([]);
   const activeConflictRef = useRef<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
   const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
@@ -484,6 +495,10 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const handleResetProject = async () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
+      const resetProjectId = resolveStyloProjectId(projectDataRef.current);
+      resetNodeFlowProjectState();
+      resetStyloProjectAgentStorage(accountScope, resetProjectId);
+      setProjectResetToken((token) => token + 1);
       localStorage.setItem(forceCloudClearKey, "1");
       setProjectData(INITIAL_PROJECT_DATA);
       localStorage.removeItem(projectStorageKey);
@@ -696,11 +711,12 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
         onResetProject={handleResetProject}
+        projectResetToken={projectResetToken}
         onSignOut={() => signOut()}
         accountInfo={{
           isLoaded: isUserLoaded,
           isSignedIn: !!userSignedIn,
-          name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Qalam User",
+          name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Stylo User",
           email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || undefined,
           avatarUrl: avatarUrl || user?.imageUrl || undefined,
           onSignIn: () => openSignIn(),
@@ -766,6 +782,7 @@ const AccountMigrationGate: React.FC<{ accountScope: AccountScope }> = ({ accoun
 
   useEffect(() => {
     try {
+      migrateLegacyProductStorage(localStorage, accountScope);
       const markerKey = `${LEGACY_MIGRATION_MARKER_PREFIX}:${encodeURIComponent(accountScope)}`;
       if (localStorage.getItem(markerKey)) {
         setReady(true);
@@ -777,11 +794,18 @@ const AccountMigrationGate: React.FC<{ accountScope: AccountScope }> = ({ accoun
         LOCAL_BACKUP_KEY,
         REMOTE_BACKUP_KEY,
         AVATAR_STORAGE_KEY,
-        "qalam_conversations_v1",
-        "qalam_messages_v1",
+        "stylo_conversations_v1",
+        "stylo_messages_v1",
+        LEGACY_PRODUCT_STORAGE.project,
+        LEGACY_PRODUCT_STORAGE.config,
+        LEGACY_PRODUCT_STORAGE.localBackup,
+        LEGACY_PRODUCT_STORAGE.remoteBackup,
+        LEGACY_PRODUCT_STORAGE.avatar,
+        LEGACY_PRODUCT_STORAGE.conversationsV1,
+        LEGACY_PRODUCT_STORAGE.messagesV1,
       ].some((key) => localStorage.getItem(key) !== null) ||
         Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
-          .some(isUnscopedLegacyQalamKey);
+          .some(isUnscopedLegacyStyloKey);
       if (!hasLegacyState) {
         localStorage.setItem(markerKey, "none");
         setReady(true);
@@ -793,7 +817,10 @@ const AccountMigrationGate: React.FC<{ accountScope: AccountScope }> = ({ accoun
         `检测到升级前的本地项目或对话。是否将它们导入${destination}？\n\n` +
         "选择取消会将旧数据保持隔离，不会在访客或其他账号中自动显示。"
       );
-      if (shouldImport) migrateLegacyLocalState(accountScope);
+      if (shouldImport) {
+        migrateLegacyProductStorage(localStorage, accountScope, { includeUnscoped: true });
+        migrateLegacyLocalState(accountScope);
+      }
       localStorage.setItem(markerKey, shouldImport ? "imported" : "quarantined");
     } catch (error) {
       console.warn("Legacy local data migration was unavailable", error);

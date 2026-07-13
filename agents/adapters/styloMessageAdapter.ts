@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../../node-workspace/components/qalam/types";
+import type { ChatMessage } from "../../node-workspace/components/stylo/types";
 
 const parsePlanFromText = (text: string) => {
   const lines = (text || "").split("\n");

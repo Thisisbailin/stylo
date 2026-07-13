@@ -1,5 +1,5 @@
 {
-  "name": "qalam",
+  "name": "stylo",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -18,7 +18,7 @@
     "check": "npm run typecheck && npm test && npm run build && npm run audit",
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
-    "desktop:dev": "concurrently -k \"npm run dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:3000 && cross-env QALAM_DESKTOP_URL=http://127.0.0.1:3000 electron .\"",
+    "desktop:dev": "concurrently -k \"npm run dev -- --host 127.0.0.1\" \"wait-on http://127.0.0.1:3000 && cross-env STYLO_DESKTOP_URL=http://127.0.0.1:3000 electron .\"",
     "desktop:pack": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "desktop:dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "desktop:dist:win": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win zip --x64 --publish never",
@@ -26,7 +26,7 @@
     "desktop:dist:signed": "npm run build && electron-builder"
   },
   "build": {
-    "appId": "ai.qalam.desktop",
+    "appId": "ai.stylo.desktop",
     "productName": "Stylo",
     "directories": {
       "output": "release"
@@ -55,6 +55,7 @@
       ]
     },
     "linux": {
+      "icon": "electron/assets/icon.png",
       "target": [
         "AppImage"
       ]

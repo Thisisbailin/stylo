@@ -22,8 +22,8 @@ type PersistTraceContext = {
   metadata?: Record<string, string>;
 };
 
-const TRACE_BUFFER_SYMBOL = Symbol.for("qalam.agent.traceBuffer");
-const TRACE_PROCESSOR_SYMBOL = Symbol.for("qalam.agent.traceProcessor");
+const TRACE_BUFFER_SYMBOL = Symbol.for("stylo.agent.traceBuffer");
+const TRACE_PROCESSOR_SYMBOL = Symbol.for("stylo.agent.traceProcessor");
 
 const getTraceBuffer = () => {
   const holder = globalThis as typeof globalThis & {
@@ -41,7 +41,7 @@ const upsertBufferedTrace = (traceId: string, updater: (current: BufferedTraceSt
   store.set(traceId, updater(current));
 };
 
-class QalamBufferedTracingProcessor implements TracingProcessor {
+class StyloBufferedTracingProcessor implements TracingProcessor {
   async onTraceStart(trace: Trace): Promise<void> {
     const snapshot = trace.toJSON();
     upsertBufferedTrace(trace.traceId, (current) => ({
@@ -81,12 +81,12 @@ class QalamBufferedTracingProcessor implements TracingProcessor {
   async forceFlush(): Promise<void> {}
 }
 
-export const ensureQalamTraceProcessor = () => {
+export const ensureStyloTraceProcessor = () => {
   const holder = globalThis as typeof globalThis & {
     [TRACE_PROCESSOR_SYMBOL]?: boolean;
   };
   if (holder[TRACE_PROCESSOR_SYMBOL]) return;
-  addTraceProcessor(new QalamBufferedTracingProcessor());
+  addTraceProcessor(new StyloBufferedTracingProcessor());
   holder[TRACE_PROCESSOR_SYMBOL] = true;
 };
 

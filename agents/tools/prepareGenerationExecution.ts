@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 const prepareGenerationExecutionParameters = {
   type: "object",
@@ -23,7 +23,7 @@ export const prepareGenerationExecutionToolDef = {
   description:
     "Create a pending approval request for an image/video generation node. Use this instead of directly running high-privilege generation tasks.",
   parameters: prepareGenerationExecutionParameters,
-  execute: (input: unknown, bridge: QalamAgentBridge) => {
+  execute: (input: unknown, bridge: StyloAgentBridge) => {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error("prepare_generation_execution 需要对象参数。");
     }

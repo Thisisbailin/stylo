@@ -2,7 +2,7 @@ import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
   serializeAgentStreamPacket,
 } from "../../agents/runtime/httpProtocol";
-import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
+import type { AgentRuntimeEvent, StyloRunResult } from "../../agents/runtime/types";
 
 export const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -45,7 +45,7 @@ export const emitEvent = (controller: ReadableStreamDefaultController<Uint8Array
   }
 };
 
-export const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: QalamRunResult) => {
+export const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: StyloRunResult) => {
   try {
     controller.enqueue(
       new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))

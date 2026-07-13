@@ -1,6 +1,6 @@
-import { getQalamToolDescriptor, QALAM_TOOL_CATALOG } from "./toolCatalog";
+import { getStyloToolDescriptor, STYLO_TOOL_CATALOG } from "./toolCatalog";
 
-export type QalamToolBudgetSnapshot = {
+export type StyloToolBudgetSnapshot = {
   totalCalls: number;
   lookupCalls: number;
   mutationCalls: number;
@@ -18,12 +18,12 @@ export type QalamToolBudgetSnapshot = {
 type ToolBudgetDecision =
   | {
       allowed: true;
-      snapshot: QalamToolBudgetSnapshot;
+      snapshot: StyloToolBudgetSnapshot;
     }
   | {
       allowed: false;
       reason: string;
-      snapshot: QalamToolBudgetSnapshot;
+      snapshot: StyloToolBudgetSnapshot;
     };
 
 const DEFAULT_LIMITS = {
@@ -31,7 +31,7 @@ const DEFAULT_LIMITS = {
   lookupCalls: 22,
   mutationCalls: 8,
   fullReadCalls: 3,
-  perTool: Object.fromEntries(QALAM_TOOL_CATALOG.map((descriptor) => [descriptor.name, descriptor.maxCallsPerRun])),
+  perTool: Object.fromEntries(STYLO_TOOL_CATALOG.map((descriptor) => [descriptor.name, descriptor.maxCallsPerRun])),
 };
 
 const stableSerialize = (value: unknown): string => {
@@ -46,9 +46,9 @@ const normalizeView = (args: Record<string, unknown>) =>
   typeof args.view === "string" ? args.view.trim().toLowerCase() : "";
 
 const isFullRead = (toolName: string, args: Record<string, unknown>) =>
-  getQalamToolDescriptor(toolName).countsAsFullRead === true && normalizeView(args) === "full";
+  getStyloToolDescriptor(toolName).countsAsFullRead === true && normalizeView(args) === "full";
 
-export class QalamToolBudgetPolicy {
+export class StyloToolBudgetPolicy {
   private totalCalls = 0;
   private lookupCalls = 0;
   private mutationCalls = 0;
@@ -56,7 +56,7 @@ export class QalamToolBudgetPolicy {
   private readonly callsByTool = new Map<string, number>();
   private readonly seenLookupSignatures = new Set<string>();
 
-  snapshot(): QalamToolBudgetSnapshot {
+  snapshot(): StyloToolBudgetSnapshot {
     return {
       totalCalls: this.totalCalls,
       lookupCalls: this.lookupCalls,
@@ -75,7 +75,7 @@ export class QalamToolBudgetPolicy {
 
   reserve(toolName: string, args: Record<string, unknown>): ToolBudgetDecision {
     const snapshotBefore = this.snapshot();
-    const descriptor = getQalamToolDescriptor(toolName);
+    const descriptor = getStyloToolDescriptor(toolName);
     const nextToolCalls = (this.callsByTool.get(toolName) || 0) + 1;
     const perToolLimit = descriptor.maxCallsPerRun;
     const isLookupTool = descriptor.category === "lookup";
@@ -141,4 +141,4 @@ export class QalamToolBudgetPolicy {
   }
 }
 
-export const createQalamToolBudgetPolicy = () => new QalamToolBudgetPolicy();
+export const createStyloToolBudgetPolicy = () => new StyloToolBudgetPolicy();

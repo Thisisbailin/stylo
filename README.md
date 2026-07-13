@@ -1,12 +1,12 @@
-# Qalam
+# Stylo
 
-Qalam is a canvas-first creative workspace for script writing, project archives, identity assets, and AI-assisted image production.
+Stylo is a canvas-first creative workspace for script writing, project archives, identity assets, and AI-assisted image production.
 
 The current product is no longer related to Google AI Studio. The application now centers on two independent layers:
 
 - `Canvas`: the infinite spatial support layer for viewport, zoom, pan, selection, rendering, and visual organization
 - `Flow`: the creative node-and-link layer that spans script writing, project archives, foundation structure, and AIGC image/video workflows
-- `Qalam Agent`: a single general-purpose project agent built on `@openai/agents`
+- `Stylo Agent`: a single general-purpose project agent built on `@openai/agents`
 
 ## What The App Does
 
@@ -14,7 +14,7 @@ The current product is no longer related to Google AI Studio. The application no
 - Build visual creative flows on the infinite canvas
 - Organize script documents, archive documents, and production nodes in one Flow graph
 - Run image, video, audio, and reference-based generation flows
-- Use `Qalam Agent` to collaborate across the same graph world:
+- Use `Stylo Agent` to collaborate across the same graph world:
   - read project archive facts
   - edit durable flow resources
   - operate the visible creative flow
@@ -22,7 +22,7 @@ The current product is no longer related to Google AI Studio. The application no
 
 ## Core Architecture
 
-Qalam no longer treats reading, editing, and operating as actions over unrelated business modules.
+Stylo no longer treats reading, editing, and operating as actions over unrelated business modules.
 
 The project now revolves around a two-layer architecture:
 
@@ -92,7 +92,7 @@ They collaborate around the same central `Canvas + Flow` world:
 
 ## Model And Provider Paths
 
-Qalam currently supports multiple model/provider lanes depending on the task:
+Stylo currently supports multiple model/provider lanes depending on the task:
 
 - Agent/chat: `Qwen` or `OpenRouter`
 - Image and multimodal text generation: OpenAI-compatible or provider-specific endpoints configured in-app
@@ -108,7 +108,7 @@ Most provider keys can be supplied either:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.12+
 - npm
 
 ### Install
@@ -151,7 +151,7 @@ Notes:
 
 ## Cloud Sync And Backend
 
-Qalam includes optional authenticated cloud sync backed by Cloudflare Pages Functions and D1.
+Stylo includes optional authenticated cloud sync backed by Cloudflare Pages Functions and D1.
 
 ### Frontend env
 
@@ -227,12 +227,12 @@ For local D1 development, use the same command with `--local`. The migration fil
 
 - `App.tsx`: top-level application shell
 - `node-workspace/components/CreativeWorkspace.tsx`: central `Flow` workspace
-- `node-workspace/components/QalamAgent.tsx`: embedded project agent UI
+- `node-workspace/components/StyloAgent.tsx`: embedded project agent UI
 - `node-workspace/components/ProjectSettingsPanel.tsx`: project settings, assets, ability, sync, labs, and runtime configuration
-- `agents/`: Qalam agent runtime, unified graph tools, memory, bridge, and guardrails
+- `agents/`: Stylo agent runtime, unified graph tools, memory, bridge, and guardrails
 
 ## Repo Status
 
-This repository has been renamed and cleaned up to match the current product name: `Qalam`.
+The product and source namespace are `Stylo`. The current GitHub repository slug and Cloudflare Pages/D1 resource names still use the former internal coordinate until their external rename is completed.
 
-Legacy references to earlier project names and paths such as `eSheep`, `Script2Video`, and `QalamWeb` have been removed from the active code paths and current docs tracked in the repository.
+Compatibility readers intentionally remain for existing browser storage, Agent sessions, desktop bridge clients, and `.qalam` project packages. New state and exports are written with the Stylo namespace.

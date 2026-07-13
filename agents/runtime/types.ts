@@ -1,5 +1,5 @@
 import type { Session } from "@openai/agents";
-import type { ProjectData, QalamToolSettings } from "../../types";
+import type { ProjectData, StyloToolSettings } from "../../types";
 import type { NodeFlowFile } from "../../node-workspace/types";
 import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
 
@@ -116,12 +116,12 @@ export type AgentMemoryToolRecord = {
   createdAt?: number;
 };
 
-export type QalamAgentMemory = {
+export type StyloAgentMemory = {
   recentSuccessfulTools: AgentMemoryToolRecord[];
   recentFailedTools: AgentMemoryToolRecord[];
 };
 
-export type QalamToolBudgetContext = {
+export type StyloToolBudgetContext = {
   totalCalls: number;
   lookupCalls: number;
   mutationCalls: number;
@@ -134,7 +134,7 @@ export type QalamToolBudgetContext = {
   };
 };
 
-export type QalamAgentEnvironment = {
+export type StyloAgentEnvironment = {
   project: AgentEnvironmentProjectDigest;
   capabilityManifest: AgentEnvironmentCapabilityManifest;
   executionApprovals: {
@@ -151,11 +151,11 @@ export type QalamAgentEnvironment = {
   recentSuccessfulActions: AgentEnvironmentRecentAction[];
 };
 
-export type QalamRunContext = {
+export type StyloRunContext = {
   runtimeMode: "browser" | "edge_full";
-  agentEnvironment: QalamAgentEnvironment;
-  agentMemory: QalamAgentMemory;
-  toolBudget: QalamToolBudgetContext;
+  agentEnvironment: StyloAgentEnvironment;
+  agentMemory: StyloAgentMemory;
+  toolBudget: StyloToolBudgetContext;
   uiContext?: AgentUiContext;
 };
 
@@ -185,7 +185,7 @@ export type AgentTraceEntry = {
   payload?: string;
 };
 
-export type QalamRunInput = {
+export type StyloRunInput = {
   projectId: string;
   sessionId: string;
   userText: string;
@@ -194,7 +194,7 @@ export type QalamRunInput = {
   uiContext?: AgentUiContext;
 };
 
-export type QalamRunResult = {
+export type StyloRunResult = {
   projectId: string;
   finalText: string;
   sessionId: string;
@@ -215,8 +215,8 @@ export type QalamRunResult = {
   };
 };
 
-export interface QalamAgentRuntime {
-  run(input: QalamRunInput, options?: QalamRunOptions): Promise<QalamRunResult>;
+export interface StyloAgentRuntime {
+  run(input: StyloRunInput, options?: StyloRunOptions): Promise<StyloRunResult>;
 }
 
 export type AgentRuntimeEvent = (
@@ -229,16 +229,16 @@ export type AgentRuntimeEvent = (
   | { type: "tool_completed"; runId: string; call: AgentExecutedToolCall }
   | { type: "tool_failed"; runId: string; call: AgentExecutedToolCall; error: string }
   | { type: "message_completed"; runId: string; messageId?: string; text: string; isFinal: boolean }
-  | { type: "run_completed"; runId: string; result: QalamRunResult }
+  | { type: "run_completed"; runId: string; result: StyloRunResult }
   | { type: "run_failed"; runId: string; error: string }
 ) & { sequence?: number };
 
-export type QalamRunOptions = {
+export type StyloRunOptions = {
   onEvent?: (event: AgentRuntimeEvent) => void;
   signal?: AbortSignal;
 };
 
-export type QalamAgentConfig = {
+export type StyloAgentConfig = {
   provider?: "qwen" | "openrouter" | "ark" | "deepseek";
   apiMode?: "responses" | "chat_completions";
   runtimeTarget?: "browser" | "edge";
@@ -246,15 +246,15 @@ export type QalamAgentConfig = {
   baseUrl?: string;
   defaultHeaders?: Record<string, string>;
   model: string;
-  qalamTools?: QalamToolSettings;
+  styloTools?: StyloToolSettings;
   tracingDisabled?: boolean;
 };
 
-export interface QalamAgentConfigProvider {
-  getConfig(): Promise<QalamAgentConfig> | QalamAgentConfig;
+export interface StyloAgentConfigProvider {
+  getConfig(): Promise<StyloAgentConfig> | StyloAgentConfig;
 }
 
-export type QalamSkillManifest = {
+export type StyloSkillManifest = {
   id: string;
   title: string;
   description: string;
@@ -267,7 +267,7 @@ export type QalamSkillManifest = {
   version?: string;
 };
 
-export type QalamResolvedSkill = QalamSkillManifest & {
+export type StyloResolvedSkill = StyloSkillManifest & {
   guidanceMarkdown: string;
   overlays: string[];
   preferredTools?: string[];
@@ -275,9 +275,9 @@ export type QalamResolvedSkill = QalamSkillManifest & {
   metadata?: Record<string, string>;
 };
 
-export interface QalamSkillLoader {
-  listSkills(): Promise<QalamSkillManifest[]> | QalamSkillManifest[];
-  getSkill(id: string): Promise<QalamResolvedSkill | null> | QalamResolvedSkill | null;
+export interface StyloSkillLoader {
+  listSkills(): Promise<StyloSkillManifest[]> | StyloSkillManifest[];
+  getSkill(id: string): Promise<StyloResolvedSkill | null> | StyloResolvedSkill | null;
 }
 
 export type AgentSessionMessage =
@@ -306,20 +306,20 @@ export type AgentSessionMessage =
       toolOutput?: unknown;
     };
 
-export type QalamSessionRecord = {
+export type StyloSessionRecord = {
   id: string;
   messages: AgentSessionMessage[];
   updatedAt: number;
 };
 
-export interface QalamSessionStore {
+export interface StyloSessionStore {
   getSession(sessionId: string): Promise<Session> | Session;
 }
 
-export interface QalamAgentTracer {
-  onRunStarted(input: QalamRunInput): void;
+export interface StyloAgentTracer {
+  onRunStarted(input: StyloRunInput): void;
   onToolCalled(call: AgentExecutedToolCall): void;
   onToolCompleted(call: AgentExecutedToolCall): void;
-  onRunCompleted(result: QalamRunResult): void;
+  onRunCompleted(result: StyloRunResult): void;
   onRunFailed(error: string): void;
 }

@@ -1,4 +1,4 @@
-import type { QalamAgentBridge } from "../bridge/qalamBridge";
+import type { StyloAgentBridge } from "../bridge/styloBridge";
 import {
   buildScriptResourceLinks,
   buildScriptResourceMaps,
@@ -124,7 +124,7 @@ export const searchProjectResourceToolDef = {
   description:
     "Search across the shared Flow project world when the exact locator is unknown. Public search centers on Script archives and visible canvas graph resources.",
   parameters: searchProjectResourceParameters,
-  execute: async (input: unknown, bridge: QalamAgentBridge) => {
+  execute: async (input: unknown, bridge: StyloAgentBridge) => {
     const args = parseArgs(input);
     const workflow = bridge.getNodeFlowSnapshot();
     const projectData = bridge.getProjectData();

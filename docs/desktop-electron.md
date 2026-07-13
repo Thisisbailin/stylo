@@ -1,4 +1,4 @@
-# Qalam Electron Desktop Shell
+# Stylo Electron Desktop Shell
 
 This desktop shell intentionally keeps the web architecture intact:
 
@@ -29,7 +29,7 @@ desktop app should call the deployed Cloudflare backend instead of same-origin
 Example:
 
 ```bash
-VITE_API_BASE=https://your-qalam-domain.example npm run desktop
+VITE_API_BASE=https://your-stylo-domain.example npm run desktop
 ```
 
 ## Remote Web App Shell
@@ -38,10 +38,10 @@ Packaged builds load the bundled Vite app by default. To make packaged builds
 behave like a native wrapper around the deployed Cloudflare Pages app, set
 `defaultRemoteUrl` in `electron/desktop.config.cjs` before building.
 
-To override the target URL at runtime, set `QALAM_DESKTOP_URL`:
+To override the target URL at runtime, set `STYLO_DESKTOP_URL`:
 
 ```bash
-QALAM_DESKTOP_URL=https://your-qalam-domain.example npx electron .
+STYLO_DESKTOP_URL=https://your-stylo-domain.example npx electron .
 ```
 
 This mode gives users a native installed app while still loading the exact deployed web app.

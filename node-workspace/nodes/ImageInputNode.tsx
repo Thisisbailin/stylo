@@ -142,7 +142,7 @@ const uploadImageForAssetReview = async (source: string, filename?: string | nul
   const blob = await response.blob();
   const contentType = blob.type || "image/png";
   const ext = contentType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "png";
-  const safeBase = (filename || "qalam-aigc-portrait")
+  const safeBase = (filename || "stylo-aigc-portrait")
     .replace(/\.[^/.]+$/, "")
     .replace(/[^\w.\-]+/g, "_")
     .slice(0, 48);
@@ -458,7 +458,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       });
       const created = await SeedanceVideoService.createSeedanceAsset({
         url: sourceUrl,
-        name: data.filename || data.label || `qalam-aigc-${Date.now()}`,
+        name: data.filename || data.label || `stylo-aigc-${Date.now()}`,
         groupId: data.assetGroupId || null,
       });
       updateNodeData(id, {

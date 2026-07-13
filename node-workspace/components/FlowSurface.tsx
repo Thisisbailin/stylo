@@ -306,7 +306,7 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 ];
 
 const scriptCreateOptions: ScriptCreateOption[] = [
-  { label: "剧本文档", hint: "Fountain 稿纸", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
+  { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
   { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive", tone: "is-slate", surface: "paper" },
   { label: "文件夹", hint: "由 foundation 自动生成", type: "folder", Icon: Folder, group: "script", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "仅可查看" },
   { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile", tone: "is-moss", surface: "card" },
@@ -1285,7 +1285,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
 
         <div className={`script-foundation-tail ${isAgentTailOpen ? "is-agent-open" : ""}`}>
           {isAgentTailOpen ? (
-            <div className="script-foundation-tail-composer qalam-surface">
+            <div className="script-foundation-tail-composer stylo-surface">
               <button
                 type="button"
                 className="script-foundation-bar-label script-foundation-bar-label--agent is-active"
@@ -1303,7 +1303,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 value={agentComposerValue}
                 rows={1}
                 placeholder=""
-                aria-label="向 Qalam Agent 输入消息"
+                aria-label="向 Stylo Agent 输入消息"
                 onChange={(event) => onAgentComposerChange?.(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -1321,21 +1321,21 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                 onClick={handleAgentTailSend}
                 title={
                   isAgentSending
-                    ? "Stop Qalam"
+                    ? "Stop Stylo"
                     : agentComposerValue.trim()
-                      ? "Send to Qalam"
+                      ? "Send to Stylo"
                       : isAgentFirstMode
-                        ? "Close Qalam First"
-                        : "Open Qalam First"
+                        ? "Close Stylo First"
+                        : "Open Stylo First"
                 }
                 aria-label={
                   isAgentSending
-                    ? "Stop Qalam"
+                    ? "Stop Stylo"
                     : agentComposerValue.trim()
-                      ? "Send to Qalam"
+                      ? "Send to Stylo"
                       : isAgentFirstMode
-                        ? "Close Qalam First"
-                        : "Open Qalam First"
+                        ? "Close Stylo First"
+                        : "Open Stylo First"
                 }
               >
                 {isAgentSending ? (
@@ -1386,7 +1386,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       ) : null}
 
       {nodeCreateMenu ? (
-        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 620)}>
+        <div className="script-foundation-node-menu-wrap" style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 430)}>
           <section className="script-foundation-floating-menu script-foundation-node-popover script-foundation-node-palette">
             <header className="script-foundation-node-palette__head">
               <span>新增节点</span>
@@ -1406,6 +1406,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                           type="button"
                           className={`script-foundation-node-card ${tone} ${disabled ? "is-disabled" : ""}`}
                           data-surface={surface}
+                          data-meta={meta}
                           disabled={disabled}
                           onClick={() => {
                             if (disabled) return;
@@ -1846,11 +1847,11 @@ export const useFlowSurface = ({
     () => flowProjects.find((project) => project.id === activeFlowProjectId) || flowProjects[0],
     [activeFlowProjectId, flowProjects]
   );
-  const hydratedQalamProjectRef = useRef(activeFlowProjectId);
+  const hydratedStyloProjectRef = useRef(activeFlowProjectId);
 
   useEffect(() => {
-    if (hydratedQalamProjectRef.current === activeFlowProjectId) return;
-    hydratedQalamProjectRef.current = activeFlowProjectId;
+    if (hydratedStyloProjectRef.current === activeFlowProjectId) return;
+    hydratedStyloProjectRef.current = activeFlowProjectId;
     useNodeFlowStore.setState((state) => ({
       ...state,
       ...createIdleNodeFlowExecutionState(),
@@ -3207,7 +3208,7 @@ export const useFlowSurface = ({
         globalAssetHistory: flow.globalAssetHistory || [],
         nodeFlowContext: flowRuntimeContext,
         activeView: flow.activeView ?? null,
-        name: `${projectData.fileName || "qalam-flow"}-flow`,
+        name: `${projectData.fileName || "stylo-flow"}-flow`,
       })
     );
   }, [

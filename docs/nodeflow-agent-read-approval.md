@@ -1,4 +1,4 @@
-# Qalam NodeFlow 面向 Agent 的统一读取与执行审批设计
+# Stylo NodeFlow 面向 Agent 的统一读取与执行审批设计
 
 ## 目标
 

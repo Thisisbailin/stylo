@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ArrowUpRight, FileText, Path, Sparkle, Target } from "@phosphor-icons/react";
+import { ArrowUpRight, FileText, Path, Target } from "@phosphor-icons/react";
 
 export type InfoSectionKey = "about" | "roadmap";
 
@@ -61,7 +61,7 @@ export const InfoPanel: React.FC<Props> = ({
 
             <div className="rounded-[28px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 text-[11px] text-[var(--app-text-secondary)] space-y-2">
               <div className="uppercase tracking-[0.28em]">Info</div>
-              <div>Qalam 正在从工具集合，收束成一块连续的创作工作面。</div>
+              <div>Stylo 正在从工具集合，收束成一块连续的创作工作面。</div>
               <div>新的落地页会从这里进入，并直接回到主页面继续操作。</div>
             </div>
           </div>
@@ -72,12 +72,12 @@ export const InfoPanel: React.FC<Props> = ({
             <>
               <div className="grid grid-cols-1 gap-5 border-b border-[var(--app-border)] pb-5 md:grid-cols-[minmax(0,1fr)_220px]">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-[var(--app-border)] bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(16,185,129,0.04))]">
-                    <Sparkle size={18} weight="duotone" className="text-emerald-300" />
+                  <div className="h-14 w-14 overflow-hidden rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)]">
+                    <img className="h-full w-full object-cover" src="/icon-128.png" alt="" />
                   </div>
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">About</div>
-                    <div className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">Qalam</div>
+                    <div className="mt-2 text-[22px] font-semibold tracking-[-0.03em]">Stylo</div>
                     <div className="text-[12px] text-[var(--app-text-secondary)]">v0.3 · Flow Workspace</div>
                     <div className="mt-3 max-w-xl text-[13px] leading-7 text-[var(--app-text-secondary)]">
                       Script-grounded infinite canvas for archive structuring, asset planning, and creative node composition.
@@ -113,7 +113,7 @@ export const InfoPanel: React.FC<Props> = ({
                   },
                   {
                     label: "Agent Layer",
-                    value: "Qalam System",
+                    value: "Stylo System",
                     detail: "代理能力、视觉路径和视频路径现在共用同一块入口结构。",
                   },
                 ].map((item) => (
@@ -155,7 +155,7 @@ export const InfoPanel: React.FC<Props> = ({
                     <div>
                       <div className="text-[16px] font-semibold tracking-[-0.02em]">打开落地页</div>
                       <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                        打开独立 landing page，完整查看 Qalam 的 agent 能力与产品结构，再从“立即体验”回到主页面。
+                        打开独立 landing page，完整查看 Stylo 的 agent 能力与产品结构，再从“立即体验”回到主页面。
                       </div>
                     </div>
                   </button>

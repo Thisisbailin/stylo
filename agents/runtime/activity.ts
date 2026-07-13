@@ -1,7 +1,7 @@
 import type { AgentExecutedToolCall } from "./types";
 
-export const DEFAULT_AGENT_ACTIVITY_STORAGE_KEY = "qalam_agent_tool_activity_v1";
-export const AGENT_ACTIVITY_STORAGE_UPDATED_EVENT = "qalam:agent-activity-storage-updated";
+export const DEFAULT_AGENT_ACTIVITY_STORAGE_KEY = "stylo_agent_tool_activity_v1";
+export const AGENT_ACTIVITY_STORAGE_UPDATED_EVENT = "stylo:agent-activity-storage-updated";
 
 export type AgentToolActivityRecord = {
   toolName: string;
@@ -60,6 +60,18 @@ const writeActivityMap = (storageKey: string, map: Record<string, AgentToolActiv
   if (typeof window === "undefined") return;
   window.localStorage.setItem(storageKey, JSON.stringify(map));
   emitActivityUpdated();
+};
+
+export const clearAgentToolActivity = (
+  storageKey = DEFAULT_AGENT_ACTIVITY_STORAGE_KEY,
+  storage?: Pick<Storage, "setItem">
+) => {
+  if (storage) {
+    storage.setItem(storageKey, "{}");
+    emitActivityUpdated();
+    return;
+  }
+  writeActivityMap(storageKey, {});
 };
 
 const summarizeArtifact = (call: AgentExecutedToolCall) => {

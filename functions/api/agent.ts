@@ -1,14 +1,14 @@
-import { runQalamAgentCore } from "../../agents/runtime/core";
+import { runStyloAgentCore } from "../../agents/runtime/core";
 import type { AgentHttpRunRequest } from "../../agents/runtime/httpProtocol";
 import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
-import { createAgentSessionKey, D1EdgeSession, QalamChatCompactionSession, QalamResponsesCompactionSession, readD1SessionMessages } from "./_agentSessions";
-import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
+import { createAgentSessionKey, D1EdgeSession, migrateLegacyD1AgentSession, StyloChatCompactionSession, StyloResponsesCompactionSession, readD1SessionMessages } from "./_agentSessions";
+import { ensureStyloTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
 import { parseNodeFlowFile } from "../../node-workspace/nodeflow/schema";
 import {
-  assertQalamProjectScope,
-  isQalamSessionInProject,
+  assertStyloProjectScope,
+  isStyloSessionInProject,
 } from "../../agents/runtime/projectScope";
 import { getUserId } from "./_auth";
 import { enforceRateLimit } from "./_rateLimit";
@@ -65,7 +65,7 @@ const isDebugEnabled = (env: Record<string, unknown>) => {
 
 const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
   if (!enabled || typeof console === "undefined") return;
-  const prefix = `[Qalam][edge][${runId}] ${label}`;
+  const prefix = `[Stylo][edge][${runId}] ${label}`;
   if (payload === undefined) {
     console.log(prefix);
     return;
@@ -136,12 +136,12 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
   }
 
   try {
-    assertQalamProjectScope(body.run.projectId, body.projectData);
-    if (!isQalamSessionInProject(body.run.sessionId, body.run.projectId)) {
-      throw new Error("Qalam sessionId 不属于当前 projectId。");
+    assertStyloProjectScope(body.run.projectId, body.projectData);
+    if (!isStyloSessionInProject(body.run.sessionId, body.run.projectId)) {
+      throw new Error("Stylo sessionId 不属于当前 projectId。");
     }
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error?.message || "Qalam 项目作用域校验失败。" }), {
+    return new Response(JSON.stringify({ error: error?.message || "Stylo 项目作用域校验失败。" }), {
       status: 409,
       headers: {
         ...CORS_HEADERS,
@@ -152,15 +152,21 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
 
   const provider = resolveAgentProvider(body.runtime.provider);
   const sessionKey = createAgentSessionKey(body.run.projectId, body.run.sessionId, sessionOwner);
+  await migrateLegacyD1AgentSession(
+    context.env,
+    body.run.projectId,
+    body.run.sessionId,
+    sessionOwner
+  ).catch(() => false);
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
       const debugEnabled = isDebugEnabled(context.env || {});
-      ensureQalamTraceProcessor();
+      ensureStyloTraceProcessor();
       const tracingEnabled = true;
       const traceId = `edge-trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const workflowName = "Qalam Edge Agent";
+      const workflowName = "Stylo Edge Agent";
       const groupId = sessionKey;
       const agentProjectData = createAgentProjectData(body.projectData, body.nodeFlow, body.run.projectId);
       const bridgeState = createNodeFlowBridgeState(agentProjectData, body.nodeFlow);
@@ -201,7 +207,10 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
           explicitSkillIds: body.run.enabledSkillIds || [],
           loader: skillLoader,
         });
-        const disabledTools = buildDisabledTools({ qalamTools: body.runtime.qalamTools }, enabledSkills as Array<{ disabledTools?: string[] }>);
+        const legacyToolSettings = (body.runtime as unknown as Record<string, unknown>)["qalamTools"];
+        const disabledTools = buildDisabledTools({
+          styloTools: body.runtime.styloTools || legacyToolSettings as AgentHttpRunRequest["runtime"]["styloTools"],
+        }, enabledSkills as Array<{ disabledTools?: string[] }>);
         debugLog(debugEnabled, traceId, "provider resolved", {
           provider,
           model: effectiveModel,
@@ -223,16 +232,16 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
           })
         );
         const underlyingSession = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
-        let chatCompactionSession: QalamChatCompactionSession | null = null;
+        let chatCompactionSession: StyloChatCompactionSession | null = null;
         const session =
           apiMode === "responses"
-            ? new QalamResponsesCompactionSession({
+            ? new StyloResponsesCompactionSession({
                 underlyingSession,
                 model: effectiveModel,
                 apiKey: resolvedApiKey,
                 baseUrl: resolvedBaseUrl,
               })
-            : (chatCompactionSession = new QalamChatCompactionSession({
+            : (chatCompactionSession = new StyloChatCompactionSession({
                 underlyingSession,
                 model: effectiveModel,
                 apiKey: resolvedApiKey,
@@ -242,7 +251,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
         const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
         emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
         emitWrapperTrace("runtime", "running", "Delegating to agent core");
-        const runResult = await runQalamAgentCore({
+        const runResult = await runStyloAgentCore({
           input: body.run,
           config: {
             provider,
@@ -255,7 +264,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
           session,
           sessionMessages,
           runtimeMode: "edge_full",
-          runtimeLabel: "Qalam Edge Agent",
+          runtimeLabel: "Stylo Edge Agent",
           workflowName,
           enabledSkills: enabledSkills as any,
           disabledTools,

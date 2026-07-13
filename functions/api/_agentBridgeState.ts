@@ -1,6 +1,6 @@
-import { createQalamAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
+import { createStyloAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import type { Connection } from "@xyflow/react";
-import type { QalamRunResult } from "../../agents/runtime/types";
+import type { StyloRunResult } from "../../agents/runtime/types";
 import type { ProjectData } from "../../types";
 import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
 import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
@@ -43,7 +43,7 @@ export const createAgentProjectData = (
 export const createAgentProjectPatch = (
   projectData: ProjectData,
   projectId: string
-): QalamRunResult["updatedProjectPatch"] => {
+): StyloRunResult["updatedProjectPatch"] => {
   const activeProject = projectData.flowProjects?.find((project) => project.id === projectId);
   return {
     activeFlowProjectId: projectId,
@@ -54,7 +54,7 @@ export const createAgentProjectPatch = (
   };
 };
 
-export const hasMeaningfulProjectPatch = (patch: QalamRunResult["updatedProjectPatch"]) =>
+export const hasMeaningfulProjectPatch = (patch: StyloRunResult["updatedProjectPatch"]) =>
   Boolean(
     patch &&
       (Array.isArray(patch.roles) ||
@@ -72,7 +72,7 @@ export const createNodeFlowBridgeState = (
   const initialNodeFlow: NodeFlowFile = nodeFlow || {
     version: 2,
     revision: 0,
-    name: projectData.fileName || "Qalam NodeFlow",
+    name: projectData.fileName || "Stylo NodeFlow",
     nodes: [],
     links: [],
     linkStyle: "angular",
@@ -176,7 +176,7 @@ export const createNodeFlowBridgeState = (
   };
 
   return {
-    bridge: createQalamAgentBridge({
+    bridge: createStyloAgentBridge({
       getProjectData: () => currentProjectData,
       getNodeFlowSnapshot: () => currentNodeFlow,
       getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
