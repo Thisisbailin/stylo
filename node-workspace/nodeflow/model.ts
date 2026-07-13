@@ -47,6 +47,27 @@ const trimString = (value: unknown) => {
   return trimmed || undefined;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const nonNegativeInteger = (value: unknown) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+
+const summarizeScreenplayStats = (value: unknown) => {
+  if (!isRecord(value)) return undefined;
+  return {
+    lines: nonNegativeInteger(value.lines),
+    scenes: nonNegativeInteger(value.scenes),
+    characters: nonNegativeInteger(value.characters),
+    locations: nonNegativeInteger(value.locations),
+    words: nonNegativeInteger(value.words),
+    glyphs: nonNegativeInteger(value.glyphs),
+    estimatedPages: nonNegativeInteger(value.estimatedPages),
+    estimatedMinutes: nonNegativeInteger(value.estimatedMinutes),
+    dialoguePercent: Math.min(100, nonNegativeInteger(value.dialoguePercent)),
+  };
+};
+
 const getNodeData = (node: NodeFlowNode) => (node.data || {}) as Record<string, unknown>;
 
 export const getNodeFlowNodeRef = (node: NodeFlowNode) => trimString(getNodeData(node).qalamNodeRef) || node.id;
@@ -69,6 +90,8 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         format: "fountain",
         content: trimString(data.content) || trimString(data.text) || "",
         preview: trimString(data.preview) || "",
+        revision: nonNegativeInteger(data.revision),
+        screenplayStats: summarizeScreenplayStats(data.screenplayStats),
       };
     case "mdText":
       return {

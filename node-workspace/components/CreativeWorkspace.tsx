@@ -40,18 +40,6 @@ import { resolveQalamProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 
-const WRITING_SIDE_WIDTH_STORAGE_KEY = "qalam_writing_side_width_v2";
-const clampWritingSideWidth = (width: number) => {
-  if (typeof window === "undefined") return Math.max(320, width);
-  return Math.round(Math.min(Math.min(520, Math.max(320, window.innerWidth - 440)), Math.max(320, width)));
-};
-
-const getInitialWritingSideWidth = () => {
-  if (typeof window === "undefined") return 420;
-  const stored = Number(window.localStorage.getItem(WRITING_SIDE_WIDTH_STORAGE_KEY));
-  return clampWritingSideWidth(Number.isFinite(stored) && stored > 0 ? stored : 420);
-};
-
 interface CreativeWorkspaceProps {
   accountScope: string;
   projectData: ProjectData;
@@ -365,14 +353,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [agentScriptEditProposals, setAgentScriptEditProposals] = useState<AgentScriptEditProposalBatch | null>(null);
   const [qalamCancelRequest, setQalamCancelRequest] = useState(0);
   const [isQalamFirstManual, setIsQalamFirstManual] = useState(false);
-  const [writingSideWidth, setWritingSideWidth] = useState(getInitialWritingSideWidth);
-  const [isWritingInfoOpen, setIsWritingInfoOpen] = useState(false);
-  const writingResizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [composerInput, setComposerInput] = useState("");
   const isQalamFirstMode = isQalamFirstManual;
   const handleOpenScriptDocument = useCallback((nodeId: string) => {
     setEditingScriptNodeId(nodeId);
-    setIsWritingInfoOpen(false);
     setIsQalamCollapsed(true);
     setQalamCloseRequest((count) => count + 1);
   }, []);
@@ -382,37 +366,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setComposerInput("");
     setIsQalamSending(false);
   }, [qalamProjectId]);
-  useEffect(() => {
-    window.localStorage.setItem(WRITING_SIDE_WIDTH_STORAGE_KEY, String(writingSideWidth));
-  }, [writingSideWidth]);
-  useEffect(() => {
-    const syncWidth = () => setWritingSideWidth((current) => clampWritingSideWidth(current));
-    window.addEventListener("resize", syncWidth);
-    return () => window.removeEventListener("resize", syncWidth);
-  }, []);
-  useEffect(() => {
-    if (editingScriptNodeId === null) return;
-    const move = (event: PointerEvent) => {
-      const active = writingResizeRef.current;
-      if (!active || event.pointerId !== active.pointerId) return;
-      setWritingSideWidth(clampWritingSideWidth(active.startWidth + event.clientX - active.startX));
-    };
-    const stop = (event: PointerEvent) => {
-      const active = writingResizeRef.current;
-      if (!active || event.pointerId !== active.pointerId) return;
-      writingResizeRef.current = null;
-      document.body.classList.remove("qalam-resizing");
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("pointercancel", stop);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
-      document.body.classList.remove("qalam-resizing");
-    };
-  }, [editingScriptNodeId]);
   const handleAgentScriptEditProposals = useCallback((batch: AgentScriptEditProposalBatch) => {
     setAgentScriptEditProposals((current) => {
       const nextNodeIds = new Set(batch.proposals.map((proposal) => proposal.nodeId));
@@ -482,7 +435,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   );
 
   const commitScriptDocument = useCallback(
-    ({ nodeId, title, content, preview }: ScriptDocumentCommit) => {
+    ({ nodeId, title, content, preview, stats }: ScriptDocumentCommit) => {
       const updatedAt = Date.now();
       const patch = {
         title,
@@ -516,8 +469,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             ...node,
             data: {
               ...data,
-              ...patch,
-              documentId,
+                ...patch,
+                documentId,
+                screenplayStats: stats,
+                revision: typeof data.revision === "number" ? data.revision + 1 : 1,
             },
           };
         });
@@ -1150,38 +1105,16 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         <WritingPanel
           projectData={projectData}
           setProjectData={setProjectData}
-          getAuthToken={getAuthToken}
           initialScriptNodeId={editingScriptNodeId}
           isQalamOpen={!isQalamCollapsed}
-          sidePanelWidth={writingSideWidth}
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
           onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
-          onInfoPanelOpenChange={setIsWritingInfoOpen}
           onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
           onClose={() => {
             setEditingScriptNodeId(null);
-            setIsWritingInfoOpen(false);
-          }}
-        />
-      ) : null}
-      {editingScriptNodeId !== null && isWritingInfoOpen ? (
-        <button
-          type="button"
-          aria-label="调整剧本侧栏宽度"
-          className="writing-split-resizer fixed bottom-[3px] top-[3px] z-[82] w-3 -translate-x-1/2 cursor-col-resize touch-none bg-transparent"
-          style={{ left: writingSideWidth + 16 }}
-          onPointerDown={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            writingResizeRef.current = {
-              pointerId: event.pointerId,
-              startX: event.clientX,
-              startWidth: writingSideWidth,
-            };
-            document.body.classList.add("qalam-resizing");
           }}
         />
       ) : null}

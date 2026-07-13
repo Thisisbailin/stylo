@@ -182,6 +182,18 @@ export interface ScriptPageNodeData extends TextNodeData {
   documentKind?: "script";
   format?: "fountain";
   preview?: string;
+  screenplayStats?: {
+    lines: number;
+    scenes: number;
+    characters: number;
+    locations: number;
+    words: number;
+    glyphs: number;
+    estimatedPages: number;
+    estimatedMinutes: number;
+    dialoguePercent: number;
+  };
+  revision?: number;
 }
 
 export interface MarkdownTextNodeData extends TextNodeData {

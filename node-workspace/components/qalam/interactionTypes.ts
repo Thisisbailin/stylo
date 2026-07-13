@@ -26,4 +26,15 @@ export type ScriptDocumentCommit = {
   title: string;
   content: string;
   preview: string;
+  stats?: {
+    lines: number;
+    scenes: number;
+    characters: number;
+    locations: number;
+    words: number;
+    glyphs: number;
+    estimatedPages: number;
+    estimatedMinutes: number;
+    dialoguePercent: number;
+  };
 };
