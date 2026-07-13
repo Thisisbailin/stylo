@@ -13,7 +13,7 @@ type Props = {
 
 const BASE_STEPS: Record<Exclude<PatternKey, "none">, number> = {
   dots: 28,
-  grid: 22,
+  grid: 24,
   cross: 44,
   lines: 26,
   diagonal: 34,
@@ -81,7 +81,7 @@ const MinorPattern = ({
       d={`M ${step - 0.5} 0 V ${step} M 0 ${step - 0.5} H ${step}`}
       fill="none"
       stroke={secondaryColor}
-      strokeWidth="0.65"
+      strokeWidth="1"
       vectorEffect="non-scaling-stroke"
     />
   );
@@ -204,7 +204,7 @@ export const CanvasBackgroundField: React.FC<Props> = ({
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill={`url(#${minorId})`} />
-        {pattern !== "cross" ? <rect width="100%" height="100%" fill={`url(#${majorId})`} /> : null}
+        {pattern !== "cross" && pattern !== "grid" ? <rect width="100%" height="100%" fill={`url(#${majorId})`} /> : null}
       </svg>
     </div>
   );

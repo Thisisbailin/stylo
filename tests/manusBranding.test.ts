@@ -6,7 +6,7 @@ import { PRODUCT_REPOSITORIES } from "../constants/productRepositories";
 
 test("Manus, LookBook, and Cinewor repository identities stay canonical", () => {
   assert.deepEqual(PRODUCT_REPOSITORIES, {
-    stylo: "https://github.com/Thisisbailin/qalam",
+    stylo: "https://github.com/Thisisbailin/stylo",
     manus: "https://github.com/Thisisbailin/Manus",
     lookbook: "https://github.com/Thisisbailin/LookBook",
     cinewor: "https://github.com/Thisisbailin/cinewor",

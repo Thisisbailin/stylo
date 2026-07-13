@@ -725,7 +725,7 @@
   isolation: isolate;
   background: var(--bg-panel);
   color: var(--text-primary);
-  font-family: "Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: "Outfit", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
   overscroll-behavior: none;
   touch-action: none;
 }
@@ -750,6 +750,67 @@
   z-index: 4;
   pointer-events: auto;
   animation: canvas-content-locator-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.canvas-empty-state {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  transform: translateY(-54%);
+  color: var(--app-text-primary);
+  pointer-events: none;
+  text-align: center;
+  animation: canvas-content-locator-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.canvas-empty-state > span {
+  color: var(--app-accent);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.canvas-empty-state > strong {
+  font-size: 19px;
+  font-weight: 560;
+  line-height: 1.2;
+}
+
+.canvas-empty-state > button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent);
+  padding: 0 14px;
+  color: var(--app-text-secondary);
+  box-shadow: 0 12px 28px -22px rgba(24, 24, 23, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.canvas-empty-state > button:hover {
+  background: var(--app-panel-strong);
+  color: var(--app-text-primary);
+  transform: translateY(-1px);
+}
+
+.canvas-empty-state > button:active {
+  transform: translateY(1px);
+}
+
+.canvas-empty-state > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-accent) 52%, transparent);
+  outline-offset: 3px;
 }
 
 .canvas-content-locator__button {
@@ -6014,27 +6075,36 @@ button.script-foundation-gateway-card:hover,
 
 .stylo-wordmark {
   color: var(--app-text-primary);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  letter-spacing: 0;
+  text-shadow: none;
 }
 
 .stylo-wordmark--active {
-  color: transparent;
-  background-image: linear-gradient(
-    112deg,
-    color-mix(in srgb, var(--app-text-primary) 82%, var(--app-accent) 18%) 0%,
-    color-mix(in srgb, var(--app-accent-strong) 72%, var(--app-text-primary) 28%) 18%,
-    color-mix(in srgb, var(--app-accent) 88%, white 12%) 36%,
-    color-mix(in srgb, var(--app-accent) 96%, var(--app-text-primary) 4%) 52%,
-    color-mix(in srgb, var(--app-accent-strong) 74%, white 26%) 68%,
-    color-mix(in srgb, var(--app-accent) 62%, var(--app-text-primary) 38%) 84%,
-    color-mix(in srgb, var(--app-text-primary) 80%, var(--app-accent) 20%) 100%
-  );
-  background-size: 220% 100%;
-  background-position: 0% 50%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  filter: drop-shadow(0 0 12px var(--stylo-wordmark-glow, rgba(244, 240, 255, 0.12)));
-  animation: stylo-wordmark-shift 7.2s linear infinite;
+  color: var(--app-text-primary);
+  background: none;
+  filter: none;
+  animation: none;
+}
+
+.stylo-agent-empty {
+  display: grid;
+  gap: 4px;
+  padding: 12px 2px 8px;
+  color: var(--app-text-secondary);
+}
+
+.stylo-agent-empty strong {
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.stylo-agent-empty span {
+  max-width: 32ch;
+  font-size: 11px;
+  line-height: 1.6;
 }
 
 @keyframes stylo-wordmark-shift {
@@ -7108,6 +7178,7 @@ button.script-foundation-gateway-card:hover,
 
 .script-foundation-dock.script-foundation-filmstrip,
 .script-foundation-filmstrip {
+  isolation: isolate;
   width: max-content;
   max-width: 100%;
   min-height: 54px;
@@ -7124,6 +7195,7 @@ button.script-foundation-gateway-card:hover,
 
 .script-foundation-filmstrip::before {
   content: "";
+  display: block;
   position: absolute;
   top: 0;
   left: 50%;
@@ -7131,21 +7203,30 @@ button.script-foundation-gateway-card:hover,
   width: 330px;
   max-width: calc(100vw - 48px);
   height: 54px;
-  border: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 72%, transparent);
   border-radius: 999px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--app-panel-strong) 92%, rgba(255, 255, 255, 0.08)), color-mix(in srgb, var(--app-panel) 94%, transparent));
+  background: color-mix(in srgb, var(--app-panel-strong) 97%, transparent);
   box-shadow:
-    0 22px 54px -34px rgba(0, 0, 0, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.11);
+    0 18px 46px -24px rgba(24, 24, 23, 0.32),
+    0 4px 12px -8px rgba(24, 24, 23, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
   transform: translateX(-50%);
   pointer-events: none;
-  backdrop-filter: blur(22px) saturate(1.08);
-  -webkit-backdrop-filter: blur(22px) saturate(1.08);
+  backdrop-filter: blur(24px) saturate(1.04);
+  -webkit-backdrop-filter: blur(24px) saturate(1.04);
+}
+
+.script-foundation-filmstrip > :not(.script-foundation-axis-body) {
+  position: relative;
+  z-index: 1;
 }
 
 .script-foundation-filmstrip.is-agent-open::before {
   width: min(620px, calc(100vw - 48px));
+}
+
+.script-foundation-filmstrip:has(.script-foundation-viewport-control[data-expanded="true"])::before {
+  width: min(540px, calc(100vw - 48px));
 }
 
 .script-foundation-dock[data-foundation-expanded="true"] .script-foundation-filmstrip::before {
@@ -7211,15 +7292,20 @@ button.script-foundation-gateway-card:hover,
 }
 
 .script-foundation-dock[data-foundation-expanded="true"] .script-foundation-bar-label--foundation {
-  min-width: 40px;
-  width: 40px;
-  gap: 0;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--app-panel-soft) 86%, rgba(255, 255, 255, 0.08));
-  padding: 0;
+  min-width: 122px;
+  width: auto;
+  gap: 7px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-accent) 10%, var(--app-panel-strong));
+  padding: 0 13px 0 5px;
 }
 
 .script-foundation-dock[data-foundation-expanded="true"] .script-foundation-bar-label--foundation .script-foundation-bar-label__text {
+  display: block;
+  text-align: left;
+}
+
+.script-foundation-dock[data-foundation-expanded="true"] .script-foundation-bar-label--foundation .script-foundation-bar-label__text small {
   display: none;
 }
 

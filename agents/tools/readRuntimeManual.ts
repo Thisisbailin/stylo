@@ -171,7 +171,7 @@ export const readRuntimeManualToolDef = {
       query: args.query || null,
       section,
       available_topics: [...RUNTIME_MANUAL_TOPICS],
-      repository: "https://github.com/Thisisbailin/qalam",
+      repository: "https://github.com/Thisisbailin/stylo",
       note:
         "This manual is a compact orientation layer. For implementation-level diagnosis, use access_github_repository to inspect the live repository without path allowlists.",
     };

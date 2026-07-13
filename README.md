@@ -209,7 +209,7 @@ Notes:
 Database schema changes are deployment-time migrations, never request-time DDL. Apply them before deploying Functions:
 
 ```bash
-npx wrangler d1 migrations apply qalam --remote
+npx wrangler d1 migrations apply stylo --remote
 ```
 
 For local D1 development, use the same command with `--local`. The migration files live in `migrations/` and are the authoritative schema.
@@ -233,6 +233,8 @@ For local D1 development, use the same command with `--local`. The migration fil
 
 ## Repo Status
 
-The product and source namespace are `Stylo`. The current GitHub repository slug and Cloudflare Pages/D1 resource names still use the former internal coordinate until their external rename is completed.
+The product, source namespace, GitHub repository, Cloudflare Pages project, and active D1 database are `Stylo`/`stylo`.
 
 Compatibility readers intentionally remain for existing browser storage, Agent sessions, desktop bridge clients, and `.qalam` project packages. New state and exports are written with the Stylo namespace.
+
+The existing production hostname remains `node-qalam.pages.dev` because Cloudflare Pages does not support changing a project's assigned `*.pages.dev` subdomain in place. The hostname is treated as a legacy transport coordinate rather than product branding; use a Stylo custom domain when one is available.

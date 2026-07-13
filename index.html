@@ -73,23 +73,23 @@
 
       :root.theme-light,
       body.theme-light {
-        --bg-base: #ffffff;
-        --bg-panel: #ffffff;
-        --bg-panel-rgb: 255, 255, 255;
-        --bg-elevated: #ffffff;
-        --bg-elevated-rgb: 255, 255, 255;
-        --bg-overlay: #f8fafc;
-        --bg-muted: #eef2f6;
-        --border-subtle: #e5e7eb;
-        --border-strong: #cbd5e1;
-        --text-primary: #0f172a;
-        --text-secondary: #475569;
-        --accent-green: #10b981;
-        --accent-blue: #0ea5e9;
-        --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.12);
-        --shadow-strong: 0 16px 36px rgba(15, 23, 42, 0.16);
-        --dot-weak: rgba(15, 23, 42, 0.04);
-        --dot-strong: rgba(15, 23, 42, 0.08);
+        --bg-base: #f3f3ef;
+        --bg-panel: #f3f3ef;
+        --bg-panel-rgb: 243, 243, 239;
+        --bg-elevated: #fbfbf8;
+        --bg-elevated-rgb: 251, 251, 248;
+        --bg-overlay: #eeeee9;
+        --bg-muted: #e8e8e2;
+        --border-subtle: rgba(24, 24, 23, 0.12);
+        --border-strong: rgba(24, 24, 23, 0.2);
+        --text-primary: #181817;
+        --text-secondary: #72726d;
+        --accent-green: #718b6b;
+        --accent-blue: #b3483f;
+        --shadow-soft: 0 12px 28px rgba(24, 24, 23, 0.08);
+        --shadow-strong: 0 18px 40px rgba(24, 24, 23, 0.12);
+        --dot-weak: rgba(24, 24, 23, 0.025);
+        --dot-strong: rgba(24, 24, 23, 0.042);
       }
 
       html,
@@ -112,7 +112,7 @@
 
       .stylo-desktop-runtime,
       .stylo-desktop-runtime body {
-        background: #f6f6f4;
+        background: #f3f3ef;
         color: #181817;
       }
 
@@ -127,20 +127,15 @@
         display: grid;
         place-items: center;
         overflow: hidden;
-        background-color: #f6f6f4;
-        background-image: radial-gradient(rgba(24, 24, 23, 0.07) 0.7px, transparent 0.7px);
-        background-size: 22px 22px;
+        background-color: #f3f3ef;
+        background-image:
+          linear-gradient(rgba(24, 24, 23, 0.042) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 24, 23, 0.042) 1px, transparent 1px);
+        background-size: 24px 24px;
         opacity: 1;
         pointer-events: none;
         transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
         -webkit-app-region: drag;
-      }
-
-      .stylo-desktop-runtime #stylo-desktop-boot::after {
-        position: absolute;
-        inset: 0;
-        background: rgba(246, 246, 244, 0.7);
-        content: "";
       }
 
       .stylo-desktop-runtime #stylo-desktop-boot.stylo-desktop-boot--exit {
@@ -150,58 +145,17 @@
       .stylo-desktop-boot__mark {
         position: relative;
         z-index: 1;
-        display: grid;
-        width: 112px;
-        justify-items: start;
-        gap: 14px;
+        display: block;
         transform: translate3d(0, -2vh, 0);
       }
 
       .stylo-desktop-boot__word {
         color: #1b1b1a;
-        font-family: -apple-system, BlinkMacSystemFont, "Avenir Next", "Segoe UI", sans-serif;
-        font-size: 27px;
-        font-weight: 650;
+        font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+        font-size: 30px;
+        font-weight: 600;
         line-height: 1;
         letter-spacing: 0;
-      }
-
-      .stylo-desktop-boot__icon {
-        width: 54px;
-        height: 54px;
-        border-radius: 14px;
-        object-fit: cover;
-      }
-
-      .stylo-desktop-boot__track {
-        position: relative;
-        width: 72px;
-        height: 1px;
-        overflow: hidden;
-        background: rgba(27, 27, 26, 0.14);
-      }
-
-      .stylo-desktop-boot__track::after {
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 28px;
-        background: #a94941;
-        content: "";
-        animation: stylo-desktop-boot-stroke 1.35s cubic-bezier(0.65, 0, 0.35, 1) infinite;
-        will-change: transform;
-      }
-
-      @keyframes stylo-desktop-boot-stroke {
-        0% { transform: translate3d(-32px, 0, 0); }
-        50% { transform: translate3d(76px, 0, 0); }
-        100% { transform: translate3d(76px, 0, 0); }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .stylo-desktop-boot__track::after {
-          animation: none;
-          transform: translate3d(22px, 0, 0);
-        }
       }
 
       .bg-dot-grid {
@@ -235,9 +189,7 @@
   <body class="font-sans antialiased">
     <div id="stylo-desktop-boot" role="status" aria-label="Stylo is opening">
       <div class="stylo-desktop-boot__mark" aria-hidden="true">
-        <img class="stylo-desktop-boot__icon" src="/icon-128.png" alt="" />
         <span class="stylo-desktop-boot__word">Stylo</span>
-        <span class="stylo-desktop-boot__track"></span>
       </div>
     </div>
     <div id="root"></div>

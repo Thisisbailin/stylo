@@ -182,7 +182,7 @@
   position: relative;
   display: grid;
   width: min(100% - 48px, 1440px);
-  min-height: calc(100dvh - 76px);
+  min-height: 100dvh;
   margin: 0 auto;
   grid-template-columns: minmax(320px, 0.78fr) minmax(560px, 1.22fr);
   gap: 7%;
@@ -205,6 +205,16 @@
 .stylo-hero__copy,
 .stylo-hero__visual {
   position: relative;
+}
+
+.stylo-hero__mark {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(24, 24, 23, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px -24px rgba(24, 24, 23, 0.55);
 }
 
 .stylo-kicker {

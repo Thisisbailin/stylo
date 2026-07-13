@@ -29,7 +29,7 @@ import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
 import type { ModuleKey } from "./ModuleBar";
-import { FileText, List } from "lucide-react";
+import { FileText, List, Plus } from "lucide-react";
 import type { EdgeAlignmentGuide } from "../utils/edgeAlignment";
 import type { SharedCanvasControls, SharedCanvasViewport } from "./canvas/types";
 import { locateCanvasContent, type CanvasContentDirection } from "./canvas/contentLocator";
@@ -38,7 +38,7 @@ import type {
   StyloSubmitRequest,
   ScriptDocumentCommit,
 } from "./stylo/interactionTypes";
-import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
+import { isFoundationStructuralNode, saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
@@ -133,28 +133,28 @@ const THEME_PRESETS: Record<ThemeKey, ThemePreset> = {
   },
   light: {
     label: "Light",
-    description: "System light neutrals in soft white and cool gray.",
-    bg: "#f5f5f7",
-    panel: "rgba(255, 255, 255, 0.92)",
-    panelStrong: "#ffffff",
-    panelMuted: "rgba(60, 60, 67, 0.05)",
-    panelSoft: "rgba(60, 60, 67, 0.08)",
-    border: "rgba(60, 60, 67, 0.12)",
-    borderStrong: "rgba(60, 60, 67, 0.18)",
-    textPrimary: "#1c1c1e",
-    textSecondary: "rgba(28, 28, 30, 0.68)",
-    textMuted: "rgba(28, 28, 30, 0.42)",
-    accent: "#8e8e93",
-    accentStrong: "#636366",
-    accentSoft: "rgba(99, 99, 102, 0.1)",
-    panelShadow: "0 10px 24px rgba(28, 28, 30, 0.08)",
-    panelShadowStrong: "0 14px 32px rgba(28, 28, 30, 0.1)",
-    nodeShadow: "0 14px 30px rgba(28, 28, 30, 0.1)",
-    nodeShadowStrong: "0 18px 40px rgba(28, 28, 30, 0.13)",
-    pattern: "rgba(60, 60, 67, 0.055)",
-    patternSoft: "rgba(60, 60, 67, 0.025)",
-    nodeBgGradient: "linear-gradient(160deg, rgba(255, 255, 255, 0.99), rgba(245, 245, 247, 0.97))",
-    nodeHeaderBg: "rgba(60, 60, 67, 0.03)",
+    description: "Warm paper, editorial ink, and the Stylo landing grid.",
+    bg: "#f3f3ef",
+    panel: "rgba(251, 251, 248, 0.92)",
+    panelStrong: "#fbfbf8",
+    panelMuted: "rgba(24, 24, 23, 0.045)",
+    panelSoft: "rgba(24, 24, 23, 0.075)",
+    border: "rgba(24, 24, 23, 0.12)",
+    borderStrong: "rgba(24, 24, 23, 0.2)",
+    textPrimary: "#181817",
+    textSecondary: "rgba(24, 24, 23, 0.62)",
+    textMuted: "rgba(24, 24, 23, 0.4)",
+    accent: "#b3483f",
+    accentStrong: "#913a34",
+    accentSoft: "rgba(179, 72, 63, 0.1)",
+    panelShadow: "0 14px 34px -24px rgba(24, 24, 23, 0.34)",
+    panelShadowStrong: "0 22px 52px -30px rgba(24, 24, 23, 0.42)",
+    nodeShadow: "0 18px 38px -24px rgba(24, 24, 23, 0.3)",
+    nodeShadowStrong: "0 24px 50px -28px rgba(24, 24, 23, 0.38)",
+    pattern: "rgba(24, 24, 23, 0.042)",
+    patternSoft: "rgba(24, 24, 23, 0.042)",
+    nodeBgGradient: "linear-gradient(160deg, rgba(251, 251, 248, 0.99), rgba(243, 243, 239, 0.97))",
+    nodeHeaderBg: "rgba(24, 24, 23, 0.025)",
     scheme: "light",
   },
   sand: {
@@ -825,6 +825,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   );
 
   const activeTheme = useMemo(() => THEME_PRESETS[bgTheme], [bgTheme]);
+  const hasUserFlowNodes = useMemo(
+    () => flowSurface.nodes.some((node) => !isFoundationStructuralNode(node)),
+    [flowSurface.nodes]
+  );
   const patternDefinitions = useMemo(
     () => getPatternDefinitions(activeTheme, activeTheme.scheme === "light" ? 1.45 : 1),
     [activeTheme]
@@ -1051,6 +1055,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       onScriptEditProposals={handleAgentScriptEditProposals}
       renderCollapsedTrigger
       agentFirstMode={isStyloFirstMode}
+      showUsageBadge={false}
       allowLegacyConversationMigration={false}
       conversationResetToken={projectResetToken}
     />
@@ -1130,6 +1135,17 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           {flowSurface.miniMap}
         </ReactFlow>
         {flowSurface.overlays}
+
+        {!hasUserFlowNodes ? (
+          <div className="canvas-empty-state" style={{ left: effectiveAgentDockWidth }} role="status">
+            <span>Flow 从节点开始</span>
+            <strong>创建第一个节点</strong>
+            <button type="button" onClick={() => handleFlowAddNode("text", { x: 100, y: 100 })}>
+              <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
+              <span>新建文本节点</span>
+            </button>
+          </div>
+        ) : null}
 
         {canvasContentDirection ? (
           <CanvasContentLocator

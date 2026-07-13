@@ -29,7 +29,7 @@ test("desktop startup paints the light boot surface before React auth is ready",
   const entry = await readFile(path.join(process.cwd(), "index.tsx"), "utf8");
   assert.match(html, /stylo-desktop-runtime/);
   assert.match(html, /id="stylo-desktop-boot"/);
-  assert.match(html, /background: #f6f6f4/);
+  assert.match(html, /background: #f3f3ef/);
   assert.match(html, /Electron\\\/\\d\+/);
   assert.match(entry, /MutationObserver/);
   assert.match(entry, /stylo-desktop-boot--exit/);

@@ -4,7 +4,7 @@ Date: 2026-07-13
 
 ## Outcome
 
-The application now uses Stylo as its canonical product, package, desktop, runtime, and UI identity. Qalam survives only where it is required to read pre-release user data or address GitHub/Cloudflare resources that have not yet been renamed externally.
+The application now uses Stylo as its canonical product, package, desktop, runtime, UI, GitHub, Pages-project, and active D1 identity. Qalam survives only where it is required to read pre-release user data or address the immutable legacy Pages hostname.
 
 ## Acceptance Criteria Evidence
 
@@ -14,7 +14,7 @@ The application now uses Stylo as its canonical product, package, desktop, runti
 - `metadata.json`, page metadata, landing surfaces, Agent chrome, and About surfaces use Stylo.
 - Canonical modules are `StyloAgent`, `styloBridge`, `styloMessageAdapter`, `useStyloAgent`, and `components/stylo/`.
 - A case-insensitive filename audit found no Qalam-named active files.
-- The old-name source audit found only compatibility readers, tests, and the current external repository/Pages/D1 coordinates.
+- The old-name source audit found only compatibility readers/tests and the immutable legacy Pages hostname.
 
 ### AC4 — Persisted state compatibility
 
@@ -65,10 +65,17 @@ no whitespace errors
 
 The production bundle emits `stylo-core-*.js` rather than a Qalam-named core chunk.
 
-## External Handoff
+## External Migration
 
-The current repository URL, Cloudflare Pages URL, worker name, and D1 database name intentionally remain on their existing Qalam coordinates. After those services are renamed, update the isolated coordinates in `constants/productRepositories.ts`, `agents/tools/accessGithubRepository.ts`, `agents/tools/readRuntimeManual.ts`, `electron/desktop.config.cjs`, `wrangler.toml`, and the README deployment command. Compatibility readers should remain for at least one migration window.
+- GitHub: `Thisisbailin/qalam` was renamed to `Thisisbailin/stylo`; the local `origin` and in-product repository links use the new coordinate.
+- Cloudflare Pages: the project was renamed from `node-qalam` to `stylo` without deleting its deployments, secrets, Git integration, or Functions configuration.
+- Cloudflare D1: the source database was exported, a `stylo` database was created in APAC, and all 18 user tables and 230 rows were compared successfully before switching the binding UUID in `wrangler.toml`.
+- Deployment: Wrangler published the production Functions bundle and Cloudflare's project API reports the new D1 UUID for both production and preview environments.
+- Rollback: the former D1 database remains intact and is not deleted automatically.
+- Hostname: Cloudflare does not support changing an assigned `*.pages.dev` subdomain in place. `node-qalam.pages.dev` therefore remains a documented legacy transport endpoint until a Stylo custom domain is attached or a destructive project recreation is separately approved.
+
+Compatibility readers should remain for at least one migration window.
 
 ## Residual Risk
 
-Electron packaging/signing and a live Cloudflare deployment were not executed. Static desktop security tests, TypeScript, production web build, icon container inspection, and compatibility tests passed; final signed desktop artifacts should still receive a launch smoke test during release packaging.
+Electron packaging/signing was not executed. Static desktop security tests, TypeScript, production web build, icon container inspection, compatibility tests, and the live Cloudflare deployment passed; final signed desktop artifacts should still receive a launch smoke test during release packaging.

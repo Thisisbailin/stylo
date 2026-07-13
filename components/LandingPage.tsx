@@ -193,21 +193,11 @@ const SourceLink = ({ href, children }: { href: string; children: React.ReactNod
 export const LandingPage: React.FC = () => {
   return (
     <div className="stylo-site">
-      <header className="stylo-nav">
-        <a className="stylo-nav__brand" href="#top" aria-label="Stylo home">
-          <img src="/icon-128.png" alt="" />
-          <span>Stylo</span>
-        </a>
-        <div className="stylo-nav__right">
-          <span className="stylo-nav__status"><i />Desktop in development</span>
-          <SourceLink href={sourceHref}>Stylo source</SourceLink>
-        </div>
-      </header>
-
       <main id="top">
         <section className="stylo-hero">
           <div className="stylo-hero__copy">
             <Reveal>
+              <img className="stylo-hero__mark" src="/icon-128.png" alt="Stylo" />
               <div className="stylo-kicker"><PenNib size={15} weight="duotone" /> stylo /sti.lo/ · nom masculin</div>
               <h1>Stylo</h1>
               <p className="stylo-hero__lede">一支笔，也是一套为影像创作搭建的桌面结构。</p>

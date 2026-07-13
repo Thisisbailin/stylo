@@ -1198,7 +1198,7 @@ export const StyloAgent: React.FC<Props> = ({
 
   const panelClassName = "pointer-events-auto stylo-panel";
   const dockInset = 16;
-  const titleOrigin = { x: 16, y: 10, width: 126, height: 42, radius: 12 };
+  const titleOrigin = { x: 16, y: 20, width: 126, height: 42, radius: 12 };
   const handleApprovalChoice = useCallback(
     async (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => {
       if (choice === "reject_once") {
@@ -1335,11 +1335,10 @@ export const StyloAgent: React.FC<Props> = ({
   const formatNumber = (n: number) => n.toLocaleString();
   const styloMark = (
     <span
-      className={`stylo-wordmark inline-flex items-center gap-2.5 text-[30px] font-semibold tracking-[-0.065em] transition duration-500 ${
+      className={`stylo-wordmark inline-flex items-center text-[28px] font-semibold transition duration-500 ${
         !effectiveCollapsed || isSending || isRevealing ? "stylo-wordmark--active opacity-100 blur-0" : "opacity-96"
       }`}
     >
-      <img className="h-8 w-8 rounded-[9px] object-cover" src="/icon-128.png" alt="" />
       <span>Stylo</span>
     </span>
   );
@@ -1423,7 +1422,7 @@ export const StyloAgent: React.FC<Props> = ({
           boxShadow: "none",
           backdropFilter: "none",
           WebkitBackdropFilter: "none",
-          fontFamily: '"Geist", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
+          fontFamily: '"Outfit", "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif',
         }}
       >
         <div className="relative">

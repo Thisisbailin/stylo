@@ -2,7 +2,7 @@
 
 ## Architecture Intent Block
 
-Stylo is the canonical product namespace. Compatibility is directional: old Qalam state can be read or migrated into Stylo, but newly written state and exported artifacts use Stylo. External coordinates that cannot yet be renamed are isolated and labeled as legacy instead of leaking the former brand through the application code.
+Stylo is the canonical product namespace. Compatibility is directional: old Qalam state can be read or migrated into Stylo, but newly written state and exported artifacts use Stylo. The only remaining former-name external coordinate is the immutable Pages hostname, isolated as a legacy transport endpoint.
 
 ## Work Breakdown
 
@@ -12,6 +12,7 @@ Stylo is the canonical product namespace. Compatibility is directional: old Qala
 4. Point web surfaces at the supplied Stylo PNG icon and regenerate desktop `.icns`/`.ico` assets from the same source.
 5. Add tests that assert canonical naming and legacy import/migration behavior.
 6. Run typecheck, tests, build, and a final residue audit. Record evidence in `docs/Testing/stylo-product-rename-verify.md`.
+7. Rename the GitHub repository and Cloudflare Pages project, copy and verify D1 data into `stylo`, update `wrangler.toml`, deploy, and retain the source D1 database as rollback data.
 
 ## Verification Plan
 

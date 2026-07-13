@@ -665,8 +665,9 @@ export const StyloChatContent: React.FC<Props> = ({
     >
       <div className="space-y-3">
         {displayMessages.length === 0 ? (
-          <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-            Stylo 已准备好。你可以直接描述目标，Agent 会在需要时查阅或操作当前 Flow。
+          <div className="stylo-agent-empty" role="note">
+            <strong>从一个目标开始</strong>
+            <span>描述你想创建、整理或修改的内容。</span>
           </div>
         ) : displayMessages.map((item) => {
           const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;

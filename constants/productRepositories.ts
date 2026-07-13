@@ -1,6 +1,5 @@
 export const PRODUCT_REPOSITORIES = {
-  // Current external slug; update this coordinate after the GitHub rename.
-  stylo: "https://github.com/Thisisbailin/qalam",
+  stylo: "https://github.com/Thisisbailin/stylo",
   manus: "https://github.com/Thisisbailin/Manus",
   lookbook: "https://github.com/Thisisbailin/LookBook",
   cinewor: "https://github.com/Thisisbailin/cinewor",

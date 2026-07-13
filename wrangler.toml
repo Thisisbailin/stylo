@@ -1,5 +1,4 @@
-# Current external Cloudflare identifiers; rename after the platform migration.
-name = "qalam"
+name = "stylo"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-03-30"
 compatibility_flags = ["nodejs_compat"]
@@ -9,5 +8,5 @@ SUPABASE_URL = "https://icdgsglzrcculwymgluu.supabase.co"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "qalam"
-database_id = "c49ed23a-f7b0-4f67-a744-fbc5b9b4ffa2"
+database_name = "stylo"
+database_id = "b7898b3b-2b6a-4173-a3f0-af4a84eefe7c"

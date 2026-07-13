@@ -1,8 +1,7 @@
 import type { StyloAgentBridge } from "../bridge/styloBridge";
 
 const GITHUB_OWNER = "Thisisbailin";
-// Current external slug; update after the repository itself is renamed.
-const GITHUB_REPO = "qalam";
+const GITHUB_REPO = "stylo";
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const DEFAULT_MAX_CHARS = 16000;

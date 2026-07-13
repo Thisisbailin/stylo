@@ -27,15 +27,16 @@ test("Stylo is the canonical package, desktop, metadata, and component identity"
   assert.equal(await exists(path.join(root, "node-workspace/components/QalamAgent.tsx")), false);
 });
 
-test("web and desktop surfaces use the supplied Stylo artwork", async () => {
+test("desktop boot stays typographic while product artwork remains available", async () => {
   const root = process.cwd();
   const html = await readFile(path.join(root, "index.html"), "utf8");
   const landing = await readFile(path.join(root, "components/LandingPage.tsx"), "utf8");
   const manifest = JSON.parse(await readFile(path.join(root, "public/site.webmanifest"), "utf8"));
 
   assert.match(html, /rel="manifest" href="\/site\.webmanifest"/);
-  assert.match(html, /stylo-desktop-boot__icon/);
-  assert.match(landing, /src="\/icon-128\.png"/);
+  assert.doesNotMatch(html, /stylo-desktop-boot__icon/);
+  assert.match(html, /stylo-desktop-boot__word">Stylo/);
+  assert.match(landing, /PenNib/);
   assert.equal(manifest.name, "Stylo");
   assert.equal(manifest.icons.length, 4);
 
