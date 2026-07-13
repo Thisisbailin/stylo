@@ -1,344 +1,318 @@
-import React from "react";
+import React, { memo, useState } from "react";
 import {
-  ArrowRight,
+  ArrowDown,
+  ArrowUpRight,
   Brain,
-  CirclesThree,
-  ClockCountdown,
-  CursorClick,
-  Database,
-  FileMagnifyingGlass,
-  Graph,
-  Path,
+  BracketsCurly,
+  FilmScript,
+  GitBranch,
+  GithubLogo,
+  Images,
+  MapTrifold,
   PenNib,
-  Sparkle,
-  TreeStructure,
-  Waveform,
+  Stack,
 } from "@phosphor-icons/react";
-import { MagneticButton } from "./landing/MagneticButton";
-import { PromptCycle } from "./landing/PromptCycle";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-type Props = {
-  isDarkMode?: boolean;
-  onEnterApp: () => void;
+type ArchitectureKey = "screenplay" | "foundation" | "lookbook" | "cinewor" | "agent";
+
+type ArchitectureItem = {
+  id: ArchitectureKey;
+  index: string;
+  name: string;
+  label: string;
+  description: string;
+  note: string;
+  state: "Core" | "In Stylo" | "Independent";
+  href?: string;
+  Icon: React.ComponentType<{ size?: number; weight?: "regular" | "duotone" | "fill" }>;
 };
 
-const capabilityBlocks = [
+const architectureItems: ArchitectureItem[] = [
   {
-    eyebrow: "Inspect",
-    title: "统一读取图世界",
-    description: "通过同一组读接口读取剧本档案、资产结构与统一节点画布。",
-    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    Icon: FileMagnifyingGlass,
+    id: "screenplay",
+    index: "01",
+    name: "稿纸",
+    label: "Screenplay wrapper",
+    description: "把 Flow 包装成面向剧本写作的专业稿纸。结构化处理场景、动作、对白与人物，并提供完整 Fountain 支持。",
+    note: "Flow stays visible; writing becomes the interface.",
+    state: "In Stylo",
+    Icon: FilmScript,
   },
   {
-    eyebrow: "Organize",
-    title: "读取项目档案",
-    description: "查阅 script 空间轴中的剧本骨架、角色场景档案与项目组织结构。",
-    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
-    Icon: Database,
+    id: "foundation",
+    index: "02",
+    name: "Foundation",
+    label: "Project structure wrapper",
+    description: "以柄、轴、块组织项目顶层数据。时间轴与空间轴并行，角色和场景将继续拆分为独立结构。",
+    note: "柄 → 轴 → 块 / time + space",
+    state: "Core",
+    Icon: MapTrifold,
   },
   {
-    eyebrow: "Refine",
-    title: "修正剧本档案",
-    description: "通过 script resource 写口更新项目档案，把角色、场景与结构信息留在更直观的空间轴中。",
-    tools: ["edit_script_resource"],
-    Icon: Graph,
+    id: "lookbook",
+    index: "03",
+    name: "LookBook",
+    label: "Visual development wrapper",
+    description: "面向前期美术的角色与场景视觉册，让视觉探索、身份设定和项目资料在同一套 Flow 语义上工作。",
+    note: "Developed independently; planned for integration.",
+    state: "Independent",
+    href: "https://github.com/Thisisbailin/LookBook",
+    Icon: Images,
   },
   {
-    eyebrow: "Operate",
-    title: "操作工作流画布",
-    description: "把剧本档案与制作意图继续落成画布节点与连线，形成最小可操作的创作结构。",
-    tools: ["operate_project_resource"],
-    Icon: TreeStructure,
-  },
-];
-
-const runtimeFacts = [
-  {
-    label: "Dual Runtime",
-    value: "Browser + Edge",
-    detail: "操作类请求自动走 browser，流式与读重请求可走 Edge。",
-    Icon: CirclesThree,
-  },
-  {
-    label: "Session Memory",
-    value: "user / assistant / tool",
-    detail: "会话记忆保留上下文，但长期真相留在 ProjectData。",
-    Icon: ClockCountdown,
-  },
-  {
-    label: "Trace Events",
-    value: "run → tool → result",
-    detail: "前端消费归一化 runtime event，而不是拼原始 provider 响应。",
-    Icon: Waveform,
-  },
-  {
-    label: "Local Skills",
-    value: "overlayed prompts",
-    detail: "SKILL.md 叠加专业能力与约束，不把规则散落在 UI 里。",
-    Icon: Sparkle,
+    id: "cinewor",
+    index: "04",
+    name: "Cinewor",
+    label: "Scheduling design wrapper",
+    description: "面向调度与镜头设计的工作层，把空间、节奏和制作意图组织为可推演的视觉调度。",
+    note: "Developed independently; planned for integration.",
+    state: "Independent",
+    href: "https://github.com/Thisisbailin/cinewor",
+    Icon: GitBranch,
   },
 ];
 
-const archiveRows = [
-  "Project Summary / Episode Summary",
-  "Character Profile + Portrait Slots",
-  "Scene Profile + Portrait Slots",
-  "Node workflow as next action",
-];
+const sourceHref = "https://github.com/Thisisbailin/qalam";
 
-const eventRail = [
-  "run_started",
-  "tool_called",
-  "tool_completed",
-  "message_completed",
-];
-
-export const LandingPage: React.FC<Props> = ({ isDarkMode = true, onEnterApp }) => {
+const Reveal = memo(function Reveal({
+  children,
+  className = "",
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div
-      className={`${isDarkMode ? "dark" : ""} relative h-[100dvh] overflow-hidden bg-[#efe8dc] text-zinc-950 dark:bg-[#101311] dark:text-zinc-50`}
-      style={{ fontFamily: '"Outfit", "Avenir Next", "Segoe UI", sans-serif' }}
+    <motion.div
+      className={className}
+      initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-8%" }}
+      transition={{ duration: 0.7, delay, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="landing-orb landing-orb--emerald absolute left-[-10%] top-[-4%] h-[28rem] w-[28rem] rounded-full bg-emerald-500/14 blur-3xl dark:bg-emerald-400/14" />
-        <div className="landing-orb landing-orb--sand absolute right-[-8%] top-[12%] h-[24rem] w-[24rem] rounded-full bg-stone-500/16 blur-3xl dark:bg-stone-300/10" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.55),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(16,185,129,0.12),transparent_26%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(16,185,129,0.10),transparent_24%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(15,23,42,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.05)_1px,transparent_1px)] bg-[size:84px_84px] opacity-35 dark:bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] dark:opacity-20" />
+      {children}
+    </motion.div>
+  );
+});
+
+const ArchitectureMap = memo(function ArchitectureMap() {
+  const [active, setActive] = useState<ArchitectureKey>("foundation");
+  const reduceMotion = useReducedMotion();
+  const activeItem = active === "agent"
+    ? {
+        id: "agent" as const,
+        name: "Agent",
+        label: "Native intelligence layer",
+        description: "与 Canvas + Flow 同生的原生大脑。默认由 DeepSeek 驱动，基于 OpenAI Agents SDK，直接读取、理解并操作同一张创作图。",
+        note: "DeepSeek · OpenAI Agents SDK · project-native tools",
+      }
+    : architectureItems.find((item) => item.id === active)!;
+
+  return (
+    <div className="stylo-architecture" aria-label="Stylo architecture map">
+      <div className="stylo-architecture__rail" aria-hidden="true">
+        <span>Creative system / 2026</span>
+        <span>Desktop only</span>
       </div>
 
-      <div className="relative mx-auto flex h-full max-w-[1400px] flex-col px-4 py-4 sm:px-6 md:px-8 md:py-6">
-        <header className="landing-reveal flex items-center justify-between border-b border-black/10 pb-4 dark:border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-[18px] border border-black/10 bg-white/55 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.04]">
-              <PenNib size={18} weight="duotone" className="text-emerald-700 dark:text-emerald-300" />
-            </div>
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.32em] text-zinc-500 dark:text-zinc-400">Standalone Landing</div>
-              <div className="mt-1 text-lg font-semibold tracking-[-0.04em]">QALAM / قلم / pen</div>
-            </div>
-          </div>
+      <div className="stylo-architecture__stage">
+        <button
+          type="button"
+          className={`stylo-architecture__agent ${active === "agent" ? "is-active" : ""}`}
+          onMouseEnter={() => setActive("agent")}
+          onFocus={() => setActive("agent")}
+          onClick={() => setActive("agent")}
+        >
+          <span className="stylo-architecture__agent-icon"><Brain size={18} weight="duotone" /></span>
+          <span><strong>Agent</strong><small>native brain / DeepSeek</small></span>
+          <BracketsCurly size={16} weight="regular" />
+        </button>
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <div className="hidden rounded-full border border-black/10 bg-white/55 px-4 py-2 text-zinc-700 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 md:block">
-              Agent-first creative operating surface
-            </div>
-            <MagneticButton
+        <div className="stylo-architecture__connectors" aria-hidden="true">
+          <span /><span /><span /><span />
+        </div>
+
+        <div className="stylo-architecture__wrappers">
+          {architectureItems.map(({ id, name, label, Icon }, index) => (
+            <button
+              key={id}
               type="button"
-              onClick={onEnterApp}
-              className="bg-zinc-950 px-5 py-2.5 text-[11px] font-semibold text-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.55)] dark:bg-white dark:text-zinc-950"
-              icon={<ArrowRight size={15} weight="bold" />}
+              className={`stylo-architecture__wrapper ${active === id ? "is-active" : ""}`}
+              onMouseEnter={() => setActive(id)}
+              onFocus={() => setActive(id)}
+              onClick={() => setActive(id)}
+              style={{ "--wrapper-index": index } as React.CSSProperties}
             >
-              立即体验
-            </MagneticButton>
-          </div>
-        </header>
+              <span className="stylo-architecture__wrapper-index">0{index + 1}</span>
+              <Icon size={20} weight="duotone" />
+              <span><strong>{name}</strong><small>{label}</small></span>
+            </button>
+          ))}
+        </div>
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 pt-4 lg:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)]">
-          <section className="grid min-h-0 grid-rows-[auto_auto_1fr] gap-4">
-            <div className="landing-reveal rounded-[2rem] border border-black/10 bg-white/60 p-5 shadow-[0_28px_70px_-52px_rgba(15,23,42,0.35)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]">
-              <div className="text-[10px] uppercase tracking-[0.32em] text-emerald-700 dark:text-emerald-300">Qalam Means Pen</div>
-              <h1 className="mt-4 max-w-[11ch] text-4xl font-semibold leading-[0.92] tracking-[-0.07em] md:text-5xl">
-                一支会读项目、会整理档案、会搭工作流的 Agent 之笔。
-              </h1>
-              <p className="mt-4 max-w-[58ch] text-[14px] leading-7 text-zinc-700 dark:text-zinc-300">
-                对 Qalam 来说，这不该只是一次换名。它应该先读取剧本与项目证据，再组织成清晰档案，最后把理解继续变成可执行的节点图。
-              </p>
-            </div>
-
-            <div className="landing-reveal grid grid-cols-2 gap-3" style={{ animationDelay: "120ms" }}>
-              {[
-                "Evidence-first",
-                "Tool-mediated state",
-                "Script archive",
-                "Executable graph",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-[1.5rem] border border-black/10 bg-white/58 px-4 py-3 text-[12px] font-medium text-zinc-700 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
-
-            <div className="landing-reveal rounded-[2rem] border border-black/10 bg-white/60 p-4 shadow-[0_28px_70px_-52px_rgba(15,23,42,0.35)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "200ms" }}>
-              <div className="flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-[0.32em] text-zinc-500 dark:text-zinc-400">Capability Matrix</div>
-                <div className="flex items-center gap-2 text-[12px] text-zinc-600 dark:text-zinc-400">
-                  <CursorClick size={14} weight="duotone" />
-                  无需登录
-                </div>
-              </div>
-
-              <div className="mt-3 grid gap-3">
-                {capabilityBlocks.map(({ eyebrow, title, description, tools, Icon }) => (
-                  <div
-                    key={eyebrow}
-                    className="grid grid-cols-[132px_minmax(0,1fr)] gap-3 rounded-[1.5rem] border border-black/10 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]"
-                  >
-                    <div className="border-r border-black/10 pr-3 dark:border-white/10">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-black/10 bg-white/60 dark:border-white/10 dark:bg-white/[0.04]">
-                        <Icon size={16} weight="duotone" className="text-emerald-700 dark:text-emerald-300" />
-                      </div>
-                      <div className="mt-2 text-[10px] uppercase tracking-[0.26em] text-zinc-500 dark:text-zinc-400">{eyebrow}</div>
-                      <div className="mt-1 text-[15px] font-semibold tracking-[-0.03em]">{title}</div>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[12px] leading-6 text-zinc-700 dark:text-zinc-300">{description}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {tools.map((tool) => (
-                          <span
-                            key={tool}
-                            className="rounded-full border border-black/10 bg-white/70 px-2.5 py-1 text-[10px] text-zinc-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300"
-                            style={{ fontFamily: '"IBM Plex Mono", "SFMono-Regular", monospace' }}
-                          >
-                            {tool}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4">
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.08fr)_260px]">
-              <div className="landing-reveal rounded-[2rem] border border-black/10 bg-white/62 p-5 shadow-[0_32px_90px_-54px_rgba(15,23,42,0.42)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">QALAM SIGNAL</div>
-                    <div className="mt-2 text-[24px] font-semibold tracking-[-0.05em]">run → inspect → understand → operate</div>
-                  </div>
-                  <div className="rounded-full border border-black/10 bg-black/[0.03] px-3 py-1 text-[11px] text-zinc-600 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300">
-                    pen as agent
-                  </div>
-                </div>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_200px]">
-                  <PromptCycle
-                    prompts={[
-                      "读取第 3 集，找出人物关系最紧张的场景，并给出证据。",
-                      "给主角新增一张“受伤形态”定妆照，并写回角色库。",
-                      "根据当前画面意图，生成一个 text -> imageGen 的节点结构。",
-                      "搜索项目档案，找出最适合做预告片的场景和对应角色定妆照。",
-                    ]}
-                  />
-
-                  <div className="rounded-[1.5rem] border border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Event Rail</div>
-                    <div className="mt-3 space-y-2">
-                      {eventRail.map((item, index) => (
-                        <div
-                          key={item}
-                          className="relative overflow-hidden rounded-[1rem] border border-black/10 bg-white/70 px-3 py-2.5 text-[11px] text-zinc-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-300"
-                        >
-                          {index === 1 && (
-                            <div className="landing-beam absolute inset-y-0 left-[-35%] w-20 bg-gradient-to-r from-transparent via-emerald-300/18 to-transparent" />
-                          )}
-                          <div className="relative">{item}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-4 rounded-[1rem] border border-black/10 bg-[#f7f2ea] px-3 py-3 dark:border-white/10 dark:bg-[#171b18]">
-                      <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Counts</div>
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                        {[
-                          { value: "04", label: "Inspect" },
-                          { value: "04", label: "Archive" },
-                          { value: "04", label: "Operate" },
-                        ].map((item) => (
-                          <div key={item.label}>
-                            <div className="font-mono text-[20px] font-semibold tracking-[-0.05em]">{item.value}</div>
-                            <div className="text-[10px] text-zinc-500 dark:text-zinc-400">{item.label}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4">
-                <div className="landing-reveal rounded-[1.75rem] border border-black/10 bg-white/58 p-4 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "140ms" }}>
-                  <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Meaning</div>
-                  <div className="mt-3 text-[26px] font-semibold tracking-[-0.06em]">Qalam</div>
-                  <div className="mt-1 text-[18px] text-zinc-500 dark:text-zinc-400">قلم</div>
-                  <p className="mt-3 text-[12px] leading-6 text-zinc-700 dark:text-zinc-300">
-                    不是只写文案的一支笔，而是负责记录事实、组织结构、把想法转成图。
-                  </p>
-                </div>
-
-                <div className="landing-reveal rounded-[1.75rem] border border-black/10 bg-white/58 p-4 backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "220ms" }}>
-                  <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500 dark:text-zinc-400">Flow</div>
-                  <div className="mt-3 space-y-2">
-                    {["Info 进入", "Landing 浏览", "立即体验", "Script Workspace 继续工作"].map((item, index) => (
-                      <div key={item} className="flex items-center gap-3 text-[12px] text-zinc-700 dark:text-zinc-300">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 bg-black/[0.03] text-[10px] dark:border-white/10 dark:bg-white/[0.04]">
-                          0{index + 1}
-                        </div>
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="landing-reveal rounded-[2rem] border border-black/10 bg-white/60 p-4 shadow-[0_26px_70px_-52px_rgba(15,23,42,0.35)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/[0.04]" style={{ animationDelay: "180ms" }}>
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">
-                  <Graph size={14} weight="duotone" />
-                  Runtime Architecture
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {runtimeFacts.map(({ label, value, detail, Icon }) => (
-                    <div key={label} className="rounded-[1.25rem] border border-black/10 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
-                        <Icon size={12} weight="duotone" className="text-emerald-700 dark:text-emerald-300" />
-                        {label}
-                      </div>
-                      <div className="mt-2 text-[14px] font-semibold tracking-[-0.03em]">{value}</div>
-                      <div className="mt-1 text-[11px] leading-5 text-zinc-700 dark:text-zinc-300">{detail}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="landing-reveal rounded-[2rem] border border-black/10 bg-zinc-950 p-4 text-white shadow-[0_36px_90px_-54px_rgba(15,23,42,0.55)] dark:border-white/10 dark:bg-[#171918]" style={{ animationDelay: "260ms" }}>
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-white/50">
-                  <Brain size={14} weight="duotone" />
-                  Archive + Workflow
-                </div>
-                <div className="mt-3 space-y-2">
-                  {archiveRows.map((item) => (
-                    <div key={item} className="rounded-[1rem] border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/72">
-                      {item}
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex items-center justify-between rounded-[1.25rem] border border-white/10 bg-white/[0.04] px-4 py-3">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Main entry</div>
-                    <div className="mt-1 text-[13px] font-semibold">直接回到主页面继续工作</div>
-                  </div>
-                  <MagneticButton
-                    type="button"
-                    onClick={onEnterApp}
-                    className="bg-white px-4 py-2 text-[11px] font-semibold text-zinc-950"
-                    icon={<ArrowRight size={14} weight="bold" />}
-                  >
-                    立即体验
-                  </MagneticButton>
-                </div>
-              </div>
-            </div>
-          </section>
-        </main>
+        <div className="stylo-architecture__core">
+          <div><span>Spatial substrate</span><strong>Canvas</strong></div>
+          <span className="stylo-architecture__plus">+</span>
+          <div><span>Semantic graph</span><strong>Flow</strong></div>
+        </div>
       </div>
+
+      <div className="stylo-architecture__detail" aria-live="polite">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeItem.id}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <span>{activeItem.label}</span>
+            <strong>{activeItem.name}</strong>
+            <p>{activeItem.description}</p>
+            <code>{activeItem.note}</code>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+});
+
+const SourceLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
+  <a className="stylo-source-link" href={href} target="_blank" rel="noreferrer">
+    <GithubLogo size={16} weight="duotone" />
+    <span>{children}</span>
+    <ArrowUpRight size={13} weight="bold" />
+  </a>
+);
+
+export const LandingPage: React.FC = () => {
+  return (
+    <div className="stylo-site">
+      <header className="stylo-nav">
+        <a className="stylo-nav__brand" href="#top" aria-label="Stylo home">
+          <img src="/icon-128.png" alt="" />
+          <span>Stylo</span>
+        </a>
+        <div className="stylo-nav__right">
+          <span className="stylo-nav__status"><i />Desktop in development</span>
+          <SourceLink href={sourceHref}>Thisisbailin/qalam</SourceLink>
+        </div>
+      </header>
+
+      <main id="top">
+        <section className="stylo-hero">
+          <div className="stylo-hero__copy">
+            <Reveal>
+              <div className="stylo-kicker"><PenNib size={15} weight="duotone" /> stylo /sti.lo/ · nom masculin</div>
+              <h1>Stylo</h1>
+              <p className="stylo-hero__lede">一支笔，也是一套为影像创作搭建的桌面结构。</p>
+              <p className="stylo-hero__body">
+                从无限画布和节点流出发，将剧本、项目结构、视觉开发与调度设计包进同一个可阅读、可连接、可推演的创作世界。
+              </p>
+              <div className="stylo-hero__meta">
+                <span>macOS desktop</span>
+                <span>open source</span>
+                <span>local-first direction</span>
+              </div>
+            </Reveal>
+          </div>
+
+          <Reveal className="stylo-hero__visual" delay={0.12}>
+            <ArchitectureMap />
+          </Reveal>
+
+          <a className="stylo-scroll-cue" href="#architecture">
+            <span>Explore the layers</span>
+            <ArrowDown size={14} weight="bold" />
+          </a>
+        </section>
+
+        <section id="architecture" className="stylo-section stylo-section--architecture">
+          <Reveal className="stylo-section__heading">
+            <span>Architecture / 01</span>
+            <h2>一套底层，数种创作界面。</h2>
+            <p>包装器不制造彼此隔离的模块。它们只是从不同专业视角，重新组织同一个 Canvas + Flow 世界。</p>
+          </Reveal>
+
+          <div className="stylo-layer-ledger">
+            {architectureItems.map(({ id, index, name, label, description, state, href, Icon }, itemIndex) => (
+              <Reveal key={id} className="stylo-layer-row" delay={itemIndex * 0.05}>
+                <div className="stylo-layer-row__index">{index}</div>
+                <div className="stylo-layer-row__name">
+                  <Icon size={22} weight="duotone" />
+                  <div><strong>{name}</strong><span>{label}</span></div>
+                </div>
+                <p>{description}</p>
+                <div className="stylo-layer-row__state">
+                  <span>{state}</span>
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer" aria-label={`${name} source code`}>
+                      <GithubLogo size={17} weight="duotone" />
+                      <ArrowUpRight size={12} weight="bold" />
+                    </a>
+                  ) : (
+                    <i />
+                  )}
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        <section className="stylo-section stylo-section--core">
+          <Reveal className="stylo-core-statement">
+            <div className="stylo-section__heading stylo-section__heading--light">
+              <span>Foundation / 02</span>
+              <h2>Canvas 提供空间。<br />Flow 提供意义。</h2>
+            </div>
+            <p>
+              画布负责视口、缩放、选择与空间组织；Flow 负责节点、关系、文档、Foundation 轴线与 Agent 操作。上层能力因此可以共享同一种项目语言。
+            </p>
+          </Reveal>
+
+          <Reveal className="stylo-core-diagram" delay={0.12}>
+            <div className="stylo-core-diagram__axis"><span>wrappers</span><i /></div>
+            <div className="stylo-core-diagram__modules">
+              <span>稿纸</span><span>Foundation</span><span>LookBook</span><span>Cinewor</span>
+            </div>
+            <div className="stylo-core-diagram__brain"><Brain size={18} weight="duotone" /><span>Agent reads & operates the same graph</span></div>
+            <div className="stylo-core-diagram__base">
+              <div><small>01</small><strong>Canvas</strong><span>space / viewport / interaction</span></div>
+              <div><small>02</small><strong>Flow</strong><span>nodes / links / documents</span></div>
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="stylo-section stylo-section--agent">
+          <Reveal className="stylo-agent-mark"><Brain size={36} weight="duotone" /></Reveal>
+          <Reveal className="stylo-agent-copy" delay={0.08}>
+            <span>Native intelligence / 03</span>
+            <h2>Agent 不是悬浮在软件外面的聊天框。</h2>
+            <p>它与 Canvas + Flow 共用同一份项目事实，通过原生工具读取、编辑和操作用户眼前的创作结构。</p>
+          </Reveal>
+          <Reveal className="stylo-agent-runtime" delay={0.16}>
+            <div><span>Default model</span><strong>DeepSeek</strong></div>
+            <div><span>Runtime</span><strong>OpenAI Agents SDK</strong></div>
+            <div><span>Context</span><strong>Canvas + Flow</strong></div>
+          </Reveal>
+        </section>
+      </main>
+
+      <footer className="stylo-footer">
+        <div>
+          <div className="stylo-footer__brand"><PenNib size={18} weight="duotone" /><strong>Stylo</strong></div>
+          <p>Desktop creative system. The web edition is currently closed while its sharing experience is rebuilt.</p>
+        </div>
+        <div className="stylo-footer__sources">
+          <SourceLink href={sourceHref}>Stylo / Qalam</SourceLink>
+          <SourceLink href="https://github.com/Thisisbailin/LookBook">LookBook</SourceLink>
+          <SourceLink href="https://github.com/Thisisbailin/cinewor">Cinewor</SourceLink>
+        </div>
+        <div className="stylo-footer__note">Open-source creative tooling<br />Designed for the desktop</div>
+      </footer>
     </div>
   );
 };

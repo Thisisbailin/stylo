@@ -53,22 +53,16 @@ export const DEFAULT_QALAM_TOOL_SETTINGS: QalamToolSettings = {
     webSearchEnabled: true,
     githubAccessEnabled: true,
   },
-  characterLocation: {
-    enabled: true,
-    mergeStrategy: "patch",
-    formsMode: "merge",
-    zonesMode: "merge",
-  },
 };
 
 export const INITIAL_TEXT_CONFIG: TextServiceConfig = {
   provider: 'qwen',
-  agentProvider: 'qwen',
+  agentProvider: 'deepseek',
   baseUrl: QWEN_RESPONSES_BASE_URL,
   apiKey: '',
   model: QWEN_DEFAULT_MODEL,
-  agentBaseUrl: QWEN_RESPONSES_BASE_URL,
-  agentModel: QWEN_DEFAULT_MODEL,
+  agentBaseUrl: DEEPSEEK_CHAT_BASE_URL,
+  agentModel: DEEPSEEK_DEFAULT_MODEL,
   workModel: '',
   workBaseUrl: '',
   qwenModels: [],

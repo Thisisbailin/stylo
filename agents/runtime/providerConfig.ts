@@ -16,9 +16,9 @@ export const resolveAgentProvider = (provider?: string): QalamAgentProvider =>
     ? "openrouter"
     : provider === "ark"
       ? "ark"
-      : provider === "deepseek"
-        ? "deepseek"
-        : "qwen";
+      : provider === "qwen"
+        ? "qwen"
+        : "deepseek";
 
 export const resolveApiMode = (provider: QalamAgentProvider): QalamAgentApiMode =>
   provider === "deepseek" ? "chat_completions" : "responses";

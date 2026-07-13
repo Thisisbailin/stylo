@@ -80,17 +80,21 @@ const BASE_INSTRUCTION = [
 const uiContextInstruction = (uiContext?: AgentUiContext) => {
   const parts: string[] = [];
   if (uiContext?.supplementalContextText?.trim()) {
-    parts.push(`[Supplemental Context]\n${uiContext.supplementalContextText.trim()}`);
+    parts.push(`[Supplemental Context]\n${uiContext.supplementalContextText.trim().slice(0, 4000)}`);
   }
   if (uiContext?.mentionTags?.length) {
     parts.push(
-      `[Mentions]\n${uiContext.mentionTags
+      `[Mentions]\n${uiContext.mentionTags.slice(0, 24)
         .map((tag) => `- @${tag.name} => ${tag.kind}${tag.id ? ` (${tag.id})` : ""}`)
         .join("\n")}`
     );
   }
   if (uiContext?.documentSelection) {
-    parts.push(`[Document Selection]\n${JSON.stringify(uiContext.documentSelection)}`);
+    parts.push(`[Document Selection]\n${JSON.stringify({
+      ...uiContext.documentSelection,
+      title: uiContext.documentSelection.title.slice(0, 200),
+      selectedText: uiContext.documentSelection.selectedText.slice(0, 6000),
+    })}`);
   }
   return parts.join("\n\n");
 };
@@ -103,8 +107,14 @@ const toJsonBlock = (label: string, value: unknown) => {
 const formatEnvironmentInstruction = (environment?: QalamAgentEnvironment) =>
   environment ? toJsonBlock("Environment Snapshot", environment) : "";
 
-const formatMemoryInstruction = (memory?: QalamAgentMemory) =>
-  memory ? toJsonBlock("Session Memory", memory) : "";
+const formatMemoryInstruction = (memory?: QalamAgentMemory) => {
+  if (!memory) return "";
+  const operationalMemory = {
+    recentSuccessfulTools: memory.recentSuccessfulTools,
+    recentFailedTools: memory.recentFailedTools,
+  };
+  return toJsonBlock("Operational Memory", operationalMemory);
+};
 
 export const composeAgentInstructions = ({
   enabledSkills,

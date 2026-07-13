@@ -3,18 +3,21 @@ import {
   ArrowBendDownRight,
   BracketsRound,
   ChatCenteredText,
+  Check,
   EyeSlash,
   FilmSlate,
   ListBullets,
+  MagnifyingGlass,
   MusicNotes,
   NoteBlank,
-  Plus,
   Quotes,
   TextAlignCenter,
   TextT,
   User,
+  X,
 } from "@phosphor-icons/react";
 import {
+  convertScreenplayLineKind,
   getNextScreenplayLineKind,
   insertScreenplayLine,
   parseSceneHeading,
@@ -31,6 +34,13 @@ import {
   type ScreenplayLineKind,
 } from "../../screenplay/fountainEngine";
 
+export type ScreenplayCharacterSuggestion = {
+  id: string;
+  name: string;
+  mention: string;
+  status?: string;
+};
+
 type SelectionPayload = {
   text: string;
   start: number;
@@ -44,7 +54,7 @@ type Props = {
   activeLineIndex: number;
   navigationRequest: { lineIndex: number; id: number } | null;
   readOnly?: boolean;
-  characterSuggestions: string[];
+  characterSuggestions: ScreenplayCharacterSuggestion[];
   locationSuggestions: string[];
   onChange: (body: string) => void;
   onActiveLineChange: (lineIndex: number) => void;
@@ -96,6 +106,10 @@ type RowProps = {
   onRemoveLine: (lineIndex: number) => void;
   onActive: (lineIndex: number) => void;
   onSelectionChange?: (selection: SelectionPayload | null) => void;
+  characterSuggestions: ScreenplayCharacterSuggestion[];
+  mentionOpen: boolean;
+  onOpenMention: (lineIndex: number) => void;
+  onCloseMention: () => void;
 };
 
 const ScreenplayBlockRow = memo(({
@@ -109,18 +123,36 @@ const ScreenplayBlockRow = memo(({
   onRemoveLine,
   onActive,
   onSelectionChange,
+  characterSuggestions,
+  mentionOpen,
+  onOpenMention,
+  onCloseMention,
 }: RowProps) => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
   const KindIcon = KIND_ICONS[line.kind];
   const scene = line.kind === "scene_heading" ? parseSceneHeading(line.raw) : null;
+  const filteredCharacters = useMemo(() => {
+    const query = mentionQuery.trim().toLocaleLowerCase();
+    if (!query) return characterSuggestions;
+    return characterSuggestions.filter((item) =>
+      `${item.name} ${item.mention}`.toLocaleLowerCase().includes(query)
+    );
+  }, [characterSuggestions, mentionQuery]);
+
+  useEffect(() => {
+    if (!mentionOpen) setMentionQuery("");
+  }, [mentionOpen]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "0px";
-    textarea.style.height = `${Math.max(34, textarea.scrollHeight)}px`;
-  }, [line.content]);
+    textarea.style.height = line.content
+      ? `${Math.max(34, textarea.scrollHeight)}px`
+      : `${isActive ? 34 : 18}px`;
+  }, [isActive, line.content]);
 
   const assignEditor = (element: HTMLTextAreaElement | null) => {
     textareaRef.current = element;
@@ -128,17 +160,14 @@ const ScreenplayBlockRow = memo(({
   };
 
   const changeKind = (kind: ScreenplayLineKind) => {
-    const nextRaw = kind === "scene_heading"
-      ? serializeSceneHeading({ boundary: "INT.", location: line.content, time: "DAY" })
-      : serializeScreenplayLine(line.content, kind);
-    onReplaceLine(line.index, nextRaw);
+    onReplaceLine(line.index, convertScreenplayLineKind(line, kind));
     setFormatMenuOpen(false);
     requestFocus(line.index, "end");
   };
 
   const insertNextLine = () => {
     const nextKind = getNextScreenplayLineKind(line.kind);
-    const nextRaw = nextKind === "dialogue" ? "" : serializeScreenplayLine("", nextKind);
+    const nextRaw = serializeScreenplayLine("", nextKind);
     onInsertAfter(line.index, nextRaw);
     requestFocus(line.index + 1, "start");
   };
@@ -147,6 +176,19 @@ const ScreenplayBlockRow = memo(({
     if ((event.metaKey || event.ctrlKey) && /^[1-6]$/.test(event.key)) {
       event.preventDefault();
       changeKind(PRIMARY_KINDS[Number(event.key) - 1]);
+      return;
+    }
+    if (event.key === "@" && (["character", "dual_dialogue"].includes(line.kind) || !line.content.trim())) {
+      event.preventDefault();
+      if (!["character", "dual_dialogue"].includes(line.kind)) {
+        onReplaceLine(line.index, serializeScreenplayLine("", "character"));
+      }
+      onOpenMention(line.index);
+      return;
+    }
+    if (event.key === "Escape" && mentionOpen) {
+      event.preventDefault();
+      onCloseMention();
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -194,7 +236,6 @@ const ScreenplayBlockRow = memo(({
       onMouseDown={() => onActive(line.index)}
     >
       <div className="screenplay-block__gutter">
-        <span className="screenplay-block__line-number">{String(line.index + 1).padStart(3, "0")}</span>
         <button
           type="button"
           className="screenplay-block__kind-button"
@@ -275,10 +316,7 @@ const ScreenplayBlockRow = memo(({
             </label>
           </div>
         ) : line.kind === "page_break" ? (
-          <button type="button" className="screenplay-page-break" onClick={insertNextLine} disabled={readOnly}>
-            <span>分页</span>
-            <Plus size={14} />
-          </button>
+          <div className="screenplay-page-break" role="separator" aria-label="分页" />
         ) : (
           <textarea
             ref={assignEditor}
@@ -295,8 +333,51 @@ const ScreenplayBlockRow = memo(({
             onMouseUp={(event) => publishSelection(event.currentTarget)}
           />
         )}
-        {isActive && line.kind !== "page_break" ? (
-          <span className="screenplay-block__active-label">{SCREENPLAY_FORMAT_LABELS[line.kind]}</span>
+        {mentionOpen && line.kind !== "page_break" ? (
+          <div className="screenplay-character-picker" role="dialog" aria-label="从角色库选择角色">
+            <label>
+              <MagnifyingGlass size={13} />
+              <input
+                autoFocus
+                value={mentionQuery}
+                onChange={(event) => setMentionQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") onCloseMention();
+                  if (event.key === "Enter" && filteredCharacters[0]) {
+                    event.preventDefault();
+                    const kind = line.kind === "dual_dialogue" ? "dual_dialogue" : "character";
+                    onReplaceLine(line.index, serializeScreenplayLine(filteredCharacters[0].mention, kind));
+                    onCloseMention();
+                    requestFocus(line.index, "end");
+                  }
+                }}
+                placeholder="搜索角色名或 @引用"
+                aria-label="搜索角色库"
+              />
+              <button type="button" onClick={onCloseMention} aria-label="关闭角色选择"><X size={12} /></button>
+            </label>
+            <div>
+              {filteredCharacters.map((character) => (
+                <button
+                  key={character.id}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    const kind = line.kind === "dual_dialogue" ? "dual_dialogue" : "character";
+                    onReplaceLine(line.index, serializeScreenplayLine(character.mention, kind));
+                    onCloseMention();
+                    requestFocus(line.index, "end");
+                  }}
+                >
+                  <span>{character.name.slice(0, 1)}</span>
+                  <strong>{character.name}</strong>
+                  <small>@{character.mention}</small>
+                  <Check size={12} />
+                </button>
+              ))}
+              {!filteredCharacters.length ? <p>{characterSuggestions.length ? "没有匹配角色" : "角色库为空，可先直接输入角色名"}</p> : null}
+            </div>
+          </div>
         ) : null}
       </div>
     </div>
@@ -308,7 +389,9 @@ const ScreenplayBlockRow = memo(({
   previous.line.start === next.line.start &&
   previous.line.end === next.line.end &&
   previous.isActive === next.isActive &&
-  previous.readOnly === next.readOnly
+  previous.readOnly === next.readOnly &&
+  previous.mentionOpen === next.mentionOpen &&
+  previous.characterSuggestions === next.characterSuggestions
 );
 
 ScreenplayBlockRow.displayName = "ScreenplayBlockRow";
@@ -327,6 +410,7 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
 }) => {
   const editorsRef = useRef(new Map<number, HTMLTextAreaElement | HTMLInputElement>());
   const pendingFocusRef = useRef<{ lineIndex: number; position: "start" | "end" } | null>(null);
+  const [mentionLineIndex, setMentionLineIndex] = useState<number | null>(null);
   const bodyRef = useRef(body);
   const lineCountRef = useRef(lines.length);
   bodyRef.current = body;
@@ -382,20 +466,25 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
     pendingFocusRef.current = null;
   }, [lines.length]);
 
-  const uniqueCharacters = useMemo(() => Array.from(new Set(characterSuggestions)), [characterSuggestions]);
+  const uniqueCharacters = useMemo(() => {
+    const seen = new Set<string>();
+    return characterSuggestions.filter((character) => {
+      const key = character.id || character.mention;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [characterSuggestions]);
   const uniqueLocations = useMemo(() => Array.from(new Set(locationSuggestions)), [locationSuggestions]);
 
   return (
     <div className="screenplay-block-editor" role="textbox" aria-multiline="true" aria-label="可视化剧本编辑器">
-      <datalist id="screenplay-character-options">
-        {uniqueCharacters.map((name) => <option key={name} value={name} />)}
-      </datalist>
       <datalist id="screenplay-location-options">
         {uniqueLocations.map((name) => <option key={name} value={name} />)}
       </datalist>
       {lines.map((line) => (
         <ScreenplayBlockRow
-          key={`${line.index}-${line.kind}`}
+          key={line.index}
           line={line}
           isActive={activeLineIndex === line.index}
           readOnly={readOnly}
@@ -406,6 +495,10 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
           onRemoveLine={removeLine}
           onActive={onActiveLineChange}
           onSelectionChange={onSelectionChange}
+          characterSuggestions={uniqueCharacters}
+          mentionOpen={mentionLineIndex === line.index}
+          onOpenMention={setMentionLineIndex}
+          onCloseMention={() => setMentionLineIndex(null)}
         />
       ))}
       {!lines.length ? (

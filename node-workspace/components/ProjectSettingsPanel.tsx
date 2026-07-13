@@ -43,6 +43,8 @@ import {
   SEEDANCE_FAST_MODEL,
   VIDU_DEFAULT_BASE_URL,
 } from "../../constants";
+import { normalizeQalamToolSettings } from "../../agents/runtime/toolSettings";
+import { listQalamToolNames } from "../../agents/runtime/toolCatalog";
 import {
   AGENT_ACTIVITY_STORAGE_UPDATED_EVENT,
   readAgentToolActivity,
@@ -180,7 +182,7 @@ type AgentObservabilityPayload = {
   selectedTrace: CloudTraceDetail | null;
 };
 
-type ToolKey = "project-data" | "workflow-builder" | "runtime-intelligence" | "asset-library";
+type ToolKey = "project-data" | "workflow-builder" | "runtime-intelligence";
 
 type ToolItem = {
   key: ToolKey;
@@ -203,7 +205,7 @@ const TOOL_ITEMS: ToolItem[] = [
     capability: "read",
     title: "read",
     description: "Agent 通过统一的读接口查阅当前 Flow 文档节点、档案节点和同一画布上的节点关系。",
-    tools: ["list_project_resources", "read_project_resource", "search_project_resource"],
+    tools: listQalamToolNames(["project_read"]),
     surfaces: ["script document", "archive document", "script map", "canvas node", "canvas link", "canvas map"],
     boundary: "只读，不允许直接修改项目状态。",
     artifact: "返回 Flow 文档 / 档案 / map 事实与当前画布结构，作为理解、编辑和操作的前置输入。",
@@ -215,7 +217,7 @@ const TOOL_ITEMS: ToolItem[] = [
     capability: "research",
     title: "research",
     description: "Agent 可以读取运行手册、搜索网页，并实时查看 Qalam GitHub 仓库的完整代码状态。",
-    tools: ["read_runtime_manual", "search_web", "access_github_repository"],
+    tools: listQalamToolNames(["runtime_read", "external_read"]).filter((name) => name !== "ping_tool"),
     surfaces: ["runtime manual", "web search", "github repository", "source tree", "source file"],
     boundary: "默认只读认知权限；不直接修改远程仓库代码。",
     artifact: "返回运行诊断规则、网页搜索结果、仓库默认分支状态、文件树、源码内容和搜索命中。",
@@ -227,7 +229,7 @@ const TOOL_ITEMS: ToolItem[] = [
     capability: "operate",
     title: "operate",
     description: "Agent 通过统一操作接口在 Flow Workspace 画布上创建节点、连接连线，并组织可执行的节点结构。",
-    tools: ["operate_project_resource"],
+    tools: listQalamToolNames(["project_write", "generation_approval"]),
     surfaces: ["script node", "archive node", "text node", "image node", "audio node", "video node", "node connection"],
     boundary: "创建前校验 ref 与资源定位；连线前校验节点存在与 handle 合法性。",
     artifact: "输出可继续编辑和执行的节点 scaffold，承接“查阅”和“编辑”的结果。",
@@ -397,12 +399,12 @@ const resolveConfiguredAgentModel = (textConfig: {
   agentModel?: string;
   model?: string;
 }) => {
-  const provider = textConfig.agentProvider || (textConfig.provider as AgentTextProvider) || "qwen";
+  const provider = textConfig.agentProvider || "deepseek";
   const explicitAgentModel = (textConfig.agentModel || "").trim();
   if (explicitAgentModel) {
     return resolveAgentModelForProvider(provider, explicitAgentModel);
   }
-  const canFallbackToSharedModel = !textConfig.agentProvider || textConfig.agentProvider === textConfig.provider;
+  const canFallbackToSharedModel = textConfig.agentProvider === textConfig.provider;
   const sharedModel = canFallbackToSharedModel ? (textConfig.model || "").trim() : "";
   return resolveAgentModelForProvider(provider, sharedModel);
 };
@@ -528,41 +530,28 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     },
   });
   const qalamToolSettings = useMemo(() => {
-    const base = DEFAULT_QALAM_TOOL_SETTINGS;
-    const current = config.textConfig.qalamTools || {};
-    const baseProject = base.projectData || {};
-    const currentProject = current.projectData || {};
-    const baseWorkflow = base.workflowBuilder || {};
-    const currentWorkflow = current.workflowBuilder || {};
-    const baseCharacter = base.characterLocation || {};
-    const currentCharacter = current.characterLocation || {};
-    const baseRuntime = base.runtimeIntelligence || {};
-    const currentRuntime = current.runtimeIntelligence || {};
-    return {
+    return normalizeQalamToolSettings({
+      ...DEFAULT_QALAM_TOOL_SETTINGS,
+      ...config.textConfig.qalamTools,
       projectData: {
-        enabled: currentProject.enabled ?? baseProject.enabled ?? true,
+        ...DEFAULT_QALAM_TOOL_SETTINGS.projectData,
+        ...config.textConfig.qalamTools?.projectData,
       },
       workflowBuilder: {
-        enabled: currentWorkflow.enabled ?? baseWorkflow.enabled ?? true,
-      },
-      characterLocation: {
-        enabled: currentCharacter.enabled ?? baseCharacter.enabled ?? true,
-        mergeStrategy: currentCharacter.mergeStrategy || baseCharacter.mergeStrategy || "patch",
-        formsMode: currentCharacter.formsMode || baseCharacter.formsMode || "merge",
-        zonesMode: currentCharacter.zonesMode || baseCharacter.zonesMode || "merge",
+        ...DEFAULT_QALAM_TOOL_SETTINGS.workflowBuilder,
+        ...config.textConfig.qalamTools?.workflowBuilder,
       },
       runtimeIntelligence: {
-        enabled: currentRuntime.enabled ?? baseRuntime.enabled ?? true,
-        webSearchEnabled: currentRuntime.webSearchEnabled ?? baseRuntime.webSearchEnabled ?? true,
-        githubAccessEnabled: currentRuntime.githubAccessEnabled ?? baseRuntime.githubAccessEnabled ?? true,
+        ...DEFAULT_QALAM_TOOL_SETTINGS.runtimeIntelligence,
+        ...config.textConfig.qalamTools?.runtimeIntelligence,
       },
-    };
+    });
   }, [config.textConfig.qalamTools]);
   const availableAgentSkills = useMemo(() => listBuiltinSkills(), []);
-  const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || config.textConfig.provider || "qwen";
+  const activeAgentProvider: AgentTextProvider = config.textConfig.agentProvider || "deepseek";
   const activeAgentBaseUrl =
     config.textConfig.agentBaseUrl ||
-    config.textConfig.baseUrl ||
+    (activeAgentProvider === config.textConfig.provider ? config.textConfig.baseUrl : "") ||
     (activeAgentProvider === "ark"
       ? ARK_RESPONSES_BASE_URL
       : activeAgentProvider === "deepseek"
@@ -760,23 +749,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
     });
   };
 
-  const updateAssetToolSettings = (patch: Partial<typeof qalamToolSettings.characterLocation>) => {
-    setConfig((prev) => {
-      const existing = prev.textConfig.qalamTools?.characterLocation || {};
-      const next = { ...existing, ...patch };
-      return {
-        ...prev,
-        textConfig: {
-          ...prev.textConfig,
-          qalamTools: {
-            ...(prev.textConfig.qalamTools || {}),
-            characterLocation: next,
-          },
-        },
-      };
-    });
-  };
-
   const updateWorkflowToolSettings = (patch: Partial<typeof qalamToolSettings.workflowBuilder>) => {
     setConfig((prev) => {
       const existing = prev.textConfig.qalamTools?.workflowBuilder || {};
@@ -852,9 +824,9 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
         ...prev,
         textConfig: {
           ...prev.textConfig,
-          agentProvider: "qwen",
-          agentBaseUrl: prev.textConfig.agentBaseUrl || QWEN_RESPONSES_BASE_URL,
-          agentModel: prev.textConfig.agentModel || QWEN_DEFAULT_MODEL,
+          agentProvider: "deepseek",
+          agentBaseUrl: prev.textConfig.agentBaseUrl || DEEPSEEK_CHAT_BASE_URL,
+          agentModel: resolveAgentModelForProvider("deepseek", prev.textConfig.agentModel),
         },
       }));
     }
@@ -886,7 +858,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
 
   const setProvider = (p: AgentTextProvider) => {
     setConfig((prev) => {
-      const currentProvider = prev.textConfig.agentProvider || prev.textConfig.provider || "qwen";
+      const currentProvider = prev.textConfig.agentProvider || "deepseek";
       const providerChanged = currentProvider !== p;
       const nextConfig = { ...prev.textConfig };
       if (p === "openrouter") {
@@ -2056,7 +2028,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                       <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-3">
                         <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">Persistence</div>
                         <div className="mt-2 text-[16px] font-semibold text-[var(--app-text-primary)]">
-                          {activeTool === "project-data" ? "Read-only" : activeTool === "asset-library" ? "Asset-backed" : "Workflow-backed"}
+                          {activeTool === "project-data" ? "Read-only" : "Workflow-backed"}
                         </div>
                         <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">{activeToolItem.artifact}</div>
                       </div>
@@ -2247,64 +2219,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                             <div className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-secondary)]">
                               创建前校验 ref 与剧集定位；连线前校验节点与 handle 合法性。
                             </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : activeTool === "asset-library" ? (
-                      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[12px] font-semibold text-[var(--app-text-primary)]">理解写回开关</div>
-                            <div className="mt-1 text-[11px] text-[var(--app-text-secondary)]">
-                              控制 Agent 是否可以把对角色、场景与定妆照槽位的理解持久化到资产库。
-                            </div>
-                          </div>
-                          <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-secondary)]">
-                            <input
-                              type="checkbox"
-                              checked={qalamToolSettings.characterLocation.enabled}
-                              onChange={(e) => updateAssetToolSettings({ enabled: e.target.checked })}
-                              className="h-4 w-4 text-emerald-400 border-[var(--app-border)] rounded bg-[var(--app-panel-muted)]"
-                            />
-                            启用
-                          </label>
-                        </div>
-                        <div className="text-[11px] text-[var(--app-text-muted)]">
-                          下列选项作为默认行为，仅在 tool 参数未显式覆盖时生效。
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">记录合并策略</label>
-                            <select
-                              value={qalamToolSettings.characterLocation.mergeStrategy}
-                              onChange={(e) => updateAssetToolSettings({ mergeStrategy: e.target.value as any })}
-                              className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-[12px] text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
-                            >
-                              <option value="patch">patch（局部更新）</option>
-                              <option value="replace">replace（整段替换）</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">角色定妆照槽位合并</label>
-                            <select
-                              value={qalamToolSettings.characterLocation.formsMode}
-                              onChange={(e) => updateAssetToolSettings({ formsMode: e.target.value as any })}
-                              className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-[12px] text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
-                            >
-                              <option value="merge">merge（合并）</option>
-                              <option value="replace">replace（替换）</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-[var(--app-text-secondary)] mb-1">场景定妆照槽位合并</label>
-                            <select
-                              value={qalamToolSettings.characterLocation.zonesMode}
-                              onChange={(e) => updateAssetToolSettings({ zonesMode: e.target.value as any })}
-                              className="w-full bg-[var(--app-panel-muted)] border border-[var(--app-border)] rounded-xl px-3 py-2 text-[12px] text-[var(--app-text-primary)] focus:ring-2 focus:ring-emerald-300 focus:outline-none"
-                            >
-                              <option value="merge">merge（合并）</option>
-                              <option value="replace">replace（替换）</option>
-                            </select>
                           </div>
                         </div>
                       </div>

@@ -15,11 +15,11 @@ export type AgentPromptCatalogEntry = {
 
 export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
   {
-    "id": "017c5b09a7c7",
-    "title": "guidance · L178",
+    "id": "de0ef9518eed",
+    "title": "guidance · L165",
     "category": "guardrail",
     "sourcePath": "agents/tools/index.ts",
-    "sourceLine": 178,
+    "sourceLine": 165,
     "content": "The tool failed without a durable project change. Re-read state, adjust arguments, or explain the blocker instead of repeating the same call.",
     "kind": "guardrail",
     "chars": 141
@@ -85,21 +85,21 @@ export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
     "chars": 116
   },
   {
-    "id": "7ff2be3641bf",
-    "title": "content · L439",
+    "id": "97234fba4d89",
+    "title": "content · L323",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 439,
+    "sourceLine": 323,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise durable summary. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and latest tool outcomes. Do not invent facts. Prefer short bullet-like lines.",
     "kind": "instruction",
     "chars": 264
   },
   {
-    "id": "38eccec03293",
-    "title": "text · L616",
+    "id": "281af91a4e0e",
+    "title": "text · L517",
     "category": "runtime",
     "sourcePath": "functions/api/_agentSessions.ts",
-    "sourceLine": 616,
+    "sourceLine": 517,
     "content": "You are compacting earlier conversation history for an agent session. Produce a concise, durable summary of prior context. Preserve stable facts, accepted decisions, active constraints, unfinished tasks, and the latest successful/failed tool outcomes. Do not invent facts. Prefer bullet-like short lines over prose.",
     "kind": "instruction",
     "chars": 315
@@ -575,106 +575,6 @@ export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
     "chars": 79
   },
   {
-    "id": "f103b596256f",
-    "title": "entity · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 19,
-    "content": "Resource entity to edit: archive markdown document or folder node.",
-    "kind": "tool-schema",
-    "chars": 66
-  },
-  {
-    "id": "061862afece7",
-    "title": "action · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 24,
-    "content": "Atomic edit action.",
-    "kind": "tool-schema",
-    "chars": 19
-  },
-  {
-    "id": "717910811960",
-    "title": "node_id · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 28,
-    "content": "Existing resource node id, such as archive:abc or folder:node-id.",
-    "kind": "tool-schema",
-    "chars": 65
-  },
-  {
-    "id": "526d7560c529",
-    "title": "node_ref · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 32,
-    "content": "Existing resource ref, such as script:archive:abc or script:folder:node-id.",
-    "kind": "tool-schema",
-    "chars": 75
-  },
-  {
-    "id": "b7584e71cd39",
-    "title": "document_id · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 36,
-    "content": "Archive document id for update.",
-    "kind": "tool-schema",
-    "chars": 31
-  },
-  {
-    "id": "d42120c11f1e",
-    "title": "title · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 40,
-    "content": "Archive or folder title.",
-    "kind": "tool-schema",
-    "chars": 24
-  },
-  {
-    "id": "4039dd998bfd",
-    "title": "content · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 44,
-    "content": "Markdown content for an archive document.",
-    "kind": "tool-schema",
-    "chars": 41
-  },
-  {
-    "id": "2849574fd9b2",
-    "title": "x · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 48,
-    "content": "Optional x position for a newly created node.",
-    "kind": "tool-schema",
-    "chars": 45
-  },
-  {
-    "id": "64f540b5b1a5",
-    "title": "y · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 52,
-    "content": "Optional y position for a newly created node.",
-    "kind": "tool-schema",
-    "chars": 45
-  },
-  {
-    "id": "79fc63cf9bff",
-    "title": "edit_script_resource · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/editScriptResource.ts",
-    "sourceLine": 217,
-    "content": "Edit ordinary Flow resources exposed through the script map. Archives are markdown nodes; folders are ordinary folder nodes.",
-    "kind": "tool-schema",
-    "chars": 124
-  },
-  {
     "id": "c54b284a0498",
     "title": "node_id · description",
     "category": "tool",
@@ -943,86 +843,6 @@ export const AGENT_PROMPT_CATALOG: AgentPromptCatalogEntry[] = [
     "content": "Operate the four-axis Foundation container: create/delete blocks, update block documents, and assign document or media nodes to one block folder. Project root and project index are read-only.",
     "kind": "tool-schema",
     "chars": 191
-  },
-  {
-    "id": "f1df08514533",
-    "title": "episode_id · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getEpisodeScript.ts",
-    "sourceLine": 10,
-    "content": "Episode number, 1-based.",
-    "kind": "tool-schema",
-    "chars": 24
-  },
-  {
-    "id": "fff7b3bb3a44",
-    "title": "max_chars · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getEpisodeScript.ts",
-    "sourceLine": 14,
-    "content": "Optional maximum characters to return for the episode content.",
-    "kind": "tool-schema",
-    "chars": 62
-  },
-  {
-    "id": "e2966779c422",
-    "title": "get_episode_script · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getEpisodeScript.ts",
-    "sourceLine": 47,
-    "content": "LEGACY DISABLED. Use list_project_resources/read_project_resource over script document nodes instead.",
-    "kind": "tool-schema",
-    "chars": 101
-  },
-  {
-    "id": "66bf3f24576a",
-    "title": "scene_id · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getSceneScript.ts",
-    "sourceLine": 10,
-    "content": "Scene id like 1-3.",
-    "kind": "tool-schema",
-    "chars": 18
-  },
-  {
-    "id": "7a65dcb6cd0a",
-    "title": "episode_id · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getSceneScript.ts",
-    "sourceLine": 14,
-    "content": "Episode number, 1-based. Required when using scene_index.",
-    "kind": "tool-schema",
-    "chars": 57
-  },
-  {
-    "id": "e7a9551d57b6",
-    "title": "scene_index · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getSceneScript.ts",
-    "sourceLine": 18,
-    "content": "Scene index within the episode, 1-based. Use together with episode_id.",
-    "kind": "tool-schema",
-    "chars": 70
-  },
-  {
-    "id": "70a2eeaa08eb",
-    "title": "max_chars · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getSceneScript.ts",
-    "sourceLine": 22,
-    "content": "Optional maximum characters to return for the scene content.",
-    "kind": "tool-schema",
-    "chars": 60
-  },
-  {
-    "id": "e4ec6844b99d",
-    "title": "get_scene_script · description",
-    "category": "tool",
-    "sourcePath": "agents/tools/getSceneScript.ts",
-    "sourceLine": 67,
-    "content": "LEGACY DISABLED. Use list_project_resources/read_project_resource over script document nodes instead.",
-    "kind": "tool-schema",
-    "chars": 101
   },
   {
     "id": "3aab321df973",

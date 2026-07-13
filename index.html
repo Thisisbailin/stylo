@@ -1,455 +1,131 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stylo · Flow Workspace</title>
-  <link rel="icon" type="image/png" sizes="128x128" href="/icon-128.png" />
-  <link rel="icon" type="image/png" sizes="256x256" href="/icon-256.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <style>
-    :root {
-      --bg-base: #0f0f0f;
-      --bg-panel: #0f0f0f;
-      --bg-panel-rgb: 15, 15, 15;
-      --bg-elevated: #121212;
-      --bg-elevated-rgb: 18, 18, 18;
-      --bg-overlay: #151515;
-      --bg-muted: #1b1b1b;
-      --border-subtle: #1f2937;
-      --border-strong: #263244;
-      --text-primary: #f8fafc;
-      --text-secondary: #9ca3af;
-      --accent-green: #10b981;
-      --accent-blue: #0ea5e9;
-      --radius-sm: 8px;
-      --radius-md: 12px;
-      --radius-lg: 16px;
-      --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.28);
-      --shadow-strong: 0 16px 36px rgba(0, 0, 0, 0.32);
-      --dot-weak: rgba(255, 255, 255, 0.04);
-      --dot-strong: rgba(255, 255, 255, 0.06);
-    }
-
-    :root.theme-dark,
-    body.theme-dark {
-      --bg-base: #0f0f0f;
-      --bg-panel: #0f0f0f;
-      --bg-panel-rgb: 15, 15, 15;
-      --bg-elevated: #121212;
-      --bg-elevated-rgb: 18, 18, 18;
-      --bg-overlay: #151515;
-      --bg-muted: #1b1b1b;
-      --border-subtle: #1f2937;
-      --border-strong: #263244;
-      --text-primary: #f8fafc;
-      --text-secondary: #9ca3af;
-      --accent-green: #10b981;
-      --accent-blue: #0ea5e9;
-      --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.28);
-      --shadow-strong: 0 16px 36px rgba(0, 0, 0, 0.32);
-      --dot-weak: rgba(255, 255, 255, 0.04);
-      --dot-strong: rgba(255, 255, 255, 0.06);
-    }
-
-    :root.theme-light,
-    body.theme-light {
-      --bg-base: #ffffff;
-      --bg-panel: #ffffff;
-      --bg-panel-rgb: 255, 255, 255;
-      --bg-elevated: #ffffff;
-      --bg-elevated-rgb: 255, 255, 255;
-      --bg-overlay: #f8fafc;
-      --bg-muted: #eef2f6;
-      --border-subtle: #e5e7eb;
-      --border-strong: #cbd5e1;
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --accent-green: #10b981;
-      --accent-blue: #0ea5e9;
-      --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.12);
-      --shadow-strong: 0 16px 36px rgba(15, 23, 42, 0.16);
-      --dot-weak: rgba(15, 23, 42, 0.04);
-      --dot-strong: rgba(15, 23, 42, 0.08);
-    }
-
-    body {
-      background: var(--bg-panel);
-      color: var(--text-primary);
-    }
-
-    body.qalam-invite-gated #root {
-      opacity: 0;
-      pointer-events: none;
-      user-select: none;
-    }
-
-    .qalam-entry {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-      background: var(--bg-panel);
-      color: var(--text-primary);
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      isolation: isolate;
-    }
-
-    .qalam-entry::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      z-index: -1;
-      opacity: 1;
-      background-image:
-        radial-gradient(circle at 1px 1px, var(--dot-strong) 1px, transparent 0),
-        radial-gradient(circle at 1px 1px, var(--dot-weak) 1px, transparent 0);
-      background-size: 28px 28px;
-      background-position: 0 0, 14px 14px;
-    }
-
-    .qalam-entry__panel {
-      width: min(280px, calc(100vw - 48px));
-      display: grid;
-      justify-items: center;
-      gap: 10px;
-      transform: translateY(-2vh);
-    }
-
-    .qalam-entry__art {
-      display: grid;
-      place-items: center;
-      width: 150px;
-      height: 86px;
-      opacity: 0.86;
-      pointer-events: none;
-    }
-
-    .qalam-entry__illustration {
-      width: 152px;
-      aspect-ratio: 1.25;
-      overflow: visible;
-      filter: none;
-    }
-
-    .qalam-entry__paper-line {
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .qalam-entry__grass-stroke {
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      vector-effect: non-scaling-stroke;
-    }
-
-    .qalam-entry__paint-layer {
-      mix-blend-mode: multiply;
-    }
-
-    .qalam-entry__caption {
-      display: none;
-    }
-
-    .qalam-entry__copy {
-      display: grid;
-      gap: 14px;
-      justify-items: center;
-      width: 100%;
-    }
-
-    .qalam-entry__copy::before {
-      content: none;
-    }
-
-    .qalam-entry__eyebrow {
-      display: none;
-    }
-
-    .qalam-entry__title {
-      margin: 0;
-      color: var(--text-primary);
-      font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-      font-size: 46px;
-      font-weight: 400;
-      line-height: 0.92;
-      letter-spacing: 0;
-    }
-
-    .qalam-entry__note {
-      display: none;
-    }
-
-    .qalam-entry__form {
-      width: min(138px, 100%);
-      display: grid;
-      gap: 6px;
-      margin-top: 0;
-    }
-
-    .qalam-entry__label {
-      display: none;
-    }
-
-    .qalam-entry__field {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      align-items: center;
-      border: 1px solid color-mix(in srgb, var(--text-secondary) 13%, transparent);
-      border-radius: 999px;
-      padding: 0 12px;
-      background: color-mix(in srgb, var(--text-secondary) 7%, transparent);
-      box-shadow: none;
-      transition: border-color 160ms ease, transform 160ms ease, background 160ms ease, opacity 160ms ease;
-    }
-
-    .qalam-entry__field:focus-within {
-      border-color: color-mix(in srgb, var(--text-secondary) 18%, transparent);
-      background: color-mix(in srgb, var(--text-secondary) 9%, transparent);
-    }
-
-    .qalam-entry__input {
-      width: 100%;
-      min-width: 0;
-      box-sizing: border-box;
-      border: 0;
-      background: transparent;
-      color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
-      outline: none;
-      padding: 7px 0 8px;
-      text-align: center;
-      font-size: 12px;
-      letter-spacing: 0.14em;
-    }
-
-    .qalam-entry__input::placeholder {
-      color: transparent;
-    }
-
-    .qalam-entry__button {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-
-    .qalam-entry__message {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
-    }
-
-    .qalam-entry[data-state="error"] .qalam-entry__field {
-      border-color: color-mix(in srgb, #b76b58 34%, transparent);
-      background: color-mix(in srgb, #b76b58 8%, transparent);
-      transform: translateY(1px);
-    }
-
-    .qalam-entry[data-state="loading"] .qalam-entry__field {
-      opacity: 0.52;
-      pointer-events: none;
-    }
-
-    .qalam-entry.qalam-entry--exit {
-      opacity: 0;
-      transition: opacity 180ms ease;
-    }
-
-    @media (max-width: 720px) {
-      .qalam-entry__panel {
-        grid-template-columns: 1fr;
-        gap: 14px;
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Stylo is an open-source desktop creative system built on Canvas, Flow and a project-native Agent."
+    />
+    <meta name="theme-color" content="#f3f3ef" />
+    <title>Stylo · Creative system for the desktop</title>
+    <link rel="icon" type="image/png" sizes="128x128" href="/icon-128.png" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/icon-256.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <style>
+      :root {
+        --bg-base: #0f0f0f;
+        --bg-panel: #0f0f0f;
+        --bg-panel-rgb: 15, 15, 15;
+        --bg-elevated: #121212;
+        --bg-elevated-rgb: 18, 18, 18;
+        --bg-overlay: #151515;
+        --bg-muted: #1b1b1b;
+        --border-subtle: #1f2937;
+        --border-strong: #263244;
+        --text-primary: #f8fafc;
+        --text-secondary: #9ca3af;
+        --accent-green: #10b981;
+        --accent-blue: #0ea5e9;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.28);
+        --shadow-strong: 0 16px 36px rgba(0, 0, 0, 0.32);
+        --dot-weak: rgba(255, 255, 255, 0.04);
+        --dot-strong: rgba(255, 255, 255, 0.06);
       }
 
-      .qalam-entry__art {
-        width: 132px;
-        height: 76px;
+      :root.theme-dark,
+      body.theme-dark {
+        --bg-base: #0f0f0f;
+        --bg-panel: #0f0f0f;
+        --bg-panel-rgb: 15, 15, 15;
+        --bg-elevated: #121212;
+        --bg-elevated-rgb: 18, 18, 18;
+        --bg-overlay: #151515;
+        --bg-muted: #1b1b1b;
+        --border-subtle: #1f2937;
+        --border-strong: #263244;
+        --text-primary: #f8fafc;
+        --text-secondary: #9ca3af;
+        --accent-green: #10b981;
+        --accent-blue: #0ea5e9;
+        --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.28);
+        --shadow-strong: 0 16px 36px rgba(0, 0, 0, 0.32);
+        --dot-weak: rgba(255, 255, 255, 0.04);
+        --dot-strong: rgba(255, 255, 255, 0.06);
       }
-    }
 
-    .bg-dot-grid {
-      background-color: var(--bg-panel);
-      background-image:
-        radial-gradient(circle at 1px 1px, var(--dot-strong) 1px, transparent 0),
-        radial-gradient(circle at 1px 1px, var(--dot-weak) 1px, transparent 0);
-      background-size: 28px 28px;
-      background-position: 0 0, 14px 14px;
-    }
+      :root.theme-light,
+      body.theme-light {
+        --bg-base: #ffffff;
+        --bg-panel: #ffffff;
+        --bg-panel-rgb: 255, 255, 255;
+        --bg-elevated: #ffffff;
+        --bg-elevated-rgb: 255, 255, 255;
+        --bg-overlay: #f8fafc;
+        --bg-muted: #eef2f6;
+        --border-subtle: #e5e7eb;
+        --border-strong: #cbd5e1;
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --accent-green: #10b981;
+        --accent-blue: #0ea5e9;
+        --shadow-soft: 0 12px 28px rgba(15, 23, 42, 0.12);
+        --shadow-strong: 0 16px 36px rgba(15, 23, 42, 0.16);
+        --dot-weak: rgba(15, 23, 42, 0.04);
+        --dot-strong: rgba(15, 23, 42, 0.08);
+      }
 
-    /* Custom scrollbar for better aesthetics in split views */
-    ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
-    }
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+      }
 
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
+      body {
+        background: var(--bg-panel);
+        color: var(--text-primary);
+      }
 
-    ::-webkit-scrollbar-thumb {
-      background: #9ca3af;
-      border-radius: 4px;
-    }
+      .stylo-web-runtime body {
+        overflow-x: hidden;
+        background: #f3f3ef;
+        color: #181817;
+      }
 
-    .dark ::-webkit-scrollbar-thumb {
-      background: #4b5563;
-    }
+      .bg-dot-grid {
+        background-color: var(--bg-panel);
+        background-image:
+          radial-gradient(circle at 1px 1px, var(--dot-strong) 1px, transparent 0),
+          radial-gradient(circle at 1px 1px, var(--dot-weak) 1px, transparent 0);
+        background-position: 0 0, 14px 14px;
+        background-size: 28px 28px;
+      }
 
-    ::-webkit-scrollbar-thumb:hover {
-      background: #6b7280;
-    }
-  </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
-    "react-dom": "https://esm.sh/react-dom@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-    "recharts": "https://esm.sh/recharts@2.13.0?external=react,react-dom",
-    "lucide-react": "https://esm.sh/lucide-react@0.378.0?external=react,react-dom",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
-    "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "url": "https://aistudiocdn.com/url@^0.11.4",
-    "@clerk/clerk-react": "https://esm.sh/@clerk/clerk-react@5.26.0?external=react,react-dom",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
-</head>
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
 
-<body class="font-sans antialiased overflow-hidden qalam-invite-gated">
-  <div id="qalam-entry" class="qalam-entry" data-state="idle" role="dialog" aria-modal="true" aria-labelledby="qalam-entry-title">
-    <div class="qalam-entry__panel">
-      <div class="qalam-entry__copy">
-        <div class="qalam-entry__art" aria-hidden="true">
-          <svg class="qalam-entry__illustration" viewBox="0 0 420 336" focusable="false">
-            <defs>
-              <filter id="qalam-watercolor-filter" x="-20%" y="-20%" width="140%" height="140%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.016 0.038" numOctaves="3" seed="24" result="grain" />
-                <feDisplacementMap in="SourceGraphic" in2="grain" scale="7" xChannelSelector="R" yChannelSelector="G" />
-              </filter>
-              <filter id="qalam-ink-soften" x="-12%" y="-12%" width="124%" height="124%">
-                <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="2" seed="9" result="inkGrain" />
-                <feDisplacementMap in="SourceGraphic" in2="inkGrain" scale="2.8" />
-              </filter>
-              <linearGradient id="qalam-sky-wash" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0" stop-color="#dce9df" stop-opacity="0.72" />
-                <stop offset="1" stop-color="#f4f1e8" stop-opacity="0.08" />
-              </linearGradient>
-            </defs>
-            <rect x="38" y="36" width="344" height="232" rx="2" fill="url(#qalam-sky-wash)" opacity="0.34" filter="url(#qalam-watercolor-filter)" />
-            <g class="qalam-entry__paint-layer" filter="url(#qalam-watercolor-filter)">
-              <path d="M52 188c54-48 112-62 173-42 47 15 92 11 145-24 18 37 17 79-4 116-37 22-88 34-153 35-63 0-115-10-159-31-13-21-15-38-2-54Z" fill="#b8cfbc" opacity="0.42" />
-              <path d="M36 230c47-31 96-44 149-39 38 4 70 1 99-9 39-14 71-14 101 1-5 42-23 72-55 92-49 16-107 21-174 15-51-5-90-16-118-33-6-10-7-19-2-27Z" fill="#719b79" opacity="0.34" />
-              <path d="M43 251c54-21 114-28 179-20 57 7 105 3 146-13-4 26-18 48-43 67-42 20-91 29-148 27-60-2-108-14-144-35-1-10 2-19 10-26Z" fill="#3f6f58" opacity="0.28" />
-              <path d="M70 151c39-29 84-39 135-31 31 5 63 0 96-15 13 18 17 36 13 55-32 16-67 22-106 18-55-6-100 4-135 31-12-17-13-36-3-58Z" fill="#e5c9a9" opacity="0.18" />
-            </g>
-            <g filter="url(#qalam-ink-soften)" opacity="0.58">
-              <path class="qalam-entry__paper-line" d="M45 218c56-28 113-39 172-31 61 8 115-1 162-28" fill="none" stroke="#7fb098" stroke-width="1.6" opacity="0.42" />
-              <path class="qalam-entry__paper-line" d="M52 249c58-18 116-23 174-14 57 9 105 3 145-18" fill="none" stroke="#7fb098" stroke-width="1.25" opacity="0.32" />
-              <path class="qalam-entry__paper-line" d="M61 281c48 14 103 20 166 18 55-2 95-12 120-29" fill="none" stroke="#7fb098" stroke-width="1.15" opacity="0.26" />
-            </g>
-            <g opacity="0.62" filter="url(#qalam-ink-soften)">
-              <path class="qalam-entry__grass-stroke" d="M76 250c7-19 8-34 3-46" fill="none" stroke="#78a68c" stroke-width="1.6" />
-              <path class="qalam-entry__grass-stroke" d="M111 245c-4-19-1-35 10-47" fill="none" stroke="#78a68c" stroke-width="1.45" />
-              <path class="qalam-entry__grass-stroke" d="M166 252c8-18 11-35 8-51" fill="none" stroke="#78a68c" stroke-width="1.55" />
-              <path class="qalam-entry__grass-stroke" d="M226 260c9-22 11-40 4-54" fill="none" stroke="#78a68c" stroke-width="1.35" />
-              <path class="qalam-entry__grass-stroke" d="M292 263c-3-24 1-43 13-58" fill="none" stroke="#78a68c" stroke-width="1.35" />
-              <path class="qalam-entry__grass-stroke" d="M330 249c6-20 5-37-3-50" fill="none" stroke="#78a68c" stroke-width="1.4" />
-            </g>
-            <g opacity="0.54" filter="url(#qalam-ink-soften)">
-              <circle cx="154" cy="230" r="2.5" fill="#d18f7d" />
-              <circle cx="318" cy="236" r="2.2" fill="#d18f7d" />
-              <path d="M235 244c4-5 10-6 16-2-4 5-10 6-16 2Z" fill="#e7c48f" />
-            </g>
-          </svg>
-        </div>
-        <h1 id="qalam-entry-title" class="qalam-entry__title">Qalam</h1>
-        <form id="qalam-entry-form" class="qalam-entry__form" autocomplete="off">
-          <div class="qalam-entry__field">
-            <input
-              id="qalam-entry-input"
-              class="qalam-entry__input"
-              name="qalam-entry-token"
-              type="password"
-              inputmode="text"
-              autocomplete="new-password"
-              autocapitalize="off"
-              spellcheck="false"
-              aria-label="Invitation code"
-            />
-          </div>
-          <p id="qalam-entry-message" class="qalam-entry__message" aria-live="polite"></p>
-        </form>
-      </div>
-    </div>
-  </div>
-  <div id="root"></div>
-  <script>
-    (() => {
-      const inviteCode = "#0000";
-      const entry = document.getElementById("qalam-entry");
-      const form = document.getElementById("qalam-entry-form");
-      const input = document.getElementById("qalam-entry-input");
-      const message = document.getElementById("qalam-entry-message");
-      const root = document.getElementById("root");
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
 
-      const revealApp = () => {
-        document.body.classList.remove("qalam-invite-gated");
-        entry.classList.add("qalam-entry--exit");
-        window.setTimeout(() => entry.remove(), 180);
-      };
+      ::-webkit-scrollbar-thumb {
+        border-radius: 4px;
+        background: #9ca3af;
+      }
 
-      const waitForApp = () => {
-        const startedAt = Date.now();
-        const tick = () => {
-          if (root && root.childElementCount > 0) {
-            revealApp();
-            return;
-          }
-          if (Date.now() - startedAt > 120000) {
-            message.textContent = "Still preparing the workspace...";
-          }
-          window.requestAnimationFrame(tick);
-        };
-        tick();
-      };
-
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        if (input.value.trim() !== inviteCode) {
-          entry.dataset.state = "error";
-          message.textContent = "Invitation code not recognized.";
-          input.value = "";
-          input.focus();
-          return;
-        }
-        entry.dataset.state = "loading";
-        input.value = "";
-        input.blur();
-        message.textContent = "Opening the workspace...";
-        waitForApp();
-      });
-
-      window.addEventListener("pageshow", () => {
-        input.value = "";
-        input.focus({ preventScroll: true });
-      });
-    })();
-  </script>
-  <script type="module" src="/index.tsx"></script>
-</body>
-
+      .dark ::-webkit-scrollbar-thumb {
+        background: #4b5563;
+      }
+    </style>
+  </head>
+  <body class="font-sans antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

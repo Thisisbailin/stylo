@@ -103,6 +103,52 @@ test("Lookbook synchronization reuses an exact existing identity without overwri
   assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "identityCard").length, 1);
 });
 
+test("Lookbook parsing binds an unforced alias to an existing role without inventing prose identities", () => {
+  const project = makeProject();
+  project.roles = [{
+    id: "role-user-shenyi",
+    name: "沈弋",
+    displayName: "沈弋",
+    mention: "沈弋",
+    kind: "person",
+    tone: "emerald",
+    summary: "主角",
+    description: "",
+    aliases: [{ id: "alias-ayi", value: "阿弋" }],
+    portraits: [],
+  }];
+  const content = [
+    "暴雨如注。荒山深处，一座孤零零的古宅亮着微弱的烛火。",
+    "动作继续。",
+    "",
+    "阿弋",
+    "",
+    "他不会再来了。",
+  ].join("\n");
+
+  assert.deepEqual(parseFountainIdentityCandidates(content, project.roles), [
+    { name: "沈弋", kind: "person" },
+  ]);
+  const result = syncLookbookIdentitiesFromFountain(project, { sourceNodeId: "script-main", content, now: 400 });
+  assert.equal(result.roles.length, 1);
+  assert.equal(result.roles[0].id, "role-user-shenyi");
+});
+
+test("Lookbook synchronization repairs duplicate flow node ids", () => {
+  const project = makeProject();
+  project.flow!.flowNodes!.push({
+    ...project.flow!.flowNodes![0],
+    data: { ...project.flow!.flowNodes![0].data, title: "重复脚本节点" },
+  });
+  const result = syncLookbookIdentitiesFromFountain(project, {
+    sourceNodeId: "script-main",
+    content: "@林默\n出发。",
+    now: 500,
+  });
+  const ids = result.flow?.flowNodes?.map((node) => node.id) || [];
+  assert.equal(new Set(ids).size, ids.length);
+});
+
 test("Lookbook projection includes only directly connected archive and media nodes", () => {
   const project = makeProject();
   project.flow!.flowNodes!.push(

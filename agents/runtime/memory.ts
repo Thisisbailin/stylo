@@ -1,7 +1,6 @@
 import type { AgentInputItem } from "@openai/agents";
 import type { AgentSessionMessage, QalamAgentMemory, QalamRunInput } from "./types";
 
-const MAX_RECENT_TURNS = 8;
 const MAX_RECENT_TOOLS = 6;
 const MAX_MEMORY_TEXT = 220;
 
@@ -41,27 +40,16 @@ export const buildRunInputItems = (input: QalamRunInput): AgentInputItem[] => [
 export const buildAgentMemorySnapshot = (messages: AgentSessionMessage[] | undefined): QalamAgentMemory => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return {
-      recentTurns: [],
       recentSuccessfulTools: [],
       recentFailedTools: [],
     };
   }
-
-  const recentTurns = messages
-    .filter((message): message is Extract<AgentSessionMessage, { role: "user" | "assistant" }> => message.role === "user" || message.role === "assistant")
-    .slice(-MAX_RECENT_TURNS)
-    .map((message) => ({
-      role: message.role,
-      text: clipText(message.text, 280),
-      createdAt: message.createdAt,
-    }));
 
   const toolMessages = messages.filter(
     (message): message is Extract<AgentSessionMessage, { role: "tool" }> => message.role === "tool"
   );
 
   return {
-    recentTurns,
     recentSuccessfulTools: toolMessages
       .filter((message) => message.toolStatus === "success")
       .slice(-MAX_RECENT_TOOLS)

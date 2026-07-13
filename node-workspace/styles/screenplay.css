@@ -42,8 +42,8 @@
   right: 0;
   left: 0;
   z-index: 4;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
   gap: 12px;
   padding: 14px 14px 0 calc(var(--screenplay-agent-inset) + 14px);
@@ -52,7 +52,6 @@
   transition: padding 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.screenplay-header__leading,
 .screenplay-header__actions {
   display: flex;
   min-width: 0;
@@ -103,22 +102,25 @@
   transform: translateY(1px) scale(0.98);
 }
 
-.screenplay-header__app-title {
-  padding: 0 10px;
-  color: var(--screenplay-chrome-text);
-  font-size: 14px;
-  font-weight: 730;
-  letter-spacing: -0.025em;
-}
-
 .screenplay-save-state {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
   color: var(--screenplay-chrome-muted);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 9px;
   letter-spacing: 0.08em;
+}
+
+.screenplay-save-state.is-idle svg,
+.screenplay-save-state.is-saving svg {
+  animation: screenplay-save-spin 1s linear infinite;
+}
+
+@keyframes screenplay-save-spin {
+  to { transform: rotate(360deg); }
 }
 
 .screenplay-save-state.is-saved svg {
@@ -174,6 +176,26 @@
   border-left: 1px solid var(--screenplay-chrome-line);
   background: var(--screenplay-chrome);
   color: var(--screenplay-chrome-text);
+}
+
+.screenplay-inspector .screenplay-navigator.is-embedded {
+  position: static;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.screenplay-inspector .screenplay-navigator.is-embedded .screenplay-panel-heading {
+  border-top: 1px solid var(--screenplay-chrome-line);
+}
+
+.screenplay-inspector .screenplay-navigator.is-embedded .screenplay-scene-list {
+  max-height: none;
 }
 
 .screenplay-panel-heading {
@@ -371,7 +393,7 @@
   margin: 28px auto 80px;
   border: 1px solid var(--screenplay-paper-line);
   background: var(--screenplay-paper);
-  box-shadow: var(--app-shadow-strong), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
+  box-shadow: 0 24px 72px -42px rgba(12, 14, 16, 0.38), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
 }
 
 .screenplay-document__masthead {
@@ -381,7 +403,7 @@
   gap: 20px;
   margin: 0 76px;
   border-bottom: 1px solid var(--screenplay-paper-line);
-  padding: 46px 0 18px;
+  padding: 48px 0 20px;
 }
 
 .screenplay-document__masthead > div {
@@ -426,7 +448,7 @@
 .screenplay-block {
   position: relative;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   min-height: 34px;
   margin: 0;
   border-left: 2px solid transparent;
@@ -489,12 +511,6 @@
   padding-top: 8px;
 }
 
-.screenplay-block__line-number {
-  color: color-mix(in srgb, var(--screenplay-muted) 55%, transparent);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 8px;
-}
-
 .screenplay-block__kind-button {
   display: inline-flex;
   width: 24px;
@@ -504,12 +520,17 @@
   margin-top: 2px;
   border-radius: 5px;
   color: color-mix(in srgb, var(--screenplay-muted) 68%, transparent);
-  transition: background 150ms ease, color 150ms ease, transform 150ms ease;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
 }
 
-.screenplay-block:hover .screenplay-block__kind-button,
 .screenplay-block.is-active .screenplay-block__kind-button {
   color: var(--screenplay-accent);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .screenplay-block__kind-button:hover {
@@ -643,34 +664,129 @@
   text-decoration: line-through;
 }
 
-.screenplay-block__active-label {
+.screenplay-character-picker {
   position: absolute;
-  right: 8px;
-  bottom: -7px;
-  color: color-mix(in srgb, var(--screenplay-accent) 68%, transparent);
+  top: calc(100% + 6px);
+  left: 4px;
+  z-index: 5;
+  width: min(320px, calc(100vw - 72px));
+  overflow: hidden;
+  border: 1px solid var(--screenplay-chrome-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--screenplay-chrome-raised) 96%, transparent);
+  color: var(--screenplay-chrome-text);
+  box-shadow: var(--app-shadow-strong), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.screenplay-character-picker > label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border-bottom: 1px solid var(--screenplay-chrome-line);
+  padding: 8px 10px;
+  color: var(--screenplay-chrome-muted);
+}
+
+.screenplay-character-picker input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--screenplay-chrome-text);
+  font-size: 11px;
+  outline: none;
+}
+
+.screenplay-character-picker > label button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+
+.screenplay-character-picker > div {
+  display: grid;
+  max-height: 236px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.screenplay-character-picker > div > button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  padding: 7px;
+  color: var(--screenplay-chrome-muted);
+  text-align: left;
+}
+
+.screenplay-character-picker > div > button:hover {
+  background: var(--screenplay-accent-soft);
+  color: var(--screenplay-chrome-text);
+}
+
+.screenplay-character-picker > div > button > span {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--screenplay-accent) 14%, transparent);
+  color: var(--screenplay-accent);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.screenplay-character-picker strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenplay-character-picker small {
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 7px;
-  font-weight: 750;
-  letter-spacing: 0.12em;
+  font-size: 8px;
+}
+
+.screenplay-character-picker > div > p {
+  margin: 0;
+  padding: 18px 12px;
+  color: var(--screenplay-chrome-muted);
+  font-size: 10px;
+  text-align: center;
 }
 
 .screenplay-scene-heading {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) 112px;
-  overflow: hidden;
+  grid-template-columns: 116px minmax(0, 1fr) 124px;
+  gap: 4px;
   border: 1px solid var(--screenplay-paper-line);
-  background: var(--app-panel-muted);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-panel-muted) 68%, transparent);
+  padding: 5px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 6%, transparent);
 }
 
 .screenplay-scene-heading label {
   display: grid;
-  gap: 1px;
-  border-right: 1px solid var(--screenplay-paper-line);
-  padding: 6px 9px;
+  gap: 3px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--screenplay-paper) 64%, transparent);
+  padding: 7px 10px;
+  transition: border-color 150ms ease, background 150ms ease;
 }
 
-.screenplay-scene-heading label:last-child {
-  border-right: 0;
+.screenplay-scene-heading label:focus-within {
+  border-color: color-mix(in srgb, var(--screenplay-accent) 38%, var(--screenplay-paper-line));
+  background: var(--screenplay-paper);
 }
 
 .screenplay-scene-heading label > span {
@@ -688,28 +804,40 @@
   background: transparent;
   color: var(--screenplay-ink);
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 11px;
-  font-weight: 720;
+  font-size: 12px;
+  font-weight: 680;
   outline: none;
 }
 
 .screenplay-page-break {
-  display: flex;
+  display: block;
   width: 100%;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 6px;
-  color: var(--screenplay-muted);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 9px;
+  height: 34px;
+  margin: 18px 0;
+  border-top: 1px solid var(--screenplay-paper-line);
+  border-bottom: 1px solid color-mix(in srgb, var(--screenplay-paper-line) 54%, transparent);
+  background: color-mix(in srgb, var(--app-bg) 54%, transparent);
+  box-shadow: inset 0 7px 12px -12px rgba(0, 0, 0, 0.34);
 }
 
-.screenplay-page-break::before,
-.screenplay-page-break::after {
-  height: 1px;
-  flex: 1;
-  background: var(--screenplay-paper-line);
-  content: "";
+.screenplay-block--page_break {
+  display: block;
+  margin: 22px -46px;
+}
+
+.screenplay-block--page_break .screenplay-block__gutter {
+  position: absolute;
+  top: 4px;
+  left: 46px;
+  z-index: 1;
+}
+
+.screenplay-block--page_break .screenplay-block__content {
+  padding: 0;
+}
+
+.screenplay-block--page_break .screenplay-page-break {
+  margin: 0;
 }
 
 .screenplay-empty-editor {
@@ -818,25 +946,86 @@
   font-size: 10px;
 }
 
-.screenplay-character-index {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+.screenplay-character-library {
+  display: grid;
+  gap: 3px;
   margin-top: 10px;
 }
 
-.screenplay-character-index span {
-  border: 1px solid var(--screenplay-chrome-line);
-  padding: 5px 7px;
-  color: var(--screenplay-chrome-text);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 8px;
+.screenplay-character-library > button {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 7px 6px;
+  color: var(--screenplay-chrome-muted);
+  text-align: left;
 }
 
-.screenplay-character-index em {
+.screenplay-character-library > button:hover {
+  background: color-mix(in srgb, var(--app-text-primary) 5%, transparent);
+  color: var(--screenplay-chrome-text);
+}
+
+.screenplay-character-library > button.is-unbound {
+  color: var(--screenplay-accent);
+}
+
+.screenplay-character-library__avatar {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--screenplay-accent) 12%, transparent);
+}
+
+.screenplay-character-library__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.screenplay-character-library__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.screenplay-character-library__copy strong {
+  overflow: hidden;
+  color: var(--screenplay-chrome-text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenplay-character-library__copy small {
+  overflow: hidden;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenplay-character-library > button > em {
+  border: 1px solid var(--screenplay-chrome-line);
+  border-radius: 999px;
+  padding: 3px 6px;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.screenplay-character-library__empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 6px;
   color: var(--screenplay-chrome-muted);
   font-size: 10px;
-  font-style: normal;
   line-height: 1.5;
 }
 
@@ -1069,17 +1258,34 @@
   color: var(--app-panel-strong);
 }
 
-.screenplay-workspace.is-focus-mode .screenplay-navigator,
-.screenplay-workspace.is-focus-mode .screenplay-inspector {
-  display: none;
-}
-
-.screenplay-workspace.is-focus-mode .screenplay-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .screenplay-workspace.is-focus-mode .screenplay-header__actions {
   transform: none;
+}
+
+.screenplay-workspace.is-focus-mode.is-inspector-open .screenplay-header__actions {
+  transform: translateX(-318px);
+}
+
+.screenplay-workspace.is-focus-mode .screenplay-document-viewport {
+  background: var(--screenplay-paper);
+  padding-top: 0;
+}
+
+.screenplay-workspace.is-focus-mode .screenplay-document {
+  width: min(1040px, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  border: 0;
+  box-shadow: none;
+}
+
+.screenplay-workspace.is-focus-mode .screenplay-document__masthead {
+  margin-inline: clamp(48px, 8vw, 104px);
+  padding-top: 82px;
+}
+
+.screenplay-workspace.is-focus-mode .screenplay-block-editor {
+  padding-inline: clamp(42px, 7vw, 88px);
 }
 
 @media (max-width: 1180px) {
@@ -1109,12 +1315,6 @@
   }
 
   .screenplay-save-state {
-    display: none;
-  }
-
-  .screenplay-header__actions button:nth-of-type(2),
-  .screenplay-header__actions button:nth-of-type(3),
-  .screenplay-header__actions button:nth-of-type(4) {
     display: none;
   }
 

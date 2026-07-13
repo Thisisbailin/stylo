@@ -109,12 +109,6 @@ export type AgentEnvironmentRecentAction = {
   createdAt?: number;
 };
 
-export type AgentMemoryTurn = {
-  role: "user" | "assistant";
-  text: string;
-  createdAt?: number;
-};
-
 export type AgentMemoryToolRecord = {
   toolName: string;
   status: "success" | "error";
@@ -123,7 +117,6 @@ export type AgentMemoryToolRecord = {
 };
 
 export type QalamAgentMemory = {
-  recentTurns: AgentMemoryTurn[];
   recentSuccessfulTools: AgentMemoryToolRecord[];
   recentFailedTools: AgentMemoryToolRecord[];
 };

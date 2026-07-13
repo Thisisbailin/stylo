@@ -1,5 +1,12 @@
 import type { FlowLink, ProjectData, ProjectRoleIdentity, ProjectRoleKind } from "../types";
 import type { NodeFlowNode, NodeFlowNodeData } from "../node-workspace/types";
+import {
+  analyzeFountainLines,
+  normalizeScreenplayIdentity,
+  parseSceneHeading,
+  resolveKnownScreenplayIdentity,
+  type ScreenplayKnownIdentity,
+} from "../node-workspace/screenplay/fountainEngine";
 import { buildRoleMention, slugifyIdentityKey } from "./projectRoles";
 
 export const LOOKBOOK_MEMBERSHIP_RELATION = "lookbook-membership" as const;
@@ -15,56 +22,43 @@ const SCENE_PLACEHOLDERS = new Set(["LOCATION", "场景", "场景名"]);
 const uniqueCandidates = (items: FountainIdentityCandidate[]) => {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = `${item.kind}:${item.name.toLocaleLowerCase()}`;
+    const key = `${item.kind}:${normalizeScreenplayIdentity(item.name)}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 };
 
-const parseCharacterName = (line: string) => {
-  const trimmed = line.trim();
-  let value = "";
-  if (trimmed.startsWith("@")) value = trimmed.slice(1);
-  else {
-    const chinese = trimmed.match(/^【(?:角色|双人对白)】\s*(.+)$/);
-    if (chinese) value = chinese[1];
-  }
-  return value
-    .replace(/\^\s*$/, "")
-    .replace(/\s+\([^)]*\)\s*$/, "")
-    .trim();
-};
+const toKnownIdentity = (role: ProjectRoleIdentity): ScreenplayKnownIdentity => ({
+  id: role.id,
+  name: role.displayName?.trim() || role.name,
+  mention: role.mention,
+  aliases: [role.name, ...(role.binding?.aliases || []), ...(role.aliases || []).map((alias) => alias.value)],
+});
 
-const parseSceneName = (line: string) => {
-  const trimmed = line.trim();
-  const chinese = trimmed.match(/^【场景】\s*(.+)$/);
-  if (chinese) {
-    const slots = chinese[1].split(/[｜|]/).map((item) => item.trim()).filter(Boolean);
-    return (slots.length >= 2 ? slots[1] : slots[0] || "").trim();
-  }
-
-  const normalized = trimmed.replace(/^\./, "");
-  const heading = normalized.match(
-    /^(?:INT\.\/EXT\.|INT\.\/EXT|INT\.|EXT\.|I\/E|内景|外景|内外景)\s+(.+?)(?:\s+-\s+[^-]+)?$/i
-  );
-  return heading?.[1]?.trim() || "";
-};
-
-export const parseFountainIdentityCandidates = (content: string): FountainIdentityCandidate[] =>
-  uniqueCandidates(
-    content.split(/\r?\n/).flatMap<FountainIdentityCandidate>((line) => {
-      const characterName = parseCharacterName(line);
-      if (characterName && !CHARACTER_PLACEHOLDERS.has(characterName.toUpperCase())) {
-        return [{ name: characterName, kind: "person" as const }];
-      }
-      const sceneName = parseSceneName(line);
-      if (sceneName && !SCENE_PLACEHOLDERS.has(sceneName.toUpperCase())) {
-        return [{ name: sceneName, kind: "scene" as const }];
-      }
+export const parseFountainIdentityCandidates = (
+  content: string,
+  existingRoles: ProjectRoleIdentity[] = []
+): FountainIdentityCandidate[] => {
+  const knownCharacters = existingRoles.filter((role) => role.kind === "person").map(toKnownIdentity);
+  const knownScenes = existingRoles.filter((role) => role.kind === "scene").map(toKnownIdentity);
+  const lines = analyzeFountainLines(content, knownCharacters);
+  return uniqueCandidates(lines.flatMap<FountainIdentityCandidate>((line) => {
+    if (line.kind === "character" || line.kind === "dual_dialogue") {
+      const identity = resolveKnownScreenplayIdentity(line.content, knownCharacters);
+      const name = identity?.name?.trim() || line.content.trim();
+      if (name && !CHARACTER_PLACEHOLDERS.has(name.toUpperCase())) return [{ name, kind: "person" }];
       return [];
-    })
-  );
+    }
+    if (line.kind === "scene_heading") {
+      const parsed = parseSceneHeading(line.raw);
+      const identity = resolveKnownScreenplayIdentity(parsed.location, knownScenes);
+      const name = identity?.name?.trim() || parsed.location.trim();
+      if (name && !SCENE_PLACEHOLDERS.has(name.toUpperCase())) return [{ name, kind: "scene" }];
+    }
+    return [];
+  }));
+};
 
 const stableHash = (value: string) => {
   let hash = 2166136261;
@@ -76,16 +70,16 @@ const stableHash = (value: string) => {
 };
 
 const buildStableIdentityId = (candidate: FountainIdentityCandidate) =>
-  `role-${candidate.kind}-${slugifyIdentityKey(candidate.name, candidate.kind)}-${stableHash(`${candidate.kind}:${candidate.name}`)}`;
+  `role-${candidate.kind}-${slugifyIdentityKey(candidate.name, candidate.kind)}-${stableHash(`${candidate.kind}:${normalizeScreenplayIdentity(candidate.name)}`)}`;
 
 const aliasesForRole = (role: ProjectRoleIdentity) =>
   [role.name, role.displayName, role.mention, `@${role.mention}`, ...(role.aliases || []).map((alias) => alias.value)]
-    .map((value) => value.trim().toLocaleLowerCase())
+    .map(normalizeScreenplayIdentity)
     .filter(Boolean);
 
 const findExactRole = (roles: ProjectRoleIdentity[], candidate: FountainIdentityCandidate) => {
-  const mention = buildRoleMention(candidate.name).toLocaleLowerCase();
-  const name = candidate.name.toLocaleLowerCase();
+  const mention = normalizeScreenplayIdentity(buildRoleMention(candidate.name));
+  const name = normalizeScreenplayIdentity(candidate.name);
   return roles.find(
     (role) => role.kind === candidate.kind && (aliasesForRole(role).includes(name) || aliasesForRole(role).includes(mention))
   );
@@ -197,12 +191,24 @@ export const syncLookbookIdentitiesFromFountain = (
   projectData: ProjectData,
   input: { sourceNodeId: string; content: string; now?: number }
 ): ProjectData => {
-  const candidates = parseFountainIdentityCandidates(input.content);
-  if (!candidates.length) return projectData;
+  const existingRoles = projectData.roles || [];
+  const candidates = parseFountainIdentityCandidates(input.content, existingRoles);
   const now = input.now ?? Date.now();
   const flow = projectData.flow || { links: [] };
-  const roles = [...(projectData.roles || [])];
-  const nodes = [...(flow.flowNodes || [])];
+  const roles = existingRoles.filter((role, index, source) => {
+    const duplicateId = source.findIndex((item) => item.id === role.id);
+    if (duplicateId !== index) return false;
+    const key = `${role.kind}:${normalizeScreenplayIdentity(role.mention || role.name)}`;
+    return source.findIndex((item) => `${item.kind}:${normalizeScreenplayIdentity(item.mention || item.name)}` === key) === index;
+  });
+  const seenNodeIds = new Set<string>();
+  const nodes = (flow.flowNodes || []).filter((node) => {
+    if (seenNodeIds.has(node.id)) return false;
+    seenNodeIds.add(node.id);
+    return true;
+  });
+  const repairedDuplicates = roles.length !== existingRoles.length || nodes.length !== (flow.flowNodes || []).length;
+  if (!candidates.length && !repairedDuplicates) return projectData;
   const links = [...flow.links];
   const sourceNode = nodes.find((node) => node.id === input.sourceNodeId);
 

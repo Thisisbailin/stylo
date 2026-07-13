@@ -156,6 +156,29 @@ const listTypeScriptFiles = async (root) => {
   return files;
 };
 
+const listRegisteredToolFiles = async () => {
+  const toolsRoot = path.join(repoRoot, "agents", "tools");
+  const queue = [path.join(toolsRoot, "index.ts")];
+  const visited = new Set();
+  while (queue.length) {
+    const filePath = queue.shift();
+    if (!filePath || visited.has(filePath)) continue;
+    visited.add(filePath);
+    const source = await readFile(filePath, "utf8");
+    const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    sourceFile.statements.forEach((statement) => {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) return;
+      const moduleName = statement.moduleSpecifier.text;
+      if (!moduleName.startsWith(".")) return;
+      const importedFile = path.resolve(path.dirname(filePath), `${moduleName}.ts`);
+      if (importedFile.startsWith(`${toolsRoot}${path.sep}`) && !visited.has(importedFile)) {
+        queue.push(importedFile);
+      }
+    });
+  }
+  return visited;
+};
+
 const staticText = (node, sourceFile) => {
   if (!node) return "";
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
@@ -240,7 +263,12 @@ const promptCategoryForPath = (sourcePath) => {
 };
 
 const loadPromptCatalogEntries = async (skillEntries) => {
-  const agentFiles = await listTypeScriptFiles(path.join(repoRoot, "agents"));
+  const agentsRoot = path.join(repoRoot, "agents");
+  const toolsRoot = path.join(agentsRoot, "tools");
+  const registeredToolFiles = await listRegisteredToolFiles();
+  const agentFiles = (await listTypeScriptFiles(agentsRoot)).filter(
+    (filePath) => !filePath.startsWith(`${toolsRoot}${path.sep}`) || registeredToolFiles.has(filePath)
+  );
   const sourceFiles = [
     ...agentFiles,
     path.join(repoRoot, "functions", "api", "_agentSessions.ts"),

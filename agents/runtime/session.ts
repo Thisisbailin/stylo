@@ -1,6 +1,12 @@
 import type { AgentInputItem, Session } from "@openai/agents";
 import type { AgentSessionMessage, QalamSessionRecord, QalamSessionStore } from "./types";
-import { repairSessionToolTransactions, trimSessionItemsSafely } from "./sessionRepair";
+import { trimSessionItemsSafely } from "./sessionRepair";
+import {
+  AGENT_SESSION_LIMITS,
+  compactAgentSessionItems,
+  normalizeAgentSessionMessage,
+  projectAgentItemsToSessionMessages,
+} from "./sessionProjection";
 
 export const DEFAULT_AGENT_SESSION_STORAGE_KEY = "qalam_agent_sessions_v1";
 export const AGENT_SESSION_STORAGE_UPDATED_EVENT = "qalam:agent-session-storage-updated";
@@ -18,111 +24,15 @@ const trimSessionItems = (items: AgentInputItem[], limit?: number) => {
   return trimSessionItemsSafely(items, limit);
 };
 
-const normalizeSessionMessage = (message: any): AgentSessionMessage | null => {
-  if (!message || typeof message !== "object") return null;
-  const createdAt = typeof message.createdAt === "number" ? message.createdAt : Date.now();
-  if (message.role === "tool") {
-    if (typeof message.toolName !== "string" || typeof message.toolCallId !== "string") return null;
-    return {
-      role: "tool",
-      text: typeof message.text === "string" ? message.text : "",
-      createdAt,
-      toolName: message.toolName,
-      toolCallId: message.toolCallId,
-      toolStatus: message.toolStatus === "error" ? "error" : "success",
-      toolOutput: message.toolOutput,
-    };
-  }
-  if (message.role === "user" || message.role === "assistant") {
-    return {
-      role: message.role,
-      text: typeof message.text === "string" ? message.text : "",
-      createdAt,
-    };
-  }
-  return null;
-};
-
-const extractTextParts = (content: unknown): string[] => {
-  if (typeof content === "string") return [content];
-  if (!Array.isArray(content)) return [];
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") return "";
-      if (typeof (part as any).text === "string") return (part as any).text;
-      if (typeof (part as any).refusal === "string") return (part as any).refusal;
-      if (typeof (part as any).transcript === "string") return (part as any).transcript;
-      return "";
-    })
-    .filter(Boolean);
-};
-
-const summarizeToolOutput = (output: unknown) => {
-  if (typeof output === "string") {
-    try {
-      const parsed = JSON.parse(output);
-      if (typeof parsed?.summary === "string" && parsed.summary.trim()) return parsed.summary.trim();
-      if (typeof parsed?.output === "string" && parsed.output.trim()) return parsed.output.trim();
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return output;
-    }
-  }
-  if (Array.isArray(output)) {
-    const parts = extractTextParts(output);
-    if (parts.length) return parts.join("\n");
-  }
-  if (output == null) return "";
-  try {
-    return JSON.stringify(output, null, 2);
-  } catch {
-    return String(output);
-  }
-};
-
-const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBase: number): AgentSessionMessage[] =>
-  items.flatMap((item, index): AgentSessionMessage[] => {
-    const createdAt = timestampBase + index;
-    if (!item || typeof item !== "object") return [];
-
-    if ((item as any).role === "user") {
-      const text = extractTextParts((item as any).content).join("\n").trim();
-      return text ? [{ role: "user" as const, text, createdAt }] : [];
-    }
-
-    if ((item as any).role === "assistant") {
-      const text = extractTextParts((item as any).content).join("\n").trim();
-      return text ? [{ role: "assistant" as const, text, createdAt }] : [];
-    }
-
-    if ((item as any).type === "function_call_result") {
-      const summary = summarizeToolOutput((item as any).output);
-      return [
-        {
-          role: "tool" as const,
-          text: summary || (item as any).name || "tool_result",
-          createdAt,
-          toolName: String((item as any).name || "tool"),
-          toolCallId: String((item as any).callId || `tool-${createdAt}`),
-          toolStatus: (item as any).status === "completed" ? "success" : "error",
-          toolOutput: (item as any).output,
-        },
-      ];
-    }
-
-    return [];
-  });
-
 const normalizePersistedRecord = (value: any): PersistedAgentSessionRecord | null => {
   if (!value || typeof value !== "object" || typeof value.id !== "string") return null;
   const updatedAt = typeof value.updatedAt === "number" ? value.updatedAt : Date.now();
   const items = Array.isArray(value.items)
-    ? repairSessionToolTransactions(
-        value.items.filter((item: unknown) => item && typeof item === "object") as AgentInputItem[]
-      )
+    ? compactAgentSessionItems(value.items.filter((item: unknown) => item && typeof item === "object") as AgentInputItem[])
     : [];
   const messages = Array.isArray(value.messages)
-    ? value.messages.map(normalizeSessionMessage).filter(Boolean) as AgentSessionMessage[]
+    ? (value.messages.map(normalizeAgentSessionMessage).filter(Boolean) as AgentSessionMessage[])
+        .slice(-AGENT_SESSION_LIMITS.storedMessages)
     : [];
   return {
     id: value.id,
@@ -232,8 +142,8 @@ class LocalStorageAgentSession implements Session {
     const projectedMessages = projectAgentItemsToSessionMessages(clonedItems, timestampBase);
     sessions[this.sessionId] = {
       ...existing,
-      items: [...existing.items, ...clonedItems],
-      messages: [...existing.messages, ...projectedMessages].slice(-240),
+      items: compactAgentSessionItems([...existing.items, ...clonedItems]),
+      messages: [...existing.messages, ...projectedMessages].slice(-AGENT_SESSION_LIMITS.storedMessages),
       updatedAt: timestampBase,
     };
     writeLocalStorageSessions(this.storageKey, sessions);
@@ -249,7 +159,7 @@ class LocalStorageAgentSession implements Session {
     sessions[this.sessionId] = {
       ...existing,
       items: nextItems,
-      messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-240),
+      messages: projectAgentItemsToSessionMessages(nextItems, timestampBase).slice(-AGENT_SESSION_LIMITS.storedMessages),
       updatedAt: timestampBase,
     };
     writeLocalStorageSessions(this.storageKey, sessions);
@@ -275,7 +185,7 @@ export class InMemorySessionStore implements QalamSessionStore {
       getSessionId: async () => memory.id,
       getItems: async (limit?: number) => trimSessionItems(memory.items, limit),
       addItems: async (items: AgentInputItem[]) => {
-        memory.items = [...memory.items, ...items.map(cloneItem)];
+        memory.items = compactAgentSessionItems([...memory.items, ...items.map(cloneItem)]);
       },
       popItem: async () => memory.items.pop(),
       clearSession: async () => {

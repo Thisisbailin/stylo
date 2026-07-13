@@ -1,10 +1,12 @@
 import type { QalamAgentRuntime, QalamRunInput, QalamRunOptions, QalamRunResult } from "./types";
 import {
   AGENT_HTTP_STREAM_CONTENT_TYPE,
+  AgentEventSequenceGuard,
   type AgentHttpRunRequest,
   parseAgentStreamPacket,
 } from "./httpProtocol";
 import { browserAgentDebug, browserAgentDebugError } from "./debug";
+import { drainAgentSseBuffer } from "./sseProtocol";
 
 const summarizeEventForDebug = (event: any) => {
   if (!event || typeof event !== "object") return event;
@@ -105,20 +107,12 @@ const decodeStreamChunks = async (
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() || "";
-      for (const frame of frames) {
-        const dataLine = frame
-          .split("\n")
-          .map((line) => line.trim())
-          .find((line) => line.startsWith("data:"));
-        if (!dataLine) continue;
-        onPacket(dataLine.slice(5).trim());
-      }
+      const drained = drainAgentSseBuffer(buffer);
+      buffer = drained.remainder;
+      drained.packets.forEach(onPacket);
     }
-    if (buffer.trim().startsWith("data:")) {
-      onPacket(buffer.trim().slice(5).trim());
-    }
+    buffer += decoder.decode();
+    drainAgentSseBuffer(buffer, true).packets.forEach(onPacket);
   } finally {
     reader.releaseLock();
   }
@@ -147,7 +141,7 @@ export const createHttpQalamAgentRuntime = ({
       runtime: requestBody.runtime,
       projectId: requestBody.run.projectId,
       sessionId: requestBody.run.sessionId,
-      userText: requestBody.run.userText,
+      userTextChars: requestBody.run.userText.length,
     });
     let authToken = await getAuthToken?.();
     if (!authToken && getAuthToken) {
@@ -192,10 +186,19 @@ export const createHttpQalamAgentRuntime = ({
     let streamedError: string | null = null;
     let lastEventType: string | null = null;
     let lastFinalMessageCompletedText = "";
+    const sequenceGuard = new AgentEventSequenceGuard();
     await decodeStreamChunks(response.body, (rawPacket) => {
       browserAgentDebug("httpClient raw packet", summarizeRawPacketForDebug(rawPacket));
       const packet = parseAgentStreamPacket(rawPacket);
       if (packet.kind === "event") {
+        if (!sequenceGuard.accept(packet.event)) {
+          browserAgentDebug("httpClient duplicate event ignored", {
+            runId: packet.event.runId,
+            sequence: packet.event.sequence,
+            type: packet.event.type,
+          });
+          return;
+        }
         browserAgentDebug("httpClient event", summarizeEventForDebug(packet.event));
         lastEventType = packet.event.type;
         if (packet.event.type === "run_completed") {

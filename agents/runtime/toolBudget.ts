@@ -1,20 +1,4 @@
-const LOOKUP_TOOLS = new Set([
-  "find_documents",
-  "read_document",
-  "list_project_resources",
-  "read_project_resource",
-  "search_project_resource",
-]);
-
-const MUTATION_TOOLS = new Set([
-  "create_document",
-  "update_document",
-  "connect_flow_nodes",
-  "move_flow_node",
-  "operate_project_resource",
-  "prepare_generation_execution",
-  "cancel_generation_execution",
-]);
+import { getQalamToolDescriptor, QALAM_TOOL_CATALOG } from "./toolCatalog";
 
 export type QalamToolBudgetSnapshot = {
   totalCalls: number;
@@ -47,20 +31,7 @@ const DEFAULT_LIMITS = {
   lookupCalls: 22,
   mutationCalls: 8,
   fullReadCalls: 3,
-  perTool: {
-    find_documents: 8,
-    read_document: 14,
-    create_document: 5,
-    update_document: 8,
-    connect_flow_nodes: 6,
-    move_flow_node: 6,
-    list_project_resources: 4,
-    search_project_resource: 8,
-    read_project_resource: 10,
-    operate_project_resource: 4,
-    prepare_generation_execution: 2,
-    cancel_generation_execution: 2,
-  },
+  perTool: Object.fromEntries(QALAM_TOOL_CATALOG.map((descriptor) => [descriptor.name, descriptor.maxCallsPerRun])),
 };
 
 const stableSerialize = (value: unknown): string => {
@@ -75,11 +46,7 @@ const normalizeView = (args: Record<string, unknown>) =>
   typeof args.view === "string" ? args.view.trim().toLowerCase() : "";
 
 const isFullRead = (toolName: string, args: Record<string, unknown>) =>
-  (toolName === "read_project_resource" || toolName === "read_document") &&
-  normalizeView(args) === "full";
-
-const isLookupTool = (toolName: string) => LOOKUP_TOOLS.has(toolName);
-const isMutationTool = (toolName: string) => MUTATION_TOOLS.has(toolName);
+  getQalamToolDescriptor(toolName).countsAsFullRead === true && normalizeView(args) === "full";
 
 export class QalamToolBudgetPolicy {
   private totalCalls = 0;
@@ -108,9 +75,12 @@ export class QalamToolBudgetPolicy {
 
   reserve(toolName: string, args: Record<string, unknown>): ToolBudgetDecision {
     const snapshotBefore = this.snapshot();
+    const descriptor = getQalamToolDescriptor(toolName);
     const nextToolCalls = (this.callsByTool.get(toolName) || 0) + 1;
-    const perToolLimit = DEFAULT_LIMITS.perTool[toolName as keyof typeof DEFAULT_LIMITS.perTool];
-    const lookupSignature = isLookupTool(toolName) ? `${toolName}:${stableSerialize(args)}` : "";
+    const perToolLimit = descriptor.maxCallsPerRun;
+    const isLookupTool = descriptor.category === "lookup";
+    const isMutationTool = descriptor.category === "mutation" || descriptor.category === "approval";
+    const lookupSignature = descriptor.cacheWithinRun ? `${toolName}:${stableSerialize(args)}` : "";
 
     if (this.totalCalls + 1 > DEFAULT_LIMITS.totalCalls) {
       return {
@@ -126,14 +96,14 @@ export class QalamToolBudgetPolicy {
         snapshot: snapshotBefore,
       };
     }
-    if (isLookupTool(toolName) && this.lookupCalls + 1 > DEFAULT_LIMITS.lookupCalls) {
+    if (isLookupTool && this.lookupCalls + 1 > DEFAULT_LIMITS.lookupCalls) {
       return {
         allowed: false,
-        reason: `Lookup budget exhausted: this run already used ${snapshotBefore.lookupCalls}/${DEFAULT_LIMITS.lookupCalls} project-read calls. Summarize from known tool results or ask for a narrower target.`,
+        reason: `Lookup budget exhausted: this run already used ${snapshotBefore.lookupCalls}/${DEFAULT_LIMITS.lookupCalls} lookup calls. Summarize from known tool results or ask for a narrower target.`,
         snapshot: snapshotBefore,
       };
     }
-    if (isMutationTool(toolName) && this.mutationCalls + 1 > DEFAULT_LIMITS.mutationCalls) {
+    if (isMutationTool && this.mutationCalls + 1 > DEFAULT_LIMITS.mutationCalls) {
       return {
         allowed: false,
         reason: `Mutation budget exhausted: this run already used ${snapshotBefore.mutationCalls}/${DEFAULT_LIMITS.mutationCalls} write or approval calls. Stop and report what changed so far.`,
@@ -157,11 +127,11 @@ export class QalamToolBudgetPolicy {
 
     this.totalCalls += 1;
     this.callsByTool.set(toolName, nextToolCalls);
-    if (isLookupTool(toolName)) {
+    if (isLookupTool) {
       this.lookupCalls += 1;
       if (lookupSignature) this.seenLookupSignatures.add(lookupSignature);
     }
-    if (isMutationTool(toolName)) this.mutationCalls += 1;
+    if (isMutationTool) this.mutationCalls += 1;
     if (isFullRead(toolName, args)) this.fullReadCalls += 1;
 
     return {

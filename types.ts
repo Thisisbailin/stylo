@@ -450,12 +450,6 @@ export type QalamToolSettings = {
     webSearchEnabled?: boolean;
     githubAccessEnabled?: boolean;
   };
-  characterLocation?: {
-    enabled?: boolean;
-    mergeStrategy?: "patch" | "replace";
-    formsMode?: "merge" | "replace";
-    zonesMode?: "merge" | "replace";
-  };
 };
 
 export interface MultimodalConfig {

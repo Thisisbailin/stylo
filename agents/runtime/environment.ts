@@ -12,6 +12,7 @@ import { READ_PROJECT_RESOURCE_TARGETS } from "../tools/readProjectResource";
 import { SEARCH_PROJECT_RESOURCE_FACETS, SEARCH_PROJECT_RESOURCE_LAYERS } from "../tools/searchProjectResource";
 import { OPERATE_NODEFLOW_TARGETS, OPERATE_NODEFLOW_NODE_KINDS } from "../tools/operateProjectResource";
 import { buildScriptResourceLinks, buildScriptResourceNodes } from "../tools/scriptResources";
+import { listQalamToolNames } from "./toolCatalog";
 
 const ROLE_SUMMARY_LIMIT = 120;
 const MAX_PRIMARY_ROLES = 8;
@@ -41,24 +42,18 @@ const sortRoles = (roles: ProjectRoleIdentity[]) =>
 const buildCapabilityManifest = (): AgentEnvironmentCapabilityManifest => ({
   read: {
     tools: [
-      "find_documents",
-      "read_document",
-      "list_project_resources",
-      "read_project_resource",
-      "search_project_resource",
-      "read_runtime_manual",
-      "access_github_repository",
-      "search_web",
+      ...listQalamToolNames(["project_read", "runtime_read", "external_read"]),
     ],
     resources: [...LIST_PROJECT_RESOURCE_TARGETS, ...READ_PROJECT_RESOURCE_TARGETS, "github_repository", "web_search"],
     scopes: [...SEARCH_PROJECT_RESOURCE_LAYERS, ...SEARCH_PROJECT_RESOURCE_FACETS, "runtime_manual", "github_repository", "web_search"],
   },
   edit: {
-    tools: ["create_document", "update_document"],
+    tools: listQalamToolNames(["project_write"]).filter((name) => name === "create_document" || name === "update_document"),
     resources: [...OPERATE_NODEFLOW_TARGETS],
   },
   operate: {
-    tools: ["connect_flow_nodes", "move_flow_node", "operate_project_resource"],
+    tools: listQalamToolNames(["project_write", "generation_approval"])
+      .filter((name) => name !== "create_document" && name !== "update_document"),
     resources: [...OPERATE_NODEFLOW_TARGETS],
     nodeKinds: [...OPERATE_NODEFLOW_NODE_KINDS],
   },

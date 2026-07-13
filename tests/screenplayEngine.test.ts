@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   analyzeFountainLines,
   analyzeScreenplay,
+  convertScreenplayLineKind,
   getNextScreenplayLineKind,
   insertScreenplayLine,
   normalizeFountainDocument,
@@ -12,6 +13,10 @@ import {
   serializeSceneHeading,
   serializeScreenplayLine,
 } from "../node-workspace/screenplay/fountainEngine";
+import {
+  classifyIncomingScreenplaySource,
+  prepareScreenplayDraftForSave,
+} from "../node-workspace/screenplay/saveCoordinator";
 import {
   buildScriptLinePatch,
   deriveReviewedScriptBody,
@@ -77,6 +82,95 @@ test("screenplay analysis builds navigation, production metrics, and continuity 
   assert.equal(analysis.stats.characters, 2);
   assert.ok(analysis.stats.dialoguePercent > 0);
   assert.ok(analysis.diagnostics.some((issue) => issue.message.includes("陌生人")));
+});
+
+test("Chinese action prose is never guessed as a character while known aliases are resolved", () => {
+  const body = [
+    "暴雨如注。荒山深处，一座孤零零的古宅亮着微弱的烛火。",
+    "下一句动作。",
+    "",
+    "阿弋",
+    "",
+    "他不会再来了。",
+  ].join("\n");
+  const known = [{ id: "role-shenyi", name: "沈弋", mention: "沈弋", aliases: ["阿弋"] }];
+  const lines = analyzeFountainLines(body, known);
+  assert.equal(lines[0].kind, "action");
+  assert.equal(lines[3].kind, "character");
+  assert.equal(lines[5].kind, "dialogue");
+
+  const analysis = analyzeScreenplay(body, known);
+  assert.deepEqual(analysis.characterNames, ["沈弋"]);
+  assert.equal(analysis.characterReferences[0].roleId, "role-shenyi");
+  assert.equal(analysis.characterReferences[0].bound, true);
+});
+
+test("dialogue context survives visual spacer lines but does not leak into the next action", () => {
+  const lines = analyzeFountainLines([
+    "@沈弋",
+    "",
+    "（声音沙哑）",
+    "",
+    "他不会再来了。",
+    "",
+    "雨声吞没一切。",
+  ].join("\n"));
+  assert.deepEqual(lines.map((line) => line.kind), [
+    "character",
+    "action",
+    "parenthetical",
+    "action",
+    "dialogue",
+    "action",
+    "action",
+  ]);
+});
+
+test("scene parsing removes duplicate localized time suffixes", () => {
+  assert.deepEqual(parseSceneHeading(".INT. 古宅门前 - 夜 - DAY"), {
+    boundary: "INT.",
+    location: "古宅门前",
+    time: "DAY",
+  });
+});
+
+test("format conversion preserves visible content and permits an empty role cue", () => {
+  const line = analyzeFountainLines("!门自内打开。")[0];
+  assert.equal(convertScreenplayLineKind(line, "dialogue"), "门自内打开。");
+  assert.equal(serializeScreenplayLine("", "character"), "@");
+  assert.equal(analyzeFountainLines("@")[0].kind, "character");
+  assert.equal(analyzeFountainLines(serializeScreenplayLine("", "dialogue"))[0].kind, "dialogue");
+});
+
+test("autosave coordinator ignores stale echoes and adopts real external changes", () => {
+  const source = { title: "第一场", body: "!旧稿" };
+  const submitted = { title: "第一场", body: "!新稿" };
+  const localAfterSubmit = { title: "第一场", body: "!更新的本地稿" };
+  assert.equal(classifyIncomingScreenplaySource({
+    source,
+    draft: localAfterSubmit,
+    lastCommitted: submitted,
+    lastObservedSource: source,
+    pendingSave: { submitted, previousSource: source },
+  }), "unchanged");
+  assert.equal(classifyIncomingScreenplaySource({
+    source: submitted,
+    draft: localAfterSubmit,
+    lastCommitted: submitted,
+    lastObservedSource: source,
+    pendingSave: { submitted, previousSource: source },
+  }), "acknowledge");
+  assert.equal(classifyIncomingScreenplaySource({
+    source: { title: "外部", body: "!协作者版本" },
+    draft: localAfterSubmit,
+    lastCommitted: submitted,
+    lastObservedSource: source,
+    pendingSave: { submitted, previousSource: source },
+  }), "conflict");
+  assert.deepEqual(prepareScreenplayDraftForSave({ title: "  ", body: "!A\r\n!B" }), {
+    title: "剧本文档",
+    body: "!A\n!B",
+  });
 });
 
 test("agent screenplay patches remain reviewable and deterministic", () => {

@@ -26,5 +26,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    ".test-dist",
+    "dist",
+    "node_modules",
+    "release"
+  ]
 }

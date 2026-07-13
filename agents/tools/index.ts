@@ -3,6 +3,7 @@ import type { QalamAgentBridge } from "../bridge/qalamBridge";
 import type { AgentExecutedToolCall } from "../runtime/types";
 import { createQalamToolInputGuardrails, createQalamToolOutputGuardrails } from "../runtime/guardrails";
 import type { QalamToolBudgetPolicy } from "../runtime/toolBudget";
+import { getQalamToolDescriptor, listQalamToolNames } from "../runtime/toolCatalog";
 import {
   createDocumentToolDef,
   findDocumentsToolDef,
@@ -24,27 +25,6 @@ import { cancelGenerationExecutionToolDef } from "./cancelGenerationExecution";
 import { readRuntimeManualToolDef } from "./readRuntimeManual";
 import { accessGithubRepositoryToolDef } from "./accessGithubRepository";
 import { searchWebToolDef } from "./searchWeb";
-
-const LOOKUP_TOOL_NAMES = new Set([
-  "find_documents",
-  "read_document",
-  "list_project_resources",
-  "read_project_resource",
-  "search_project_resource",
-  "read_runtime_manual",
-  "access_github_repository",
-  "search_web",
-]);
-const MUTATING_TOOL_NAMES = new Set([
-  "create_document",
-  "update_document",
-  "connect_flow_nodes",
-  "move_flow_node",
-  "operate_foundation",
-  "operate_project_resource",
-  "prepare_generation_execution",
-  "cancel_generation_execution",
-]);
 
 type ToolLifecycleEvent =
   | { type: "tool_called"; call: AgentExecutedToolCall }
@@ -74,6 +54,7 @@ const TOOL_DEFS = [
 const LEGACY_DISABLED_TOOL_NAMES = new Set([
   "get_episode_script",
   "get_scene_script",
+  "edit_script_resource",
   "read_project_data",
   "search_script_data",
   "upsert_character",
@@ -88,6 +69,12 @@ const assertNoLegacyTools = () => {
 };
 
 assertNoLegacyTools();
+
+const registeredNames = new Set(TOOL_DEFS.map((toolDef) => toolDef.name));
+const catalogNames = new Set<string>(listQalamToolNames());
+if (registeredNames.size !== catalogNames.size || [...registeredNames].some((name) => !catalogNames.has(name))) {
+  throw new Error("Qalam tool definitions and tool catalog are out of sync");
+}
 
 const stableSerialize = (value: unknown): string => {
   if (value == null) return "null";
@@ -216,6 +203,22 @@ export const createQalamTools = ({
         };
         emitEvent?.({ type: "tool_called", call: runningCall });
         try {
+          const descriptor = getQalamToolDescriptor(toolDef.name);
+          const shouldCache = descriptor.cacheWithinRun;
+          const lookupSignature = shouldCache ? `${toolDef.name}:${stableSerialize(input)}` : "";
+
+          if (shouldCache && lookupCache.has(lookupSignature)) {
+            const cached = lookupCache.get(lookupSignature)!;
+            const completedCall: AgentExecutedToolCall = {
+              ...runningCall,
+              status: "success",
+              output: compactToolOutputForEvents(cached.output),
+              summary: `${cached.summary}（复用本轮已有结果）`,
+            };
+            emitEvent?.({ type: "tool_completed", call: completedCall });
+            return cached.output;
+          }
+
           const budgetDecision = toolBudget?.reserve(toolDef.name, toToolArgs(input));
           if (budgetDecision?.allowed === false) {
             const output = {
@@ -236,27 +239,12 @@ export const createQalamTools = ({
             return output;
           }
 
-          const isLookupTool = LOOKUP_TOOL_NAMES.has(toolDef.name);
-          const lookupSignature = isLookupTool ? `${toolDef.name}:${stableSerialize(input)}` : "";
-
-          if (isLookupTool && lookupCache.has(lookupSignature)) {
-            const cached = lookupCache.get(lookupSignature)!;
-            const completedCall: AgentExecutedToolCall = {
-              ...runningCall,
-              status: "success",
-              output: compactToolOutputForEvents(cached.output),
-              summary: `${cached.summary}（复用本轮已有结果）`,
-            };
-            emitEvent?.({ type: "tool_completed", call: completedCall });
-            return cached.output;
-          }
-
           const output = await toolDef.execute(input, bridge);
           const summary = toolDef.summarize(output);
-          if (isLookupTool) {
+          if (shouldCache) {
             lookupCache.set(lookupSignature, { output, summary });
           }
-          if (MUTATING_TOOL_NAMES.has(toolDef.name)) {
+          if (descriptor.category === "mutation" || descriptor.category === "approval") {
             lookupCache.clear();
           }
           const completedCall: AgentExecutedToolCall = {

@@ -22,7 +22,6 @@ import { resetNodeFlowAccountState } from './node-workspace/store/nodeFlowStore'
 import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
 import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
-import { LandingPage } from './components/LandingPage';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import {
   buildQalamAccountStorageKeys,
@@ -43,7 +42,6 @@ const THEME_STORAGE_KEY = 'qalam_theme_v1';
 const LOCAL_BACKUP_KEY = 'qalam_local_backup';
 const REMOTE_BACKUP_KEY = 'qalam_remote_backup';
 const AVATAR_STORAGE_KEY = 'qalam_avatar_url';
-const LANDING_ROUTE_HASH = "#/landing";
 
 type AccountScope = "guest" | `user:${string}`;
 
@@ -152,11 +150,6 @@ const migrateLegacyLocalState = (accountScope: AccountScope) => {
   }
   localStorage.removeItem("qalam_conversations_v1");
   localStorage.removeItem("qalam_messages_v1");
-};
-
-const readAppViewFromLocation = (): "main" | "landing" => {
-  if (typeof window === "undefined") return "main";
-  return window.location.hash === LANDING_ROUTE_HASH ? "landing" : "main";
 };
 
 const decodeJwtExpiry = (token: string) => {
@@ -269,7 +262,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     }
   }, [isDarkMode]);
 
-  const [appView, setAppView] = useState<"main" | "landing">(() => readAppViewFromLocation());
   const [hasLoadedRemote, setHasLoadedRemote] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>({
     project: { status: 'idle' },
@@ -311,33 +303,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   const openProjectSettings = useCallback((panel: ProjectSettingsPanelKey = "provider") => {
     setProjectSettingsRequest({ panel, nonce: Date.now() });
   }, []);
-  useEffect(() => {
-    const syncAppView = () => setAppView(readAppViewFromLocation());
-    window.addEventListener("hashchange", syncAppView);
-    window.addEventListener("popstate", syncAppView);
-    return () => {
-      window.removeEventListener("hashchange", syncAppView);
-      window.removeEventListener("popstate", syncAppView);
-    };
-  }, []);
-
-  const navigateToAppView = useCallback((nextView: "main" | "landing", mode: "push" | "replace" = "push") => {
-    if (typeof window === "undefined") {
-      setAppView(nextView);
-      return;
-    }
-    const url = new URL(window.location.href);
-    url.hash = nextView === "landing" ? "/landing" : "";
-    window.history[mode === "replace" ? "replaceState" : "pushState"](null, "", url);
-    setAppView(nextView);
-  }, []);
-
-  const openLandingPage = useCallback(() => {
-    setOpenLabModal(null);
-    navigateToAppView("landing");
-  }, [navigateToAppView]);
-  const closeLandingPage = useCallback(() => navigateToAppView("main"), [navigateToAppView]);
-
   const handleOpenLabModule = useCallback((key: ModuleKey) => {
     if (key === 'characters') {
       openProjectSettings("assets");
@@ -680,8 +645,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const handleLoadIdentityCard = useCallback((identityId: string) => {
     if (!identityId) return;
-    navigateToAppView('main');
-
     setProjectData((prev) => {
       const flow: FlowState = {
         flowNodes: [],
@@ -714,7 +677,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         },
       };
     });
-  }, [navigateToAppView, setProjectData]);
+  }, [setProjectData]);
 
   const renderMainContent = () => (
     <div className="h-full">
@@ -729,7 +692,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         syncState={syncState}
         syncRollout={syncRollout}
         onForceSync={forceCloudPull}
-        onOpenLanding={openLandingPage}
         externalProjectSettingsRequest={projectSettingsRequest}
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
@@ -748,10 +710,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       />
     </div>
   );
-
-  if (appView === "landing") {
-    return <LandingPage isDarkMode={isDarkMode} onEnterApp={closeLandingPage} />;
-  }
 
   return (
     <>

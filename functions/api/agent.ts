@@ -1,34 +1,11 @@
-import {
-  createQalamAgentBridge,
-} from "../../agents/bridge/nodeFlowBridgeCore";
 import { runQalamAgentCore } from "../../agents/runtime/core";
-import {
-  AGENT_HTTP_STREAM_CONTENT_TYPE,
-  serializeAgentStreamPacket,
-  type AgentHttpRunRequest,
-} from "../../agents/runtime/httpProtocol";
+import type { AgentHttpRunRequest } from "../../agents/runtime/httpProtocol";
 import { resolveAgentProvider, resolveApiMode, resolveBaseUrl, resolveProviderModel } from "../../agents/runtime/providerConfig";
 import { resolveActivatedSkills, StaticSkillLoader } from "../../agents/runtime/skills";
 import { buildDisabledTools } from "../../agents/runtime/toolPolicy";
-import type { AgentRuntimeEvent, QalamRunResult } from "../../agents/runtime/types";
 import { createAgentSessionKey, D1EdgeSession, QalamChatCompactionSession, QalamResponsesCompactionSession, readD1SessionMessages } from "./_agentSessions";
 import { ensureQalamTraceProcessor, forceFlushAgentTracing, persistBufferedTrace } from "./_agentTracing";
-import type { ProjectData } from "../../types";
-import type { NodeFlowFile, NodeFlowNode, NodeFlowNodeData, NodeType } from "../../node-workspace/types";
-import { createDefaultNodeFlowNodeData } from "../../node-workspace/nodeflow/defaults";
-import { DEFAULT_NODE_DIMENSIONS } from "../../node-workspace/nodeflow/placement";
 import { parseNodeFlowFile } from "../../node-workspace/nodeflow/schema";
-import type { NodeFlowExecutionApprovalProposal } from "../../node-workspace/nodeflow/approvals";
-import { createNodeFlowGraphLink, removeNodeFlowGraphLink } from "../../node-workspace/nodeflow/graphLinks";
-import {
-  appendNodeToNodeFlow,
-  connectNodesInNodeFlow,
-  patchNodeFlowNodeData,
-  patchNodeFlowNodeStyle,
-  removeLinkFromNodeFlow,
-  removeNodeFromNodeFlow,
-  toggleNodeFlowLinkPauseInState,
-} from "../../node-workspace/nodeflow/mutations";
 import {
   assertQalamProjectScope,
   isQalamSessionInProject,
@@ -37,17 +14,26 @@ import { getUserId } from "./_auth";
 import { enforceRateLimit } from "./_rateLimit";
 import { readJsonRequest } from "./_request";
 import type { D1DatabaseLike, PagesContext } from "./_types";
+import {
+  createAgentProjectData,
+  createAgentProjectPatch,
+  createNodeFlowBridgeState,
+  hasMeaningfulProjectPatch,
+} from "./_agentBridgeState";
+import {
+  CORS_HEADERS,
+  createSseResponse,
+  emitError,
+  emitEvent,
+  emitResult,
+  emitTrace,
+  withCorsHeaders,
+} from "./_agentStream";
 
 type AgentEnv = Record<string, unknown> & {
   DB: D1DatabaseLike;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-};
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
 };
 
 const EDGE_AGENT_MAX_TURNS = 20;
@@ -56,16 +42,6 @@ const MAX_AGENT_REQUEST_BYTES = 5 * 1024 * 1024;
 const MAX_AGENT_TEXT_LENGTH = 20_000;
 const MAX_AGENT_NODES = 500;
 const MAX_AGENT_LINKS = 1_000;
-
-const withCorsHeaders = (response: Response) => {
-  const headers = new Headers(response.headers);
-  Object.entries(CORS_HEADERS).forEach(([key, value]) => headers.set(key, value));
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-};
 
 const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark" | "deepseek") => {
   const value =
@@ -87,52 +63,6 @@ const isDebugEnabled = (env: Record<string, unknown>) => {
   return value === "1" || value === "true";
 };
 
-const createAgentProjectData = (
-  projectData: ProjectData | undefined,
-  nodeFlow: NodeFlowFile | undefined,
-  projectId: string
-): ProjectData => {
-  const activeProject = projectData?.flowProjects?.find((project) => project.id === projectId);
-  return {
-    fileName: activeProject?.title?.trim() || projectData?.fileName?.trim() || nodeFlow?.name || "",
-    rawScript: "",
-    episodes: [],
-    roles: Array.isArray(projectData?.roles) ? projectData.roles : [],
-    designAssets: Array.isArray(projectData?.designAssets) ? projectData.designAssets : [],
-    canvas: projectData?.canvas || { viewport: null },
-    flow: {
-      flowNodes: [],
-      links: [],
-    },
-    activeFlowProjectId: projectId,
-    phase5Usage: projectData?.phase5Usage,
-    stats: projectData?.stats || { context: { total: 0, success: 0, error: 0 } },
-  };
-};
-
-const createAgentProjectPatch = (
-  projectData: ProjectData,
-  projectId: string
-): QalamRunResult["updatedProjectPatch"] => {
-  const activeProject = projectData.flowProjects?.find((project) => project.id === projectId);
-  return {
-    activeFlowProjectId: projectId,
-    roles: Array.isArray(projectData.roles) ? projectData.roles : [],
-    designAssets: Array.isArray(projectData.designAssets) ? projectData.designAssets : [],
-    flow: projectData.flow,
-    flowProjects: activeProject ? [activeProject] : undefined,
-  };
-};
-
-const hasMeaningfulProjectPatch = (patch: QalamRunResult["updatedProjectPatch"]) =>
-  Boolean(
-    patch &&
-      (Array.isArray(patch.roles) ||
-        Array.isArray(patch.designAssets) ||
-        patch.flow ||
-        (Array.isArray(patch.flowProjects) && patch.flowProjects.length > 0))
-  );
-
 const debugLog = (enabled: boolean, runId: string, label: string, payload?: unknown) => {
   if (!enabled || typeof console === "undefined") return;
   const prefix = `[Qalam][edge][${runId}] ${label}`;
@@ -141,237 +71,6 @@ const debugLog = (enabled: boolean, runId: string, label: string, payload?: unkn
     return;
   }
   console.log(prefix, payload);
-};
-
-const createNodeFlowBridgeState = (
-  projectData: ProjectData,
-  nodeFlow?: NodeFlowFile
-) => {
-  let currentProjectData = projectData;
-  let projectDataUpdated = false;
-  const initialNodeFlow: NodeFlowFile = nodeFlow || {
-      version: 2,
-      revision: 0,
-      name: projectData.fileName || "Qalam NodeFlow",
-      nodes: [],
-      links: [],
-      linkStyle: "angular",
-      globalAssetHistory: [],
-      activeView: null,
-    };
-  let currentNodeFlow = structuredClone(initialNodeFlow);
-  let nodeFlowUpdated = false;
-  let currentExecutionApprovals: Record<string, NodeFlowExecutionApprovalProposal> = {};
-  let executionApprovalsUpdated = false;
-  let nodeIdCounter = (currentNodeFlow.nodes || []).reduce((max, node) => {
-    const match = String(node.id || "").match(/-(\d+)$/);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
-
-  const getViewport = () => currentNodeFlow.viewport || null;
-  const addNode = (type: NodeType, position: { x: number; y: number }, parentId?: string, extraData?: Partial<NodeFlowNodeData>) => {
-    const id = `${type}-${++nodeIdCounter}`;
-    const dim = DEFAULT_NODE_DIMENSIONS[type];
-    const newNode: NodeFlowNode = {
-      id,
-      type,
-      position,
-      parentId,
-      extent: parentId ? "parent" : undefined,
-      data: { ...createDefaultNodeFlowNodeData(type), ...(extraData || {}) } as NodeFlowNodeData,
-      style: dim ? { width: dim.width, height: dim.height } : undefined,
-    };
-    currentNodeFlow = appendNodeToNodeFlow(currentNodeFlow, newNode) as NodeFlowFile;
-    nodeFlowUpdated = true;
-    return id;
-  };
-
-  const updateNodeStyle = (nodeId: string, style: Record<string, unknown>) => {
-    currentNodeFlow = patchNodeFlowNodeStyle(currentNodeFlow, nodeId, style) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  const updateNodeData = (nodeId: string, data: Partial<NodeFlowNodeData>) => {
-    currentNodeFlow = patchNodeFlowNodeData(currentNodeFlow, nodeId, data) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  const moveNode = (nodeId: string, position: { x: number; y: number }) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      nodes: currentNodeFlow.nodes.map((node) =>
-        node.id === nodeId
-          ? {
-              ...node,
-              position: {
-                x: position.x,
-                y: position.y,
-              },
-            }
-          : node
-      ),
-    };
-    nodeFlowUpdated = true;
-  };
-
-  const removeNode = (nodeId: string) => {
-    currentNodeFlow = removeNodeFromNodeFlow(currentNodeFlow, nodeId) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  const connectNodes = (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => {
-    currentNodeFlow = connectNodesInNodeFlow(currentNodeFlow, connection as any) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  const removeLink = (linkId: string) => {
-    currentNodeFlow = removeLinkFromNodeFlow(currentNodeFlow, linkId) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  const addGraphLink = (sourceRef: string, targetRef: string) => {
-    const result = createNodeFlowGraphLink(currentNodeFlow.graphLinks || [], sourceRef, targetRef);
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      graphLinks: result.links,
-    };
-    nodeFlowUpdated = true;
-    return result.linkId;
-  };
-
-  const removeGraphLink = (linkId: string) => {
-    currentNodeFlow = {
-      ...currentNodeFlow,
-      revision: currentNodeFlow.revision + 1,
-      graphLinks: removeNodeFlowGraphLink(currentNodeFlow.graphLinks || [], linkId),
-    };
-    nodeFlowUpdated = true;
-  };
-
-  const toggleLinkPause = (linkId: string) => {
-    currentNodeFlow = toggleNodeFlowLinkPauseInState(currentNodeFlow, linkId) as NodeFlowFile;
-    nodeFlowUpdated = true;
-  };
-
-  return {
-    bridge: createQalamAgentBridge({
-      getProjectData: () => currentProjectData,
-      getNodeFlowSnapshot: () => currentNodeFlow,
-      getPendingExecutionApprovals: () => Object.values(currentExecutionApprovals),
-      updateProjectData: (updater: (prev: ProjectData) => ProjectData) => {
-        currentProjectData = updater(currentProjectData);
-        projectDataUpdated = true;
-      },
-      addNode,
-      updateNodeData,
-      moveNode,
-      addGraphLink,
-      removeGraphLink,
-      updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
-      connectNodes,
-      removeNode,
-      removeLink,
-      toggleLinkPause,
-      requestExecutionApproval: (proposal) => {
-        currentExecutionApprovals = {
-          ...currentExecutionApprovals,
-          [proposal.nodeId]: proposal,
-        };
-        executionApprovalsUpdated = true;
-      },
-      clearExecutionApproval: (nodeId) => {
-        if (!currentExecutionApprovals[nodeId]) return;
-        const next = { ...currentExecutionApprovals };
-        delete next[nodeId];
-        currentExecutionApprovals = next;
-        executionApprovalsUpdated = true;
-      },
-    }),
-    getProjectData: () => currentProjectData,
-    hasUpdatedProjectData: () => projectDataUpdated,
-    getNodeFlow: () => currentNodeFlow,
-    hasUpdatedNodeFlow: () => nodeFlowUpdated,
-    getExecutionApprovals: () => Object.values(currentExecutionApprovals),
-    hasUpdatedExecutionApprovals: () => executionApprovalsUpdated,
-  };
-};
-
-const createSseResponse = (stream: ReadableStream<Uint8Array>) =>
-  new Response(stream, {
-    headers: {
-      ...CORS_HEADERS,
-      "Content-Type": AGENT_HTTP_STREAM_CONTENT_TYPE,
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
-
-const emitEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: AgentRuntimeEvent) => {
-  try {
-    controller.enqueue(
-      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "event", event }))
-    );
-    return true;
-  } catch (error: any) {
-    if (!String(error?.message || error).includes("Unable to enqueue")) {
-      throw error;
-    }
-    return false;
-  }
-};
-
-const emitResult = (controller: ReadableStreamDefaultController<Uint8Array>, result: QalamRunResult) => {
-  try {
-    controller.enqueue(
-      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "result", result }))
-    );
-    return true;
-  } catch (error: any) {
-    if (!String(error?.message || error).includes("Unable to enqueue")) {
-      throw error;
-    }
-    return false;
-  }
-};
-
-const emitError = (controller: ReadableStreamDefaultController<Uint8Array>, error: string) => {
-  try {
-    controller.enqueue(
-      new TextEncoder().encode(serializeAgentStreamPacket({ kind: "error", error }))
-    );
-    return true;
-  } catch (errorLike: any) {
-    if (!String(errorLike?.message || errorLike).includes("Unable to enqueue")) {
-      throw errorLike;
-    }
-    return false;
-  }
-};
-
-const emitTrace = (
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  runId: string,
-  stage: "runtime" | "session" | "model" | "tool" | "result",
-  status: "info" | "running" | "success" | "error",
-  title: string,
-  detail?: string,
-  payload?: string
-) => {
-  return emitEvent(controller, {
-    type: "trace",
-    runId,
-    entry: {
-      id: `${stage}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      at: Date.now(),
-      stage,
-      status,
-      title,
-      detail,
-      payload,
-    },
-  });
 };
 
 export const onRequestOptions = async () =>

@@ -279,7 +279,7 @@ const createMainWindow = () => {
     height: 920,
     minWidth: 1100,
     minHeight: 720,
-    title: "Qalam · Flow Workspace",
+    title: "Stylo · Flow Workspace",
     backgroundColor: "#f6f6f4",
     show: false,
     frame: isMac,

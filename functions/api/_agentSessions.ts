@@ -3,6 +3,13 @@ import { RequestUsage, type AgentInputItem, type OpenAIResponsesCompactionArgs, 
 import { getUserId } from "./_auth";
 import type { AgentSessionMessage } from "../../agents/runtime/types";
 import { repairSessionToolTransactions, trimSessionItemsSafely } from "../../agents/runtime/sessionRepair";
+import {
+  AGENT_SESSION_LIMITS,
+  compactAgentSessionItems,
+  normalizeAgentSessionMessage,
+  projectAgentItemsToSessionMessages,
+  summarizeSessionToolOutput,
+} from "../../agents/runtime/sessionProjection";
 
 export type EnvWithDb = {
   DB: any;
@@ -16,8 +23,8 @@ type PersistedAgentSessionRecord = {
   updatedAt: number;
 };
 
-const STORED_SESSION_ITEM_LIMIT = 72;
-const STORED_SESSION_MESSAGE_LIMIT = 240;
+const STORED_SESSION_ITEM_LIMIT = AGENT_SESSION_LIMITS.storedItems;
+const STORED_SESSION_MESSAGE_LIMIT = AGENT_SESSION_LIMITS.storedMessages;
 
 const cloneItem = <T,>(value: T): T => structuredClone(value);
 
@@ -30,146 +37,23 @@ const clipText = (value: string, limit: number) => {
   return `${value.slice(0, limit)}...`;
 };
 
-const extractTextParts = (content: unknown): string[] => {
-  if (typeof content === "string") return [content];
-  if (!Array.isArray(content)) return [];
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") return "";
-      if (typeof (part as any).text === "string") return (part as any).text;
-      if (typeof (part as any).refusal === "string") return (part as any).refusal;
-      if (typeof (part as any).transcript === "string") return (part as any).transcript;
-      return "";
-    })
-    .filter(Boolean);
-};
-
-const extractReasoningText = (item: any) => {
-  const rawContent = Array.isArray(item?.rawContent) ? item.rawContent : [];
-  const rawText = rawContent
-    .map((part: any) => {
-      if (!part || typeof part !== "object") return "";
-      if (typeof part.text === "string") return part.text;
-      if (typeof part.reasoning_content === "string") return part.reasoning_content;
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-  if (rawText) return rawText;
-  const content = Array.isArray(item?.content) ? item.content : [];
-  return content
-    .map((part: any) => {
-      if (!part || typeof part !== "object") return "";
-      if (typeof part.text === "string") return part.text;
-      if (typeof part.reasoning_content === "string") return part.reasoning_content;
-      return "";
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-};
-
-const summarizeToolOutput = (output: unknown) => {
-  if (typeof output === "string") {
-    try {
-      const parsed = JSON.parse(output);
-      if (typeof parsed?.summary === "string" && parsed.summary.trim()) return clipText(parsed.summary.trim(), 300);
-      if (typeof parsed?.output === "string" && parsed.output.trim()) return clipText(parsed.output.trim(), 300);
-      return clipText(JSON.stringify(parsed, null, 2), 300);
-    } catch {
-      return clipText(output, 300);
-    }
-  }
-  if (Array.isArray(output)) {
-    const parts = extractTextParts(output);
-    if (parts.length) return clipText(parts.join("\n"), 300);
-  }
-  if (output == null) return "";
-  try {
-    return clipText(JSON.stringify(output, null, 2), 300);
-  } catch {
-    return clipText(String(output), 300);
-  }
-};
-
-const projectAgentItemsToSessionMessages = (items: AgentInputItem[], timestampBase: number): AgentSessionMessage[] =>
-  items.flatMap((item, index): AgentSessionMessage[] => {
-    const createdAt = timestampBase + index;
-    if (!item || typeof item !== "object") return [];
-
-    if ((item as any).role === "user") {
-      const text = extractTextParts((item as any).content).join("\n").trim();
-      return text ? [{ role: "user" as const, text, createdAt }] : [];
-    }
-
-    if ((item as any).role === "assistant") {
-      const text = extractTextParts((item as any).content).join("\n").trim();
-      return text ? [{ role: "assistant" as const, text, createdAt }] : [];
-    }
-
-    if ((item as any).type === "reasoning") {
-      const text = extractReasoningText(item);
-      return text ? [{ role: "reasoning" as const, text, createdAt }] : [];
-    }
-
-    if ((item as any).type === "function_call_result") {
-      return [
-        {
-          role: "tool" as const,
-          text: summarizeToolOutput((item as any).output) || String((item as any).name || "tool_result"),
-          createdAt,
-          toolName: String((item as any).name || "tool"),
-          toolCallId: String((item as any).callId || `tool-${createdAt}`),
-          toolStatus: (item as any).status === "completed" ? "success" : "error",
-          toolOutput: (item as any).output,
-        },
-      ];
-    }
-
-    return [];
-  });
-
-const normalizeSessionMessage = (message: any): AgentSessionMessage | null => {
-  if (!message || typeof message !== "object") return null;
-  const createdAt = typeof message.createdAt === "number" ? message.createdAt : Date.now();
-  if (message.role === "tool") {
-    if (typeof message.toolName !== "string" || typeof message.toolCallId !== "string") return null;
-    return {
-      role: "tool",
-      text: typeof message.text === "string" ? message.text : "",
-      createdAt,
-      toolName: message.toolName,
-      toolCallId: message.toolCallId,
-      toolStatus: message.toolStatus === "error" ? "error" : "success",
-      toolOutput: message.toolOutput,
-    };
-  }
-  if (message.role === "user" || message.role === "assistant" || message.role === "reasoning") {
-    return {
-      role: message.role,
-      text: typeof message.text === "string" ? message.text : "",
-      createdAt,
-    };
-  }
-  return null;
-};
-
 const normalizeRecord = (row: any): PersistedAgentSessionRecord => {
   let items: AgentInputItem[] = [];
   let messages: AgentSessionMessage[] = [];
   try {
     const parsedItems = JSON.parse(String(row?.items || "[]"));
     if (Array.isArray(parsedItems)) {
-      items = repairSessionToolTransactions(
-        parsedItems.filter((item) => item && typeof item === "object") as AgentInputItem[]
+      items = compactAgentSessionItems(
+        parsedItems.filter((item) => item && typeof item === "object") as AgentInputItem[],
+        { maxItems: STORED_SESSION_ITEM_LIMIT }
       );
     }
   } catch {}
   try {
     const parsedMessages = JSON.parse(String(row?.messages || "[]"));
     if (Array.isArray(parsedMessages)) {
-      messages = parsedMessages.map(normalizeSessionMessage).filter(Boolean) as AgentSessionMessage[];
+      messages = (parsedMessages.map(normalizeAgentSessionMessage).filter(Boolean) as AgentSessionMessage[])
+        .slice(-STORED_SESSION_MESSAGE_LIMIT);
     }
   } catch {}
   const updatedAt = typeof row?.updated_at === "number" ? row.updated_at : Number(row?.updated_at || Date.now());
@@ -252,7 +136,7 @@ export class D1EdgeSession implements Session {
         this.userId,
         existing.updatedAt,
         {
-          items: trimSessionItems(merged, STORED_SESSION_ITEM_LIMIT),
+          items: compactAgentSessionItems(merged, { maxItems: STORED_SESSION_ITEM_LIMIT }),
           messages: [...existing.messages, ...projectedMessages].slice(-STORED_SESSION_MESSAGE_LIMIT),
           updatedAt: Math.max(timestampBase, existing.updatedAt + 1),
         }
@@ -294,7 +178,7 @@ export class D1EdgeSession implements Session {
     const existing = await readAgentSessionRecord(this.env, this.sessionKey);
     const expected = repairSessionToolTransactions(expectedItems);
     if (JSON.stringify(existing.items) !== JSON.stringify(expected)) return false;
-    const normalizedNext = trimSessionItems(nextItems, STORED_SESSION_ITEM_LIMIT);
+    const normalizedNext = compactAgentSessionItems(nextItems, { maxItems: STORED_SESSION_ITEM_LIMIT });
     const updatedAt = Math.max(Date.now(), existing.updatedAt + 1);
     const result = await this.env.DB.prepare(
       "UPDATE agent_sessions SET items = ?1, messages = ?2, updated_at = ?3 WHERE session_key = ?4 AND updated_at = ?5"
@@ -467,6 +351,7 @@ export const readD1SessionMessages = async (env: EnvWithDb, sessionKey: string) 
 
 const DEFAULT_COMPACTION_THRESHOLD = 12;
 const DEFAULT_COMPACTION_TAIL_ITEMS = 8;
+const MAX_COMPACTION_TRANSCRIPT_CHARS = 24_000;
 
 const selectCompactionCandidateItems = (items: AgentInputItem[]) =>
   items.filter((item) => {
@@ -479,7 +364,7 @@ const extractItemText = (item: AgentInputItem) => {
   if (!item || typeof item !== "object") return "";
   if ((item as any).type === "function_call_result") {
     const name = String((item as any).name || "tool");
-    return `[tool:${name}] ${summarizeToolOutput((item as any).output)}`.trim();
+    return `[tool:${name}] ${summarizeSessionToolOutput((item as any).output)}`.trim();
   }
   const content = (item as any).content;
   if (typeof content === "string") return content.trim();
@@ -498,16 +383,32 @@ const extractItemText = (item: AgentInputItem) => {
     .trim();
 };
 
-const serializeItemsForCompaction = (items: AgentInputItem[]) =>
-  items
+const serializeItemsForCompaction = (items: AgentInputItem[]) => {
+  const entries = items
     .map((item, index) => {
       if (!item || typeof item !== "object") return "";
       const role = typeof (item as any).role === "string" ? (item as any).role : String((item as any).type || "item");
       const text = clipText(extractItemText(item), 4000);
       return text ? `${index + 1}. [${role}] ${text}` : "";
     })
-    .filter(Boolean)
-    .join("\n\n");
+    .filter(Boolean);
+  const selected: string[] = [];
+  let characters = 0;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    const separatorChars = selected.length ? 2 : 0;
+    const remaining = MAX_COMPACTION_TRANSCRIPT_CHARS - characters - separatorChars;
+    if (remaining <= 0) break;
+    const selectedEntry = entry.length <= remaining
+      ? entry
+      : remaining <= 3
+        ? entry.slice(0, remaining)
+        : `${entry.slice(0, remaining - 3)}...`;
+    selected.unshift(selectedEntry);
+    characters += selectedEntry.length + separatorChars;
+  }
+  return selected.join("\n\n");
+};
 
 const extractResponseText = (response: any): string => {
   if (typeof response?.output_text === "string" && response.output_text.trim()) {

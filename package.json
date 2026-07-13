@@ -27,7 +27,7 @@
   },
   "build": {
     "appId": "ai.qalam.desktop",
-    "productName": "Qalam",
+    "productName": "Stylo",
     "directories": {
       "output": "release"
     },

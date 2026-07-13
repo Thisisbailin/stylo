@@ -26,6 +26,11 @@ import { parseNodeFlowFile } from "../nodeflow/schema";
 import { projectRolesToCharacters, projectRolesToLocations } from "../../utils/projectRoles";
 import type { AgentUiContext } from "../../agents/runtime/types";
 import {
+  buildAgentRevisionConflictMessage,
+  reconcileStaleAgentMessages,
+  shouldRejectStaleAgentResult,
+} from "./qalam/agentResultReconciliation";
+import {
   buildQalamAccountSessionId,
   buildQalamAccountStorageKeys,
   buildQalamScopedProjectData,
@@ -271,7 +276,7 @@ const parseMentions = (text: string) => {
 };
 
 const resolveAgentRuntimeModel = (textConfig: any) => {
-  const provider = textConfig?.agentProvider || textConfig?.provider || "qwen";
+  const provider = textConfig?.agentProvider || "deepseek";
   const explicitAgentModel = (textConfig?.agentModel || "").trim();
   if (provider === "ark") {
     if (
@@ -687,9 +692,11 @@ export const QalamAgent: React.FC<Props> = ({
       createHttpQalamAgentRuntime({
         endpoint: buildApiUrl("/api/agent"),
         getRuntimeConfig: () => ({
-          provider: config.textConfig?.agentProvider || config.textConfig?.provider,
+          provider: config.textConfig?.agentProvider || "deepseek",
           model: resolveAgentRuntimeModel(config.textConfig),
-          baseUrl: config.textConfig?.agentBaseUrl || config.textConfig?.baseUrl || undefined,
+          baseUrl:
+            config.textConfig?.agentBaseUrl ||
+            (config.textConfig?.agentProvider === config.textConfig?.provider ? config.textConfig?.baseUrl : undefined),
           qalamTools: config.textConfig?.qalamTools,
         }),
         getAuthToken,
@@ -1065,6 +1072,7 @@ export const QalamAgent: React.FC<Props> = ({
     const cleanedInput = rawText.trim();
     if (!cleanedInput || isSending) return;
     const runProjectId = projectId;
+    const runFlowRevision = getNodeFlowSnapshot().revision;
     const runAccountGeneration = useNodeFlowStore.getState().accountGeneration;
     const isRunAccountCurrent = () =>
       useNodeFlowStore.getState().accountGeneration === runAccountGeneration;
@@ -1088,6 +1096,12 @@ export const QalamAgent: React.FC<Props> = ({
         runResult.projectId !== runProjectId ||
         resolveQalamProjectId(projectDataRef.current) !== runProjectId
       ) {
+        return;
+      }
+      const latestFlowRevision = getNodeFlowSnapshot().revision;
+      if (shouldRejectStaleAgentResult(runResult, runFlowRevision, latestFlowRevision)) {
+        const conflictMessage = buildAgentRevisionConflictMessage(runFlowRevision, latestFlowRevision);
+        setMessages((previous) => reconcileStaleAgentMessages(previous, runResult, conflictMessage));
         return;
       }
       const agentProjectPatch = normalizeAgentProjectPatch(

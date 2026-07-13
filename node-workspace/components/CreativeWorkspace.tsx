@@ -450,8 +450,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       setProjectData((previous) => {
         const flow = previous.flow || { links: [] };
         let didUpdate = false;
+        let didFind = false;
         const flowNodes = (flow.flowNodes || []).map((node) => {
           if (node.id !== nodeId || node.type !== "scriptPage") return node;
+          didFind = true;
           const data = (node.data || {}) as Record<string, unknown>;
           if (
             data.title === title &&
@@ -477,6 +479,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             },
           };
         });
+        if (!didFind) return previous;
         if (!didUpdate && !content.trim()) return previous;
         const nextData = syncLookbookIdentitiesFromFountain({
           ...previous,
@@ -1141,7 +1144,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
           onOpenQalam={() => setQalamOpenRequest((count) => count + 1)}
-          onCloseQalam={() => setQalamCloseRequest((count) => count + 1)}
           onSubmitToQalam={(text, uiContext) => setQalamSubmitRequest({ id: Date.now(), projectId: qalamProjectId, text, uiContext })}
           onClose={() => {
             setEditingScriptNodeId(null);

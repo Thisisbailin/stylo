@@ -32,7 +32,7 @@ const normalizeAssistantMessageForDeepSeek = (message: any, pendingReasoning = "
   return next;
 };
 
-const normalizeMessagesForDeepSeek = (messages: unknown) => {
+export const normalizeMessagesForDeepSeek = (messages: unknown) => {
   if (!Array.isArray(messages)) return messages;
   let pendingReasoning = "";
   const normalized: any[] = [];
@@ -60,7 +60,7 @@ const normalizeMessagesForDeepSeek = (messages: unknown) => {
   return normalized;
 };
 
-const normalizeRequestForDeepSeek = (request: any) => {
+export const normalizeRequestForDeepSeek = (request: any) => {
   if (!isRecord(request)) return request;
   return {
     ...request,
@@ -84,7 +84,7 @@ const normalizeChoiceMessageFromDeepSeek = (choice: any) => {
   };
 };
 
-const normalizeResponseFromDeepSeek = (response: any) => {
+export const normalizeResponseFromDeepSeek = (response: any) => {
   if (!isRecord(response) || !Array.isArray(response.choices)) return response;
   return {
     ...response,
@@ -92,7 +92,7 @@ const normalizeResponseFromDeepSeek = (response: any) => {
   };
 };
 
-const normalizeStreamChunkFromDeepSeek = (chunk: any) => {
+export const normalizeStreamChunkFromDeepSeek = (chunk: any) => {
   if (!isRecord(chunk) || !Array.isArray(chunk.choices)) return chunk;
   let changed = false;
   const choices = chunk.choices.map((choice: any) => {

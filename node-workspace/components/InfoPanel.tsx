@@ -130,35 +130,37 @@ export const InfoPanel: React.FC<Props> = ({
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 border-t border-[var(--app-border)] pt-5 md:grid-cols-[minmax(0,1fr)_220px]">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-                    <Path size={14} weight="duotone" />
-                    Detail
-                  </div>
-                  <div className="text-[20px] font-semibold tracking-[-0.03em]">为项目新增独立落地页入口</div>
-                  <div className="max-w-2xl text-[13px] leading-7 text-[var(--app-text-secondary)]">
-                    从这里进入新的 landing page。页面会展示更完整的产品气质，并提供一个无需登录、直接回到主工作台的“立即体验”入口。
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onOpenLanding}
-                  className="group flex min-h-[148px] flex-col justify-between rounded-[24px] border border-[var(--app-border-strong)] bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(16,185,129,0.03))] p-4 text-left transition hover:-translate-y-[1px] hover:border-emerald-400/60"
-                >
-                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
-                    <span>Landing</span>
-                    <ArrowUpRight size={16} weight="bold" className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                  </div>
-                  <div>
-                    <div className="text-[16px] font-semibold tracking-[-0.02em]">打开落地页</div>
-                    <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
-                      打开独立 landing page，完整查看 Qalam 的 agent 能力与产品结构，再从“立即体验”回到主页面。
+              {onOpenLanding ? (
+                <div className="grid grid-cols-1 gap-4 border-t border-[var(--app-border)] pt-5 md:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
+                      <Path size={14} weight="duotone" />
+                      Detail
+                    </div>
+                    <div className="text-[20px] font-semibold tracking-[-0.03em]">为项目新增独立落地页入口</div>
+                    <div className="max-w-2xl text-[13px] leading-7 text-[var(--app-text-secondary)]">
+                      从这里进入新的 landing page。页面会展示更完整的产品气质，并提供一个无需登录、直接回到主工作台的“立即体验”入口。
                     </div>
                   </div>
-                </button>
-              </div>
+
+                  <button
+                    type="button"
+                    onClick={onOpenLanding}
+                    className="group flex min-h-[148px] flex-col justify-between rounded-[24px] border border-[var(--app-border-strong)] bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(16,185,129,0.03))] p-4 text-left transition hover:-translate-y-[1px] hover:border-emerald-400/60"
+                  >
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.28em] text-[var(--app-text-secondary)]">
+                      <span>Landing</span>
+                      <ArrowUpRight size={16} weight="bold" className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </div>
+                    <div>
+                      <div className="text-[16px] font-semibold tracking-[-0.02em]">打开落地页</div>
+                      <div className="mt-2 text-[12px] leading-6 text-[var(--app-text-secondary)]">
+                        打开独立 landing page，完整查看 Qalam 的 agent 能力与产品结构，再从“立即体验”回到主页面。
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : (
             <>

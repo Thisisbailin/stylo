@@ -32,6 +32,21 @@ export type SceneHeading = {
   time: string;
 };
 
+export type ScreenplayKnownIdentity = {
+  id?: string;
+  name: string;
+  mention?: string;
+  aliases?: string[];
+};
+
+export type ScreenplayCharacterReference = {
+  name: string;
+  sourceNames: string[];
+  roleId?: string;
+  lineIndexes: number[];
+  bound: boolean;
+};
+
 export type ScreenplayScene = SceneHeading & {
   id: string;
   ordinal: number;
@@ -39,6 +54,8 @@ export type ScreenplayScene = SceneHeading & {
   start: number;
   characterNames: string[];
   synopsis: string;
+  sourceLocation?: string;
+  roleId?: string;
 };
 
 export type ScreenplayDiagnostic = {
@@ -52,6 +69,7 @@ export type ScreenplayAnalysis = {
   lines: ScreenplayLine[];
   scenes: ScreenplayScene[];
   characterNames: string[];
+  characterReferences: ScreenplayCharacterReference[];
   locations: string[];
   diagnostics: ScreenplayDiagnostic[];
   stats: {
@@ -149,6 +167,14 @@ const normalizeTime = (value: string) => {
   return SCENE_TIMES.find((item) => item === normalized) || "DAY";
 };
 
+const resolveTime = (value: string) => {
+  const clean = value.trim();
+  if (!clean) return null;
+  if (TIME_ALIASES[clean]) return TIME_ALIASES[clean];
+  const normalized = clean.toUpperCase();
+  return SCENE_TIMES.find((item) => item === normalized) || null;
+};
+
 export const splitScreenplayLines = (body: string) => body.replace(/\r\n?/g, "\n").split("\n");
 
 export const getLineBoundsAt = (text: string, cursor: number) => {
@@ -180,7 +206,7 @@ export const stripFountainMarkup = (line: string) => {
   if (/^=\s*/.test(trimmed)) return trimmed.replace(/^=\s*/, "").trim();
   if (/^@/.test(trimmed)) return trimmed.replace(/^@+/, "").replace(/\s*\^\s*$/, "").trim();
   if (/^[!~.]/.test(trimmed)) return trimmed.slice(1).trim();
-  if (/^\(.*\)$/.test(trimmed)) return trimmed.slice(1, -1).trim();
+  if (/^[（(].*[)）]$/.test(trimmed)) return trimmed.slice(1, -1).trim();
   return line.replace(/\s*\^\s*$/, "").trimEnd();
 };
 
@@ -196,15 +222,55 @@ const isTransition = (line: string) => {
   return trimmed === trimmed.toUpperCase() && /TO:$/.test(trimmed);
 };
 
-const isLikelyCharacterCue = (line: string, previousLine = "", nextLine = "") => {
+export const normalizeScreenplayIdentity = (value: string) =>
+  value
+    .normalize("NFKC")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/\s*\^\s*$/, "")
+    .replace(/\s*[（(][^()（）]*[)）]\s*$/, "")
+    .replace(/\s+/g, "")
+    .toLocaleLowerCase();
+
+const toKnownIdentity = (identity: string | ScreenplayKnownIdentity): ScreenplayKnownIdentity =>
+  typeof identity === "string" ? { name: identity } : identity;
+
+const identityTokens = (identity: ScreenplayKnownIdentity) =>
+  [identity.name, identity.mention, ...(identity.aliases || [])]
+    .filter((value): value is string => typeof value === "string" && !!value.trim())
+    .map(normalizeScreenplayIdentity);
+
+export const resolveKnownScreenplayIdentity = (
+  value: string,
+  identities: Array<string | ScreenplayKnownIdentity>
+) => {
+  const normalized = normalizeScreenplayIdentity(value);
+  if (!normalized) return null;
+  return identities.map(toKnownIdentity).find((identity) => identityTokens(identity).includes(normalized)) || null;
+};
+
+const isLikelyCharacterCue = (
+  line: string,
+  previousLine = "",
+  nextLine = "",
+  knownCharacters: Array<string | ScreenplayKnownIdentity> = []
+) => {
   const trimmed = line.trim();
+  if (!trimmed || previousLine.trim() || !nextLine.trim()) return false;
+  if (resolveKnownScreenplayIdentity(trimmed, knownCharacters)) return true;
+
+  // Standard Fountain permits unforced, all-caps Latin character cues. Chinese has
+  // no case distinction, so guessing from arbitrary Chinese prose turns action
+  // sentences into people. Chinese cues must be explicit (`@`) or match the library.
+  const withoutExtension = trimmed.replace(/\s*[（(][^()（）]*[)）]\s*$/, "");
   return Boolean(
-    trimmed &&
-      /[A-Z\u4e00-\u9fa5]/.test(trimmed) &&
-      trimmed === trimmed.toUpperCase() &&
-      !/^\d+$/.test(trimmed) &&
-      !previousLine.trim() &&
-      nextLine.trim()
+    withoutExtension.length <= 48 &&
+      /[A-Z]/.test(withoutExtension) &&
+      !/[a-z]/.test(withoutExtension) &&
+      !/[。！？!?，,；;：:]$/.test(withoutExtension) &&
+      !/^\d+$/.test(withoutExtension) &&
+      !isSceneHeading(withoutExtension) &&
+      !isTransition(withoutExtension)
   );
 };
 
@@ -229,7 +295,7 @@ export const detectScreenplayLineKind = (
   if (/^!/.test(trimmed)) return "action";
   if (/^>.*<$/.test(trimmed)) return "centered";
   if (/^>/.test(trimmed) || isTransition(trimmed)) return "transition";
-  if (/^\(.*\)$/.test(trimmed)) return "parenthetical";
+  if (/^[（(].*[)）]$/.test(trimmed)) return "parenthetical";
   if (isDualDialogueLine(trimmed)) return "dual_dialogue";
   if (/^@/.test(trimmed)) return "character";
   if (/^\./.test(trimmed) || isSceneHeading(trimmed)) return "scene_heading";
@@ -240,10 +306,14 @@ export const detectScreenplayLineKind = (
   return "action";
 };
 
-export const analyzeFountainLines = (body: string): ScreenplayLine[] => {
+export const analyzeFountainLines = (
+  body: string,
+  knownCharacters: Array<string | ScreenplayKnownIdentity> = []
+): ScreenplayLine[] => {
   const rawLines = splitScreenplayLines(body);
   let inBoneyard = false;
   let previousKind: ScreenplayLineKind | null = null;
+  let previousNonEmptyKind: ScreenplayLineKind | null = null;
   let offset = 0;
   return rawLines.map((raw, index) => {
     let previousNonEmptyLine = "";
@@ -253,15 +323,37 @@ export const analyzeFountainLines = (body: string): ScreenplayLine[] => {
         break;
       }
     }
+    let nextNonEmptyLine = "";
+    for (let cursor = index + 1; cursor < rawLines.length; cursor += 1) {
+      if (rawLines[cursor]?.trim()) {
+        nextNonEmptyLine = rawLines[cursor];
+        break;
+      }
+    }
     const startsBoneyard = raw.includes("/*");
     const endsBoneyard = raw.includes("*/");
     let kind = detectScreenplayLineKind(raw, previousNonEmptyLine, previousKind, inBoneyard || startsBoneyard);
-    if (kind === "action" && isLikelyCharacterCue(raw, rawLines[index - 1] || "", rawLines[index + 1] || "")) {
+    if (
+      kind === "action" &&
+      isLikelyCharacterCue(raw, rawLines[index - 1] || "", nextNonEmptyLine, knownCharacters)
+    ) {
       kind = isDualDialogueLine(raw) ? "dual_dialogue" : "character";
+    } else if (
+      kind === "action" &&
+      !raw.trim().startsWith("!") &&
+      previousKind === null &&
+      previousNonEmptyKind !== null &&
+      ["character", "dual_dialogue", "parenthetical"].includes(previousNonEmptyKind)
+    ) {
+      // Generated and imported scripts often place visual spacer lines between a
+      // cue, parenthetical, and dialogue. Preserve that context without letting a
+      // previous dialogue turn the next action paragraph into more dialogue.
+      kind = "dialogue";
     }
     if (startsBoneyard && !endsBoneyard) inBoneyard = true;
     if (endsBoneyard) inBoneyard = false;
     previousKind = raw.trim() ? kind : null;
+    if (raw.trim()) previousNonEmptyKind = kind;
     const start = offset;
     const end = start + raw.length;
     offset = end + 1;
@@ -272,28 +364,42 @@ export const analyzeFountainLines = (body: string): ScreenplayLine[] => {
 export const parseSceneHeading = (value: string): SceneHeading => {
   const clean = stripFountainMarkup(value).replace(/\s+/g, " ").trim();
   const chineseChunks = clean.split(/[｜|]/).map((item) => item.trim());
-  if (chineseChunks.length >= 2) {
+  if (chineseChunks.length >= 3) {
     return {
       boundary: normalizeBoundary(chineseChunks[0] || "INT."),
       location: chineseChunks.slice(1, -1).join("｜") || PLACEHOLDER_LOCATION,
       time: normalizeTime(chineseChunks.at(-1) || "DAY"),
     };
   }
+  if (chineseChunks.length === 2 && (BOUNDARY_ALIASES[chineseChunks[0]] || /^(?:INT\.?|EXT\.?|I\/E)$/i.test(chineseChunks[0]))) {
+    return {
+      boundary: normalizeBoundary(chineseChunks[0]),
+      location: chineseChunks[1] || PLACEHOLDER_LOCATION,
+      time: "DAY",
+    };
+  }
   const boundaryMatch = clean.match(/^(INT\.\/EXT\.?|INT\/EXT\.?|INT\.|EXT\.|EST\.|I\/E)(?:\s+|$)/i);
   const boundary = normalizeBoundary(boundaryMatch?.[1] || "INT.");
   const remainder = boundaryMatch ? clean.slice(boundaryMatch[0].length).trim() : clean;
   const chunks = remainder.split(/\s+-\s+/).map((item) => item.trim()).filter(Boolean);
-  const possibleTime = chunks.at(-1) || "";
-  const hasTime = SCENE_TIMES.some((item) => item === possibleTime.toUpperCase());
+  let time = "DAY";
+  let foundTime = false;
+  while (chunks.length) {
+    const candidate = resolveTime(chunks.at(-1) || "");
+    if (!candidate) break;
+    if (!foundTime) time = candidate;
+    foundTime = true;
+    chunks.pop();
+  }
   return {
     boundary,
-    location: (hasTime ? chunks.slice(0, -1).join(" - ") : remainder) || PLACEHOLDER_LOCATION,
-    time: hasTime ? normalizeTime(possibleTime) : "DAY",
+    location: chunks.join(" - ") || PLACEHOLDER_LOCATION,
+    time,
   };
 };
 
 export const serializeSceneHeading = ({ boundary, location, time }: SceneHeading) =>
-  `.${normalizeBoundary(boundary)} ${(location.trim() || PLACEHOLDER_LOCATION).toUpperCase()} - ${normalizeTime(time)}`;
+  `.${normalizeBoundary(boundary)} ${location.trim() || PLACEHOLDER_LOCATION} - ${normalizeTime(time)}`;
 
 export const serializeScreenplayLine = (content: string, kind: ScreenplayLineKind) => {
   const clean = content.trim();
@@ -301,11 +407,11 @@ export const serializeScreenplayLine = (content: string, kind: ScreenplayLineKin
     case "scene_heading":
       return serializeSceneHeading(parseSceneHeading(clean));
     case "character":
-      return `@${(clean || PLACEHOLDER_CHARACTER).replace(/\s*\^\s*$/, "").toUpperCase()}`;
+      return `@${clean.replace(/^@+/, "").replace(/\s*\^\s*$/, "")}`;
     case "dual_dialogue":
-      return `@${(clean || PLACEHOLDER_CHARACTER).replace(/\s*\^\s*$/, "").toUpperCase()} ^`;
+      return `@${clean.replace(/^@+/, "").replace(/\s*\^\s*$/, "")}${clean ? " " : ""}^`;
     case "dialogue":
-      return clean;
+      return clean || CHINESE_MARKERS.dialogue;
     case "parenthetical":
       return `(${clean || "beat"})`;
     case "lyric":
@@ -357,30 +463,72 @@ export const getNextScreenplayLineKind = (kind: ScreenplayLineKind): ScreenplayL
   return "action";
 };
 
+export const convertScreenplayLineKind = (line: ScreenplayLine, kind: ScreenplayLineKind) => {
+  if (line.kind === kind) return line.raw;
+  if (kind === "scene_heading") {
+    const location = line.kind === "page_break" ? "" : line.content;
+    return serializeSceneHeading({ boundary: "INT.", location: location || PLACEHOLDER_LOCATION, time: "DAY" });
+  }
+  const content = line.kind === "page_break" ? "" : line.content;
+  return serializeScreenplayLine(content, kind);
+};
+
 const stableSceneId = (lineIndex: number, heading: SceneHeading) =>
   `${lineIndex}-${heading.boundary}-${heading.location}-${heading.time}`.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-");
 
-export const analyzeScreenplay = (body: string, knownCharacterNames: string[] = []): ScreenplayAnalysis => {
-  const lines = analyzeFountainLines(body);
-  const characterNames = Array.from(
-    new Set(lines.filter((line) => line.kind === "character" || line.kind === "dual_dialogue").map((line) => line.content.trim()).filter(Boolean))
+export const analyzeScreenplay = (
+  body: string,
+  knownCharacterNames: Array<string | ScreenplayKnownIdentity> = [],
+  knownSceneNames: Array<string | ScreenplayKnownIdentity> = []
+): ScreenplayAnalysis => {
+  const lines = analyzeFountainLines(body, knownCharacterNames);
+  const characterLines = lines.filter(
+    (line) => (line.kind === "character" || line.kind === "dual_dialogue") && line.content.trim()
   );
-  const knownCharacters = new Set(knownCharacterNames.map((name) => name.trim()).filter(Boolean));
+  const referenceByKey = new Map<string, ScreenplayCharacterReference>();
+  characterLines.forEach((line) => {
+    const identity = resolveKnownScreenplayIdentity(line.content, knownCharacterNames);
+    const name = identity?.name?.trim() || line.content.trim();
+    const key = identity?.id || normalizeScreenplayIdentity(name);
+    const current = referenceByKey.get(key);
+    if (current) {
+      current.lineIndexes.push(line.index);
+      if (!current.sourceNames.includes(line.content.trim())) current.sourceNames.push(line.content.trim());
+      return;
+    }
+    referenceByKey.set(key, {
+      name,
+      sourceNames: [line.content.trim()],
+      roleId: identity?.id,
+      lineIndexes: [line.index],
+      bound: !!identity,
+    });
+  });
+  const characterReferences = Array.from(referenceByKey.values());
+  const characterNames = characterReferences.map((reference) => reference.name);
+  const hasKnownCharacters = knownCharacterNames.some((identity) => toKnownIdentity(identity).name.trim());
   const diagnostics: ScreenplayDiagnostic[] = [];
-  characterNames.forEach((name) => {
-    if (knownCharacters.size && !knownCharacters.has(name)) {
-      const line = lines.find((item) => item.content.trim() === name && (item.kind === "character" || item.kind === "dual_dialogue"));
-      if (line) diagnostics.push({ id: `unbound-${line.index}-${name}`, severity: "warning", lineIndex: line.index, message: `“${name}”尚未绑定到角色库` });
+  characterReferences.forEach((reference) => {
+    if (hasKnownCharacters && !reference.bound) {
+      const lineIndex = reference.lineIndexes[0];
+      diagnostics.push({ id: `unbound-${lineIndex}-${reference.name}`, severity: "warning", lineIndex, message: `“${reference.name}”尚未绑定到角色库` });
     }
   });
 
   const sceneLines = lines.filter((line) => line.kind === "scene_heading");
   const scenes = sceneLines.map((line, ordinal) => {
-    const heading = parseSceneHeading(line.raw);
+    const parsedHeading = parseSceneHeading(line.raw);
+    const sceneIdentity = resolveKnownScreenplayIdentity(parsedHeading.location, knownSceneNames);
+    const heading = sceneIdentity ? { ...parsedHeading, location: sceneIdentity.name } : parsedHeading;
     const nextSceneStart = sceneLines[ordinal + 1]?.index ?? lines.length;
     const sceneBody = lines.slice(line.index + 1, nextSceneStart);
     const sceneCharacters = Array.from(
-      new Set(sceneBody.filter((item) => item.kind === "character" || item.kind === "dual_dialogue").map((item) => item.content).filter(Boolean))
+      new Set(
+        sceneBody
+          .filter((item) => item.kind === "character" || item.kind === "dual_dialogue")
+          .map((item) => resolveKnownScreenplayIdentity(item.content, knownCharacterNames)?.name || item.content)
+          .filter(Boolean)
+      )
     );
     const synopsis = sceneBody.find((item) => item.kind === "synopsis")?.content ||
       sceneBody.find((item) => item.kind === "action" && item.content.trim())?.content || "尚未写入场景内容";
@@ -392,6 +540,8 @@ export const analyzeScreenplay = (body: string, knownCharacterNames: string[] = 
       start: line.start,
       characterNames: sceneCharacters,
       synopsis: synopsis.slice(0, 90),
+      sourceLocation: parsedHeading.location,
+      roleId: sceneIdentity?.id,
     };
   });
 
@@ -423,6 +573,7 @@ export const analyzeScreenplay = (body: string, knownCharacterNames: string[] = 
     lines,
     scenes,
     characterNames,
+    characterReferences,
     locations,
     diagnostics,
     stats: {
@@ -439,8 +590,11 @@ export const analyzeScreenplay = (body: string, knownCharacterNames: string[] = 
   };
 };
 
-export const normalizeFountainDocument = (body: string) =>
-  analyzeFountainLines(body)
+export const normalizeFountainDocument = (
+  body: string,
+  knownCharacters: Array<string | ScreenplayKnownIdentity> = []
+) =>
+  analyzeFountainLines(body, knownCharacters)
     .map((line) => {
       if (!line.raw.trim()) return "";
       if (line.kind === "scene_heading") return serializeSceneHeading(parseSceneHeading(line.raw));

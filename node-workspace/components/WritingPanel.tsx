@@ -1,16 +1,26 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowCounterClockwise, Check, PaperPlaneTilt, X } from "@phosphor-icons/react";
 import type { AgentUiContext } from "../../agents/runtime/types";
-import type { ProjectData } from "../../types";
-import { projectRolesToCharacters } from "../../utils/projectRoles";
+import type { ProjectData, ProjectRoleIdentity } from "../../types";
+import { projectRolesToLocations } from "../../utils/projectRoles";
 import type { NodeFlowNode } from "../types";
 import {
   analyzeFountainLines,
   analyzeScreenplay,
   createScreenplayPreview,
+  insertScreenplayLine,
   normalizeFountainDocument,
+  replaceScreenplayLine,
+  serializeScreenplayLine,
   stripFountainMarkup,
+  type ScreenplayKnownIdentity,
 } from "../screenplay/fountainEngine";
+import {
+  classifyIncomingScreenplaySource,
+  prepareScreenplayDraftForSave,
+  screenplayDraftsEqual,
+  type PendingScreenplaySave,
+} from "../screenplay/saveCoordinator";
 import {
   buildScriptLinePatch,
   deriveReviewedScriptBody,
@@ -19,11 +29,10 @@ import {
   type ScriptPatchLine,
   type ScriptPatchLineStatus,
 } from "../screenplay/scriptPatch";
-import { ScreenplayBlockEditor } from "./screenplay/ScreenplayBlockEditor";
+import { ScreenplayBlockEditor, type ScreenplayCharacterSuggestion } from "./screenplay/ScreenplayBlockEditor";
 import {
   ScreenplayHeader,
   ScreenplayInspector,
-  ScreenplayNavigator,
   type SaveState,
 } from "./screenplay/ScreenplayChrome";
 import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./qalam/interactionTypes";
@@ -39,7 +48,6 @@ type Props = {
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
   onOpenQalam?: () => void;
-  onCloseQalam?: () => void;
   onSubmitToQalam?: (text: string, uiContext?: AgentUiContext) => void;
 };
 
@@ -76,17 +84,24 @@ const findScriptNode = (projectData: ProjectData, nodeId?: string | null): NodeF
   return nodes.find((node) => node.type === "scriptPage") || null;
 };
 
-const readScriptNode = (node: NodeFlowNode | null): WritingDraft => {
+const readScriptNode = (
+  node: NodeFlowNode | null,
+  knownCharacters: ScreenplayKnownIdentity[] = []
+): WritingDraft => {
   const data = (node?.data || {}) as { title?: string; text?: string; content?: string };
   const content = typeof data.content === "string" ? data.content : data.text || "";
   return {
     title: data.title?.trim() || "剧本文档",
-    body: normalizeFountainDocument(content),
+    body: normalizeFountainDocument(content, knownCharacters),
   };
 };
 
-const draftsEqual = (left: WritingDraft, right: WritingDraft) =>
-  left.title === right.title && left.body === right.body;
+const roleToKnownIdentity = (role: ProjectRoleIdentity): ScreenplayKnownIdentity => ({
+  id: role.id,
+  name: role.displayName?.trim() || role.name,
+  mention: role.mention,
+  aliases: [role.name, ...(role.binding?.aliases || []), ...(role.aliases || []).map((alias) => alias.value)],
+});
 
 const downloadFountain = (filename: string, content: string) => {
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -110,23 +125,36 @@ export const WritingPanel: React.FC<Props> = ({
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
   onOpenQalam,
-  onCloseQalam,
   onSubmitToQalam,
 }) => {
+  const characterRoles = useMemo(
+    () => (projectData.roles || []).filter((role) => role.kind === "person"),
+    [projectData.roles]
+  );
+  const sceneRoles = useMemo(
+    () => (projectData.roles || []).filter((role) => role.kind === "scene"),
+    [projectData.roles]
+  );
+  const knownCharacterIdentities = useMemo(() => characterRoles.map(roleToKnownIdentity), [characterRoles]);
+  const knownSceneIdentities = useMemo(() => sceneRoles.map(roleToKnownIdentity), [sceneRoles]);
   const scriptNode = useMemo(
     () => findScriptNode(projectData, initialScriptNodeId),
     [initialScriptNodeId, projectData.flow?.flowNodes]
   );
-  const sourceDraft = useMemo(() => readScriptNode(scriptNode), [scriptNode]);
+  const sourceDraft = useMemo(
+    () => readScriptNode(scriptNode, knownCharacterIdentities),
+    [knownCharacterIdentities, scriptNode]
+  );
   const [loadedNodeId, setLoadedNodeId] = useState<string | null>(scriptNode?.id || null);
   const [draft, setDraft] = useState<WritingDraft>(sourceDraft);
   const draftRef = useRef(draft);
   const lastCommittedRef = useRef<WritingDraft>(sourceDraft);
+  const lastObservedSourceRef = useRef<WritingDraft>(sourceDraft);
+  const [pendingSave, setPendingSave] = useState<PendingScreenplaySave | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [activeLineIndex, setActiveLineIndex] = useState(0);
   const [navigationRequest, setNavigationRequest] = useState<{ lineIndex: number; id: number } | null>(null);
-  const [isNavigatorOpen, setIsNavigatorOpen] = useState(true);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [selectionCommand, setSelectionCommand] = useState<SelectionCommand | null>(null);
   const [pendingPatch, setPendingPatch] = useState<PendingScriptPatch | null>(null);
@@ -134,13 +162,15 @@ export const WritingPanel: React.FC<Props> = ({
   const [externalConflict, setExternalConflict] = useState<WritingDraft | null>(null);
   const handledProposalIdsRef = useRef(new Set<string>());
 
-  const knownCharacters = useMemo(
-    () => projectRolesToCharacters(projectData.roles || []).map((character) => character.name.trim()).filter(Boolean),
-    [projectData.roles]
-  );
   const deferredBody = useDeferredValue(draft.body);
-  const analysis = useMemo(() => analyzeScreenplay(deferredBody, knownCharacters), [deferredBody, knownCharacters]);
-  const liveLines = useMemo(() => analyzeFountainLines(draft.body), [draft.body]);
+  const analysis = useMemo(
+    () => analyzeScreenplay(deferredBody, knownCharacterIdentities, knownSceneIdentities),
+    [deferredBody, knownCharacterIdentities, knownSceneIdentities]
+  );
+  const liveLines = useMemo(
+    () => analyzeFountainLines(draft.body, knownCharacterIdentities),
+    [draft.body, knownCharacterIdentities]
+  );
   const activeLine = liveLines[Math.min(activeLineIndex, Math.max(0, liveLines.length - 1))] || {
     index: 0,
     start: 0,
@@ -149,11 +179,22 @@ export const WritingPanel: React.FC<Props> = ({
     content: "",
     kind: "action" as const,
   };
-  const locationSuggestions = analysis.locations;
+  const locationSuggestions = useMemo(
+    () => Array.from(new Set([...projectRolesToLocations(projectData.roles || []).map((location) => location.name), ...analysis.locations])),
+    [analysis.locations, projectData.roles]
+  );
+  const characterSuggestions = useMemo<ScreenplayCharacterSuggestion[]>(() => {
+    return characterRoles.map((role) => ({
+      id: role.id,
+      name: role.displayName?.trim() || role.name,
+      mention: role.mention || role.name,
+      status: role.status,
+    }));
+  }, [characterRoles]);
 
   useEffect(() => {
     draftRef.current = draft;
-    if (!draftsEqual(draft, lastCommittedRef.current)) setSaveState("idle");
+    if (!screenplayDraftsEqual(draft, lastCommittedRef.current)) setSaveState("idle");
   }, [draft]);
 
   useEffect(() => {
@@ -163,6 +204,8 @@ export const WritingPanel: React.FC<Props> = ({
     setDraft(sourceDraft);
     draftRef.current = sourceDraft;
     lastCommittedRef.current = sourceDraft;
+    lastObservedSourceRef.current = sourceDraft;
+    setPendingSave(null);
     setSaveState("saved");
     setActiveLineIndex(0);
     setPendingPatch(null);
@@ -171,27 +214,49 @@ export const WritingPanel: React.FC<Props> = ({
   }, [loadedNodeId, scriptNode?.id, sourceDraft]);
 
   useEffect(() => {
-    if (!scriptNode?.id || scriptNode.id !== loadedNodeId) return;
-    if (draftsEqual(sourceDraft, lastCommittedRef.current)) return;
-    if (pendingPatch) return;
-    if (draftsEqual(draftRef.current, lastCommittedRef.current)) {
+    if (!scriptNode?.id || scriptNode.id !== loadedNodeId || pendingPatch) return;
+    const decision = classifyIncomingScreenplaySource({
+      source: sourceDraft,
+      draft: draftRef.current,
+      lastCommitted: lastCommittedRef.current,
+      lastObservedSource: lastObservedSourceRef.current,
+      pendingSave,
+    });
+    if (decision === "unchanged" || decision === "stale") return;
+    lastObservedSourceRef.current = sourceDraft;
+    if (decision === "acknowledge") {
+      lastCommittedRef.current = sourceDraft;
+      setPendingSave(null);
+      setSaveState(screenplayDraftsEqual(draftRef.current, sourceDraft) ? "saved" : "idle");
+      return;
+    }
+    if (decision === "adopt") {
       setDraft(sourceDraft);
       draftRef.current = sourceDraft;
       lastCommittedRef.current = sourceDraft;
+      setPendingSave(null);
       setSaveState("saved");
       return;
     }
     setExternalConflict(sourceDraft);
+    setPendingSave(null);
     setSaveState("conflict");
-  }, [loadedNodeId, pendingPatch, scriptNode?.id, sourceDraft]);
+  }, [loadedNodeId, pendingPatch, pendingSave, scriptNode?.id, sourceDraft]);
 
-  const commitDraft = useCallback((nextDraft: WritingDraft) => {
+  const commitDraft = useCallback((nextDraft: WritingDraft, force = false) => {
     const nodeId = scriptNode?.id || initialScriptNodeId;
-    if (!nodeId || pendingPatch || externalConflict || draftsEqual(nextDraft, lastCommittedRef.current)) return;
-    const normalized: WritingDraft = {
-      title: nextDraft.title.trim() || "剧本文档",
-      body: normalizeFountainDocument(nextDraft.body),
+    if (!nodeId || pendingPatch || externalConflict) return;
+    const normalized = prepareScreenplayDraftForSave(nextDraft);
+    if (screenplayDraftsEqual(normalized, lastCommittedRef.current)) return;
+    if (pendingSave && !force) {
+      if (!screenplayDraftsEqual(normalized, pendingSave.submitted)) setSaveState("idle");
+      return;
+    }
+    const save: PendingScreenplaySave = {
+      submitted: normalized,
+      previousSource: lastObservedSourceRef.current,
     };
+    setPendingSave(save);
     setSaveState("saving");
     try {
       if (onCommitScriptDocument) {
@@ -200,7 +265,7 @@ export const WritingPanel: React.FC<Props> = ({
           title: normalized.title,
           content: normalized.body,
           preview: createScreenplayPreview(normalized.body),
-          stats: analyzeScreenplay(normalized.body).stats,
+          stats: analyzeScreenplay(normalized.body, knownCharacterIdentities, knownSceneIdentities).stats,
         });
       } else {
         setProjectData((previous) => {
@@ -229,18 +294,18 @@ export const WritingPanel: React.FC<Props> = ({
         });
       }
       lastCommittedRef.current = normalized;
-      if (!draftsEqual(nextDraft, normalized)) setDraft(normalized);
-      setSaveState("saved");
+      if (!screenplayDraftsEqual(nextDraft, normalized)) setDraft(normalized);
     } catch {
+      setPendingSave(null);
       setSaveState("error");
     }
-  }, [externalConflict, initialScriptNodeId, onCommitScriptDocument, pendingPatch, scriptNode?.id, setProjectData]);
+  }, [externalConflict, initialScriptNodeId, knownCharacterIdentities, knownSceneIdentities, onCommitScriptDocument, pendingPatch, pendingSave, scriptNode?.id, setProjectData]);
 
   useEffect(() => {
-    if (pendingPatch || externalConflict || draftsEqual(draft, lastCommittedRef.current)) return;
+    if (pendingPatch || pendingSave || externalConflict || screenplayDraftsEqual(draft, lastCommittedRef.current)) return;
     const timer = window.setTimeout(() => commitDraft(draft), 650);
     return () => window.clearTimeout(timer);
-  }, [commitDraft, draft, externalConflict, pendingPatch]);
+  }, [commitDraft, draft, externalConflict, pendingPatch, pendingSave]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -264,7 +329,6 @@ export const WritingPanel: React.FC<Props> = ({
     const compactLayout = window.matchMedia("(max-width: 1180px)");
     const collapseSidePanels = (event: MediaQueryListEvent | MediaQueryList) => {
       if (!event.matches) return;
-      setIsNavigatorOpen(false);
       setIsInspectorOpen(false);
     };
     collapseSidePanels(compactLayout);
@@ -281,7 +345,7 @@ export const WritingPanel: React.FC<Props> = ({
       title: proposal.title.trim() || draftRef.current.title,
       body: normalizeFountainDocument(proposal.content),
     };
-    if (draftsEqual(proposedDraft, draftRef.current)) {
+    if (screenplayDraftsEqual(proposedDraft, draftRef.current)) {
       onResolveAgentScriptEditProposal?.(proposal.id);
       return;
     }
@@ -300,6 +364,22 @@ export const WritingPanel: React.FC<Props> = ({
     setActiveLineIndex(lineIndex);
     setNavigationRequest({ lineIndex, id: Date.now() });
   }, []);
+
+  const useCharacterFromLibrary = useCallback((role: ProjectRoleIdentity) => {
+    const mention = role.mention || role.name;
+    const current = liveLines[Math.min(activeLineIndex, Math.max(0, liveLines.length - 1))];
+    if (!current) return;
+    const kind = current.kind === "dual_dialogue" ? "dual_dialogue" : "character";
+    const raw = serializeScreenplayLine(mention, kind);
+    const body = (current.kind === "character" || current.kind === "dual_dialogue" || !current.content.trim())
+      ? replaceScreenplayLine(draftRef.current.body, current.index, raw)
+      : insertScreenplayLine(draftRef.current.body, current.index, raw);
+    const targetIndex = current.kind === "character" || current.kind === "dual_dialogue" || !current.content.trim()
+      ? current.index
+      : current.index + 1;
+    setDraft((existing) => ({ ...existing, body }));
+    requestAnimationFrame(() => navigateToLine(targetIndex));
+  }, [activeLineIndex, liveLines, navigateToLine]);
 
   const updatePatch = useCallback((updater: (line: ScriptPatchLine) => ScriptPatchLine) => {
     setPendingPatch((current) => {
@@ -348,13 +428,24 @@ export const WritingPanel: React.FC<Props> = ({
 
   const handleClose = () => {
     if (externalConflict) return;
-    commitDraft(draftRef.current);
+    commitDraft(draftRef.current, true);
     onClose?.();
   };
 
-  const handleExport = () => {
+  const handleShare = async () => {
     const baseName = (projectData.fileName || draft.title || "qalam-script").replace(/\.[^/.]+$/, "");
-    downloadFountain(`${baseName}.fountain`, normalizeFountainDocument(draft.body));
+    const filename = `${baseName}.fountain`;
+    const content = prepareScreenplayDraftForSave(draft).body;
+    const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
+    if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: draft.title });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    downloadFountain(filename, content);
   };
 
   return (
@@ -365,40 +456,18 @@ export const WritingPanel: React.FC<Props> = ({
       <ScreenplayHeader
         saveState={saveState}
         isFocusMode={isFocusMode}
-        isNavigatorOpen={isNavigatorOpen}
         isInspectorOpen={isInspectorOpen}
-        isQalamOpen={isQalamOpen}
         onToggleFocus={() => setIsFocusMode((active) => !active)}
-        onToggleNavigator={() => setIsNavigatorOpen((open) => {
-          const next = !open;
-          if (next && window.matchMedia("(max-width: 1180px)").matches) setIsInspectorOpen(false);
-          return next;
-        })}
-        onToggleInspector={() => setIsInspectorOpen((open) => {
-          const next = !open;
-          if (next && window.matchMedia("(max-width: 1180px)").matches) setIsNavigatorOpen(false);
-          return next;
-        })}
-        onToggleQalam={() => isQalamOpen ? onCloseQalam?.() : onOpenQalam?.()}
-        onExport={handleExport}
+        onToggleInspector={() => setIsInspectorOpen((open) => !open)}
+        onShare={() => void handleShare()}
         onClose={handleClose}
       />
 
       <div className="screenplay-layout">
-        {isNavigatorOpen ? (
-          <ScreenplayNavigator
-            analysis={analysis}
-            activeLineIndex={activeLine.index}
-            onNavigate={navigateToLine}
-            onClose={() => setIsNavigatorOpen(false)}
-          />
-        ) : null}
-
         <main className="screenplay-document-viewport">
           <article className="screenplay-document">
             <header className="screenplay-document__masthead">
               <div>
-                <span>QALAM SCREENPLAY</span>
                 <input
                   value={draft.title}
                   onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
@@ -406,7 +475,7 @@ export const WritingPanel: React.FC<Props> = ({
                   aria-label="剧本标题"
                 />
               </div>
-              <small>{analysis.stats.estimatedPages} PAGE · {analysis.stats.scenes} SCENE</small>
+              <small>{analysis.stats.estimatedPages} 页 · {analysis.stats.scenes} 场</small>
             </header>
             <ScreenplayBlockEditor
               body={draft.body}
@@ -414,7 +483,7 @@ export const WritingPanel: React.FC<Props> = ({
               activeLineIndex={activeLine.index}
               navigationRequest={navigationRequest}
               readOnly={!!pendingPatch}
-              characterSuggestions={Array.from(new Set([...knownCharacters, ...analysis.characterNames]))}
+              characterSuggestions={characterSuggestions}
               locationSuggestions={locationSuggestions}
               onChange={(body) => setDraft((current) => ({ ...current, body }))}
               onActiveLineChange={setActiveLineIndex}
@@ -426,7 +495,13 @@ export const WritingPanel: React.FC<Props> = ({
         </main>
 
         {isInspectorOpen ? (
-          <ScreenplayInspector analysis={analysis} activeLine={activeLine} onNavigate={navigateToLine} />
+          <ScreenplayInspector
+            analysis={analysis}
+            activeLine={activeLine}
+            characterRoles={characterRoles}
+            onUseCharacter={useCharacterFromLibrary}
+            onNavigate={navigateToLine}
+          />
         ) : null}
       </div>
 
@@ -461,6 +536,8 @@ export const WritingPanel: React.FC<Props> = ({
               setDraft(externalConflict);
               draftRef.current = externalConflict;
               lastCommittedRef.current = externalConflict;
+              lastObservedSourceRef.current = externalConflict;
+              setPendingSave(null);
               setExternalConflict(null);
               setSaveState("saved");
             }}
@@ -470,6 +547,8 @@ export const WritingPanel: React.FC<Props> = ({
             className="is-primary"
             onClick={() => {
               lastCommittedRef.current = externalConflict;
+              lastObservedSourceRef.current = externalConflict;
+              setPendingSave(null);
               setExternalConflict(null);
               setSaveState("idle");
             }}

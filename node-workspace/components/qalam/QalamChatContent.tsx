@@ -1,8 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Check, CheckCheck, Globe, X } from "lucide-react";
-import { Brain, CaretRight, Wrench } from "@phosphor-icons/react";
+import { Brain, CaretRight, Check, Checks, Wrench, X } from "@phosphor-icons/react";
 import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload, ToolStatus } from "./types";
-import { isApprovalMessage, isStatusMessage, isToolMessage } from "./types";
+import {
+  buildQalamMessageTimeline,
+  type QalamDisplayMessage as DisplayMessageItem,
+  type ToolMessageThread as ToolThread,
+} from "./messageTimeline";
+import { renderQalamInlineMarkdown, renderQalamMarkdown } from "./QalamMarkdown";
+import { renderQalamToolOutput } from "./QalamToolOutput";
+import { findQalamToolDescriptor } from "../../../agents/runtime/toolCatalog";
 
 type Props = {
   messages: Message[];
@@ -63,759 +69,6 @@ const formatThoughtDuration = (durationMs: number) => {
   return seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`;
 };
 
-const sanitizeUrl = (value: string) => {
-  let url = value.trim();
-  while (url && /[)\],.;:!?]$/.test(url)) {
-    url = url.slice(0, -1);
-  }
-  return url;
-};
-
-const extractUrls = (text: string) => {
-  const matches = text.match(/https?:\/\/[^\s)]+/g);
-  if (!matches) return [];
-  const cleaned = matches.map((m) => sanitizeUrl(m)).filter(Boolean);
-  return Array.from(new Set(cleaned));
-};
-
-const stripUrls = (text: string) =>
-  text.replace(/https?:\/\/[^\s)]+/g, "").replace(/\s{2,}/g, " ").trim();
-
-const renderInlineMarkdown = (text: string) => {
-  const nodes: React.ReactNode[] = [];
-  let i = 0;
-  while (i < text.length) {
-    if (text.startsWith("http://", i) || text.startsWith("https://", i)) {
-      let end = i;
-      while (end < text.length && !/\s/.test(text[end])) end += 1;
-      const raw = text.slice(i, end);
-      const clean = sanitizeUrl(raw);
-      const tail = raw.slice(clean.length);
-      nodes.push(
-        <a
-          key={`u-${i}`}
-          href={clean}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sky-300 underline underline-offset-2"
-        >
-          {clean}
-        </a>
-      );
-      if (tail) nodes.push(tail);
-      i = end;
-      continue;
-    }
-    if (text.startsWith("[", i)) {
-      const close = text.indexOf("](", i);
-      const end = text.indexOf(")", close + 2);
-      if (close !== -1 && end !== -1) {
-        const label = text.slice(i + 1, close);
-        const url = text.slice(close + 2, end);
-        nodes.push(
-          <a
-            key={`a-${i}`}
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sky-300 underline underline-offset-2"
-          >
-            {label}
-          </a>
-        );
-        i = end + 1;
-        continue;
-      }
-    }
-    if (text.startsWith("**", i)) {
-      const end = text.indexOf("**", i + 2);
-      if (end !== -1) {
-        nodes.push(<strong key={`b-${i}`}>{text.slice(i + 2, end)}</strong>);
-        i = end + 2;
-        continue;
-      }
-    }
-    if (text.startsWith("`", i)) {
-      const end = text.indexOf("`", i + 1);
-      if (end !== -1) {
-        nodes.push(
-          <code
-            key={`c-${i}`}
-            className="rounded border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-1.5 py-0.5 text-[13px] md:text-[12px]"
-          >
-            {text.slice(i + 1, end)}
-          </code>
-        );
-        i = end + 1;
-        continue;
-      }
-    }
-    if (text.startsWith("*", i)) {
-      const end = text.indexOf("*", i + 1);
-      if (end !== -1) {
-        nodes.push(<em key={`i-${i}`}>{text.slice(i + 1, end)}</em>);
-        i = end + 1;
-        continue;
-      }
-    }
-    const next = Math.min(
-      ...["[", "**", "`", "*"].map((token) => {
-        const idx = text.indexOf(token, i + 1);
-        return idx === -1 ? text.length : idx;
-      })
-    );
-    nodes.push(text.slice(i, next));
-    i = next;
-  }
-  return nodes;
-};
-
-const renderLinkCard = (url: string, idx: number) => {
-  let host = url;
-  let path = "";
-  try {
-    const parsed = new URL(url);
-    host = parsed.hostname.replace(/^www\./, "");
-    path = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "";
-  } catch {}
-  return (
-    <a
-      key={`${idx}-${url}`}
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="block rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 hover:border-[var(--app-border-strong)] transition"
-    >
-      <div className="flex items-center gap-2 text-[12px] uppercase tracking-widest text-[var(--app-text-secondary)] md:text-[11px]">
-        <Globe size={12} className="text-sky-300" />
-        Link
-      </div>
-      <div className="mt-1 text-[15px] text-[var(--app-text-primary)] md:text-[13px]">{host}{path ? ` · ${path}` : ""}</div>
-      <div className="mt-1 truncate text-[12px] text-[var(--app-text-secondary)] md:text-[11px]">{url}</div>
-    </a>
-  );
-};
-
-const renderMarkdownLite = (text: string) => {
-  const lines = (text || "").split("\n");
-  const blocks: React.ReactNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) {
-      i += 1;
-      continue;
-    }
-
-    if (/^\s*[-*_]{3,}\s*$/.test(line)) {
-      blocks.push(<div key={`hr-${i}`} className="h-px bg-[var(--app-border)]" />);
-      i += 1;
-      continue;
-    }
-
-    if (line.trim().startsWith("```")) {
-      const fenceLang = line.trim().slice(3).trim();
-      i += 1;
-      const codeLines: string[] = [];
-      while (i < lines.length && !lines[i].trim().startsWith("```")) {
-        codeLines.push(lines[i]);
-        i += 1;
-      }
-      i += 1;
-      blocks.push(
-        <pre
-          key={`code-${i}`}
-          className="overflow-x-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-3 py-2 text-[13px] leading-6 md:text-[12px] md:leading-relaxed"
-        >
-          {fenceLang ? <div className="mb-1 text-[11px] text-[var(--app-text-secondary)]">{fenceLang}</div> : null}
-          <code>{codeLines.join("\n")}</code>
-        </pre>
-      );
-      continue;
-    }
-
-    const headingMatch = line.match(/^(#{1,4})\s+(.*)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const title = headingMatch[2];
-      const size =
-        level === 1
-          ? "text-[19px] md:text-[16px]"
-          : level === 2
-            ? "text-[17px] md:text-[14px]"
-            : level === 3
-              ? "text-[16px] md:text-[13px]"
-              : "text-[15px] md:text-[12px]";
-      blocks.push(
-        <div key={`h-${i}`} className={`font-semibold ${size} text-[var(--app-text-primary)]`}>
-          {renderInlineMarkdown(title)}
-        </div>
-      );
-      i += 1;
-      continue;
-    }
-
-    if (line.trim().startsWith(">")) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith(">")) {
-        quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
-        i += 1;
-      }
-      blocks.push(
-        <blockquote
-          key={`q-${i}`}
-          className={`whitespace-pre-wrap border-l-2 border-[var(--app-border-strong)] pl-3 ${qalamSecondaryTextClass}`}
-        >
-          {renderInlineMarkdown(quoteLines.join("\n"))}
-        </blockquote>
-      );
-      continue;
-    }
-
-    const taskMatch = line.match(/^\s*[-*•]\s+\[(\s|x|X)\]\s+(.+)$/);
-    if (taskMatch) {
-      const tasks: Array<{ text: string; checked: boolean }> = [];
-      while (i < lines.length) {
-        const current = lines[i];
-        const match = current.match(/^\s*[-*•]\s+\[(\s|x|X)\]\s+(.+)$/);
-        if (!match) break;
-        tasks.push({ text: match[2].trim(), checked: match[1].toLowerCase() === "x" });
-        i += 1;
-      }
-      blocks.push(
-        <ul key={`t-${i}`} className="space-y-1">
-          {tasks.map((task, idx) => (
-            <li key={`${idx}-${task.text.slice(0, 8)}`} className={`flex items-start gap-2 ${qalamSecondaryTextClass}`}>
-              <span
-                className={`mt-0.5 h-3.5 w-3.5 rounded border ${
-                  task.checked ? "bg-emerald-500/70 border-emerald-400" : "border-[var(--app-border)]"
-                }`}
-              />
-              <span
-                className={`text-[var(--app-text-primary)] ${task.checked ? "line-through opacity-70" : ""}`}
-              >
-                {renderInlineMarkdown(task.text)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      );
-      continue;
-    }
-
-    if (line.includes("|") && i + 1 < lines.length) {
-      const nextLine = lines[i + 1];
-      const separatorMatch = nextLine.match(/^\s*\|?\s*[-:]+(\s*\|\s*[-:]+)+\s*\|?\s*$/);
-      if (separatorMatch) {
-        const parseRow = (row: string) =>
-          row
-            .trim()
-            .replace(/^\|/, "")
-            .replace(/\|$/, "")
-            .split("|")
-            .map((cell) => cell.trim());
-        const headers = parseRow(line);
-        i += 2;
-        const rows: string[][] = [];
-        while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
-          rows.push(parseRow(lines[i]));
-          i += 1;
-        }
-        blocks.push(
-          <div key={`tbl-${i}`} className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-[14px] md:text-[12px]">
-              <thead>
-                <tr>
-                  {headers.map((h, idx) => (
-                    <th
-                      key={`${idx}-${h}`}
-                      className="text-left font-semibold text-[var(--app-text-primary)] border-b border-[var(--app-border)] pb-1 pr-4"
-                    >
-                      {renderInlineMarkdown(h)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rIdx) => (
-                  <tr key={`r-${rIdx}`}>
-                    {row.map((cell, cIdx) => (
-                      <td key={`${rIdx}-${cIdx}`} className="py-1 pr-4 text-[var(--app-text-secondary)]">
-                        {renderInlineMarkdown(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        continue;
-      }
-    }
-
-    const listMatch = line.match(/^\s*(?:[-*•]|\d+\.|\d+、)\s+/);
-    if (listMatch) {
-      const items: string[] = [];
-      let ordered = false;
-      while (i < lines.length) {
-        const current = lines[i];
-        const bulletMatch = current.match(/^\s*([-*•])\s+(.+)$/);
-        const orderedMatch = current.match(/^\s*(\d+\.|\d+、)\s+(.+)$/);
-        if (!bulletMatch && !orderedMatch) break;
-        if (orderedMatch) ordered = true;
-        items.push((orderedMatch?.[2] || bulletMatch?.[2] || "").trim());
-        i += 1;
-      }
-      const ListTag = ordered ? "ol" : "ul";
-      blocks.push(
-        <ListTag key={`l-${i}`} className={`space-y-1 pl-5 text-[14px] leading-6 md:text-[12px] md:leading-relaxed ${ordered ? "list-decimal" : "list-disc"}`}>
-          {items.map((item, idx) => (
-            <li key={`${idx}-${item.slice(0, 8)}`}>{renderInlineMarkdown(item)}</li>
-          ))}
-        </ListTag>
-      );
-      continue;
-    }
-
-    const paragraphLines: string[] = [];
-    while (i < lines.length && lines[i].trim()) {
-      const nextLine = lines[i];
-      if (nextLine.trim().startsWith("```")) break;
-      if (nextLine.match(/^(#{1,4})\s+/)) break;
-      if (nextLine.trim().startsWith(">")) break;
-      if (nextLine.match(/^\s*(?:[-*•]|\d+\.|\d+、)\s+/)) break;
-      paragraphLines.push(nextLine);
-      i += 1;
-    }
-    const paragraphText = paragraphLines.join("\n").trim();
-    const urls = extractUrls(paragraphText);
-    const stripped = stripUrls(paragraphText);
-    if (stripped) {
-      blocks.push(
-        <div key={`p-${i}`} className={`whitespace-pre-wrap ${qalamBodyTextClass}`}>
-          {renderInlineMarkdown(paragraphText)}
-        </div>
-      );
-    }
-    if (urls.length > 0) {
-      blocks.push(
-        <div key={`p-links-${i}`} className="space-y-2">
-          {urls.map((url, idx) => renderLinkCard(url, idx))}
-        </div>
-      );
-    }
-  }
-
-  return <div className="space-y-2">{blocks}</div>;
-};
-
-const renderArtifactMetaPill = (label: string, value?: string | null) => {
-  if (!value) return null;
-  return (
-    <span className="rounded-full border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-2 py-0.5 text-[11px] text-[var(--app-text-secondary)]">
-      {label} · {value}
-    </span>
-  );
-};
-
-const renderArtifactCard = (payload: Record<string, any>) => {
-  const artifact =
-    payload.artifact && typeof payload.artifact === "object"
-      ? (payload.artifact as Record<string, any>)
-      : null;
-  if (!artifact || typeof artifact.kind !== "string") return null;
-
-  const title =
-    (typeof artifact.title === "string" && artifact.title.trim()) ||
-    (typeof artifact.ref === "string" && artifact.ref.trim()) ||
-    (typeof artifact.id === "string" && artifact.id.trim()) ||
-    artifact.kind;
-  const target =
-    typeof artifact.target === "string"
-      ? artifact.target
-      : typeof payload.target === "string"
-        ? payload.target
-        : "";
-  const nodeKind =
-    typeof artifact.node_kind === "string"
-      ? artifact.node_kind
-      : typeof artifact.node_type === "string"
-        ? artifact.node_type
-        : undefined;
-
-  const source = artifact.source && typeof artifact.source === "object" ? artifact.source : null;
-  const destination =
-    artifact.destination && typeof artifact.destination === "object" ? artifact.destination : null;
-
-  const sourceLabel =
-    source &&
-    (source.title || source.node_ref || source.node_id || source.ref || source.id);
-  const destinationLabel =
-    destination &&
-    (destination.title || destination.node_ref || destination.node_id || destination.ref || destination.id);
-
-  const typeLabel =
-    artifact.kind === "node"
-      ? "Node"
-      : artifact.kind === "link"
-        ? "Link"
-        : artifact.kind === "map"
-          ? "Map"
-          : artifact.kind === "package"
-            ? "Package"
-            : artifact.kind === "approval"
-              ? "Approval"
-              : artifact.kind;
-
-  return (
-    <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
-            {typeLabel}
-          </div>
-          <div className="mt-1 truncate text-[14px] font-medium text-[var(--app-text-primary)]">
-            {title}
-          </div>
-        </div>
-        {target ? (
-          <div className="shrink-0 rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-secondary)]">
-            {target}
-          </div>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {renderArtifactMetaPill("ID", typeof artifact.id === "string" ? artifact.id : undefined)}
-        {renderArtifactMetaPill("REF", typeof artifact.ref === "string" ? artifact.ref : undefined)}
-        {renderArtifactMetaPill("KIND", nodeKind)}
-      </div>
-      {artifact.kind === "link" && (sourceLabel || destinationLabel) ? (
-        <div className="mt-3 rounded-[14px] border border-[var(--app-border)] bg-[var(--app-bg)] px-3 py-2 text-[12px] text-[var(--app-text-secondary)]">
-          <span className="text-[var(--app-text-primary)]">{String(sourceLabel || "source")}</span>
-          <span className="mx-2 text-[var(--app-text-muted)]">→</span>
-          <span className="text-[var(--app-text-primary)]">{String(destinationLabel || "target")}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const renderToolOutput = (tool: ToolPayload) => {
-  if (!tool.output) return null;
-  let parsed: any = null;
-  try {
-    parsed = JSON.parse(tool.output);
-  } catch {
-    parsed = tool.output;
-  }
-
-  if (!parsed || typeof parsed === "string") {
-    return (
-      <div className={`whitespace-pre-wrap ${qalamSecondaryTextClass}`}>
-        {String(parsed || "")}
-      </div>
-    );
-  }
-
-  const payload =
-    parsed && typeof parsed === "object" && parsed.output && typeof parsed.output === "object"
-      ? parsed.output
-      : parsed;
-
-  const artifactCard = renderArtifactCard(payload);
-
-  const simpleFields: Array<{ label: string; value: string }> = [];
-  if (typeof payload.target === "string") simpleFields.push({ label: "目标", value: payload.target });
-  if (typeof payload.layer === "string") simpleFields.push({ label: "层", value: payload.layer });
-  if (typeof payload.entity === "string") simpleFields.push({ label: "实体", value: payload.entity });
-  if (typeof payload.view === "string") simpleFields.push({ label: "视图", value: payload.view });
-  if (typeof payload.action === "string") simpleFields.push({ label: "动作", value: payload.action });
-  if (typeof payload.role === "string") simpleFields.push({ label: "关系角色", value: payload.role });
-  if (typeof payload.found === "boolean") simpleFields.push({ label: "命中", value: payload.found ? "是" : "否" });
-  if (payload.artifact && typeof payload.artifact === "object") {
-    if (typeof payload.artifact.kind === "string") simpleFields.push({ label: "载荷", value: payload.artifact.kind });
-    if (typeof payload.artifact.id === "string") simpleFields.push({ label: "载荷 ID", value: payload.artifact.id });
-    if (typeof payload.artifact.ref === "string") simpleFields.push({ label: "载荷引用", value: payload.artifact.ref });
-    if (typeof payload.artifact.title === "string") simpleFields.push({ label: "载荷标题", value: payload.artifact.title });
-  }
-  if (typeof payload.created === "boolean") simpleFields.push({ label: "写入动作", value: payload.created ? "已创建" : "已更新" });
-  if (typeof payload.name === "string") simpleFields.push({ label: "名称", value: payload.name });
-  if (typeof payload.workflow_title === "string") simpleFields.push({ label: "工作流", value: payload.workflow_title });
-  if (typeof payload.episode_label === "string") simpleFields.push({ label: "剧集", value: payload.episode_label });
-  if (typeof payload.episode_id === "number") simpleFields.push({ label: "集数", value: `第${payload.episode_id}集` });
-  if (typeof payload.scene_id === "string") simpleFields.push({ label: "场景", value: payload.scene_id });
-  if (typeof payload.scene_title === "string") simpleFields.push({ label: "场景标题", value: payload.scene_title });
-  if (typeof payload.field === "string") simpleFields.push({ label: "写入字段", value: payload.field });
-  if (typeof payload.chars === "number") simpleFields.push({ label: "字数", value: String(payload.chars) });
-  if (typeof payload.nodeId === "string") simpleFields.push({ label: "节点 ID", value: payload.nodeId });
-  if (typeof payload.nodeType === "string") simpleFields.push({ label: "节点类型", value: payload.nodeType });
-  if (typeof payload.nodeRef === "string") simpleFields.push({ label: "节点引用", value: payload.nodeRef });
-  if (typeof payload.defaultOutputHandle === "string") simpleFields.push({ label: "默认尾端端口", value: payload.defaultOutputHandle });
-  if (Array.isArray(payload.defaultInputHandles) && payload.defaultInputHandles.length > 0) {
-    simpleFields.push({ label: "默认首端端口", value: payload.defaultInputHandles.join(", ") });
-  }
-  if (typeof payload.node_id === "string") simpleFields.push({ label: "节点 ID", value: payload.node_id });
-  if (typeof payload.node_kind === "string") simpleFields.push({ label: "节点类型", value: payload.node_kind });
-  if (typeof payload.node_ref === "string") simpleFields.push({ label: "节点引用", value: payload.node_ref });
-  if (typeof payload.default_output_handle === "string") simpleFields.push({ label: "默认尾端端口", value: payload.default_output_handle });
-  if (Array.isArray(payload.default_input_handles) && payload.default_input_handles.length > 0) {
-    simpleFields.push({ label: "默认首端端口", value: payload.default_input_handles.join(", ") });
-  }
-  if (typeof payload.linkId === "string") simpleFields.push({ label: "连线 ID", value: payload.linkId });
-  if (typeof payload.sourceNodeId === "string") simpleFields.push({ label: "尾端节点", value: payload.sourceNodeId });
-  if (typeof payload.targetNodeId === "string") simpleFields.push({ label: "首端节点", value: payload.targetNodeId });
-  if (typeof payload.sourceRef === "string") simpleFields.push({ label: "尾端引用", value: payload.sourceRef });
-  if (typeof payload.targetRef === "string") simpleFields.push({ label: "首端引用", value: payload.targetRef });
-  if (typeof payload.sourceHandle === "string") simpleFields.push({ label: "尾端端口", value: payload.sourceHandle });
-  if (typeof payload.targetHandle === "string") simpleFields.push({ label: "首端端口", value: payload.targetHandle });
-  if (typeof payload.group_id === "string") simpleFields.push({ label: "分组节点", value: payload.group_id });
-  if (typeof payload.text_node_id === "string") simpleFields.push({ label: "文本节点", value: payload.text_node_id });
-  if (typeof payload.image_node_id === "string") simpleFields.push({ label: "图像节点", value: payload.image_node_id });
-  if (typeof payload.edge_id === "string") simpleFields.push({ label: "连线 ID", value: payload.edge_id });
-  if (typeof payload.source_node_id === "string") simpleFields.push({ label: "尾端节点", value: payload.source_node_id });
-  if (typeof payload.target_node_id === "string") simpleFields.push({ label: "首端节点", value: payload.target_node_id });
-  if (typeof payload.source_ref === "string") simpleFields.push({ label: "尾端引用", value: payload.source_ref });
-  if (typeof payload.target_ref === "string") simpleFields.push({ label: "首端引用", value: payload.target_ref });
-  if (typeof payload.source_handle === "string") simpleFields.push({ label: "尾端端口", value: payload.source_handle });
-  if (typeof payload.target_handle === "string") simpleFields.push({ label: "首端端口", value: payload.target_handle });
-  if (typeof payload.edge_count === "number") simpleFields.push({ label: "连线数", value: String(payload.edge_count) });
-  if (typeof payload.aspect_ratio === "string") simpleFields.push({ label: "画幅", value: payload.aspect_ratio });
-
-  if (
-    typeof payload.content === "string" ||
-    typeof payload.summary === "string" ||
-    typeof payload.bio === "string" ||
-    typeof payload.description === "string" ||
-    typeof payload.visuals === "string" ||
-    simpleFields.length > 0
-  ) {
-    return (
-      <div className="space-y-2">
-        {artifactCard}
-        {simpleFields.length > 0 ? (
-          <dl className="grid gap-x-4 gap-y-1 text-[12px] text-[var(--app-text-secondary)] sm:grid-cols-2">
-            {simpleFields.map((item) => (
-              <div key={`${item.label}-${item.value}`} className="min-w-0">
-                <dt className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">{item.label}</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap text-[var(--app-text-primary)]">{item.value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
-        {typeof payload.summary === "string" ? (
-          <div className="border-l border-[var(--app-border)] pl-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">摘要</div>
-            <div className="mt-1 text-[12px] text-[var(--app-text-primary)] whitespace-pre-wrap">{payload.summary}</div>
-          </div>
-        ) : null}
-        {typeof payload.bio === "string" ? (
-          <div className="border-l border-[var(--app-border)] pl-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">角色分析</div>
-            <div className="mt-1 text-[12px] text-[var(--app-text-primary)] whitespace-pre-wrap">{payload.bio}</div>
-          </div>
-        ) : null}
-        {typeof payload.description === "string" ? (
-          <div className="border-l border-[var(--app-border)] pl-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">场景描述</div>
-            <div className="mt-1 text-[12px] text-[var(--app-text-primary)] whitespace-pre-wrap">{payload.description}</div>
-          </div>
-        ) : null}
-        {typeof payload.visuals === "string" ? (
-          <div className="border-l border-[var(--app-border)] pl-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">视觉说明</div>
-            <div className="mt-1 text-[12px] text-[var(--app-text-primary)] whitespace-pre-wrap">{payload.visuals}</div>
-          </div>
-        ) : null}
-        {typeof payload.content === "string" ? (
-          <div className="border-l border-[var(--app-border)] pl-3">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">正文</div>
-            <div className="mt-1 text-[12px] text-[var(--app-text-primary)] whitespace-pre-wrap">{payload.content}</div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  const data = payload.data || {};
-  const warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
-  const matches = Array.isArray(data.matches) ? data.matches : [];
-  const sceneList = Array.isArray(data.sceneList) ? data.sceneList : [];
-  const episodeCharacters = Array.isArray(data.episodeCharacters) ? data.episodeCharacters : [];
-  const characterList = Array.isArray(data.characters) ? data.characters : [];
-  const locationList = Array.isArray(data.locations) ? data.locations : [];
-
-  const renderSection = (title: string, content: React.ReactNode) => (
-    <div className="border-l border-[var(--app-border)] pl-3 space-y-1">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--app-text-muted)]">{title}</div>
-      {content}
-    </div>
-  );
-
-  const blocks: React.ReactNode[] = [];
-
-  if (warnings.length > 0) {
-    blocks.push(
-      renderSection(
-        "Warnings",
-        <ul className="text-[11px] text-[var(--app-text-secondary)] list-disc pl-4 space-y-1">
-          {warnings.map((w: string, idx: number) => (
-            <li key={`${idx}-${w}`}>{w}</li>
-          ))}
-        </ul>
-      )
-    );
-  }
-
-  if (matches.length > 0) {
-    blocks.push(
-      renderSection(
-        "Matches",
-        <ul className="text-[12px] text-[var(--app-text-secondary)] space-y-2">
-          {matches.map((m: any, idx: number) => (
-            <li key={`${idx}-${m.sceneId || m.episodeId || "m"}`} className="space-y-1">
-              <div className="text-[11px] text-[var(--app-text-muted)]">
-                {m.episodeId ? `Ep ${m.episodeId}` : ""}
-                {m.episodeTitle ? ` · ${m.episodeTitle}` : ""}
-                {m.sceneId ? ` · Scene ${m.sceneId}` : ""}
-                {m.sceneTitle ? ` · ${m.sceneTitle}` : ""}
-                {m.characterName ? ` · ${m.characterName}` : ""}
-                {m.locationName ? ` · ${m.locationName}` : ""}
-                {m.scope ? ` · ${m.scope}` : ""}
-              </div>
-              {m.snippet ? (
-                <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{m.snippet}</div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )
-    );
-  }
-
-  if (data.sceneContent) {
-    blocks.push(
-      renderSection(
-        "Scene Content",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{data.sceneContent}</div>
-      )
-    );
-  }
-  if (data.episodeContent) {
-    blocks.push(
-      renderSection(
-        "Episode Content",
-        <div className="text-[12px] text-[var(--app-text-secondary)] whitespace-pre-wrap">{data.episodeContent}</div>
-      )
-    );
-  }
-  if (episodeCharacters.length > 0) {
-    blocks.push(
-      renderSection(
-        "Episode Characters",
-        <div className="text-[12px] text-[var(--app-text-secondary)]">{episodeCharacters.join(", ")}</div>
-      )
-    );
-  }
-  if (sceneList.length > 0) {
-    blocks.push(
-      renderSection(
-        "Scene List",
-        <ul className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          {sceneList.map((sc: any) => (
-            <li key={`${sc.id}-${sc.title}`}>
-              <span className="text-[11px] text-[var(--app-text-muted)]">{sc.id}</span> {sc.title}
-            </li>
-          ))}
-        </ul>
-      )
-    );
-  }
-  if (characterList.length > 0) {
-    blocks.push(
-      renderSection(
-        "Characters",
-        <ul className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          {characterList.map((c: any) => (
-            <li key={`${c.id || c.name}-${c.name}`}>
-              <span className="text-[11px] text-[var(--app-text-muted)]">{c.name}</span>
-              {c.role ? ` · ${c.role}` : ""}
-              {typeof c.isMain === "boolean" ? ` · ${c.isMain ? "Main" : "Side"}` : ""}
-            </li>
-          ))}
-        </ul>
-      )
-    );
-  }
-  if (locationList.length > 0) {
-    blocks.push(
-      renderSection(
-        "Locations",
-        <ul className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          {locationList.map((loc: any) => (
-            <li key={`${loc.id || loc.name}-${loc.name}`}>
-              <span className="text-[11px] text-[var(--app-text-muted)]">{loc.name}</span>
-              {loc.type ? ` · ${loc.type}` : ""}
-            </li>
-          ))}
-        </ul>
-      )
-    );
-  }
-  if (data.character) {
-    const c = data.character;
-    blocks.push(
-      renderSection(
-        "Character",
-        <div className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          <div className="font-semibold text-[var(--app-text-primary)]">{c.name}</div>
-          {c.role ? <div>Role: {c.role}</div> : null}
-          {typeof c.isMain === "boolean" ? <div>Main: {c.isMain ? "Yes" : "No"}</div> : null}
-          {c.tags?.length ? <div>Tags: {c.tags.join(", ")}</div> : null}
-          {c.bio ? <div className="whitespace-pre-wrap">{c.bio}</div> : null}
-          {Array.isArray(c.forms) && c.forms.length > 0 ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Portrait Slots: {c.forms.length}</div>
-          ) : null}
-        </div>
-      )
-    );
-  }
-  if (data.location) {
-    const loc = data.location;
-    blocks.push(
-      renderSection(
-        "Location",
-        <div className="text-[12px] text-[var(--app-text-secondary)] space-y-1">
-          <div className="font-semibold text-[var(--app-text-primary)]">{loc.name}</div>
-          {loc.type ? <div>Type: {loc.type}</div> : null}
-          {loc.description ? <div className="whitespace-pre-wrap">{loc.description}</div> : null}
-          {Array.isArray(loc.zones) && loc.zones.length > 0 ? (
-            <div className="text-[11px] text-[var(--app-text-muted)]">Portrait Slots: {loc.zones.length}</div>
-          ) : null}
-        </div>
-      )
-    );
-  }
-
-  if (blocks.length === 0) {
-    return (
-      <div className="space-y-2">
-        {artifactCard}
-        <pre className="text-[11px] text-[var(--app-text-secondary)] whitespace-pre-wrap">
-          {JSON.stringify(parsed, null, 2)}
-        </pre>
-      </div>
-    );
-  }
-
-  return <div className="space-y-2">{artifactCard}{blocks}</div>;
-};
-
-const READ_TOOL_NAMES = new Set(["list_project_resources", "read_project_resource", "search_project_resource"]);
-const WRITE_TOOL_NAMES = new Set<string>([]);
-const OPERATE_TOOL_NAMES = new Set(["operate_project_resource"]);
-
 const trimToolSummary = (summary?: string, fallback?: string) => {
   if (!summary?.trim()) return fallback || "工具";
   const cleaned = summary.replace(/^[^：:]+[：:]\s*/, "").trim();
@@ -823,10 +76,13 @@ const trimToolSummary = (summary?: string, fallback?: string) => {
 };
 
 const buildToolActionLabel = (tool: ToolPayload) => {
-  const subject = trimToolSummary(tool.summary, tool.name);
-  if (READ_TOOL_NAMES.has(tool.name)) return `查阅 ${subject}`;
-  if (WRITE_TOOL_NAMES.has(tool.name)) return `编辑 ${subject}`;
-  if (OPERATE_TOOL_NAMES.has(tool.name)) return `操作 ${subject}`;
+  const descriptor = findQalamToolDescriptor(tool.name);
+  if (!tool.summary?.trim()) return descriptor?.label || tool.name;
+  const subject = trimToolSummary(tool.summary, descriptor?.label || tool.name);
+  const interaction = descriptor?.interaction;
+  if (interaction === "read") return `查阅 ${subject}`;
+  if (interaction === "edit") return `编辑 ${subject}`;
+  if (interaction === "approve") return `确认 ${subject}`;
   return `操作 ${subject}`;
 };
 
@@ -907,7 +163,7 @@ const renderThinkingExpansion = (status: StatusMessage["statusCard"]) => {
 };
 
 const renderToolExpansion = (thread: ToolThread) => {
-  const toolOutputView = thread.result?.tool ? renderToolOutput(thread.result.tool) : null;
+  const toolOutputView = thread.result?.tool ? renderQalamToolOutput(thread.result.tool) : null;
   const content = buildToolDetailsText(thread);
   if (!toolOutputView && !content) return null;
   return (
@@ -924,51 +180,6 @@ const renderToolExpansion = (thread: ToolThread) => {
       ) : null}
     </div>
   );
-};
-
-type ToolThread = {
-  key: string;
-  request?: ToolMessage;
-  result?: ToolMessage;
-};
-
-type DisplayMessageItem =
-  | { kind: "status"; key: string; order: number; message: StatusMessage }
-  | { kind: "tool"; key: string; order: number; thread: ToolThread }
-  | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
-  | { kind: "chat"; key: string; order: number; message: ChatMessage };
-
-const getDisplayItemRunId = (item: DisplayMessageItem) => {
-  if (item.kind === "status") return item.message.statusCard.runId;
-  if (item.kind === "tool") return item.thread.request?.tool.runId || item.thread.result?.tool.runId;
-  if (item.kind === "chat" && item.message.role === "assistant") return item.message.meta?.runId;
-  return undefined;
-};
-
-const getDisplayItemPhase = (item: DisplayMessageItem) => {
-  if (item.kind === "status") {
-    const headline = item.message.statusCard.headline;
-    if (headline.includes("连接")) return 0;
-    if (item.message.statusCard.isThinking) return 10;
-    if (headline.includes("生成") || headline.includes("回复")) return 30;
-    return 15;
-  }
-  if (item.kind === "tool") return 20;
-  if (item.kind === "approval") return 25;
-  if (item.kind === "chat" && item.message.role === "assistant") return 40;
-  return 0;
-};
-
-const compareDisplayItems = (left: DisplayMessageItem, right: DisplayMessageItem) => {
-  const orderDiff = left.order - right.order;
-  if (orderDiff !== 0) return orderDiff;
-  const leftRunId = getDisplayItemRunId(left);
-  const rightRunId = getDisplayItemRunId(right);
-  if (leftRunId && leftRunId === rightRunId) {
-    const phaseDiff = getDisplayItemPhase(left) - getDisplayItemPhase(right);
-    if (phaseDiff !== 0) return phaseDiff;
-  }
-  return 0;
 };
 
 const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) => {
@@ -1105,13 +316,19 @@ const renderAssistantPanel = (message: ChatMessage) => {
             "计划",
             <ul className={`list-decimal space-y-1 pl-5 ${qalamBodyTextClass}`}>
               {planItems.map((item, idx) => (
-                <li key={`${idx}-${item.slice(0, 8)}`}>{renderInlineMarkdown(item)}</li>
+                <li key={`${idx}-${item.slice(0, 8)}`}>{renderQalamInlineMarkdown(item)}</li>
               ))}
             </ul>
           )}
         </details>
       ) : null}
-      {message.text ? renderMarkdownLite(message.text) : null}
+      {message.text ? renderQalamMarkdown(message.text) : null}
+      {message.meta?.isStreaming ? (
+        <div className="inline-flex items-center gap-2 text-[11px] text-[var(--app-text-muted)]" role="status">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" aria-hidden="true" />
+          正在生成
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -1226,7 +443,7 @@ const renderApprovalPanel = (
             onClick={() => onApprovalChoice?.(approval, "approve_always")}
             className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-sky-200"
           >
-            <CheckCheck size={12} />
+            <Checks size={12} />
             以后都同意
           </button>
           <button
@@ -1258,67 +475,7 @@ export const QalamChatContent: React.FC<Props> = ({
   const previousCurrentKeyRef = useRef<string | null>(null);
   const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
   const [currentShiftTick, setCurrentShiftTick] = useState(0);
-  const displayMessages = useMemo(() => {
-    const consumed = new Set<number>();
-    const items: DisplayMessageItem[] = [];
-
-    for (let i = 0; i < messages.length; i += 1) {
-      if (consumed.has(i)) continue;
-      const message = messages[i];
-
-      if (isToolMessage(message)) {
-        if (message.kind === "tool") {
-          const resultIndex = messages.findIndex(
-            (candidate, idx) =>
-              idx > i &&
-              isToolMessage(candidate) &&
-              candidate.kind === "tool_result" &&
-              candidate.tool.callId &&
-              candidate.tool.callId === message.tool.callId
-          );
-          const result =
-            resultIndex >= 0 && isToolMessage(messages[resultIndex]) ? (messages[resultIndex] as ToolMessage) : undefined;
-          if (resultIndex >= 0) consumed.add(resultIndex);
-          items.push({
-            kind: "tool",
-            key: message.tool.callId || `tool-${i}`,
-            order: message.order || i,
-            thread: {
-              key: message.tool.callId || `tool-${i}`,
-              request: message,
-              result,
-            },
-          });
-          continue;
-        }
-
-        items.push({
-          kind: "tool",
-          key: message.tool.callId || `tool-result-${i}`,
-          order: message.order || i,
-          thread: {
-            key: message.tool.callId || `tool-result-${i}`,
-            result: message,
-          },
-        });
-        continue;
-      }
-
-      if (isStatusMessage(message)) {
-        items.push({ kind: "status", key: message.statusCard.id || `${message.statusCard.runId}-${i}`, order: message.order || i, message });
-        continue;
-      }
-
-      if (isApprovalMessage(message)) {
-        items.push({ kind: "approval", key: message.approval.id || `${message.approval.nodeId}-${i}`, order: message.order || i, message });
-        continue;
-      }
-
-      items.push({ kind: "chat", key: message.meta?.messageId || `chat-${i}`, order: message.order || i, message });
-    }
-
-    return [...items].sort(compareDisplayItems);
-  }, [messages]);
+  const displayMessages = useMemo(() => buildQalamMessageTimeline(messages), [messages]);
 
   const runDurationMap = useMemo(() => {
     const durations = new Map<string, number>();
@@ -1452,6 +609,11 @@ export const QalamChatContent: React.FC<Props> = ({
   return (
     <div
       ref={messagesRef}
+      role="log"
+      aria-live="polite"
+      aria-relevant="additions text"
+      aria-busy={isSending}
+      aria-label="Qalam Agent 对话"
       className={`qalam-scrollbar qalam-scroll-fade min-h-0 overflow-y-auto ${revealMode === "latest" ? "px-4 pt-2 pb-5 md:pt-1 md:pb-4" : "px-4 py-5 md:py-4"} ${className}`}
       style={{
         ...style,
@@ -1459,7 +621,11 @@ export const QalamChatContent: React.FC<Props> = ({
       }}
     >
       <div className="space-y-3">
-        {displayMessages.map((item) => {
+        {displayMessages.length === 0 ? (
+          <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-soft)] px-4 py-3 text-[12px] leading-6 text-[var(--app-text-secondary)]">
+            Qalam 已准备好。你可以直接描述目标，Agent 会在需要时查阅或操作当前 Flow。
+          </div>
+        ) : displayMessages.map((item) => {
           const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;
           const isLatestListItem = item === displayMessages[displayMessages.length - 1];
           return renderMessageItem(item, isCurrentReveal, revealMode === "latest" ? isCurrentReveal : isLatestListItem);

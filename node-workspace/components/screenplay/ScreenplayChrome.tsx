@@ -3,16 +3,17 @@ import {
   ArrowsInSimple,
   Check,
   CheckCircle,
-  DownloadSimple,
+  CircleNotch,
   FilmSlate,
   Crosshair,
   Info,
   MagnifyingGlass,
-  Robot,
-  SidebarSimple,
+  ShareNetwork,
+  UserCircle,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
+import type { ProjectRoleIdentity } from "../../../types";
 import {
   SCREENPLAY_FORMAT_LABELS,
   type ScreenplayAnalysis,
@@ -24,14 +25,10 @@ export type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
 type HeaderProps = {
   saveState: SaveState;
   isFocusMode: boolean;
-  isNavigatorOpen: boolean;
   isInspectorOpen: boolean;
-  isQalamOpen: boolean;
   onToggleFocus: () => void;
-  onToggleNavigator: () => void;
   onToggleInspector: () => void;
-  onToggleQalam: () => void;
-  onExport: () => void;
+  onShare: () => void;
   onClose: () => void;
 };
 
@@ -46,41 +43,34 @@ const SAVE_LABELS: Record<SaveState, string> = {
 export const ScreenplayHeader: React.FC<HeaderProps> = ({
   saveState,
   isFocusMode,
-  isNavigatorOpen,
   isInspectorOpen,
-  isQalamOpen,
   onToggleFocus,
-  onToggleNavigator,
   onToggleInspector,
-  onToggleQalam,
-  onExport,
+  onShare,
   onClose,
 }) => (
   <header className="screenplay-header">
-    <div className="screenplay-header__leading">
-      <div className="screenplay-header__app-title">Qalam</div>
-    </div>
-
     <div className="screenplay-header__actions">
-      <div className={`screenplay-save-state is-${saveState}`} role="status" aria-live="polite">
+      <div
+        className={`screenplay-save-state is-${saveState}`}
+        role="status"
+        aria-live="polite"
+        aria-label={SAVE_LABELS[saveState]}
+        title={SAVE_LABELS[saveState]}
+      >
         {saveState === "saved" ? <CheckCircle size={14} weight="fill" /> : null}
-        <span>{SAVE_LABELS[saveState]}</span>
+        {saveState === "saving" || saveState === "idle" ? <CircleNotch size={14} /> : null}
+        {saveState === "conflict" || saveState === "error" ? <WarningCircle size={14} weight="fill" /> : null}
       </div>
       <span className="screenplay-header__divider" />
-      <button type="button" className={isNavigatorOpen ? "is-active" : ""} onClick={onToggleNavigator} title="场景导航">
-        <SidebarSimple size={18} />
-      </button>
-      <button type="button" className={isQalamOpen ? "is-active" : ""} onClick={onToggleQalam} title="Qalam 助手">
-        <Robot size={18} />
-      </button>
       <button type="button" className={isFocusMode ? "is-active" : ""} onClick={onToggleFocus} title="专注模式">
         <Crosshair size={18} />
       </button>
-      <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="剧本检查器">
+      <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="稿纸信息">
         <Info size={18} />
       </button>
-      <button type="button" onClick={onExport} title="导出 Fountain">
-        <DownloadSimple size={18} />
+      <button type="button" onClick={onShare} title="分享 Fountain">
+        <ShareNetwork size={18} />
       </button>
       <span className="screenplay-header__divider" />
       <button type="button" onClick={onClose} title="退出全屏编辑">
@@ -94,10 +84,11 @@ type NavigatorProps = {
   analysis: ScreenplayAnalysis;
   activeLineIndex: number;
   onNavigate: (lineIndex: number) => void;
-  onClose: () => void;
+  onClose?: () => void;
+  embedded?: boolean;
 };
 
-export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, activeLineIndex, onNavigate, onClose }) => {
+export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, activeLineIndex, onNavigate, onClose, embedded = false }) => {
   const [query, setQuery] = useState("");
   const filteredScenes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -112,7 +103,7 @@ export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, active
   const activeScene = [...analysis.scenes].reverse().find((scene) => scene.lineIndex <= activeLineIndex);
 
   return (
-    <aside className="screenplay-navigator" aria-label="场景导航">
+    <aside className={`screenplay-navigator ${embedded ? "is-embedded" : ""}`} aria-label="场景导航">
       <div className="screenplay-panel-heading">
         <div>
           <span>OUTLINE</span>
@@ -120,7 +111,7 @@ export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, active
         </div>
         <div className="screenplay-panel-heading__actions">
           <small>{analysis.scenes.length}</small>
-          <button type="button" onClick={onClose} aria-label="关闭场景导航"><X size={13} /></button>
+          {onClose ? <button type="button" onClick={onClose} aria-label="关闭场景导航"><X size={13} /></button> : null}
         </div>
       </div>
       <label className="screenplay-search">
@@ -159,17 +150,25 @@ export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, active
 type InspectorProps = {
   analysis: ScreenplayAnalysis;
   activeLine: ScreenplayLine;
+  characterRoles: ProjectRoleIdentity[];
+  onUseCharacter: (role: ProjectRoleIdentity) => void;
   onNavigate: (lineIndex: number) => void;
 };
 
-export const ScreenplayInspector: React.FC<InspectorProps> = ({ analysis, activeLine, onNavigate }) => {
+export const ScreenplayInspector: React.FC<InspectorProps> = ({
+  analysis,
+  activeLine,
+  characterRoles,
+  onUseCharacter,
+  onNavigate,
+}) => {
   const activeScene = [...analysis.scenes].reverse().find((scene) => scene.lineIndex <= activeLine.index);
   return (
-    <aside className="screenplay-inspector" aria-label="剧本检查器">
+    <aside className="screenplay-inspector" aria-label="稿纸信息">
       <div className="screenplay-panel-heading">
         <div>
-          <span>INSPECTOR</span>
-          <strong>剧本检查器</strong>
+          <span>INFO</span>
+          <strong>稿纸信息</strong>
         </div>
         <small>L{activeLine.index + 1}</small>
       </div>
@@ -212,12 +211,50 @@ export const ScreenplayInspector: React.FC<InspectorProps> = ({ analysis, active
       </section>
 
       <section className="screenplay-inspector__section">
-        <span className="screenplay-inspector__label">角色索引</span>
-        <div className="screenplay-character-index">
-          {analysis.characterNames.map((name) => <span key={name}>{name}</span>)}
-          {!analysis.characterNames.length ? <em>角色提示行会自动汇总到这里。</em> : null}
+        <span className="screenplay-inspector__label">角色库</span>
+        <div className="screenplay-character-library">
+          {characterRoles.map((role) => {
+            const reference = analysis.characterReferences.find((item) =>
+              item.roleId === role.id || item.name === (role.displayName || role.name)
+            );
+            return (
+              <button key={role.id} type="button" onClick={() => onUseCharacter(role)}>
+                <span className="screenplay-character-library__avatar">
+                  {role.avatarUrl ? <img src={role.avatarUrl} alt="" /> : <UserCircle size={18} />}
+                </span>
+                <span className="screenplay-character-library__copy">
+                  <strong>{role.displayName || role.name}</strong>
+                  <small>@{role.mention || role.name} · {reference?.lineIndexes.length || 0} 处</small>
+                </span>
+                <em>{activeLine.kind === "character" || activeLine.kind === "dual_dialogue" ? "绑定" : "插入"}</em>
+              </button>
+            );
+          })}
+          {!characterRoles.length ? (
+            <div className="screenplay-character-library__empty">
+              <UserCircle size={18} />
+              <span>角色库为空。把一行设为角色并输入名称，保存后会自动创建。</span>
+            </div>
+          ) : null}
+          {analysis.characterReferences.filter((reference) => !reference.bound).map((reference) => (
+            <button key={`unbound-${reference.name}`} type="button" onClick={() => onNavigate(reference.lineIndexes[0])} className="is-unbound">
+              <span className="screenplay-character-library__avatar"><WarningCircle size={16} /></span>
+              <span className="screenplay-character-library__copy">
+                <strong>{reference.name}</strong>
+                <small>尚未绑定 · {reference.lineIndexes.length} 处</small>
+              </span>
+              <em>定位</em>
+            </button>
+          ))}
         </div>
       </section>
+
+      <ScreenplayNavigator
+        analysis={analysis}
+        activeLineIndex={activeLine.index}
+        onNavigate={onNavigate}
+        embedded
+      />
     </aside>
   );
 };
