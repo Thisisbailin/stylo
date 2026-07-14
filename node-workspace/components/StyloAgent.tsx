@@ -655,7 +655,10 @@ export const StyloAgent: React.FC<Props> = ({
     }
   }, []);
   const prepareProjectToolState = useCallback(async () => {
-    if (ensureProjectSynced) await ensureProjectSynced();
+    if (ensureProjectSynced) {
+      await ensureProjectSynced();
+      return;
+    }
     await waitForProjectSync();
   }, [ensureProjectSynced, waitForProjectSync]);
   const edgeRuntime = useMemo(

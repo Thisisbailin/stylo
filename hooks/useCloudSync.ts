@@ -100,6 +100,7 @@ export const useCloudSync = ({
   const remoteHasDataRef = useRef<boolean | null>(null);
   const pendingOpRef = useRef<{ id: string; data: ProjectData; baseVersion: number; delta?: ProjectDelta } | null>(null);
   const isSavingRef = useRef(false);
+  const flushSaveQueueRef = useRef<() => Promise<void>>(async () => undefined);
   const saveRetryTimeout = useRef<number | null>(null);
   const saveRetryCountRef = useRef(0);
   const lastRefreshKeyRef = useRef<number | null>(null);
@@ -107,6 +108,7 @@ export const useCloudSync = ({
   const lastSyncedRef = useRef<ProjectData | null>(null);
   const baselineRef = useRef<SyncBaseline | null>(null);
   const statusRef = useRef<SyncStatus>('idle');
+  const lastSyncErrorRef = useRef<string | null>(null);
   const deviceIdRef = useRef<string>(getDeviceId());
   const isLoadingRef = useRef(false);
   const onErrorRef = useRef(onError);
@@ -115,6 +117,7 @@ export const useCloudSync = ({
   const getTokenRef = useRef(getToken);
   const activeScopeRef = useRef(accountScope);
   const generationRef = useRef(0);
+  const loadGenerationRef = useRef(0);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -144,6 +147,7 @@ export const useCloudSync = ({
     mountedRef.current = true;
     activeScopeRef.current = accountScope;
     generationRef.current += 1;
+    loadGenerationRef.current += 1;
     projectDataRef.current = projectData;
     remoteUpdatedAtRef.current = null;
     remoteHasDataRef.current = null;
@@ -153,6 +157,7 @@ export const useCloudSync = ({
     saveRetryCountRef.current = 0;
     lastRefreshKeyRef.current = null;
     syncBlockedRef.current = null;
+    lastSyncErrorRef.current = null;
     lastSyncedRef.current = null;
     baselineRef.current = null;
     statusRef.current = "idle";
@@ -254,6 +259,8 @@ export const useCloudSync = ({
 
   const emitStatus = useCallback((status: SyncStatus, detail?: { lastSyncAt?: number; error?: string; pendingOps?: number; retryCount?: number; lastAttemptAt?: number }) => {
     statusRef.current = status;
+    if (status === "error" && detail?.error) lastSyncErrorRef.current = detail.error;
+    if (status === "synced") lastSyncErrorRef.current = null;
     onStatusChangeRef.current?.(status, detail);
   }, []);
 
@@ -332,8 +339,6 @@ export const useCloudSync = ({
               data: local,
               baseVersion: remoteUpdatedAtRef.current ?? 0
             };
-            isSavingRef.current = false;
-            void flushSaveQueue();
             return;
           }
           const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote: normalized, local }));
@@ -365,8 +370,6 @@ export const useCloudSync = ({
             emitStatus(statusRef.current, { pendingOps: 1, retryCount: saveRetryCountRef.current });
           }
         }
-        isSavingRef.current = false;
-        if (pendingOpRef.current) void flushSaveQueue();
         return;
       }
 
@@ -393,8 +396,6 @@ export const useCloudSync = ({
       if (pendingOpRef.current?.id === op.id) pendingOpRef.current = null;
       saveRetryCountRef.current = 0;
       emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
-      isSavingRef.current = false;
-      if (pendingOpRef.current) void flushSaveQueue();
     } catch (e) {
       if (!isOperationCurrent(generation)) return;
       onErrorRef.current?.(e);
@@ -411,27 +412,35 @@ export const useCloudSync = ({
       saveRetryCountRef.current += 1;
       if (saveRetryTimeout.current) window.clearTimeout(saveRetryTimeout.current);
       saveRetryTimeout.current = window.setTimeout(() => {
-        if (isOperationCurrent(generation)) void flushSaveQueue();
+        if (mountedRef.current && activeScopeRef.current === accountScope) {
+          void flushSaveQueueRef.current();
+        }
       }, delay);
+    } finally {
+      isSavingRef.current = false;
+      if (pendingOpRef.current && !saveRetryTimeout.current && mountedRef.current) {
+        queueMicrotask(() => void flushSaveQueueRef.current());
+      }
     }
   };
+  flushSaveQueueRef.current = flushSaveQueue;
 
   const enqueueSave = (data: ProjectData, baseVersion?: number | null) => {
-    if (!mountedRef.current || activeScopeRef.current !== accountScope) return;
+    if (!mountedRef.current || activeScopeRef.current !== accountScope) return false;
     if (syncBlockedRef.current) {
       emitStatus('error', { error: syncBlockedRef.current, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
-      return;
+      return false;
     }
     const validation = validateProjectData(data);
     if (!validation.ok) {
       emitStatus('error', { error: validation.error, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
-      return;
+      return false;
     }
     const delta = computeProjectDelta(data, lastSyncedRef.current);
     if (isDeltaEmpty(delta)) {
       pendingOpRef.current = null;
       emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: 0, retryCount: saveRetryCountRef.current });
-      return;
+      return true;
     }
     pendingOpRef.current = {
       id: createOpId(),
@@ -445,7 +454,8 @@ export const useCloudSync = ({
       saveRetryCountRef.current = 0;
     }
     emitStatus(statusRef.current, { pendingOps: 1, retryCount: saveRetryCountRef.current });
-    void flushSaveQueue();
+    void flushSaveQueueRef.current();
+    return true;
   };
 
   const flushProjectSync = useCallback(async () => {
@@ -457,12 +467,23 @@ export const useCloudSync = ({
       window.clearTimeout(syncSaveTimeout.current);
       syncSaveTimeout.current = null;
     }
-    enqueueSave(projectDataRef.current, remoteUpdatedAtRef.current ?? 0);
+    const validation = validateProjectData(projectDataRef.current);
+    if (!validation.ok) {
+      throw new Error(`项目数据未通过同步校验：${validation.error}`);
+    }
+    lastSyncErrorRef.current = null;
+    if (!enqueueSave(projectDataRef.current, remoteUpdatedAtRef.current ?? 0)) {
+      throw new Error(lastSyncErrorRef.current || "项目同步作用域已失效，Agent 请求未发送。");
+    }
     const deadline = Date.now() + 20_000;
-    while (isSavingRef.current || pendingOpRef.current || statusRef.current !== "synced") {
+    while (isSavingRef.current || pendingOpRef.current) {
       if (syncBlockedRef.current) throw new Error(syncBlockedRef.current);
+      if (!isSavingRef.current && !saveRetryTimeout.current && pendingOpRef.current) {
+        await flushSaveQueueRef.current();
+        continue;
+      }
       if (Date.now() >= deadline) {
-        throw new Error("等待项目同步完成超时，Agent 请求未发送。");
+        throw new Error(lastSyncErrorRef.current || "等待项目同步完成超时，Agent 请求未发送。");
       }
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
@@ -501,7 +522,7 @@ export const useCloudSync = ({
 
   useEffect(() => {
     if (hasLoadedRemote && pendingOpRef.current) {
-      void flushSaveQueue();
+      void flushSaveQueueRef.current();
     }
   }, [hasLoadedRemote]);
 
@@ -522,10 +543,16 @@ export const useCloudSync = ({
     if (hasLoadedRemote && !refreshChanged) return;
     if (refreshChanged) lastRefreshKeyRef.current = refreshKey ?? null;
     let cancelled = false;
+    const loadGeneration = loadGenerationRef.current + 1;
+    loadGenerationRef.current = loadGeneration;
+    const isLoadCurrent = () =>
+      !cancelled &&
+      loadGenerationRef.current === loadGeneration &&
+      isOperationCurrent(generation);
     emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
 
     const scheduleRetry = (loadFn: () => void) => {
-      if (cancelled || hasLoadedRemote || !isOperationCurrent(generation)) return;
+      if (hasLoadedRemote || !isLoadCurrent()) return;
       if (retryCountRef.current >= MAX_RETRIES) {
         const error = "Sync failed after 10 retries. Please sign in again or check your Clerk JWT template.";
         syncBlockedRef.current = error;
@@ -538,25 +565,25 @@ export const useCloudSync = ({
       retryCountRef.current += 1;
       emitStatus('loading', { retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
       retryTimeout.current = window.setTimeout(() => {
-        if (isOperationCurrent(generation)) loadFn();
+        if (isLoadCurrent()) loadFn();
       }, delay);
     };
 
     const saveNow = async (data: ProjectData, updatedAt?: number | null) => {
-      if (!isOperationCurrent(generation)) return;
+      if (!isLoadCurrent()) return;
       enqueueSave(data, updatedAt ?? remoteUpdatedAtRef.current);
     };
 
     const loadRemote = async () => {
-      if (!isOperationCurrent(generation)) return;
+      if (!isLoadCurrent()) return;
       if (isLoadingRef.current) return;
       isLoadingRef.current = true;
       try {
         let token = await getTokenRef.current();
-        if (!isOperationCurrent(generation)) return;
+        if (!isLoadCurrent()) return;
         if (!token) {
           token = await getTokenRef.current({ skipCache: true });
-          if (!isOperationCurrent(generation)) return;
+          if (!isLoadCurrent()) return;
         }
         if (!token) {
           scheduleRetry(loadRemote);
@@ -571,13 +598,13 @@ export const useCloudSync = ({
           });
 
         let res = await executeLoad(token);
-        if (!isOperationCurrent(generation)) return;
+        if (!isLoadCurrent()) return;
         if (res.status === 401 || res.status === 403) {
           const refreshedToken = await getTokenRef.current({ skipCache: true });
-          if (!isOperationCurrent(generation)) return;
+          if (!isLoadCurrent()) return;
           if (refreshedToken) {
             res = await executeLoad(refreshedToken);
-            if (!isOperationCurrent(generation)) return;
+            if (!isLoadCurrent()) return;
           }
         }
 
@@ -604,7 +631,7 @@ export const useCloudSync = ({
         }
 
         const data = await res.json();
-        if (!isOperationCurrent(generation)) return;
+        if (!isLoadCurrent()) return;
         if (!cancelled && data.projectData) {
           const remotePayload = data.projectData.projectData ? data.projectData.projectData : data.projectData;
           const remote = normalizeProjectData(remotePayload);
@@ -665,7 +692,7 @@ export const useCloudSync = ({
 
             emitStatus('conflict', { pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
             const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote, local }));
-            if (!isOperationCurrent(generation)) return;
+            if (!isLoadCurrent()) return;
             if (useRemote) {
               backupData(localBackupKey, local);
               setProjectData(remote);
@@ -689,21 +716,21 @@ export const useCloudSync = ({
         emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
         if (!cancelled) setHasLoadedRemote(true);
       } catch (e) {
-        if (!cancelled && isOperationCurrent(generation)) {
+        if (isLoadCurrent()) {
           onErrorRef.current?.(e);
           const message = e instanceof Error ? e.message : "Failed to load cloud project data";
           emitStatus('error', { error: message, retryCount: retryCountRef.current, pendingOps: pendingOpRef.current ? 1 : 0 });
           scheduleRetry(loadRemote);
         }
       } finally {
-        if (isOperationCurrent(generation)) isLoadingRef.current = false;
+        if (loadGenerationRef.current === loadGeneration) isLoadingRef.current = false;
       }
     };
 
     loadRemote();
     return () => {
       cancelled = true;
-      generationRef.current += 1;
+      loadGenerationRef.current += 1;
       if (retryTimeout.current) window.clearTimeout(retryTimeout.current);
     };
   }, [accountScope, isSignedIn, isLoaded, hasLoadedRemote, refreshKey, localBackupKey, remoteBackupKey, forceClearKey, setProjectData, setHasLoadedRemote]);

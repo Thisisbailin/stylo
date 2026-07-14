@@ -653,6 +653,20 @@ test("HTTP Agent runtime flushes sync before sending the minimal request", async
   }
 });
 
+test("Agent project sync barrier follows queue completion instead of UI sync status", () => {
+  const syncSource = readFileSync("hooks/useCloudSync.ts", "utf8");
+  assert.match(syncSource, /finally\s*\{\s*isSavingRef\.current = false;/);
+  assert.match(syncSource, /queueMicrotask\(\(\) => void flushSaveQueueRef\.current\(\)\)/);
+  assert.match(syncSource, /while \(isSavingRef\.current \|\| pendingOpRef\.current\)/);
+  assert.doesNotMatch(syncSource, /statusRef\.current !== ["']synced["']/);
+
+  const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
+  assert.match(
+    agentSource,
+    /if \(ensureProjectSynced\) \{\s*await ensureProjectSynced\(\);\s*return;\s*\}/
+  );
+});
+
 test("Agent instructions start without environment or operational-memory injection", () => {
   const instructions = composeAgentInstructions({ enabledSkills: [] })({
     context: {
