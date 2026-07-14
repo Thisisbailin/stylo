@@ -48,7 +48,7 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
-  ensureProjectSynced?: () => Promise<void>;
+  ensureProjectSynced?: (expectedRevision?: number) => Promise<void>;
   onOpenStats?: () => void;
   settingsOpen?: boolean;
   openRequest?: number;
@@ -655,9 +655,9 @@ export const StyloAgent: React.FC<Props> = ({
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
   }, []);
-  const prepareProjectToolState = useCallback(async () => {
+  const prepareProjectToolState = useCallback(async (expectedRevision: number) => {
     if (ensureProjectSynced) {
-      await ensureProjectSynced();
+      await ensureProjectSynced(expectedRevision);
       return;
     }
     await waitForProjectSync();

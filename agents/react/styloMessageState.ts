@@ -124,7 +124,7 @@ export class StyloMessageEventState {
         status: aborted ? "success" : "error",
         headline: aborted ? "已停止" : "连接失败",
         detail: aborted ? "当前任务已由你手动停止。" : error,
-        summary: current?.statusCard.summary,
+        summary: aborted ? undefined : error,
         steps: current?.statusCard.steps || [],
         startedAt: current?.statusCard.startedAt || Date.now(),
         updatedAt: Date.now(),
@@ -229,8 +229,10 @@ export class StyloMessageEventState {
         role: "assistant", kind: "status", order: current?.order || order(),
         statusCard: {
           id, runId: event.runId, status: event.entry.status === "error" ? "error" : "running",
-          headline: "连接 Agent", detail: event.entry.detail || event.entry.title, summary: event.entry.title,
-          steps: [], startedAt: current?.statusCard.startedAt || Date.now(), updatedAt: Date.now(), isThinking: true,
+          headline: "连接 Agent", detail: event.entry.detail || event.entry.title,
+          summary: event.entry.status === "error" ? event.entry.detail || event.entry.title : event.entry.title,
+          steps: [], startedAt: current?.statusCard.startedAt || Date.now(), updatedAt: Date.now(),
+          isThinking: event.entry.status !== "error",
         },
       })) };
     }

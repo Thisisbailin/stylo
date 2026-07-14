@@ -195,11 +195,15 @@ export const applyNodeFlowCanvasNodeChangesCommand = ({
   state: NodeFlowMutableState;
   changes: NodeChange<NodeFlowCanvasNode>[];
 }) => {
+  if (!changes.length) return { state };
   const nextNodes = applyNodeFlowNodeChanges(changes, state.nodes);
+  const hasDocumentChange = changes.some((change) =>
+    change.type !== "select" && change.type !== "dimensions"
+  );
   return {
     state: {
       ...state,
-      revision: state.revision + 1,
+      revision: hasDocumentChange ? state.revision + 1 : state.revision,
       nodes: nextNodes,
     },
   };
@@ -212,11 +216,13 @@ export const applyNodeFlowCanvasLinkChangesCommand = ({
   state: NodeFlowMutableState;
   changes: EdgeChange<NodeFlowCanvasLink>[];
 }) => {
+  if (!changes.length) return { state };
   const nextLinks = applyNodeFlowLinkChanges(changes, state.links);
+  const hasDocumentChange = changes.some((change) => change.type !== "select");
   return {
     state: {
       ...state,
-      revision: state.revision + 1,
+      revision: hasDocumentChange ? state.revision + 1 : state.revision,
       links: nextLinks,
     },
   };

@@ -52,7 +52,7 @@ interface CreativeWorkspaceProps {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
-  ensureProjectSynced?: () => Promise<void>;
+  ensureProjectSynced?: (expectedRevision?: number) => Promise<void>;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onOpenLanding?: () => void;
@@ -1292,7 +1292,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         config={config}
         setConfig={setConfig}
         isSignedIn={isSignedIn}
-        getAuthToken={getAuthToken ? async () => getAuthToken() : undefined}
+        getAuthToken={getAuthToken}
         syncState={syncState}
         syncRollout={syncRollout}
         onForceSync={onForceSync}

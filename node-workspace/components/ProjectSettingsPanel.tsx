@@ -80,7 +80,7 @@ type Props = {
   config: AppConfig;
   setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
   isSignedIn?: boolean;
-  getAuthToken?: () => Promise<string | null>;
+  getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
@@ -509,11 +509,17 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   const [observabilityLoading, setObservabilityLoading] = useState(false);
   const [observabilityError, setObservabilityError] = useState<string | null>(null);
   const observabilityRequestSeqRef = useRef(0);
+  const observabilityInFlightRef = useRef(false);
+  const observabilityTokenGetterRef = useRef(getAuthToken);
   const [selectedTraceId, setSelectedTraceId] = useState<string>("");
   const [traceProviderFilter, setTraceProviderFilter] = useState<string>("all");
   const [traceStatusFilter, setTraceStatusFilter] = useState<"all" | "failed">("all");
   const [traceSpanFilter, setTraceSpanFilter] = useState<"all" | "error">("all");
   const [traceSearch, setTraceSearch] = useState("");
+
+  useEffect(() => {
+    observabilityTokenGetterRef.current = getAuthToken;
+  }, [getAuthToken]);
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: conversationStorageKey,
     initialValue: { activeId: "", items: [] },
@@ -682,17 +688,20 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   );
 
   const loadObservability = useCallback(async (traceIdOverride?: string) => {
-    if (!isSignedIn || !activeConversation?.id || !getAuthToken) {
+    const tokenGetter = observabilityTokenGetterRef.current;
+    if (!isSignedIn || !activeConversation?.id || !tokenGetter) {
       setObservabilityData(null);
       setObservabilityError(null);
       return;
     }
+    if (observabilityInFlightRef.current) return;
+    observabilityInFlightRef.current = true;
     const requestSeq = observabilityRequestSeqRef.current + 1;
     observabilityRequestSeqRef.current = requestSeq;
     setObservabilityLoading(true);
     setObservabilityError(null);
     try {
-      const token = await getAuthToken();
+      const token = await tokenGetter();
       if (!token) throw new Error("缺少登录态，无法读取云端 Agent 观测数据。");
       const params = new URLSearchParams({
         projectId,
@@ -700,11 +709,15 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       });
       const traceId = (traceIdOverride || selectedTraceId || "").trim();
       if (traceId) params.set("traceId", traceId);
-      const response = await fetch(buildApiUrl(`/api/agent-observability?${params.toString()}`), {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      });
+      const executeRequest = (authToken: string) => fetch(
+        buildApiUrl(`/api/agent-observability?${params.toString()}`),
+        { headers: { authorization: `Bearer ${authToken}` } }
+      );
+      let response = await executeRequest(token);
+      if (response.status === 401 || response.status === 403) {
+        const refreshedToken = await tokenGetter({ skipCache: true });
+        if (refreshedToken) response = await executeRequest(refreshedToken);
+      }
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(String((payload as any)?.error || `HTTP ${response.status}`));
@@ -715,11 +728,12 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
       if (requestSeq !== observabilityRequestSeqRef.current) return;
       setObservabilityError(error?.message || "无法加载 Agent 观测数据。");
     } finally {
+      observabilityInFlightRef.current = false;
       if (requestSeq === observabilityRequestSeqRef.current) {
         setObservabilityLoading(false);
       }
     }
-  }, [accountScope, activeConversation?.id, getAuthToken, isSignedIn, projectId, selectedTraceId]);
+  }, [accountScope, activeConversation?.id, isSignedIn, projectId, selectedTraceId]);
 
   useEffect(() => {
     if (!isOpen || selectedPanel !== "history") return;

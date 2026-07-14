@@ -2383,11 +2383,9 @@ export const useFlowSurface = ({
     return useNodeFlowStore.subscribe((state, previousState) => {
       if (applyingFlowRuntimeRef.current) return;
       if (
-        state.nodes === previousState.nodes &&
-        state.links === previousState.links &&
+        state.revision === previousState.revision &&
         state.graphLinks === previousState.graphLinks &&
         state.globalAssetHistory === previousState.globalAssetHistory &&
-        state.revision === previousState.revision &&
         state.linkStyle === previousState.linkStyle &&
         state.activeView === previousState.activeView
       ) return;

@@ -13,6 +13,21 @@ export type NodeFlowMutableState = {
 
 const bumpRevision = (state: NodeFlowMutableState) => state.revision + 1;
 
+const areNodeValuesEqual = (left: unknown, right: unknown) => {
+  if (Object.is(left, right)) return true;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) return false;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+};
+
 export const appendNodeToNodeFlow = (
   state: NodeFlowMutableState,
   node: NodeFlowNode
@@ -27,25 +42,23 @@ export const patchNodeFlowNodeData = (
   nodeId: string,
   data: Partial<NodeFlowNodeData>
 ) => {
+  const target = state.nodes.find((node) => node.id === nodeId);
+  if (!target) return state;
   const requestedRef = normalizeNodeRef(readStyloNodeRef(data as Record<string, unknown>));
+  const mergedData = { ...target.data, ...data } as Record<string, unknown>;
+  const uniqueRef = requestedRef
+    ? ensureUniqueNodeRef({
+        desiredRef: requestedRef,
+        nodes: state.nodes,
+        excludeNodeId: nodeId,
+      })
+    : undefined;
+  const nextData = (uniqueRef ? setNodeFlowRef(mergedData, uniqueRef) : mergedData) as NodeFlowNodeData;
+  if (areNodeValuesEqual(target.data, nextData)) return state;
   return {
     ...state,
     revision: bumpRevision(state),
-    nodes: state.nodes.map((node) => {
-      if (node.id !== nodeId) return node;
-      const nextData = { ...node.data, ...data } as Record<string, unknown>;
-      const uniqueRef = requestedRef
-        ? ensureUniqueNodeRef({
-            desiredRef: requestedRef,
-            nodes: state.nodes,
-            excludeNodeId: nodeId,
-          })
-        : undefined;
-      return {
-        ...node,
-        data: (uniqueRef ? setNodeFlowRef(nextData, uniqueRef) : nextData) as NodeFlowNodeData,
-      };
-    }),
+    nodes: state.nodes.map((node) => node.id === nodeId ? { ...node, data: nextData } : node),
   };
 };
 
@@ -53,13 +66,17 @@ export const patchNodeFlowNodeStyle = (
   state: NodeFlowMutableState,
   nodeId: string,
   style: Partial<NodeFlowNodeStyle>
-): NodeFlowMutableState => ({
-  ...state,
-  revision: bumpRevision(state),
-  nodes: state.nodes.map((node) =>
-    node.id === nodeId ? { ...node, style: { ...(node.style || {}), ...(style || {}) } } : node
-  ),
-});
+): NodeFlowMutableState => {
+  const target = state.nodes.find((node) => node.id === nodeId);
+  if (!target) return state;
+  const nextStyle = { ...(target.style || {}), ...(style || {}) };
+  if (areNodeValuesEqual(target.style || {}, nextStyle)) return state;
+  return {
+    ...state,
+    revision: bumpRevision(state),
+    nodes: state.nodes.map((node) => node.id === nodeId ? { ...node, style: nextStyle } : node),
+  };
+};
 
 export const removeNodeFromNodeFlow = (
   state: NodeFlowMutableState,

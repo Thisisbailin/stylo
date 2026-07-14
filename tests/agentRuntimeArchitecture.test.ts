@@ -292,6 +292,31 @@ test("preflight cancellation is projected as a stopped task instead of a connect
   assert.equal(status.statusCard.detail, "当前任务已由你手动停止。");
 });
 
+test("preflight failures replace wrapper diagnostics with the actionable error", () => {
+  const state = new StyloMessageEventState();
+  let messages = state.createPreflight([], "preflight-1");
+  messages = state.apply(messages, {
+    type: "trace",
+    runId: "wrapper-1",
+    entry: {
+      id: "trace-1",
+      at: Date.now(),
+      stage: "result",
+      status: "error",
+      title: "Agent 初始化或执行失败",
+      detail: "云端 Flow 修订为 7，本地请求修订为 9。",
+    },
+  }).messages;
+  messages = state.failPreflight(messages, "云端 Flow 修订为 7，本地请求修订为 9。");
+  const status = messages.find((message) => message.kind === "status");
+
+  assert.equal(status?.kind, "status");
+  if (status?.kind !== "status") return;
+  assert.equal(status.statusCard.detail, "云端 Flow 修订为 7，本地请求修订为 9。");
+  assert.equal(status.statusCard.summary, "云端 Flow 修订为 7，本地请求修订为 9。");
+  assert.equal(status.statusCard.isThinking, false);
+});
+
 test("Stylo Agent consumes each cancellation request token only once", () => {
   const source = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
 
@@ -665,7 +690,7 @@ test("Agent project sync barrier follows queue completion instead of UI sync sta
   const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
   assert.match(
     agentSource,
-    /if \(ensureProjectSynced\) \{\s*await ensureProjectSynced\(\);\s*return;\s*\}/
+    /if \(ensureProjectSynced\) \{\s*await ensureProjectSynced\(expectedRevision\);\s*return;\s*\}/
   );
   assert.match(
     agentSource,

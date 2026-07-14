@@ -59,6 +59,16 @@ const fingerprintProjectData = (data: ProjectData): ProjectFingerprint => {
 const isFingerprintEqual = (left: ProjectFingerprint, right: ProjectFingerprint) =>
   left.hash === right.hash && left.length === right.length;
 
+const readActiveFlowRevision = (data: ProjectData | null | undefined) => {
+  if (!data) return null;
+  const activeProjectId = data.activeFlowProjectId;
+  const activeProject = Array.isArray(data.flowProjects)
+    ? data.flowProjects.find((project) => project.id === activeProjectId) || data.flowProjects[0]
+    : undefined;
+  const value = activeProject?.flow?.revision ?? data.flow?.revision;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+};
+
 const readResponseError = async (response: Response) => {
   const raw = await response.text().catch(() => "");
   if (!raw) return `HTTP ${response.status}`;
@@ -456,7 +466,11 @@ export const useCloudSync = ({
   };
   flushSaveQueueRef.current = flushSaveQueue;
 
-  const enqueueSave = (data: ProjectData, baseVersion?: number | null) => {
+  const enqueueSave = (
+    data: ProjectData,
+    baseVersion?: number | null,
+    options?: { forceFull?: boolean }
+  ) => {
     if (!mountedRef.current || activeScopeRef.current !== accountScope) return false;
     if (syncBlockedRef.current) {
       emitStatus('error', { error: syncBlockedRef.current, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
@@ -471,8 +485,8 @@ export const useCloudSync = ({
     const cloudBaseline = lastSyncedRef.current
       ? toCloudProjectData(lastSyncedRef.current)
       : null;
-    const delta = computeProjectDelta(cloudData, cloudBaseline);
-    if (isDeltaEmpty(delta)) {
+    const delta = options?.forceFull ? undefined : computeProjectDelta(cloudData, cloudBaseline);
+    if (delta && isDeltaEmpty(delta)) {
       pendingOpRef.current = null;
       emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: 0, retryCount: saveRetryCountRef.current });
       return true;
@@ -481,7 +495,7 @@ export const useCloudSync = ({
       id: createOpId(),
       data: cloudData,
       baseVersion: typeof baseVersion === "number" ? baseVersion : (remoteUpdatedAtRef.current ?? 0),
-      delta
+      ...(delta ? { delta } : {})
     };
     if (saveRetryTimeout.current) {
       window.clearTimeout(saveRetryTimeout.current);
@@ -493,7 +507,7 @@ export const useCloudSync = ({
     return true;
   };
 
-  const flushProjectSync = useCallback(async () => {
+  const flushProjectSync = useCallback(async (expectedRevision?: number) => {
     if (!isSignedIn || !isLoaded || !hasLoadedRemote) {
       throw new Error("项目云同步尚未就绪，Agent 工具无法读取权威项目状态。");
     }
@@ -502,12 +516,26 @@ export const useCloudSync = ({
       window.clearTimeout(syncSaveTimeout.current);
       syncSaveTimeout.current = null;
     }
+    if (typeof expectedRevision === "number") {
+      const stateDeadline = Date.now() + 2_000;
+      while (readActiveFlowRevision(projectDataRef.current) !== expectedRevision) {
+        if (Date.now() >= stateDeadline) {
+          throw new Error(
+            `画布修订 ${expectedRevision} 尚未写入项目状态，Agent 请求已取消以避免读取旧数据。`
+          );
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+      }
+    }
     const validation = validateProjectData(projectDataRef.current);
     if (!validation.ok) {
       throw new Error(`项目数据未通过同步校验：${validation.error}`);
     }
     lastSyncErrorRef.current = null;
-    if (!enqueueSave(projectDataRef.current, remoteUpdatedAtRef.current ?? 0)) {
+    const forceFull =
+      typeof expectedRevision === "number" &&
+      readActiveFlowRevision(lastSyncedRef.current) !== expectedRevision;
+    if (!enqueueSave(projectDataRef.current, remoteUpdatedAtRef.current ?? 0, { forceFull })) {
       throw new Error(lastSyncErrorRef.current || "项目同步作用域已失效，Agent 请求未发送。");
     }
     const deadline = Date.now() + 20_000;
@@ -524,6 +552,12 @@ export const useCloudSync = ({
         throw new Error(lastSyncErrorRef.current || "等待项目同步完成超时，Agent 请求未发送。");
       }
       await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
+    if (
+      typeof expectedRevision === "number" &&
+      readActiveFlowRevision(lastSyncedRef.current) !== expectedRevision
+    ) {
+      throw new Error(`项目同步未确认画布修订 ${expectedRevision}，Agent 请求未发送。`);
     }
   }, [accountScope, hasLoadedRemote, isLoaded, isSignedIn]);
 

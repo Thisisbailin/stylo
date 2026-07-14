@@ -20,6 +20,7 @@ type PersistTraceContext = {
   workflowName: string;
   groupId?: string;
   metadata?: Record<string, string>;
+  failure?: string | null;
 };
 
 const TRACE_BUFFER_SYMBOL = Symbol.for("stylo.agent.traceBuffer");
@@ -106,8 +107,28 @@ export const forceFlushAgentTracing = async () => {
 };
 
 export const persistBufferedTrace = async (env: EnvWithDb, context: PersistTraceContext) => {
-  const bundle = drainBufferedTrace(context.traceId);
-  if (!bundle) return false;
+  const buffered = drainBufferedTrace(context.traceId);
+  if (!buffered && !context.failure) return false;
+
+  const nowIso = new Date().toISOString();
+  const bundle = buffered || {
+    trace: {
+      trace_id: context.traceId,
+      name: context.workflowName,
+      group_id: context.groupId || null,
+      metadata: context.metadata || {},
+      error: context.failure,
+    },
+    spans: [{
+      id: `${context.traceId}-wrapper`,
+      trace_id: context.traceId,
+      parent_id: null,
+      started_at: nowIso,
+      ended_at: nowIso,
+      error: context.failure,
+      span_data: { type: "wrapper", name: "Agent wrapper" },
+    }],
+  };
 
   const now = Date.now();
   const traceJson = JSON.stringify(bundle.trace || {});

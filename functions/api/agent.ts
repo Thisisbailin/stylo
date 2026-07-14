@@ -153,6 +153,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Stylo Edge Agent";
       const groupId = sessionKey;
+      let wrapperFailure: string | null = null;
       const skillLoader = new StaticSkillLoader();
       const requestAbortSignal = context.request.signal;
       const emitWrapperTrace = (
@@ -333,8 +334,9 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
         emitWrapperTrace("result", emitted ? "success" : "error", emitted ? "Final result packet emitted" : "Final result packet dropped");
       } catch (error: any) {
         const message = error?.message || "Cloudflare Agent runtime 执行失败";
+        wrapperFailure = message;
         debugLog(debugEnabled, traceId, "run error", message);
-        emitWrapperTrace("result", "error", "Wrapper catch", message);
+        emitWrapperTrace("result", "error", "Agent 初始化或执行失败", message);
         const emitted = emitError(controller, message);
         debugLog(debugEnabled, traceId, "emit error packet", { emitted, message });
       } finally {
@@ -367,7 +369,9 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
                 model: resolveProviderModel(provider, body.runtime.model),
                 userId: sessionOwner || "anonymous",
                 runtimeMode: "edge_full",
+                ...(wrapperFailure ? { status: "error" } : {}),
               },
+              failure: wrapperFailure,
             });
           } catch (traceError: any) {
             debugLog(debugEnabled, traceId, "trace persistence error", traceError?.message || String(traceError));
