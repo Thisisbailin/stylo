@@ -4,6 +4,7 @@ import { dropFileReplacer, backupData, isProjectEmpty } from "../utils/persisten
 import { validateProjectData } from "../utils/validation";
 import { computeProjectDelta, isDeltaEmpty, ProjectDelta } from "../utils/delta";
 import { normalizeProjectData } from "../utils/projectData";
+import { restoreLocalProjectMedia, toCloudProjectData } from "../utils/cloudProjectData";
 import { getDeviceId } from "../utils/device";
 import { buildApiUrl } from "../utils/api";
 
@@ -48,7 +49,7 @@ const hashString = (value: string) => {
 
 const fingerprintProjectData = (data: ProjectData): ProjectFingerprint => {
   try {
-    const serialized = JSON.stringify(data, dropFileReplacer) || "";
+    const serialized = JSON.stringify(toCloudProjectData(data), dropFileReplacer) || "";
     return { hash: hashString(serialized), length: serialized.length };
   } catch {
     return { hash: "0", length: 0 };
@@ -57,6 +58,35 @@ const fingerprintProjectData = (data: ProjectData): ProjectFingerprint => {
 
 const isFingerprintEqual = (left: ProjectFingerprint, right: ProjectFingerprint) =>
   left.hash === right.hash && left.length === right.length;
+
+const readResponseError = async (response: Response) => {
+  const raw = await response.text().catch(() => "");
+  if (!raw) return `HTTP ${response.status}`;
+  try {
+    const payload = JSON.parse(raw);
+    const detail = payload?.detail || payload?.error;
+    if (typeof detail === "string" && detail.trim()) return detail.trim().slice(0, 500);
+  } catch {
+    // Cloudflare infrastructure errors may be HTML or plain text.
+  }
+  const text = raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.slice(0, 500) || `HTTP ${response.status}`;
+};
+
+class ProjectSyncRequestError extends Error {
+  readonly retryable: boolean;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ProjectSyncRequestError";
+    this.retryable = status >= 500 || status === 408 || status === 425 || status === 429;
+  }
+}
 
 const parseBaseline = (raw: string): SyncBaseline | null => {
   try {
@@ -274,6 +304,7 @@ export const useCloudSync = ({
     const generation = generationRef.current;
     if (!isOperationCurrent(generation)) return;
     if (!isSignedIn || !isLoaded || !hasLoadedRemote) return;
+    if (syncBlockedRef.current) return;
     if (isSavingRef.current) return;
     const op = pendingOpRef.current;
     if (!op) return;
@@ -330,41 +361,42 @@ export const useCloudSync = ({
         if (remotePayload) {
           const normalized = normalizeProjectData(remotePayload);
           const local = projectDataRef.current;
+          const remote = restoreLocalProjectMedia(normalized, local);
           if (shouldForceCloudClear() && isProjectEmpty(local)) {
             if (typeof data?.updatedAt === "number") {
               remoteUpdatedAtRef.current = data.updatedAt;
             }
             pendingOpRef.current = {
               id: createOpId(),
-              data: local,
+              data: toCloudProjectData(local),
               baseVersion: remoteUpdatedAtRef.current ?? 0
             };
             return;
           }
-          const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote: normalized, local }));
+          const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote, local }));
           if (!isOperationCurrent(generation)) return;
           if (useRemote) {
             backupData(localBackupKey, local);
-            projectDataRef.current = normalized;
-            setProjectData(normalized);
+            projectDataRef.current = remote;
+            setProjectData(remote);
             if (pendingOpRef.current?.id === op.id) pendingOpRef.current = null;
-            remoteHasDataRef.current = !isProjectEmpty(normalized);
+            remoteHasDataRef.current = !isProjectEmpty(remote);
             if (typeof data?.updatedAt === "number") {
               remoteUpdatedAtRef.current = data.updatedAt;
             }
-            lastSyncedRef.current = normalized;
+            lastSyncedRef.current = toCloudProjectData(normalized);
             storeBaseline(normalized, remoteUpdatedAtRef.current ?? undefined);
             emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
           } else {
-            backupData(remoteBackupKey, normalized);
+            backupData(remoteBackupKey, remote);
             if (typeof data?.updatedAt === "number") {
               remoteUpdatedAtRef.current = data.updatedAt;
             }
-            lastSyncedRef.current = normalized;
+            lastSyncedRef.current = toCloudProjectData(normalized);
             storeBaseline(normalized, remoteUpdatedAtRef.current ?? undefined);
             pendingOpRef.current = {
               id: createOpId(),
-              data: local,
+              data: toCloudProjectData(local),
               baseVersion: remoteUpdatedAtRef.current ?? 0
             };
             emitStatus(statusRef.current, { pendingOps: 1, retryCount: saveRetryCountRef.current });
@@ -374,12 +406,7 @@ export const useCloudSync = ({
       }
 
       if (!res.ok) {
-        const errorPayload = await res.json().catch(() => null);
-        const detail = errorPayload?.detail || errorPayload?.error;
-        if (detail) {
-          throw new Error(`Save failed: ${detail}`);
-        }
-        throw new Error(`Save failed: ${res.status}`);
+        throw new ProjectSyncRequestError(`Save failed: ${await readResponseError(res)}`, res.status);
       }
 
       const data = await res.json().catch(() => null);
@@ -402,6 +429,10 @@ export const useCloudSync = ({
       const message = e instanceof Error ? e.message : "Failed to save project";
       emitStatus('error', { error: message, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current, lastAttemptAt: Date.now() });
       isSavingRef.current = false;
+      if (e instanceof ProjectSyncRequestError && !e.retryable) {
+        syncBlockedRef.current = message;
+        return;
+      }
       if (saveRetryCountRef.current >= MAX_RETRIES) {
         const error = "Sync failed after 10 retries. Please sign in again or check your Clerk JWT template.";
         syncBlockedRef.current = error;
@@ -418,7 +449,7 @@ export const useCloudSync = ({
       }, delay);
     } finally {
       isSavingRef.current = false;
-      if (pendingOpRef.current && !saveRetryTimeout.current && mountedRef.current) {
+      if (pendingOpRef.current && !saveRetryTimeout.current && !syncBlockedRef.current && mountedRef.current) {
         queueMicrotask(() => void flushSaveQueueRef.current());
       }
     }
@@ -436,7 +467,11 @@ export const useCloudSync = ({
       emitStatus('error', { error: validation.error, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: saveRetryCountRef.current });
       return false;
     }
-    const delta = computeProjectDelta(data, lastSyncedRef.current);
+    const cloudData = toCloudProjectData(data);
+    const cloudBaseline = lastSyncedRef.current
+      ? toCloudProjectData(lastSyncedRef.current)
+      : null;
+    const delta = computeProjectDelta(cloudData, cloudBaseline);
     if (isDeltaEmpty(delta)) {
       pendingOpRef.current = null;
       emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: 0, retryCount: saveRetryCountRef.current });
@@ -444,7 +479,7 @@ export const useCloudSync = ({
     }
     pendingOpRef.current = {
       id: createOpId(),
-      data,
+      data: cloudData,
       baseVersion: typeof baseVersion === "number" ? baseVersion : (remoteUpdatedAtRef.current ?? 0),
       delta
     };
@@ -478,6 +513,9 @@ export const useCloudSync = ({
     const deadline = Date.now() + 20_000;
     while (isSavingRef.current || pendingOpRef.current) {
       if (syncBlockedRef.current) throw new Error(syncBlockedRef.current);
+      if (lastSyncErrorRef.current && saveRetryTimeout.current) {
+        throw new Error(lastSyncErrorRef.current);
+      }
       if (!isSavingRef.current && !saveRetryTimeout.current && pendingOpRef.current) {
         await flushSaveQueueRef.current();
         continue;
@@ -622,12 +660,7 @@ export const useCloudSync = ({
         }
 
         if (!res.ok) {
-          const errorPayload = await res.json().catch(() => null);
-          const detail = errorPayload?.detail || errorPayload?.error;
-          if (detail) {
-            throw new Error(`Load failed: ${detail}`);
-          }
-          throw new Error(`Load failed: ${res.status}`);
+          throw new Error(`Load failed: ${await readResponseError(res)}`);
         }
 
         const data = await res.json();
@@ -647,6 +680,7 @@ export const useCloudSync = ({
             remoteUpdatedAtRef.current = data.updatedAt;
           }
           const local = projectDataRef.current;
+          const remoteWithLocalMedia = restoreLocalProjectMedia(remote, local);
           const remoteHas = !isProjectEmpty(remote);
           const localHas = !isProjectEmpty(local);
           remoteHasDataRef.current = remoteHas;
@@ -669,7 +703,7 @@ export const useCloudSync = ({
             const remoteFingerprint = fingerprintProjectData(remote);
 
             if (isFingerprintEqual(localFingerprint, remoteFingerprint)) {
-              lastSyncedRef.current = remote;
+              lastSyncedRef.current = toCloudProjectData(remote);
               storeBaseline(remote, baseVersion);
               emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
               if (!cancelled) setHasLoadedRemote(true);
@@ -681,8 +715,8 @@ export const useCloudSync = ({
             const remoteChanged = baseline ? isRemoteChangedFromBaseline(remoteFingerprint, baseVersion, baseline) : null;
 
             if (remoteChanged === false && localChanged === true) {
-              backupData(remoteBackupKey, remote);
-              lastSyncedRef.current = remote;
+              backupData(remoteBackupKey, remoteWithLocalMedia);
+              lastSyncedRef.current = toCloudProjectData(remote);
               storeBaseline(remote, baseVersion);
               await saveNow(local, baseVersion);
               retryCountRef.current = 0;
@@ -691,23 +725,23 @@ export const useCloudSync = ({
             }
 
             emitStatus('conflict', { pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
-            const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote, local }));
+            const useRemote = await Promise.resolve(onConflictConfirmRef.current({ remote: remoteWithLocalMedia, local }));
             if (!isLoadCurrent()) return;
             if (useRemote) {
               backupData(localBackupKey, local);
-              setProjectData(remote);
-              lastSyncedRef.current = remote;
+              setProjectData(remoteWithLocalMedia);
+              lastSyncedRef.current = toCloudProjectData(remote);
               storeBaseline(remote, baseVersion);
               emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
             } else {
-              backupData(remoteBackupKey, remote);
-              lastSyncedRef.current = remote;
+              backupData(remoteBackupKey, remoteWithLocalMedia);
+              lastSyncedRef.current = toCloudProjectData(remote);
               remoteUpdatedAtRef.current = baseVersion;
               await saveNow(local, baseVersion);
             }
           } else if (remoteHas) {
-            setProjectData(remote);
-            lastSyncedRef.current = remote;
+            setProjectData(remoteWithLocalMedia);
+            lastSyncedRef.current = toCloudProjectData(remote);
             storeBaseline(remote, remoteUpdatedAtRef.current ?? undefined);
             emitStatus('synced', { lastSyncAt: remoteUpdatedAtRef.current ?? undefined, pendingOps: pendingOpRef.current ? 1 : 0, retryCount: retryCountRef.current });
           }

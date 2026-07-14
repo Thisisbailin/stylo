@@ -5,6 +5,7 @@ import { AppConfig, ProjectData, SyncState } from "../../types";
 import type { NodeFlowFile, NodeFlowNode } from "../types";
 import { createStableId } from "../../utils/id";
 import { buildApiUrl } from "../../utils/api";
+import { restoreLocalNodeMedia } from "../../utils/cloudProjectData";
 import { ARK_DEFAULT_MODEL, DEEPSEEK_DEFAULT_MODEL, QWEN_DEFAULT_MODEL } from "../../constants";
 import {
   GLASS_DIFFUSION_PRESETS,
@@ -1050,9 +1051,15 @@ export const StyloAgent: React.FC<Props> = ({
                 activeView,
               })
             : null);
-        const candidateFlow = candidateFlowInput
+        const parsedCandidateFlow = candidateFlowInput
           ? parseNodeFlowFile(candidateFlowInput)
           : null;
+        const candidateFlow = parsedCandidateFlow && currentFlow
+          ? {
+              ...parsedCandidateFlow,
+              nodes: restoreLocalNodeMedia(parsedCandidateFlow.nodes, currentFlow.nodes),
+            }
+          : parsedCandidateFlow;
         const proposals =
           currentFlow && candidateFlow
             ? collectScriptEditProposals(currentFlow.nodes, candidateFlow.nodes)

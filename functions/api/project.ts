@@ -1,4 +1,5 @@
 import { validateProjectDelta, validateProjectPayload } from "./validation";
+import type { ProjectData } from "../../types";
 import { logAudit } from "./audit";
 import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
@@ -12,6 +13,7 @@ import {
 import { bindOperationId, normalizeOperationId } from "./_idempotency";
 import { normalizeFlowProjectsForStorage } from "./_projectFlowMigration";
 import { buildBulkProjectInsertStatements } from "./_projectBulkStatements";
+import { hasInlineProjectMedia } from "../../utils/cloudProjectData";
 
 type Env = {
   DB: any; // D1 binding injected by Cloudflare Pages
@@ -472,6 +474,22 @@ export const onRequestPut = async (context: {
       }
     }
 
+    const inlineMediaScope = delta?.meta || projectData;
+    if (
+      inlineMediaScope &&
+      hasInlineProjectMedia(inlineMediaScope as Pick<ProjectData, "flow" | "flowProjects">)
+    ) {
+      const error = "Inline media is not allowed in cloud project state";
+      if (userId) await logAudit(context.env, userId, "project.put", "invalid", { error, mode, ...auditDevice });
+      return jsonResponse(
+        {
+          error,
+          detail: "媒体二进制必须保留在项目文件包中；云端项目状态只接受媒体元数据。",
+        },
+        { status: 422 }
+      );
+    }
+
     const clientUpdatedAt = typeof (body as any).updatedAt === "number" ? (body as any).updatedAt : undefined;
     const rawOpId = (body as any).opId;
     const opId = rawOpId === undefined ? "" : normalizeOperationId(rawOpId);
@@ -482,7 +500,6 @@ export const onRequestPut = async (context: {
       ? await bindOperationId("project-put", opId, {
           mode,
           updatedAt: clientUpdatedAt,
-          payload: delta || projectData,
         })
       : "";
 

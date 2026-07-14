@@ -658,12 +658,18 @@ test("Agent project sync barrier follows queue completion instead of UI sync sta
   assert.match(syncSource, /finally\s*\{\s*isSavingRef\.current = false;/);
   assert.match(syncSource, /queueMicrotask\(\(\) => void flushSaveQueueRef\.current\(\)\)/);
   assert.match(syncSource, /while \(isSavingRef\.current \|\| pendingOpRef\.current\)/);
+  assert.match(syncSource, /const cloudData = toCloudProjectData\(data\)/);
+  assert.match(syncSource, /lastSyncErrorRef\.current && saveRetryTimeout\.current/);
   assert.doesNotMatch(syncSource, /statusRef\.current !== ["']synced["']/);
 
   const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
   assert.match(
     agentSource,
     /if \(ensureProjectSynced\) \{\s*await ensureProjectSynced\(\);\s*return;\s*\}/
+  );
+  assert.match(
+    agentSource,
+    /nodes: restoreLocalNodeMedia\(parsedCandidateFlow\.nodes, currentFlow\.nodes\)/
   );
 });
 
