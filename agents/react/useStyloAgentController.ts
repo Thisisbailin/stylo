@@ -76,6 +76,9 @@ export const useStyloAgentController = ({
       }
       if (projectionRef.current.preflightStatusId) {
         setMessages((previous) => projectionRef.current.failPreflight(previous, message));
+        if (error instanceof Error) {
+          (error as DisplayAwareError).styloAlreadyDisplayed = true;
+        }
       }
       browserAgentDebugError("useStyloAgentController runtime error", error);
       throw error;

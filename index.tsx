@@ -18,9 +18,24 @@ const hasDesktopBridge = Boolean(
 );
 const hasElectronUserAgent = /\bElectron\/\d+/i.test(window.navigator.userAgent);
 const isDesktop = hasDesktopBridge || hasElectronUserAgent;
+const isWebAppPreview = !isDesktop && new URL(window.location.href).searchParams.get('app') === '1';
 
 document.documentElement.classList.remove(isDesktop ? 'stylo-web-runtime' : 'stylo-desktop-runtime');
 document.documentElement.classList.add(isDesktop ? 'stylo-desktop-runtime' : 'stylo-web-runtime');
+
+const renderWorkspaceApp = () => {
+  Promise.all([import('./App'), import('./lib/auth')]).then(([{ default: App }, { AuthProvider }]) => {
+    root.render(
+      <React.StrictMode>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </React.StrictMode>
+    );
+  }).catch((error) => {
+    console.error('Stylo workspace failed to load', error);
+  });
+};
 
 if (isDesktop) {
   const bootScreen = document.getElementById('stylo-desktop-boot');
@@ -36,18 +51,13 @@ if (isDesktop) {
   });
   readyObserver.observe(rootElement, { childList: true });
 
-  Promise.all([import('./App'), import('./lib/auth')]).then(([{ default: App }, { AuthProvider }]) => {
-    root.render(
-      <React.StrictMode>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </React.StrictMode>
-    );
-  }).catch((error) => {
+  renderWorkspaceApp();
+  window.setTimeout(() => {
+    if (rootElement.childElementCount > 0) return;
     readyObserver.disconnect();
-    console.error('Stylo desktop failed to load', error);
-  });
+  }, 15_000);
+} else if (isWebAppPreview) {
+  renderWorkspaceApp();
 } else {
   import('./components/LandingPage').then(({ LandingPage }) => {
     root.render(

@@ -1,0 +1,189 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import type { ProjectData } from "../types";
+import type { NodeFlowNode } from "../node-workspace/types";
+import { pngHasTransparency } from "../utils/pngTransparency";
+import {
+  addLookbookImageAssets,
+  addLookbookTextCard,
+  buildAdaptiveLookbookLayouts,
+  projectLookbookBoardItems,
+  reflowLookbookLayouts,
+  sanitizeLookbookLayout,
+  updateLookbookNodeLayout,
+  updateLookbookTextCard,
+} from "../utils/lookbookWorkspace";
+import { addManualLookbookIdentity, getLookbookMemberNodes } from "../utils/lookbookIdentities";
+
+const makeProject = (): ProjectData => ({
+  fileName: "Lookbook Workspace",
+  rawScript: "",
+  episodes: [],
+  roles: [{
+    id: "role-1",
+    name: "林默",
+    displayName: "林默",
+    mention: "林默",
+    kind: "person",
+    tone: "emerald",
+    summary: "人物身份",
+    description: "",
+    portraits: [],
+  }],
+  designAssets: [],
+  canvas: { viewport: null },
+  flow: {
+    revision: 4,
+    flowNodes: [{
+      id: "identity-1",
+      type: "identityCard",
+      position: { x: 100, y: 120 },
+      data: { title: "林默", identityId: "role-1" },
+    }],
+    links: [],
+  },
+  stats: { context: { total: 0, success: 0, error: 0 } },
+});
+
+const pngBytes = (colorType: number, includeTransparencyChunk = false) => {
+  const chunks: number[] = [137, 80, 78, 71, 13, 10, 26, 10];
+  const pushUint32 = (value: number) => chunks.push((value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255);
+  pushUint32(13);
+  chunks.push(73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, colorType, 0, 0, 0, 0, 0, 0, 0);
+  if (includeTransparencyChunk) {
+    pushUint32(1);
+    chunks.push(116, 82, 78, 83, 0, 0, 0, 0, 0);
+  }
+  pushUint32(0);
+  chunks.push(73, 69, 78, 68, 0, 0, 0, 0);
+  return new Uint8Array(chunks);
+};
+
+test("PNG transparency parser recognizes alpha color types and tRNS chunks", () => {
+  assert.equal(pngHasTransparency(pngBytes(6)), true);
+  assert.equal(pngHasTransparency(pngBytes(4)), true);
+  assert.equal(pngHasTransparency(pngBytes(3, true)), true);
+  assert.equal(pngHasTransparency(pngBytes(2)), false);
+  assert.equal(pngHasTransparency(new Uint8Array([1, 2, 3])), false);
+});
+
+test("Lookbook adaptive layout gives landscape, square, and portrait media distinct geometry", () => {
+  const nodes: NodeFlowNode[] = [
+    { id: "wide", type: "imageInput", position: { x: 0, y: 0 }, data: { image: "x", filename: "wide.jpg", dimensions: { width: 1800, height: 900 } } },
+    { id: "square", type: "imageInput", position: { x: 0, y: 0 }, data: { image: "x", filename: "square.jpg", dimensions: { width: 1200, height: 1200 } } },
+    { id: "portrait", type: "imageInput", position: { x: 0, y: 0 }, data: { image: "x", filename: "portrait.png", dimensions: { width: 800, height: 1400 }, hasAlpha: true } },
+  ];
+  const layouts = buildAdaptiveLookbookLayouts(nodes);
+  assert.ok(layouts.get("wide")!.width > layouts.get("square")!.width);
+  assert.ok(layouts.get("portrait")!.width < layouts.get("square")!.width);
+  assert.ok(layouts.get("portrait")!.height > layouts.get("wide")!.height);
+  assert.equal(layouts.get("portrait")!.fit, "contain");
+});
+
+test("Lookbook image import creates connected Flow nodes in one revision", () => {
+  const result = addLookbookImageAssets(makeProject(), "identity-1", [
+    { id: "image-alpha", name: "silhouette.png", dataUrl: "data:image/png;base64,AA==", mimeType: "image/png", width: 640, height: 960, hasAlpha: true },
+    { id: "image-wide", name: "warehouse.jpg", dataUrl: "data:image/jpeg;base64,AA==", mimeType: "image/jpeg", width: 1600, height: 900, hasAlpha: false },
+  ], 100);
+  assert.equal(result.flow?.revision, 5);
+  assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "imageInput").length, 2);
+  assert.equal(result.flow?.links.filter((link) => link.data?.relation === "lookbook-membership").length, 2);
+  const alpha = result.flow?.flowNodes?.find((node) => node.id === "image-alpha");
+  const alphaLink = result.flow?.links.find((link) => link.source === "image-alpha");
+  assert.equal(alpha?.data.hasAlpha, true);
+  assert.equal((alpha?.data.lookbookLayout as { fit?: string }).fit, "contain");
+  assert.deepEqual(
+    { target: alphaLink?.target, sourceHandle: alphaLink?.sourceHandle, targetHandle: alphaLink?.targetHandle },
+    { target: "identity-1", sourceHandle: "image", targetHandle: "image" }
+  );
+  assert.ok((alpha?.position.y || 0) > 400);
+});
+
+test("Lookbook text cards create real connected text nodes and persist editing", () => {
+  const created = addLookbookTextCard(makeProject(), "identity-1", 200);
+  assert.ok(created.nodeId);
+  assert.equal(created.projectData.flow?.revision, 5);
+  assert.equal(created.projectData.flow?.links[0]?.data?.relation, "lookbook-membership");
+  const edited = updateLookbookTextCard(created.projectData, created.nodeId!, { title: "服装逻辑", text: "雨水会加深布料颜色。" });
+  const node = edited.flow?.flowNodes?.find((item) => item.id === created.nodeId);
+  assert.equal(node?.data.title, "服装逻辑");
+  assert.equal(node?.data.text, "雨水会加深布料颜色。");
+});
+
+test("manual identity creation atomically creates its role, index, and Lookbook link", () => {
+  const result = addManualLookbookIdentity(makeProject(), {
+    position: { x: 320, y: 180 },
+    now: 10,
+  });
+  const identityNode = result.projectData.flow?.flowNodes?.find((node) => node.id === result.identityNodeId);
+  const role = result.projectData.roles?.find((item) => item.id === identityNode?.data.identityId);
+  const indexNode = result.projectData.flow?.flowNodes?.find((node) => node.id === role?.profileNodeId);
+
+  assert.equal(result.projectData.flow?.revision, 5);
+  assert.deepEqual(identityNode?.position, { x: 320, y: 180 });
+  assert.equal(identityNode?.data.lookbookIndexNodeId, indexNode?.id);
+  assert.equal(getLookbookMemberNodes(result.projectData, result.identityNodeId).some((node) => node.id === indexNode?.id), true);
+});
+
+test("Lookbook manual layout persists independently from the Flow canvas position", () => {
+  const withImage = addLookbookImageAssets(makeProject(), "identity-1", [
+    { id: "image-1", name: "portrait.png", dataUrl: "data:image/png;base64,AA==", mimeType: "image/png", width: 800, height: 1200, hasAlpha: true },
+  ], 300);
+  const originalPosition = withImage.flow?.flowNodes?.find((node) => node.id === "image-1")?.position;
+  const updated = updateLookbookNodeLayout(withImage, "image-1", {
+    x: 0.52, y: 0.18, width: 0.31, height: 0.46, rotation: 1.2, zIndex: 9, fit: "contain",
+  });
+  const updatedNode = updated.flow?.flowNodes?.find((node) => node.id === "image-1");
+  assert.deepEqual(updatedNode?.position, originalPosition);
+  assert.equal((updatedNode?.data.lookbookLayout as { x?: number }).x, 0.52);
+  assert.equal(projectLookbookBoardItems(updated, "identity-1")[0].layout.zIndex, 9);
+});
+
+test("Lookbook layout sanitization keeps resized items inside the board and skips no-op revisions", () => {
+  const bounded = sanitizeLookbookLayout({
+    x: 0.8, y: 0.2, width: 0.6, height: 0.3, rotation: 0, zIndex: 1, fit: "cover",
+  });
+  assert.equal(bounded.x + bounded.width, 1);
+
+  const created = addLookbookTextCard(makeProject(), "identity-1", 500).projectData;
+  const textNode = created.flow?.flowNodes?.find((node) => node.type === "text");
+  const unchanged = updateLookbookTextCard(created, textNode!.id, {
+    title: textNode!.data.title as string,
+    text: textNode!.data.text as string,
+  });
+  assert.equal(unchanged, created);
+});
+
+test("Lookbook reflow is deterministic and overwrites only member layout metadata", () => {
+  const created = addLookbookTextCard(addLookbookImageAssets(makeProject(), "identity-1", [
+    { id: "image-1", name: "frame.jpg", dataUrl: "data:image/jpeg;base64,AA==", mimeType: "image/jpeg", width: 1500, height: 900, hasAlpha: false },
+  ], 400), "identity-1", 401).projectData;
+  const first = reflowLookbookLayouts(created, "identity-1");
+  const second = reflowLookbookLayouts(first, "identity-1");
+  assert.deepEqual(
+    projectLookbookBoardItems(first, "identity-1").map((item) => item.layout),
+    projectLookbookBoardItems(second, "identity-1").map((item) => item.layout)
+  );
+  assert.equal(first.flow?.flowNodes?.find((node) => node.id === "identity-1")?.data.lookbookLayout, undefined);
+});
+
+test("Lookbook active UI uses the editable studio with bounded high-frequency interactions", () => {
+  const workspaceSource = readFileSync("node-workspace/components/CreativeWorkspace.tsx", "utf8");
+  const flowSurfaceSource = readFileSync("node-workspace/components/FlowSurface.tsx", "utf8");
+  const studioSource = readFileSync("node-workspace/components/lookbook/LookbookStudioPanel.tsx", "utf8");
+  const itemSource = readFileSync("node-workspace/components/lookbook/LookbookBoardItem.tsx", "utf8");
+  const styleSource = readFileSync("node-workspace/styles/lookbook-studio.css", "utf8");
+
+  assert.match(workspaceSource, /<LookbookStudioPanel[\s\S]*setProjectData=\{setProjectData\}/);
+  assert.match(flowSurfaceSource, /type === "identityCard"[\s\S]*handleAddIdentityCard/);
+  assert.match(studioSource, /inspectLookbookImageFiles/);
+  assert.match(studioSource, /saveActiveFlowIntoProjects/);
+  assert.match(studioSource, /onDrop=/);
+  assert.match(itemSource, /dragMomentum=\{false\}/);
+  assert.match(itemSource, /requestAnimationFrame\(applyPreview\)/);
+  assert.match(itemSource, /window\.removeEventListener\("pointermove"/);
+  assert.match(styleSource, /\.lookbook-board-item\.has-alpha[\s\S]*linear-gradient/);
+  assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(styleSource, /filter:\s*drop-shadow|text-shadow|#000000/);
+});

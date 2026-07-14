@@ -132,6 +132,7 @@ import {
   isFoundationMembershipLink,
   removeFoundationMembership,
 } from "../foundation/membership";
+import { addManualLookbookIdentity } from "../../utils/lookbookIdentities";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -3094,6 +3095,35 @@ export const useFlowSurface = ({
     ]
   );
 
+  const handleAddIdentityCard = useCallback(
+    (
+      position?: { x: number; y: number },
+      dropState: ScriptConnectionDropState | null = null
+    ) => {
+      let createdNodeId: string | null = null;
+      setProjectData((previous) => {
+        const requestedPosition = position || getDefaultFlowNodePosition(previous.flow?.flowNodes?.length || 0);
+        const result = addManualLookbookIdentity(previous, { position: requestedPosition });
+        createdNodeId = result.identityNodeId;
+        const nextFlow = ensureFlow(result.projectData.flow);
+        const nextData = {
+          ...result.projectData,
+          flow: {
+            ...nextFlow,
+            links: buildLinkForCreatedNode(nextFlow.links, result.identityNodeId, "identityCard", dropState),
+          },
+        };
+        return {
+          ...nextData,
+          flowProjects: saveActiveFlowIntoProjects(nextData),
+        };
+      });
+      if (createdNodeId) setSelectedNodeIds(new Set([createdNodeId]));
+      return createdNodeId;
+    },
+    [buildLinkForCreatedNode, setProjectData]
+  );
+
   const handleAddMarkdownNodeFromTail = useCallback(() => {
     const position =
       typeof window === "undefined"
@@ -3567,11 +3597,16 @@ export const useFlowSurface = ({
         setConnectionDrop(null);
         return;
       }
+      if (type === "identityCard") {
+        handleAddIdentityCard(connectionDrop.flowPosition, connectionDrop);
+        setConnectionDrop(null);
+        return;
+      }
 
       handleAddFlowNode(type, connectionDrop.flowPosition, connectionDrop);
       setConnectionDrop(null);
     },
-    [connectionDrop, handleAddFlowNode, handleAddMarkdownNode, handleAddScriptPage]
+    [connectionDrop, handleAddFlowNode, handleAddIdentityCard, handleAddMarkdownNode, handleAddScriptPage]
   );
 
   const handleScriptNodeClick = useCallback(
@@ -3648,7 +3683,8 @@ export const useFlowSurface = ({
                     x: window.innerWidth / 2,
                     y: Math.max(120, window.innerHeight / 2 - 120),
                   });
-            handleAddFlowNode(type, position);
+            if (type === "identityCard") handleAddIdentityCard(position);
+            else handleAddFlowNode(type, position);
           }}
           flowProjects={flowProjects}
           activeFlowProjectId={activeFlowProjectId}
@@ -3696,7 +3732,9 @@ export const useFlowSurface = ({
     onlyRenderVisibleElements: false,
     overlays,
     actions: {
-      addNode: handleAddFlowNode,
+      addNode: (type, position) => type === "identityCard"
+        ? handleAddIdentityCard(position)
+        : handleAddFlowNode(type, position),
       importNodeFlow: handleImportScriptNodeFlow,
       exportNodeFlow: handleExportScriptNodeFlow,
       runAll: handleRunScriptAll,

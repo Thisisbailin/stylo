@@ -26,6 +26,18 @@ export type NodeType = (typeof NODE_TYPES)[number];
 
 export type NodeStatus = "idle" | "loading" | "complete" | "error";
 
+export type LookbookMediaFit = "cover" | "contain";
+
+export interface LookbookLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+  fit: LookbookMediaFit;
+}
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
@@ -33,12 +45,15 @@ export interface BaseNodeData extends Record<string, unknown> {
   foundationContainerId?: string;
   lookbookIdentityId?: string;
   lookbookRole?: "index" | "member";
+  lookbookLayout?: LookbookLayout;
 }
 
 export interface ImageInputNodeData extends BaseNodeData {
   image: string | null;
   filename: string | null;
+  mimeType?: string | null;
   dimensions: { width: number; height: number } | null;
+  hasAlpha?: boolean;
   assetAuditStatus?: "idle" | "uploading" | "submitting" | "processing" | "active" | "failed" | "error";
   assetAuditMessage?: string | null;
   assetAuditCheckedAt?: number | null;

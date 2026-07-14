@@ -145,7 +145,9 @@
       .stylo-desktop-boot__mark {
         position: relative;
         z-index: 1;
-        display: block;
+        display: grid;
+        justify-items: start;
+        gap: 14px;
         transform: translate3d(0, -2vh, 0);
       }
 
@@ -156,6 +158,36 @@
         font-weight: 600;
         line-height: 1;
         letter-spacing: 0;
+      }
+
+      .stylo-desktop-boot__track {
+        position: relative;
+        width: 80px;
+        height: 2px;
+        overflow: hidden;
+        background: rgba(24, 24, 23, 0.12);
+      }
+
+      .stylo-desktop-boot__track::after {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 30px;
+        background: #b3483f;
+        content: "";
+        animation: stylo-desktop-boot-progress 1.3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        will-change: transform;
+      }
+
+      @keyframes stylo-desktop-boot-progress {
+        0% { transform: translate3d(-34px, 0, 0); }
+        55%, 100% { transform: translate3d(84px, 0, 0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .stylo-desktop-boot__track::after {
+          animation: none;
+          transform: translate3d(25px, 0, 0);
+        }
       }
 
       .bg-dot-grid {
@@ -190,6 +222,7 @@
     <div id="stylo-desktop-boot" role="status" aria-label="Stylo is opening">
       <div class="stylo-desktop-boot__mark" aria-hidden="true">
         <span class="stylo-desktop-boot__word">Stylo</span>
+        <span class="stylo-desktop-boot__track"></span>
       </div>
     </div>
     <div id="root"></div>

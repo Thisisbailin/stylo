@@ -271,6 +271,28 @@ test("React message projection is idempotent for replayed terminal events and tr
   assert.match(abortReason, /连续失败 5 次/);
 });
 
+test("preflight cancellation is projected as a stopped task instead of a connection failure", () => {
+  const state = new StyloMessageEventState();
+  const pending = state.createPreflight([], "preflight-1");
+  const messages = state.failPreflight(pending, "用户已停止当前 Agent 任务。");
+  const status = messages.find((message) => message.kind === "status");
+
+  assert.equal(status?.kind, "status");
+  if (status?.kind !== "status") return;
+  assert.equal(status.statusCard.status, "success");
+  assert.equal(status.statusCard.headline, "已停止");
+  assert.equal(status.statusCard.detail, "当前任务已由你手动停止。");
+});
+
+test("Stylo Agent consumes each cancellation request token only once", () => {
+  const source = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
+
+  assert.match(source, /handledCancelRequestRef\s*=\s*useRef<number>\(cancelRequest\)/);
+  assert.match(source, /cancelRequest\s*!==\s*handledCancelRequestRef\.current/);
+  assert.match(source, /handledCancelRequestRef\.current\s*=\s*cancelRequest/);
+  assert.doesNotMatch(source, /if \(!cancelRequest \|\| !isSending\) return;/);
+});
+
 test("message timeline pairs tool transactions in O(n) projection order", () => {
   const messages: Message[] = [
     {

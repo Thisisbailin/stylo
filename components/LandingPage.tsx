@@ -197,13 +197,21 @@ export const LandingPage: React.FC = () => {
         <section className="stylo-hero">
           <div className="stylo-hero__copy">
             <Reveal>
-              <img className="stylo-hero__mark" src="/icon-128.png" alt="Stylo" />
               <div className="stylo-kicker"><PenNib size={15} weight="duotone" /> stylo /sti.lo/ · nom masculin</div>
               <h1>Stylo</h1>
               <p className="stylo-hero__lede">一支笔，也是一套为影像创作搭建的桌面结构。</p>
               <p className="stylo-hero__body">
                 从无限画布和节点流出发，将剧本、项目结构、视觉开发与调度设计包进同一个可阅读、可连接、可推演的创作世界。
               </p>
+              <div className="stylo-hero__actions">
+                <a className="stylo-hero__action stylo-hero__action--primary" href="/?app=1">
+                  立即体验
+                </a>
+                <button className="stylo-hero__action" type="button" disabled title="桌面版下载后续上线">
+                  <span>下载</span>
+                  <small>后续上线</small>
+                </button>
+              </div>
               <div className="stylo-hero__meta">
                 <span>macOS desktop</span>
                 <span>open source</span>

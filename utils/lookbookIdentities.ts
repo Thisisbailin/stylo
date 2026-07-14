@@ -187,6 +187,63 @@ const makeLookbookLink = (identityNodeId: string, memberNodeId: string): FlowLin
   data: { relation: LOOKBOOK_MEMBERSHIP_RELATION },
 });
 
+export const addManualLookbookIdentity = (
+  projectData: ProjectData,
+  input: {
+    position: { x: number; y: number };
+    kind?: ProjectRoleKind;
+    name?: string;
+    now?: number;
+  }
+): { projectData: ProjectData; identityNodeId: string } => {
+  const kind = input.kind || "person";
+  const roles = [...(projectData.roles || [])];
+  const baseName = input.name?.trim() || (kind === "scene" ? "新场景" : "新角色");
+  const existingNames = new Set(
+    roles
+      .filter((role) => role.kind === kind)
+      .flatMap((role) => [role.name, role.displayName || ""])
+      .map(normalizeScreenplayIdentity)
+      .filter(Boolean)
+  );
+  let name = baseName;
+  let suffix = 2;
+  while (existingNames.has(normalizeScreenplayIdentity(name))) {
+    name = `${baseName} ${suffix}`;
+    suffix += 1;
+  }
+
+  const now = input.now ?? Date.now();
+  const role = {
+    ...createRole({ name, kind }, "", now),
+    sourceDocumentIds: [],
+  };
+  const flow = projectData.flow || { links: [] };
+  const nodes = [...(flow.flowNodes || [])];
+  const identityNode = {
+    ...makeIdentityNode(role, undefined, 0),
+    position: input.position,
+  };
+  const indexNode = makeIndexNode(role, identityNode);
+
+  roles.push(role);
+  nodes.push(identityNode, indexNode);
+
+  return {
+    identityNodeId: identityNode.id,
+    projectData: {
+      ...projectData,
+      roles,
+      flow: {
+        ...flow,
+        revision: (flow.revision || 0) + 1,
+        flowNodes: nodes,
+        links: [...flow.links, makeLookbookLink(identityNode.id, indexNode.id)],
+      },
+    },
+  };
+};
+
 export const syncLookbookIdentitiesFromFountain = (
   projectData: ProjectData,
   input: { sourceNodeId: string; content: string; now?: number }

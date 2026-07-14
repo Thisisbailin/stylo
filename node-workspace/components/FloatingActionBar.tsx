@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { GearSix } from "@phosphor-icons/react";
 import {
   Plus,
   User,
@@ -49,6 +50,7 @@ type Props = {
   onSignOut?: () => void;
   accountInfo?: AccountInfo;
   onOpenStylo?: () => void;
+  onOpenSettings?: () => void;
   variant?: "dock" | "embedded";
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   showGlobalAccountTrigger?: boolean;
@@ -77,6 +79,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onSignOut,
   accountInfo,
   onOpenStylo,
+  onOpenSettings,
   variant = "dock",
   onAssetLoad,
   showGlobalAccountTrigger = false,
@@ -269,8 +272,10 @@ export const FloatingActionBar: React.FC<Props> = ({
   ];
   const accountLoaded = accountInfo?.isLoaded ?? true;
   const accountSignedIn = accountLoaded && !!accountInfo?.isSignedIn;
-  const accountName = accountInfo?.name || accountInfo?.email || "Stylo User";
-  const accountEmail = accountInfo?.email || accountInfo?.name || "登录以启用同步和项目管理";
+  const providedAccountName = accountInfo?.name?.trim() || "";
+  const providedAccountEmail = accountInfo?.email?.trim() || "";
+  const accountName = providedAccountName || providedAccountEmail || "Stylo User";
+  const accountEmail = providedAccountEmail && providedAccountEmail !== accountName ? providedAccountEmail : "";
   const handleSignOut = accountInfo?.onSignOut || onSignOut;
   const handleUploadAvatar = accountInfo?.onUploadAvatar;
   const closeMenus = () => {
@@ -642,6 +647,20 @@ export const FloatingActionBar: React.FC<Props> = ({
                                 {accountEmail && <div className="truncate text-[12px] leading-6 text-[var(--app-text-secondary)]">{accountEmail}</div>}
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
+                                {onOpenSettings ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      closeMenus();
+                                      onOpenSettings();
+                                    }}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] text-[var(--app-text-secondary)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+                                    title="打开设置"
+                                    aria-label="打开设置"
+                                  >
+                                    <GearSix size={14} weight="regular" />
+                                  </button>
+                                ) : null}
                                 {handleUploadAvatar ? (
                                   <button
                                     type="button"
@@ -670,16 +689,6 @@ export const FloatingActionBar: React.FC<Props> = ({
                                 </button>
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-2 pt-1">
-                          {["Global account", "Workspace"].map((chip) => (
-                                <span
-                                  key={chip}
-                                  className="rounded-full border border-[var(--app-border)] bg-[rgba(255,255,255,0.04)] px-2 py-1 text-[10px] text-[var(--app-text-secondary)]"
-                            >
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
                       </div>
                     </div>
                     {accountThemeControls ? (

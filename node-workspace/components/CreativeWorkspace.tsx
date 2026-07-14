@@ -24,7 +24,7 @@ import { CanvasContentLocator } from "./CanvasContentLocator";
 import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { ManusPanel } from "./ManusPanel";
-import { LookbookLeafPanel } from "./LookbookLeafPanel";
+import { LookbookStudioPanel } from "./lookbook/LookbookStudioPanel";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
@@ -1249,6 +1249,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onSignOut={onSignOut}
         onAssetLoad={onAssetLoad}
         accountInfo={accountInfo}
+        onOpenSettings={() => openProjectSettingsPanel("provider")}
         accountThemeControls={accountThemeControls}
         showGlobalAccountTrigger
         globalAccountHostId="script-foundation-account-host"
@@ -1317,8 +1318,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         />
       ) : null}
       {activeLookbookNodeId !== null ? (
-        <LookbookLeafPanel
+        <LookbookStudioPanel
           projectData={projectData}
+          setProjectData={setProjectData}
           identityNodeId={activeLookbookNodeId}
           onClose={() => setActiveLookbookNodeId(null)}
         />

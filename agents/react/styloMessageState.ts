@@ -113,6 +113,7 @@ export class StyloMessageEventState {
     const statusId = this.preflightStatusId;
     this.preflightStatusId = null;
     if (!statusId) return messages;
+    const aborted = isAbortLikeError(error);
     return upsertStatus(messages, statusId, (current) => ({
       role: "assistant",
       kind: "status",
@@ -120,9 +121,9 @@ export class StyloMessageEventState {
       statusCard: {
         id: statusId,
         runId: statusId,
-        status: "error",
-        headline: "连接失败",
-        detail: error,
+        status: aborted ? "success" : "error",
+        headline: aborted ? "已停止" : "连接失败",
+        detail: aborted ? "当前任务已由你手动停止。" : error,
         summary: current?.statusCard.summary,
         steps: current?.statusCard.steps || [],
         startedAt: current?.statusCard.startedAt || Date.now(),

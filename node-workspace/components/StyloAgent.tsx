@@ -646,6 +646,7 @@ export const StyloAgent: React.FC<Props> = ({
       : { width: 1200, height: 900 }
   );
   const handledSubmitRequestRef = useRef<number>(0);
+  const handledCancelRequestRef = useRef<number>(cancelRequest);
   const phaseTimerRef = useRef<number | null>(null);
   const messagePanelRef = useRef<HTMLDivElement | null>(null);
   const glassAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -965,7 +966,9 @@ export const StyloAgent: React.FC<Props> = ({
   }, [openPanel, settingsOpen]);
 
   useEffect(() => {
-    if (!cancelRequest || !isSending) return;
+    const isNewCancelRequest = cancelRequest !== handledCancelRequestRef.current;
+    handledCancelRequestRef.current = cancelRequest;
+    if (!isNewCancelRequest || !isSending) return;
     cancelAgentRun();
   }, [cancelAgentRun, cancelRequest, isSending]);
 
