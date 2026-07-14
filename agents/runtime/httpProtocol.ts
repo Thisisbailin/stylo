@@ -1,5 +1,3 @@
-import type { ProjectData } from "../../types";
-import type { NodeFlowFile } from "../../node-workspace/types";
 import type { StyloToolSettings } from "../../types";
 import type { AgentRuntimeEvent, StyloRunInput, StyloRunResult } from "./types";
 import { parseNodeFlowFile } from "../../node-workspace/nodeflow/schema";
@@ -14,8 +12,9 @@ export type AgentHttpRuntimeConfig = {
 export type AgentHttpRunRequest = {
   run: StyloRunInput;
   runtime: AgentHttpRuntimeConfig;
-  projectData?: ProjectData;
-  nodeFlow: NodeFlowFile;
+  project: {
+    expectedRevision: number;
+  };
 };
 
 export type AgentHttpStreamPacket =

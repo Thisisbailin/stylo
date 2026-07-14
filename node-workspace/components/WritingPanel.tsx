@@ -8,10 +8,7 @@ import {
   analyzeFountainLines,
   analyzeScreenplay,
   createScreenplayPreview,
-  insertScreenplayLine,
   normalizeFountainDocument,
-  replaceScreenplayLine,
-  serializeScreenplayLine,
   stripFountainMarkup,
   type ScreenplayKnownIdentity,
 } from "../screenplay/fountainEngine";
@@ -32,7 +29,9 @@ import {
 import { ScreenplayBlockEditor, type ScreenplayCharacterSuggestion } from "./screenplay/ScreenplayBlockEditor";
 import {
   ScreenplayHeader,
+  ScreenplayIdentityDock,
   ScreenplayInspector,
+  type ScreenplayIdentityEntry,
   type SaveState,
 } from "./screenplay/ScreenplayChrome";
 import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./stylo/interactionTypes";
@@ -47,6 +46,7 @@ type Props = {
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
+  onOpenLookbook?: (identityNodeId: string) => void;
   onOpenStylo?: () => void;
   onSubmitToStylo?: (text: string, uiContext?: AgentUiContext) => void;
 };
@@ -124,6 +124,7 @@ export const WritingPanel: React.FC<Props> = ({
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
+  onOpenLookbook,
   onOpenStylo,
   onSubmitToStylo,
 }) => {
@@ -160,6 +161,9 @@ export const WritingPanel: React.FC<Props> = ({
   const [pendingPatch, setPendingPatch] = useState<PendingScriptPatch | null>(null);
   const [lastReviewedSnapshot, setLastReviewedSnapshot] = useState<ReviewedSnapshot | null>(null);
   const [externalConflict, setExternalConflict] = useState<WritingDraft | null>(null);
+  const previousRoleIdsRef = useRef(new Set((projectData.roles || []).map((role) => role.id)));
+  const [identityArrivalQueue, setIdentityArrivalQueue] = useState<string[]>([]);
+  const [activeIdentityArrivalId, setActiveIdentityArrivalId] = useState<string | null>(null);
   const handledProposalIdsRef = useRef(new Set<string>());
 
   const deferredBody = useDeferredValue(draft.body);
@@ -179,6 +183,18 @@ export const WritingPanel: React.FC<Props> = ({
     content: "",
     kind: "action" as const,
   };
+  const identityEntries = useMemo<ScreenplayIdentityEntry[]>(() => {
+    const identityNodeIds = new Map<string, string>();
+    (projectData.flow?.flowNodes || []).forEach((node) => {
+      if (node.type !== "identityCard") return;
+      const identityId = typeof node.data?.identityId === "string" ? node.data.identityId : "";
+      if (identityId && !identityNodeIds.has(identityId)) identityNodeIds.set(identityId, node.id);
+    });
+    return (projectData.roles || []).map((role) => ({
+      role,
+      identityNodeId: identityNodeIds.get(role.id) || null,
+    }));
+  }, [projectData.flow?.flowNodes, projectData.roles]);
   const locationSuggestions = useMemo(
     () => Array.from(new Set([...projectRolesToLocations(projectData.roles || []).map((location) => location.name), ...analysis.locations])),
     [analysis.locations, projectData.roles]
@@ -191,6 +207,31 @@ export const WritingPanel: React.FC<Props> = ({
       status: role.status,
     }));
   }, [characterRoles]);
+
+  useEffect(() => {
+    const nextRoleIds = new Set((projectData.roles || []).map((role) => role.id));
+    const addedRoleIds = (projectData.roles || [])
+      .filter((role) => !previousRoleIdsRef.current.has(role.id))
+      .map((role) => role.id);
+    previousRoleIdsRef.current = nextRoleIds;
+    if (!addedRoleIds.length) return;
+    setIdentityArrivalQueue((current) => [
+      ...current,
+      ...addedRoleIds.filter((roleId) => roleId !== activeIdentityArrivalId && !current.includes(roleId)),
+    ]);
+  }, [activeIdentityArrivalId, projectData.roles]);
+
+  useEffect(() => {
+    if (activeIdentityArrivalId || !identityArrivalQueue.length) return;
+    setActiveIdentityArrivalId(identityArrivalQueue[0]);
+    setIdentityArrivalQueue((current) => current.slice(1));
+  }, [activeIdentityArrivalId, identityArrivalQueue]);
+
+  useEffect(() => {
+    if (!activeIdentityArrivalId) return;
+    const timer = window.setTimeout(() => setActiveIdentityArrivalId(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [activeIdentityArrivalId]);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -365,21 +406,10 @@ export const WritingPanel: React.FC<Props> = ({
     setNavigationRequest({ lineIndex, id: Date.now() });
   }, []);
 
-  const useCharacterFromLibrary = useCallback((role: ProjectRoleIdentity) => {
-    const mention = role.mention || role.name;
-    const current = liveLines[Math.min(activeLineIndex, Math.max(0, liveLines.length - 1))];
-    if (!current) return;
-    const kind = current.kind === "dual_dialogue" ? "dual_dialogue" : "character";
-    const raw = serializeScreenplayLine(mention, kind);
-    const body = (current.kind === "character" || current.kind === "dual_dialogue" || !current.content.trim())
-      ? replaceScreenplayLine(draftRef.current.body, current.index, raw)
-      : insertScreenplayLine(draftRef.current.body, current.index, raw);
-    const targetIndex = current.kind === "character" || current.kind === "dual_dialogue" || !current.content.trim()
-      ? current.index
-      : current.index + 1;
-    setDraft((existing) => ({ ...existing, body }));
-    requestAnimationFrame(() => navigateToLine(targetIndex));
-  }, [activeLineIndex, liveLines, navigateToLine]);
+  const openIdentityLookbook = useCallback((identityNodeId: string) => {
+    commitDraft(draftRef.current, true);
+    onOpenLookbook?.(identityNodeId);
+  }, [commitDraft, onOpenLookbook]);
 
   const updatePatch = useCallback((updater: (line: ScriptPatchLine) => ScriptPatchLine) => {
     setPendingPatch((current) => {
@@ -453,19 +483,18 @@ export const WritingPanel: React.FC<Props> = ({
       className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""} ${isInspectorOpen ? "is-inspector-open" : ""}`}
       style={{ "--screenplay-agent-inset": isStyloOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
     >
-      <ScreenplayHeader
-        saveState={saveState}
-        isFocusMode={isFocusMode}
-        isInspectorOpen={isInspectorOpen}
-        onToggleFocus={() => setIsFocusMode((active) => !active)}
-        onToggleInspector={() => setIsInspectorOpen((open) => !open)}
-        onShare={() => void handleShare()}
-        onClose={handleClose}
-      />
-
       <div className="screenplay-layout">
         <main className="screenplay-document-viewport">
           <article className="screenplay-document">
+            <ScreenplayHeader
+              saveState={saveState}
+              isFocusMode={isFocusMode}
+              isInspectorOpen={isInspectorOpen}
+              onToggleFocus={() => setIsFocusMode((active) => !active)}
+              onToggleInspector={() => setIsInspectorOpen((open) => !open)}
+              onShare={() => void handleShare()}
+              onClose={handleClose}
+            />
             <header className="screenplay-document__masthead">
               <div>
                 <input
@@ -498,12 +527,16 @@ export const WritingPanel: React.FC<Props> = ({
           <ScreenplayInspector
             analysis={analysis}
             activeLine={activeLine}
-            characterRoles={characterRoles}
-            onUseCharacter={useCharacterFromLibrary}
             onNavigate={navigateToLine}
           />
         ) : null}
       </div>
+
+      <ScreenplayIdentityDock
+        entries={identityEntries}
+        recentIdentityId={activeIdentityArrivalId}
+        onOpenIdentity={openIdentityLookbook}
+      />
 
       {selectionCommand && !pendingPatch ? (
         <form className="screenplay-selection-command" onSubmit={(event) => { event.preventDefault(); submitSelectionCommand(); }}>

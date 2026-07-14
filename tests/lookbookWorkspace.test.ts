@@ -11,6 +11,7 @@ import {
   projectLookbookBoardItems,
   reflowLookbookLayouts,
   sanitizeLookbookLayout,
+  getLookbookIndexNode,
   updateLookbookNodeLayout,
   updateLookbookTextCard,
 } from "../utils/lookbookWorkspace";
@@ -30,18 +31,42 @@ const makeProject = (): ProjectData => ({
     summary: "人物身份",
     description: "",
     portraits: [],
+    profileNodeId: "lookbook-index-role-1",
+    profileDocumentId: "lookbook-index-role-1",
   }],
   designAssets: [],
   canvas: { viewport: null },
   flow: {
     revision: 4,
-    flowNodes: [{
-      id: "identity-1",
-      type: "identityCard",
-      position: { x: 100, y: 120 },
-      data: { title: "林默", identityId: "role-1" },
+    flowNodes: [
+      {
+        id: "identity-1",
+        type: "identityCard",
+        position: { x: 100, y: 120 },
+        data: { title: "林默", identityId: "role-1", lookbookIndexNodeId: "lookbook-index-role-1" },
+      },
+      {
+        id: "lookbook-index-role-1",
+        type: "mdText",
+        position: { x: 490, y: 148 },
+        data: {
+          title: "林默 · Lookbook 索引",
+          text: "# 林默\n\n## Lookbook 索引",
+          content: "# 林默\n\n## Lookbook 索引",
+          lookbookIdentityId: "role-1",
+          lookbookRole: "index",
+          lookbookBook: { version: 1, entries: [] },
+        },
+      },
+    ],
+    links: [{
+      id: "link-identity-1-lookbook-index-role-1-lookbook",
+      source: "identity-1",
+      target: "lookbook-index-role-1",
+      sourceHandle: "text",
+      targetHandle: "text",
+      data: { relation: "lookbook-membership" },
     }],
-    links: [],
   },
   stats: { context: { total: 0, success: 0, error: 0 } },
 });
@@ -88,11 +113,14 @@ test("Lookbook image import creates connected Flow nodes in one revision", () =>
   ], 100);
   assert.equal(result.flow?.revision, 5);
   assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "imageInput").length, 2);
-  assert.equal(result.flow?.links.filter((link) => link.data?.relation === "lookbook-membership").length, 2);
+  assert.equal(result.flow?.links.filter((link) => link.data?.relation === "lookbook-membership").length, 3);
   const alpha = result.flow?.flowNodes?.find((node) => node.id === "image-alpha");
   const alphaLink = result.flow?.links.find((link) => link.source === "image-alpha");
   assert.equal(alpha?.data.hasAlpha, true);
-  assert.equal((alpha?.data.lookbookLayout as { fit?: string }).fit, "contain");
+  assert.equal(alpha?.data.lookbookLayout, undefined);
+  const index = getLookbookIndexNode(result, "identity-1");
+  const alphaEntry = (index?.data.lookbookBook as { entries?: Array<{ nodeId: string; layout: { fit: string } }> }).entries?.find((entry) => entry.nodeId === "image-alpha");
+  assert.equal(alphaEntry?.layout.fit, "contain");
   assert.deepEqual(
     { target: alphaLink?.target, sourceHandle: alphaLink?.sourceHandle, targetHandle: alphaLink?.targetHandle },
     { target: "identity-1", sourceHandle: "image", targetHandle: "image" }
@@ -104,7 +132,7 @@ test("Lookbook text cards create real connected text nodes and persist editing",
   const created = addLookbookTextCard(makeProject(), "identity-1", 200);
   assert.ok(created.nodeId);
   assert.equal(created.projectData.flow?.revision, 5);
-  assert.equal(created.projectData.flow?.links[0]?.data?.relation, "lookbook-membership");
+  assert.equal(created.projectData.flow?.links.some((link) => link.source === "identity-1" && link.target === created.nodeId), true);
   const edited = updateLookbookTextCard(created.projectData, created.nodeId!, { title: "服装逻辑", text: "雨水会加深布料颜色。" });
   const node = edited.flow?.flowNodes?.find((item) => item.id === created.nodeId);
   assert.equal(node?.data.title, "服装逻辑");
@@ -136,8 +164,15 @@ test("Lookbook manual layout persists independently from the Flow canvas positio
   });
   const updatedNode = updated.flow?.flowNodes?.find((node) => node.id === "image-1");
   assert.deepEqual(updatedNode?.position, originalPosition);
-  assert.equal((updatedNode?.data.lookbookLayout as { x?: number }).x, 0.52);
+  assert.equal(updatedNode?.data.lookbookLayout, undefined);
+  const indexEntry = (getLookbookIndexNode(updated, "identity-1")?.data.lookbookBook as { entries?: Array<{ nodeId: string; layout: { x: number } }> }).entries?.find((entry) => entry.nodeId === "image-1");
+  assert.equal(indexEntry?.layout.x, 0.52);
   assert.equal(projectLookbookBoardItems(updated, "identity-1")[0].layout.zIndex, 9);
+
+  const withNewText = addLookbookTextCard(updated, "identity-1", 301).projectData;
+  const preservedImage = projectLookbookBoardItems(withNewText, "identity-1").find((item) => item.node.id === "image-1");
+  assert.equal(preservedImage?.layout.x, 0.52);
+  assert.equal(preservedImage?.layout.zIndex, 9);
 });
 
 test("Lookbook layout sanitization keeps resized items inside the board and skips no-op revisions", () => {
@@ -155,7 +190,7 @@ test("Lookbook layout sanitization keeps resized items inside the board and skip
   assert.equal(unchanged, created);
 });
 
-test("Lookbook reflow is deterministic and overwrites only member layout metadata", () => {
+test("Lookbook reflow is deterministic and writes only the attached index document", () => {
   const created = addLookbookTextCard(addLookbookImageAssets(makeProject(), "identity-1", [
     { id: "image-1", name: "frame.jpg", dataUrl: "data:image/jpeg;base64,AA==", mimeType: "image/jpeg", width: 1500, height: 900, hasAlpha: false },
   ], 400), "identity-1", 401).projectData;
@@ -166,6 +201,8 @@ test("Lookbook reflow is deterministic and overwrites only member layout metadat
     projectLookbookBoardItems(second, "identity-1").map((item) => item.layout)
   );
   assert.equal(first.flow?.flowNodes?.find((node) => node.id === "identity-1")?.data.lookbookLayout, undefined);
+  assert.equal(first.flow?.flowNodes?.find((node) => node.id === "image-1")?.data.lookbookLayout, undefined);
+  assert.ok(getLookbookIndexNode(first, "identity-1")?.data.lookbookBook);
 });
 
 test("Lookbook active UI uses the editable studio with bounded high-frequency interactions", () => {
@@ -180,10 +217,16 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(studioSource, /inspectLookbookImageFiles/);
   assert.match(studioSource, /saveActiveFlowIntoProjects/);
   assert.match(studioSource, /onDrop=/);
+  assert.match(studioSource, /onContextMenu=/);
+  assert.match(studioSource, /isEditingText/);
+  assert.match(studioSource, /eventTarget\.closest\("input, textarea/);
+  assert.match(studioSource, /lookbook-book-cover/);
+  assert.doesNotMatch(studioSource, /lookbook-inspector/);
   assert.match(itemSource, /dragMomentum=\{false\}/);
   assert.match(itemSource, /requestAnimationFrame\(applyPreview\)/);
   assert.match(itemSource, /window\.removeEventListener\("pointermove"/);
-  assert.match(styleSource, /\.lookbook-board-item\.has-alpha[\s\S]*linear-gradient/);
+  assert.match(styleSource, /\.lookbook-spread-item\.is-sticker[\s\S]*background:\s*transparent/);
+  assert.doesNotMatch(styleSource, /lookbook-inspector/);
   assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styleSource, /filter:\s*drop-shadow|text-shadow|#000000/);
 });

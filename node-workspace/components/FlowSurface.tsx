@@ -71,10 +71,7 @@ import { parseNodeFlowFile } from "../nodeflow/schema";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
-import {
-  alignPositionChangesToNodeEdges,
-  getEdgeAlignedPosition,
-} from "../utils/edgeAlignment";
+import { getEdgeAlignedPosition } from "../utils/edgeAlignment";
 import { getNodeHandles, inferHandleTypeFromNodeType, isTypedHandle, isValidConnection } from "../utils/handles";
 import { createNodeFlowNodeCommand } from "../nodeflow/commands";
 import { findSafeNodeFlowPosition, normalizeNodeFlowNodePositions } from "../nodeflow/placement";
@@ -437,18 +434,6 @@ const getSafeScriptNodePosition = (
     requestedPosition,
     node,
   });
-
-const normalizeRegularNodePositions = <TNode extends NodeFlowNode>(nodes: TNode[]): TNode[] => {
-  const structuralNodes = nodes.filter((node) => !!getFoundationNodeRole(node));
-  const regularNodes = nodes.filter((node) => !getFoundationNodeRole(node));
-  if (!regularNodes.length) return nodes;
-  const normalizedRegularNodes = normalizeNodeFlowNodePositions({
-    existingNodes: structuralNodes,
-    nodes: regularNodes,
-  }) as TNode[];
-  const normalizedById = new Map(normalizedRegularNodes.map((node) => [node.id, node]));
-  return nodes.map((node) => normalizedById.get(node.id) || node);
-};
 
 const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextSnapshot => ({
   rawScript: "",
@@ -1831,6 +1816,7 @@ export const useFlowSurface = ({
     isLocked,
     snapToGrid,
     onAlignmentGuideChange,
+    viewport,
   } = canvasControls;
   const [connectionDrop, setConnectionDrop] = useState<ScriptConnectionDropState | null>(null);
   const [activeTimelineBlockId, setActiveTimelineBlockId] = useState("");
@@ -2048,7 +2034,7 @@ export const useFlowSurface = ({
   }, [canvasControls.viewport, foundationBlockVisuals, foundationProjection, isWritingEditorOpen, showFoundationNodes]);
 
   const baseNodes = useMemo<FlowRenderNode[]>(() => {
-    return normalizeRegularNodePositions(flow.flowNodes || [])
+    return (flow.flowNodes || [])
       .filter((node) => !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
       .filter((node) => showFoundationNodes || !getFoundationNodeRole(node))
       .map((node, index) => ({
@@ -2106,7 +2092,7 @@ export const useFlowSurface = ({
 
   const nodeTypeById = useMemo(() => new Map(baseNodes.map((node) => [node.id, node.type])), [baseNodes]);
   const flowRuntimeNodes = useMemo<NodeFlowNode[]>(
-    () => normalizeRegularNodePositions((flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index))),
+    () => (flow.flowNodes || []).map((node, index) => toRuntimeFlowNode(node, index)),
     [flow.flowNodes]
   );
   const flowRuntimeNodeIdSet = useMemo(
@@ -3286,9 +3272,7 @@ export const useFlowSurface = ({
           return change.type !== "remove" || !isFoundationStructuralNode(node);
         }
       );
-      const aligned = alignPositionChangesToNodeEdges(mutableChanges, nodes, snapToGrid && !isLocked);
-      onAlignmentGuideChange(aligned.guide);
-      const effectiveChanges = aligned.changes;
+      const effectiveChanges = mutableChanges;
       const hasPositionChange = effectiveChanges.some((change) => change.type === "position" && change.position);
       const hasDimensionChange = effectiveChanges.some((change) => change.type === "dimensions");
       const selectionChanges = effectiveChanges.filter(
@@ -3343,7 +3327,7 @@ export const useFlowSurface = ({
         };
       });
     },
-    [flow.flowNodes, isLocked, nodes, onAlignmentGuideChange, persistFlow, showFoundationNodes, snapToGrid]
+    [flow.flowNodes, nodes, persistFlow, showFoundationNodes]
   );
 
   const handleEdgesChange = useCallback(
@@ -3451,14 +3435,47 @@ export const useFlowSurface = ({
         onAlignmentGuideChange(null);
         return;
       }
-      const node = nodes.find((item) => item.id === nodeId);
+      const node = baseNodes.find((item) => item.id === nodeId);
       if (!node) {
         onAlignmentGuideChange(null);
         return;
       }
-      onAlignmentGuideChange(getEdgeAlignedPosition(node, nodes, position).guide);
+      const zoom = Math.max(viewport.zoom || 1, 0.1);
+      onAlignmentGuideChange(getEdgeAlignedPosition(node, baseNodes, position, {
+        guideThreshold: 14 / zoom,
+        snapThreshold: 4 / zoom,
+      }).guide);
     },
-    [isLocked, nodes, onAlignmentGuideChange, snapToGrid]
+    [baseNodes, isLocked, onAlignmentGuideChange, snapToGrid, viewport.zoom]
+  );
+
+  const finishNodeDrag = useCallback(
+    (node: FlowRenderNode) => {
+      if (!snapToGrid || isLocked || selectedNodeIds.size > 1) {
+        onAlignmentGuideChange(null);
+        return;
+      }
+      const sourceNode = baseNodes.find((item) => item.id === node.id);
+      if (!sourceNode) {
+        onAlignmentGuideChange(null);
+        return;
+      }
+      const zoom = Math.max(viewport.zoom || 1, 0.1);
+      const aligned = getEdgeAlignedPosition(sourceNode, baseNodes, node.position, {
+        guideThreshold: 14 / zoom,
+        snapThreshold: 4 / zoom,
+      });
+      if (aligned.position.x !== node.position.x || aligned.position.y !== node.position.y) {
+        handleNodesChange([{
+          id: node.id,
+          type: "position",
+          position: aligned.position,
+          dragging: false,
+        }]);
+      }
+      onAlignmentGuideChange(null);
+    },
+    [baseNodes, handleNodesChange, isLocked, onAlignmentGuideChange, selectedNodeIds.size, snapToGrid, viewport.zoom]
   );
 
   useEffect(() => {
@@ -3725,7 +3742,7 @@ export const useFlowSurface = ({
     onNodeDoubleClick: (_, node) => handleScriptNodeDoubleClick(node as FlowRenderNode),
     onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
     onNodeDrag: (_, node) => updateSnapGuide(node.id, node.position),
-    onNodeDragStop: () => onAlignmentGuideChange(null),
+    onNodeDragStop: (_, node) => finishNodeDrag(node as FlowRenderNode),
     nodesDraggable: !isLocked,
     nodesConnectable: !isLocked,
     elementsSelectable: !isLocked,

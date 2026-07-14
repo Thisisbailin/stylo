@@ -38,6 +38,17 @@ export interface LookbookLayout {
   fit: LookbookMediaFit;
 }
 
+export interface LookbookBookEntry {
+  nodeId: string;
+  spreadIndex: number;
+  layout: LookbookLayout;
+}
+
+export interface LookbookBookState {
+  version: 1;
+  entries: LookbookBookEntry[];
+}
+
 export interface BaseNodeData extends Record<string, unknown> {
   label?: string;
   title?: string;
@@ -45,7 +56,9 @@ export interface BaseNodeData extends Record<string, unknown> {
   foundationContainerId?: string;
   lookbookIdentityId?: string;
   lookbookRole?: "index" | "member";
+  /** @deprecated Legacy per-node layout. New layouts live on the Lookbook index document. */
   lookbookLayout?: LookbookLayout;
+  lookbookBook?: LookbookBookState;
 }
 
 export interface ImageInputNodeData extends BaseNodeData {

@@ -19,6 +19,7 @@ import {
 } from "./projectRoles";
 import { normalizeNodeFlowNode } from "../node-workspace/nodeflow/state";
 import { normalizeFlowProjectDuration } from "./flowProject";
+import { normalizeCineworWorkspace } from "./cineworWorkspace";
 
 const HANDLE_TYPES = new Set(["image", "text", "audio", "video", "multi"]);
 
@@ -135,9 +136,17 @@ const normalizeFlowProjects = (
 ) => {
   const now = Date.now();
   const rawProjects = Array.isArray(value) ? value.slice(0, MAX_FLOW_PROJECTS) : [];
+  const usedProjectIds = new Set<string>();
   const projects = rawProjects.map((project: any, index): FlowProject => {
     const flow = normalizeFlow(project?.flow);
-    const id = toSafeString(project?.id || `flow-project-${index + 1}`);
+    const baseId = toSafeString(project?.id || `flow-project-${index + 1}`);
+    let id = baseId;
+    let duplicateIndex = 2;
+    while (usedProjectIds.has(id)) {
+      id = `${baseId}-${duplicateIndex}`;
+      duplicateIndex += 1;
+    }
+    usedProjectIds.add(id);
     const durationMin = normalizeFlowProjectDuration(project?.durationMin, 120);
     return {
       id,
@@ -149,6 +158,7 @@ const normalizeFlowProjects = (
       updatedAt: typeof project?.updatedAt === "number" ? project.updatedAt : now,
       roles: Array.isArray(project?.roles) ? project.roles : undefined,
       designAssets: Array.isArray(project?.designAssets) ? project.designAssets : undefined,
+      cinewor: normalizeCineworWorkspace(project?.cinewor),
       flow,
     };
   });

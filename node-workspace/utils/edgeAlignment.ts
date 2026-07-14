@@ -1,4 +1,4 @@
-import type { Node, NodeChange, XYPosition } from "@xyflow/react";
+import type { Node, XYPosition } from "@xyflow/react";
 
 export type EdgeAlignmentGuide = {
   x?: number;
@@ -16,8 +16,13 @@ type AlignmentResult = {
 
 const DEFAULT_NODE_WIDTH = 320;
 const DEFAULT_NODE_HEIGHT = 180;
-const ALIGN_THRESHOLD = 52;
-const ALIGN_LOCK_THRESHOLD = 18;
+const DEFAULT_GUIDE_THRESHOLD = 14;
+const DEFAULT_SNAP_THRESHOLD = 4;
+
+type AlignmentOptions = {
+  guideThreshold?: number;
+  snapThreshold?: number;
+};
 
 type Bounds = ReturnType<typeof getAlignableNodeBounds>;
 
@@ -25,15 +30,9 @@ const isVerticalNeighbor = (active: Bounds, target: Bounds) => target.bottom <= 
 
 const isHorizontalNeighbor = (active: Bounds, target: Bounds) => target.right <= active.left || target.left >= active.right;
 
-const getMagneticPosition = (current: number, aligned: number, distance: number, threshold: number) => {
-  if (distance <= ALIGN_LOCK_THRESHOLD) return aligned;
-  const pull = Math.pow(1 - distance / threshold, 0.85) * 0.96;
-  return current + (aligned - current) * pull;
-};
-
 const getGuideStrength = (distance: number, threshold: number) => {
-  if (distance <= ALIGN_LOCK_THRESHOLD) return 1;
-  return Math.max(0.38, 1 - distance / threshold);
+  if (threshold <= 0) return 1;
+  return Math.max(0.2, 1 - distance / threshold);
 };
 
 const parseSize = (value: unknown): number | null => {
@@ -66,13 +65,18 @@ export const getEdgeAlignedPosition = (
   activeNode: AlignableNode,
   nodes: AlignableNode[],
   position: XYPosition,
-  threshold = ALIGN_THRESHOLD
+  options: AlignmentOptions = {}
 ): AlignmentResult => {
+  const guideThreshold = Math.max(0, options.guideThreshold ?? DEFAULT_GUIDE_THRESHOLD);
+  const snapThreshold = Math.min(
+    guideThreshold,
+    Math.max(0, options.snapThreshold ?? DEFAULT_SNAP_THRESHOLD)
+  );
   const active = getAlignableNodeBounds(activeNode, position);
   let nextX = position.x;
   let nextY = position.y;
-  let bestX = threshold + 1;
-  let bestY = threshold + 1;
+  let bestX = guideThreshold + 1;
+  let bestY = guideThreshold + 1;
   let guideX: number | undefined;
   let guideY: number | undefined;
   let xStrength: number | undefined;
@@ -91,14 +95,14 @@ export const getEdgeAlignedPosition = (
 
       targetXEdges.forEach((targetEdge) => {
         activeXEdges.forEach((activeEdge) => {
-        const distance = Math.abs(activeEdge.edge - targetEdge);
-        if (distance < bestX && distance <= threshold) {
-          bestX = distance;
-          nextX = getMagneticPosition(position.x, targetEdge - activeEdge.offset, distance, threshold);
-          guideX = targetEdge;
-          xStrength = getGuideStrength(distance, threshold);
-        }
-      });
+          const distance = Math.abs(activeEdge.edge - targetEdge);
+          if (distance < bestX && distance <= guideThreshold) {
+            bestX = distance;
+            if (distance <= snapThreshold) nextX = targetEdge - activeEdge.offset;
+            guideX = targetEdge;
+            xStrength = getGuideStrength(distance, guideThreshold);
+          }
+        });
       });
     }
 
@@ -111,14 +115,14 @@ export const getEdgeAlignedPosition = (
 
       targetYEdges.forEach((targetEdge) => {
         activeYEdges.forEach((activeEdge) => {
-        const distance = Math.abs(activeEdge.edge - targetEdge);
-        if (distance < bestY && distance <= threshold) {
-          bestY = distance;
-          nextY = getMagneticPosition(position.y, targetEdge - activeEdge.offset, distance, threshold);
-          guideY = targetEdge;
-          yStrength = getGuideStrength(distance, threshold);
-        }
-      });
+          const distance = Math.abs(activeEdge.edge - targetEdge);
+          if (distance < bestY && distance <= guideThreshold) {
+            bestY = distance;
+            if (distance <= snapThreshold) nextY = targetEdge - activeEdge.offset;
+            guideY = targetEdge;
+            yStrength = getGuideStrength(distance, guideThreshold);
+          }
+        });
       });
     }
   });
@@ -128,27 +132,4 @@ export const getEdgeAlignedPosition = (
     position: { x: nextX, y: nextY },
     guide,
   };
-};
-
-export const alignPositionChangesToNodeEdges = <TNode extends Node & AlignableNode>(
-  changes: NodeChange<TNode>[],
-  nodes: TNode[],
-  enabled: boolean
-): { changes: NodeChange<TNode>[]; guide: EdgeAlignmentGuide | null } => {
-  if (!enabled) return { changes, guide: null };
-
-  let lastGuide: EdgeAlignmentGuide | null = null;
-  const alignedChanges = changes.map((change) => {
-    if (change.type !== "position" || !change.position) return change;
-    const node = nodes.find((item) => item.id === change.id);
-    if (!node) return change;
-    const result = getEdgeAlignedPosition(node, nodes, change.position);
-    lastGuide = result.guide;
-    return {
-      ...change,
-      position: result.position,
-    };
-  });
-
-  return { changes: alignedChanges, guide: lastGuide };
 };

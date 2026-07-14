@@ -8,6 +8,8 @@ import {
 import { browserAgentDebug, browserAgentDebugError } from "./debug";
 import { drainAgentSseBuffer } from "./sseProtocol";
 
+const MAX_AGENT_REQUEST_BYTES = 128 * 1024;
+
 const summarizeEventForDebug = (event: any) => {
   if (!event || typeof event !== "object") return event;
   if (event.type === "reasoning_delta" || event.type === "message_delta") {
@@ -87,11 +89,24 @@ const summarizeResultForDebug = (result: StyloRunResult) => ({
   usage: result.usage,
 });
 
+const readHttpError = async (response: Response) => {
+  const raw = await response.text().catch(() => "");
+  if (!raw) return `Agent 请求失败：HTTP ${response.status}`;
+  try {
+    const payload = JSON.parse(raw) as { error?: unknown; detail?: unknown };
+    const error = typeof payload.error === "string" ? payload.error.trim() : "";
+    const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+    return [error, detail].filter(Boolean).join("：") || raw;
+  } catch {
+    return raw;
+  }
+};
+
 type HttpRuntimeDeps = {
   endpoint: string;
   getRuntimeConfig: () => AgentHttpRunRequest["runtime"];
-  getProjectDataSnapshot?: () => AgentHttpRunRequest["projectData"];
-  getNodeFlowSnapshot?: () => AgentHttpRunRequest["nodeFlow"];
+  getProjectRevision: () => number;
+  beforeRequest?: () => Promise<void>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
 };
 
@@ -121,27 +136,33 @@ const decodeStreamChunks = async (
 export const createHttpStyloAgentRuntime = ({
   endpoint,
   getRuntimeConfig,
-  getProjectDataSnapshot,
-  getNodeFlowSnapshot,
+  getProjectRevision,
+  beforeRequest,
   getAuthToken,
 }: HttpRuntimeDeps): StyloAgentRuntime => ({
   async run(input: StyloRunInput, options?: StyloRunOptions): Promise<StyloRunResult> {
-    const nodeFlow = getNodeFlowSnapshot?.();
-    if (!nodeFlow) {
-      throw new Error("Stylo HTTP runtime requires a NodeFlow snapshot.");
-    }
+    await beforeRequest?.();
     const requestBody: AgentHttpRunRequest = {
       run: input,
       runtime: getRuntimeConfig(),
-      projectData: getProjectDataSnapshot?.(),
-      nodeFlow,
+      project: {
+        expectedRevision: getProjectRevision(),
+      },
     };
+    const serializedRequestBody = JSON.stringify(requestBody);
+    const requestBytes = new TextEncoder().encode(serializedRequestBody).byteLength;
+    if (requestBytes > MAX_AGENT_REQUEST_BYTES) {
+      throw new Error(
+        `Agent 本次输入过大（${(requestBytes / 1024).toFixed(1)} KB）。请减少消息、选中文本或附件后重试。`
+      );
+    }
     browserAgentDebug("httpClient request", {
       endpoint,
       runtime: requestBody.runtime,
       projectId: requestBody.run.projectId,
       sessionId: requestBody.run.sessionId,
       userTextChars: requestBody.run.userText.length,
+      requestBytes,
     });
     let authToken = await getAuthToken?.();
     if (!authToken && getAuthToken) {
@@ -155,7 +176,7 @@ export const createHttpStyloAgentRuntime = ({
           Accept: AGENT_HTTP_STREAM_CONTENT_TYPE,
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(requestBody),
+        body: serializedRequestBody,
         signal: options?.signal,
       });
     let response = await executeRequest(authToken);
@@ -174,7 +195,7 @@ export const createHttpStyloAgentRuntime = ({
     });
 
     if (!response.ok || !response.body) {
-      const message = await response.text().catch(() => "");
+      const message = await readHttpError(response);
       browserAgentDebugError("httpClient non-ok response", {
         status: response.status,
         message,

@@ -9,10 +9,9 @@ import {
 } from "@openai/agents";
 import type { StyloAgentBridge } from "../bridge/styloBridge";
 import { createStyloTools } from "../tools";
-import { buildAgentEnvironment } from "./environment";
 import { createStyloInputGuardrails, createStyloOutputGuardrails } from "./guardrails";
 import { composeAgentInstructions } from "./instructions";
-import { buildAgentMemorySnapshot, buildRunInputItems } from "./memory";
+import { buildRunInputItems } from "./memory";
 import { formatModelAccessError, isModelAccessError, type StyloAgentApiMode, type StyloAgentProvider } from "./providerConfig";
 import { createStyloProviderRuntime } from "./providerRuntime";
 import { AgentMessageStreamProjector, extractTextFromModelOutput } from "./streamProjector";
@@ -200,19 +199,9 @@ export const runStyloAgentCore = async ({
     disabledTools,
     toolBudget,
   });
-  const agentMemory = buildAgentMemorySnapshot(sessionMessages);
   const initialToolBudgetSnapshot = toolBudget.snapshot();
   const runContext: StyloRunContext = {
     runtimeMode,
-    agentEnvironment: buildAgentEnvironment({
-      projectData: bridge.getProjectData(),
-      nodeFlowSnapshot: bridge.getNodeFlowSnapshot(),
-      executionApprovals: bridge.getPendingNodeFlowExecutionApprovals(),
-      runtimeMode,
-      enabledTools: tools.map((tool) => tool.name),
-      sessionMessages,
-    }),
-    agentMemory,
     toolBudget: {
       totalCalls: initialToolBudgetSnapshot.totalCalls,
       lookupCalls: initialToolBudgetSnapshot.lookupCalls,

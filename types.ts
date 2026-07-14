@@ -114,6 +114,67 @@ export interface FlowState {
   links: FlowLink[];
 }
 
+export type CineworVector3 = [number, number, number];
+export type CineworTrajectory = "linear" | "arc";
+export type CineworEasing = "linear" | "ease-in" | "ease-out" | "ease-in-out";
+
+export interface CineworActorKeyframe {
+  id: string;
+  label: string;
+  time: number;
+  position: CineworVector3;
+  facing: number;
+  easing: CineworEasing;
+}
+
+export interface CineworActorTrack {
+  id: string;
+  label: string;
+  roleId?: string;
+  color: string;
+  trajectory: CineworTrajectory;
+  arcHeight: number;
+  keyframes: CineworActorKeyframe[];
+}
+
+export interface CineworCameraShot {
+  id: string;
+  name: string;
+  time: number;
+  position: CineworVector3;
+  target: CineworVector3;
+  fov: number;
+  trajectory: CineworTrajectory;
+  arcHeight: number;
+  actorTrackId?: string;
+  stateId?: string;
+}
+
+export interface CineworSceneState {
+  id: string;
+  title: string;
+  sourceSceneId?: string;
+  sourceRoleId?: string;
+  duration: number;
+  stage: {
+    width: number;
+    depth: number;
+    height: number;
+    gridVisible: boolean;
+    axesVisible: boolean;
+  };
+  actors: CineworActorTrack[];
+  shots: CineworCameraShot[];
+  updatedAt: number;
+}
+
+export interface CineworWorkspaceState {
+  version: 1;
+  activeSceneId: string;
+  scenes: CineworSceneState[];
+  updatedAt: number;
+}
+
 export interface FlowProject {
   id: string;
   title: string;
@@ -125,6 +186,7 @@ export interface FlowProject {
   flow: FlowState;
   roles?: ProjectRoleIdentity[];
   designAssets?: DesignAssetItem[];
+  cinewor?: CineworWorkspaceState;
 }
 
 // --- Unified Role Identity Types ---

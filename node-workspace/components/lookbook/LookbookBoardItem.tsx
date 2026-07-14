@@ -2,7 +2,7 @@ import React, { memo, useEffect, useRef, useState } from "react";
 import { motion, useDragControls, type PanInfo } from "framer-motion";
 import {
   ArrowsOutSimple,
-  DotsSixVertical,
+  DotsSix,
   FileText,
   Image as ImageIcon,
   MusicNotes,
@@ -29,13 +29,6 @@ const clamp = (value: number, minimum: number, maximum: number) =>
 
 const nodeTitle = (item: LookbookBoardItem) =>
   readString(item.node.data.title) || readString(item.node.data.label) || readString(item.node.data.filename) || "未命名素材";
-
-const itemKindLabel = (item: LookbookBoardItem) => {
-  if (item.node.type === "imageInput") return "IMAGE";
-  if (item.node.type === "videoInput") return "MOTION";
-  if (item.node.type === "audioInput") return "AUDIO";
-  return item.node.type === "text" ? "TEXT CARD" : "DOCUMENT";
-};
 
 const sameLayout = (left: LookbookLayout, right: LookbookLayout) =>
   left.x === right.x && left.y === right.y && left.width === right.width &&
@@ -82,7 +75,7 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
     onCommitLayout(item.node.id, sanitizeLookbookLayout({
       ...item.layout,
       x: clamp(item.layout.x + info.offset.x / boardWidth, 0, 1 - item.layout.width),
-      y: Math.max(0, item.layout.y + info.offset.y / boardWidth),
+      y: clamp(item.layout.y + info.offset.y / boardWidth, 0, worldHeight - item.layout.height),
     }));
   };
 
@@ -106,10 +99,11 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
     const handlePointerMove = (pointerEvent: PointerEvent) => {
       const deltaWidth = (pointerEvent.clientX - startX) / boardWidth;
       const deltaHeight = (pointerEvent.clientY - startY) / boardWidth;
-      const width = clamp(startLayout.width + deltaWidth, 0.14, Math.min(0.72, 1 - startLayout.x));
+      const width = clamp(startLayout.width + deltaWidth, 0.1, Math.min(0.72, 1 - startLayout.x));
+      const naturalHeight = width / item.aspectRatio;
       const height = item.node.type === "imageInput" || item.node.type === "videoInput"
-        ? clamp(width / item.aspectRatio, 0.1, 1.2)
-        : clamp(startLayout.height + deltaHeight, 0.12, 1.2);
+        ? clamp(naturalHeight, 0.08, Math.max(0.08, worldHeight - startLayout.y))
+        : clamp(startLayout.height + deltaHeight, 0.1, Math.max(0.1, worldHeight - startLayout.y));
       nextLayout = sanitizeLookbookLayout({ ...startLayout, width, height });
       if (resizeFrameRef.current === null) resizeFrameRef.current = requestAnimationFrame(applyPreview);
     };
@@ -132,8 +126,7 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
   };
 
   const isTextCard = item.node.type === "text";
-  const isDocument = item.node.type === "mdText";
-  const isAlpha = item.node.type === "imageInput" && item.node.data.hasAlpha === true;
+  const isSticker = item.node.type === "imageInput" && item.node.data.hasAlpha === true;
   const imageSource = item.node.type === "imageInput" ? readString(item.node.data.image) : "";
   const videoSource = item.node.type === "videoInput" ? readString(item.node.data.video) : "";
   const audioSource = item.node.type === "audioInput" ? readString(item.node.data.audio) : "";
@@ -141,7 +134,7 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
   return (
     <motion.article
       ref={itemRef}
-      className={`lookbook-board-item is-${item.node.type} ${selected ? "is-selected" : ""} ${isAlpha ? "has-alpha" : ""}`}
+      className={`lookbook-spread-item is-${item.node.type} ${selected ? "is-selected" : ""} ${isSticker ? "is-sticker" : ""}`}
       data-node-id={item.node.id}
       data-fit={item.layout.fit}
       style={{
@@ -152,96 +145,82 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
         zIndex: item.layout.zIndex,
         rotate: item.layout.rotation,
       }}
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 190, damping: 25, delay: Math.min(index, 8) * 0.035 }}
-      layout="position"
+      transition={{ type: "spring", stiffness: 190, damping: 25, delay: Math.min(index, 6) * 0.025 }}
       drag
       dragControls={dragControls}
       dragListener={false}
       dragMomentum={false}
       dragElastic={0}
       dragConstraints={boardRef}
-      whileDrag={{ scale: 1.012 }}
+      whileDrag={{ scale: 1.01 }}
       onDragStart={() => onSelect(item.node.id)}
       onDragEnd={handleDragEnd}
       onPointerDown={() => onSelect(item.node.id)}
-      aria-label={`${title}，${itemKindLabel(item)}`}
+      aria-label={title}
     >
-      <div className="lookbook-board-item__chrome">
-        <button
-          type="button"
-          className="lookbook-board-item__drag"
-          aria-label={`移动 ${title}`}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onSelect(item.node.id);
-            dragControls.start(event);
-          }}
-        >
-          <DotsSixVertical size={15} weight="bold" />
-        </button>
-        <span>{itemKindLabel(item)}</span>
-        {!isTextCard ? <strong>{title}</strong> : null}
-      </div>
+      <button
+        type="button"
+        className="lookbook-spread-item__grab"
+        aria-label={`移动 ${title}`}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(item.node.id);
+          dragControls.start(event);
+        }}
+      ><DotsSix size={14} weight="bold" /></button>
 
       {item.node.type === "imageInput" ? (
-        <div className="lookbook-board-item__media">
-          {imageSource ? (
-            <img src={imageSource} alt={title} draggable={false} />
-          ) : (
-            <div className="lookbook-board-item__placeholder"><ImageIcon size={28} /><span>图片节点为空</span></div>
-          )}
-        </div>
+        <figure className="lookbook-spread-item__figure">
+          <div className="lookbook-spread-item__media">
+            {imageSource ? <img src={imageSource} alt={title} draggable={false} /> : <div className="lookbook-spread-item__placeholder"><ImageIcon size={25} /><span>图片节点为空</span></div>}
+          </div>
+          {!isSticker ? <figcaption>{title}</figcaption> : null}
+        </figure>
       ) : item.node.type === "videoInput" ? (
-        <div className="lookbook-board-item__media is-video">
-          {videoSource ? <video src={videoSource} controls preload="metadata" /> : <div className="lookbook-board-item__placeholder"><VideoCamera size={28} /><span>视频节点为空</span></div>}
-        </div>
+        <figure className="lookbook-spread-item__figure">
+          <div className="lookbook-spread-item__media is-video">
+            {videoSource ? <video src={videoSource} controls preload="metadata" /> : <div className="lookbook-spread-item__placeholder"><VideoCamera size={25} /><span>视频节点为空</span></div>}
+          </div>
+          <figcaption>{title}</figcaption>
+        </figure>
       ) : item.node.type === "audioInput" ? (
-        <div className="lookbook-board-item__audio">
-          <MusicNotes size={24} weight="light" />
+        <div className="lookbook-spread-item__audio">
+          <MusicNotes size={21} weight="light" />
           <strong>{title}</strong>
           {audioSource ? <audio src={audioSource} controls preload="metadata" /> : <span>音频节点为空</span>}
         </div>
       ) : isTextCard ? (
-        <div className="lookbook-board-item__text-card" onPointerDown={(event) => event.stopPropagation()}>
-          <input
-            value={titleDraft}
-            aria-label="文本卡标题"
-            onChange={(event) => setTitleDraft(event.target.value)}
-            onBlur={commitTextDraft}
-          />
+        <div className="lookbook-spread-item__text" onPointerDown={(event) => event.stopPropagation()}>
+          <input value={titleDraft} aria-label="文本标题" onChange={(event) => setTitleDraft(event.target.value)} onBlur={commitTextDraft} />
           <textarea
             value={textDraft}
-            aria-label="文本卡正文"
-            placeholder="写下造型、光线、材质或镜头意图…"
+            aria-label="文本正文"
+            placeholder="写下造型、材质、光线或镜头意图…"
             onChange={(event) => setTextDraft(event.target.value)}
             onBlur={commitTextDraft}
           />
         </div>
       ) : (
-        <div className="lookbook-board-item__document">
-          <FileText size={20} weight="light" />
+        <div className="lookbook-spread-item__document">
+          <FileText size={18} weight="light" />
           <strong>{title}</strong>
-          <pre>{readString(item.node.data.content || item.node.data.text) || "这份档案尚未写入内容。"}</pre>
+          <p>{readString(item.node.data.content || item.node.data.text) || "这份档案尚未写入内容。"}</p>
         </div>
       )}
 
       {selected ? (
-        <button
-          type="button"
-          className="lookbook-board-item__resize"
-          aria-label={`调整 ${title} 大小`}
-          onPointerDown={beginResize}
-        >
-          <ArrowsOutSimple size={13} weight="bold" />
+        <button type="button" className="lookbook-spread-item__resize" aria-label={`调整 ${title} 大小`} onPointerDown={beginResize}>
+          <ArrowsOutSimple size={12} weight="bold" />
         </button>
       ) : null}
     </motion.article>
   );
 }, (previous, next) =>
   previous.item.node === next.item.node &&
+  previous.item.spreadIndex === next.item.spreadIndex &&
   sameLayout(previous.item.layout, next.item.layout) &&
   previous.item.aspectRatio === next.item.aspectRatio &&
   previous.worldHeight === next.worldHeight &&

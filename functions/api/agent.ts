@@ -14,6 +14,7 @@ import { getUserId } from "./_auth";
 import { enforceRateLimit } from "./_rateLimit";
 import { readJsonRequest } from "./_request";
 import type { D1DatabaseLike, PagesContext } from "./_types";
+import { loadAgentProjectState } from "./_agentProjectState";
 import {
   createAgentProjectData,
   createAgentProjectPatch,
@@ -38,10 +39,8 @@ type AgentEnv = Record<string, unknown> & {
 
 const EDGE_AGENT_MAX_TURNS = 20;
 const EDGE_CHAT_SESSION_MAX_ITEMS = 18;
-const MAX_AGENT_REQUEST_BYTES = 5 * 1024 * 1024;
+const MAX_AGENT_REQUEST_BYTES = 128 * 1024;
 const MAX_AGENT_TEXT_LENGTH = 20_000;
-const MAX_AGENT_NODES = 500;
-const MAX_AGENT_LINKS = 1_000;
 
 const resolveApiKey = (env: Record<string, unknown>, provider: "qwen" | "openrouter" | "ark" | "deepseek") => {
   const value =
@@ -96,21 +95,15 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
     if (error instanceof Response) return withCorsHeaders(error);
     throw error;
   }
-  if (!body?.run?.projectId || !body?.run?.sessionId || !body?.run?.userText || !body?.runtime?.model || !body?.nodeFlow) {
-    return new Response(JSON.stringify({ error: "请求缺少 run.projectId、run.sessionId、run.userText、runtime.model 或 nodeFlow。" }), {
-      status: 400,
-      headers: {
-        ...CORS_HEADERS,
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    });
-  }
-  try {
-    body = { ...body, nodeFlow: parseNodeFlowFile(body.nodeFlow) };
-  } catch (error) {
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Agent NodeFlow payload is invalid.",
-    }), {
+  if (
+    !body?.run?.projectId ||
+    !body?.run?.sessionId ||
+    !body?.run?.userText ||
+    !body?.runtime?.model ||
+    !Number.isInteger(body?.project?.expectedRevision) ||
+    body.project.expectedRevision < 0
+  ) {
+    return new Response(JSON.stringify({ error: "请求缺少有效的项目、会话、模型或 expectedRevision。" }), {
       status: 400,
       headers: {
         ...CORS_HEADERS,
@@ -122,11 +115,9 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
     body.run.projectId.length > 256 ||
     body.run.sessionId.length > 256 ||
     body.run.userText.length > MAX_AGENT_TEXT_LENGTH ||
-    body.nodeFlow.nodes.length > MAX_AGENT_NODES ||
-    body.nodeFlow.links.length > MAX_AGENT_LINKS ||
     (body.run.attachments?.length || 0) > 8
   ) {
-    return new Response(JSON.stringify({ error: "Agent request exceeds the allowed project, text, graph, or attachment limits." }), {
+    return new Response(JSON.stringify({ error: "Agent request exceeds the allowed identity, text, or attachment limits." }), {
       status: 413,
       headers: {
         ...CORS_HEADERS,
@@ -136,7 +127,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
   }
 
   try {
-    assertStyloProjectScope(body.run.projectId, body.projectData);
+    assertStyloProjectScope(body.run.projectId);
     if (!isStyloSessionInProject(body.run.sessionId, body.run.projectId)) {
       throw new Error("Stylo sessionId 不属于当前 projectId。");
     }
@@ -152,12 +143,6 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
 
   const provider = resolveAgentProvider(body.runtime.provider);
   const sessionKey = createAgentSessionKey(body.run.projectId, body.run.sessionId, sessionOwner);
-  await migrateLegacyD1AgentSession(
-    context.env,
-    body.run.projectId,
-    body.run.sessionId,
-    sessionOwner
-  ).catch(() => false);
 
   const stream = new ReadableStream<Uint8Array>({
     start: async (controller) => {
@@ -168,8 +153,6 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
       const wrapperRunId = `edge-wrapper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const workflowName = "Stylo Edge Agent";
       const groupId = sessionKey;
-      const agentProjectData = createAgentProjectData(body.projectData, body.nodeFlow, body.run.projectId);
-      const bridgeState = createNodeFlowBridgeState(agentProjectData, body.nodeFlow);
       const skillLoader = new StaticSkillLoader();
       const requestAbortSignal = context.request.signal;
       const emitWrapperTrace = (
@@ -188,6 +171,34 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
       requestAbortSignal?.addEventListener("abort", onAbort, { once: true });
       try {
         emitWrapperTrace("runtime", "running", "Edge request accepted", `project=${body.run.projectId} · session=${body.run.sessionId}`);
+        await migrateLegacyD1AgentSession(
+          context.env,
+          body.run.projectId,
+          body.run.sessionId,
+          sessionOwner
+        ).catch(() => false);
+        const projectState = await loadAgentProjectState(
+          context.env.DB,
+          sessionOwner,
+          body.run.projectId
+        );
+        if (projectState.nodeFlow.revision !== body.project.expectedRevision) {
+          throw new Error(
+            `云端 Flow 修订为 ${projectState.nodeFlow.revision}，本地请求修订为 ${body.project.expectedRevision}。请等待项目同步完成后重试。`
+          );
+        }
+        const agentProjectData = createAgentProjectData(
+          projectState.projectData,
+          projectState.nodeFlow,
+          body.run.projectId
+        );
+        const bridgeState = createNodeFlowBridgeState(agentProjectData, projectState.nodeFlow);
+        emitWrapperTrace(
+          "session",
+          "info",
+          "Project tool state attached",
+          `revision=${projectState.nodeFlow.revision}`
+        );
         debugLog(debugEnabled, traceId, "request received", {
           provider,
           runtime: body.runtime,

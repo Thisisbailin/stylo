@@ -1,6 +1,5 @@
 import type { XYPosition } from "@xyflow/react";
 import type { NodeFlowNode, NodeFlowNodeStyle, NodeFlowViewport, NodeType } from "../types";
-import { getEdgeAlignedPosition } from "../utils/edgeAlignment";
 
 export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
   scriptPage: { width: 320, height: 249 },
@@ -25,7 +24,6 @@ const DEFAULT_NODE_HEIGHT = 180;
 const SAFE_NODE_GAP = 48;
 const SEARCH_STEP_X = 392;
 const SEARCH_STEP_Y = 320;
-const ALIGN_THRESHOLD = 48;
 const SEARCH_LIMIT = 160;
 const GRID_SIZE = 16;
 
@@ -155,11 +153,7 @@ export const findSafeNodeFlowPosition = ({
       x: roundToGrid(base.x + offset.x),
       y: roundToGrid(base.y + offset.y),
     };
-    const aligned = getEdgeAlignedPosition(candidateNode, comparableNodes as any, rawPosition, ALIGN_THRESHOLD).position;
-    const position = {
-      x: roundToGrid(aligned.x),
-      y: roundToGrid(aligned.y),
-    };
+    const position = rawPosition;
     const activeBounds = toBounds(candidateNode, position);
     const overlaps = comparableNodes.some((node) => intersectsWithGap(activeBounds, toBounds(node), gap));
     if (!overlaps) return position;

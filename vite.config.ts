@@ -76,6 +76,7 @@ export default defineConfig(({ mode }) => {
               return undefined;
             }
             if (/node_modules\/(react|react-dom|react-is|scheduler)\//.test(id)) return 'react-vendor';
+            if (id.includes('/node_modules/three/')) return 'cinewor-vendor';
             if (id.includes('/node_modules/@xyflow/')) return 'flow-vendor';
             if (id.includes('/node_modules/@clerk/')) return 'auth-vendor';
             if (id.includes('/node_modules/@openai/') || id.includes('/node_modules/openai/')) return 'agent-vendor';

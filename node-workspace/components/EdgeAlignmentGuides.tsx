@@ -16,12 +16,12 @@ type GuideState = "active" | "exiting";
 type GuideVars = React.CSSProperties &
   Record<"--snap-guide-offset" | "--snap-guide-strength" | "--snap-guide-opacity", string | number>;
 
-const EXIT_DURATION = 180;
+const EXIT_DURATION = 100;
 
 const hasGuide = (guide: EdgeAlignmentGuide | null): guide is EdgeAlignmentGuide =>
   Boolean(guide && (guide.x != null || guide.y != null));
 
-const getOpacity = (strength = 1) => Math.min(0.98, 0.48 + strength * 0.42);
+const getOpacity = (strength = 1) => Math.min(0.3, 0.14 + strength * 0.16);
 
 export const EdgeAlignmentGuides: React.FC<Props> = ({ guide, viewport }) => {
   const [renderedGuide, setRenderedGuide] = useState<EdgeAlignmentGuide | null>(guide);

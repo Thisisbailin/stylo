@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePersistedState } from "../../hooks/usePersistedState";
-import { AppConfig, ProjectData } from "../../types";
+import { AppConfig, ProjectData, SyncState } from "../../types";
 import type { NodeFlowFile, NodeFlowNode } from "../types";
 import { createStableId } from "../../utils/id";
 import { buildApiUrl } from "../../utils/api";
@@ -16,8 +16,6 @@ import {
 import { StyloChatContent } from "./stylo/StyloChatContent";
 import type { ApprovalChoice, ApprovalMessage, ApprovalStatus, ChatMessage, Message } from "./stylo/types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import type { StyloAgentBridge } from "../../agents/bridge/styloBridge";
-import { createStyloAgentBridge } from "../../agents/bridge/nodeFlowBridgeCore";
 import { createHttpStyloAgentRuntime } from "../../agents/runtime/httpClient";
 import { useStyloAgent } from "../../agents/react/useStyloAgent";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
@@ -33,7 +31,6 @@ import {
 import {
   buildStyloAccountSessionId,
   buildStyloAccountStorageKeys,
-  buildStyloScopedProjectData,
   resolveStyloProjectId,
 } from "../../agents/runtime/projectScope";
 import type {
@@ -49,6 +46,8 @@ type Props = {
   config: AppConfig;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
+  syncState?: SyncState;
+  ensureProjectSynced?: () => Promise<void>;
   onOpenStats?: () => void;
   settingsOpen?: boolean;
   openRequest?: number;
@@ -263,16 +262,6 @@ const applyAgentProjectPatch = (
         : project
     ),
   };
-};
-
-const parseMentions = (text: string) => {
-  const matches: string[] = text.match(/@([\w\u4e00-\u9fa5\-\/]+)/g) || [];
-  const names: string[] = [];
-  matches.forEach((m) => {
-    const name = m.slice(1);
-    if (!names.includes(name)) names.push(name);
-  });
-  return names;
 };
 
 const resolveAgentRuntimeModel = (textConfig: any) => {
@@ -507,6 +496,8 @@ export const StyloAgent: React.FC<Props> = ({
   config,
   setProjectData,
   getAuthToken,
+  syncState,
+  ensureProjectSynced,
   onOpenStats,
   settingsOpen = false,
   openRequest = 0,
@@ -532,19 +523,7 @@ export const StyloAgent: React.FC<Props> = ({
   const approvalPreferenceStorageKey = accountScope === "guest"
     ? "stylo_execution_approval_prefs_v1"
     : `stylo_execution_approval_prefs_v1:${encodeURIComponent(accountScope)}`;
-  const addNode = useNodeFlowStore((state) => state.addNode);
-  const updateNodeData = useNodeFlowStore((state) => state.updateNodeData);
-  const moveNode = useNodeFlowStore((state) => state.moveNode);
-  const addGraphLink = useNodeFlowStore((state) => state.addGraphLink);
-  const removeGraphLink = useNodeFlowStore((state) => state.removeGraphLink);
-  const updateNodeStyle = useNodeFlowStore((state) => state.updateNodeStyle);
-  const connectNodes = useNodeFlowStore((state) => state.connectNodes);
-  const toggleLinkPause = useNodeFlowStore((state) => state.toggleLinkPause);
-  const removeNode = useNodeFlowStore((state) => state.removeNode);
-  const removeLink = useNodeFlowStore((state) => state.removeLink);
   const importNodeFlow = useNodeFlowStore((state) => state.importNodeFlow);
-  const requestExecutionApproval = useNodeFlowStore((state) => state.requestExecutionApproval);
-  const clearExecutionApproval = useNodeFlowStore((state) => state.clearExecutionApproval);
   const setExecutionApprovals = useNodeFlowStore((state) => state.setExecutionApprovals);
   const pendingExecutionApprovals = useNodeFlowStore((state) => state.pendingExecutionApprovals);
   const nodes = useNodeFlowStore((state) => state.nodes);
@@ -655,39 +634,30 @@ export const StyloAgent: React.FC<Props> = ({
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
   const [glassAnchorFrame, setGlassAnchorFrame] = useState({ left: 0, top: 0 });
   const effectiveCollapsed = collapsed;
-  const bridge = useMemo<StyloAgentBridge>(
-    () => createStyloAgentBridge({
-      getProjectData: () => projectData,
-      getNodeFlowSnapshot: () => ({
-        version: 2,
-        revision,
-        name: projectData.fileName || "Stylo Flow Workspace",
-        nodes,
-        links,
-        graphLinks,
-        linkStyle,
-        globalAssetHistory,
-        nodeFlowContext,
-        viewport: viewport || undefined,
-        activeView,
-      }),
-      getPendingExecutionApprovals: () => Object.values(pendingExecutionApprovals),
-      updateProjectData: (updater) => setProjectData((prev) => updater(prev)),
-      addNode,
-      updateNodeData: (nodeId, data) => updateNodeData(nodeId, data),
-      moveNode: (nodeId, position) => moveNode(nodeId, position),
-      addGraphLink: (sourceRef, targetRef) => addGraphLink(sourceRef, targetRef),
-      removeGraphLink: (linkId) => removeGraphLink(linkId),
-      updateNodeStyle: (nodeId, style) => updateNodeStyle(nodeId, style),
-      connectNodes,
-      removeNode,
-      removeLink,
-      toggleLinkPause,
-      requestExecutionApproval,
-      clearExecutionApproval,
-    }),
-    [activeView, addGraphLink, addNode, clearExecutionApproval, connectNodes, globalAssetHistory, graphLinks, linkStyle, links, moveNode, nodeFlowContext, nodes, pendingExecutionApprovals, projectData, removeGraphLink, removeLink, removeNode, requestExecutionApproval, revision, setProjectData, toggleLinkPause, updateNodeData, updateNodeStyle, viewport]
-  );
+  const syncStateRef = useRef(syncState);
+  syncStateRef.current = syncState;
+  const waitForProjectSync = useCallback(async () => {
+    const deadline = Date.now() + 15_000;
+    while (true) {
+      const projectSync = syncStateRef.current?.project;
+      if (!projectSync) return;
+      if (projectSync.status === "disabled") {
+        throw new Error("Agent 工具需要云端项目状态，但当前账户未启用项目同步。");
+      }
+      if (projectSync.status === "error" || projectSync.status === "conflict") {
+        throw new Error(projectSync.lastError || "项目同步尚未完成，Agent 无法读取权威项目状态。");
+      }
+      if (projectSync.status === "synced" && (projectSync.pendingOps || 0) === 0) return;
+      if (Date.now() >= deadline) {
+        throw new Error("等待项目同步超时。Agent 未读取本地快照，请确认同步完成后重试。");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
+  }, []);
+  const prepareProjectToolState = useCallback(async () => {
+    if (ensureProjectSynced) await ensureProjectSynced();
+    await waitForProjectSync();
+  }, [ensureProjectSynced, waitForProjectSync]);
   const edgeRuntime = useMemo(
     () =>
       createHttpStyloAgentRuntime({
@@ -701,31 +671,10 @@ export const StyloAgent: React.FC<Props> = ({
           styloTools: config.textConfig?.styloTools,
         }),
         getAuthToken,
-        getProjectDataSnapshot: () => buildStyloScopedProjectData(projectData, projectId),
-        getNodeFlowSnapshot: () =>
-          buildNodeFlowFileFromProjectData(projectData, {
-            revision,
-            linkStyle,
-            nodeFlowContext,
-            viewport: viewport || undefined,
-            activeView,
-          }) ||
-          ({
-            version: 2,
-            revision,
-            name: projectData.fileName || "Stylo Flow Workspace",
-            nodes,
-            links,
-            graphLinks,
-            linkStyle,
-            globalAssetHistory,
-            nodeFlowContext,
-            viewport: viewport || undefined,
-            activeView: activeView ?? null,
-          } satisfies NodeFlowFile),
+        getProjectRevision: () => useNodeFlowStore.getState().revision,
+        beforeRequest: prepareProjectToolState,
       }),
     [
-      activeView,
       config.textConfig?.agentBaseUrl,
       config.textConfig?.agentModel,
       config.textConfig?.agentProvider,
@@ -733,17 +682,8 @@ export const StyloAgent: React.FC<Props> = ({
       config.textConfig?.model,
       config.textConfig?.provider,
       config.textConfig?.styloTools,
-      linkStyle,
-      links,
-      graphLinks,
-      revision,
       getAuthToken,
-      globalAssetHistory,
-      nodeFlowContext,
-      nodes,
-      projectData,
-      projectId,
-      viewport,
+      prepareProjectToolState,
     ]
   );
   const runtime = edgeRuntime;
@@ -778,27 +718,6 @@ export const StyloAgent: React.FC<Props> = ({
     });
     return targets;
   }, [projectData.roles]);
-  const mentionIndex = useMemo(() => {
-    const map = new Map<string, { kind: "character" | "location"; name: string; label: string; id?: string }>();
-    mentionTargets.forEach((item) => {
-      const key = toSearch(item.name);
-      if (!key || map.has(key)) return;
-      map.set(key, item);
-    });
-    return map;
-  }, [mentionTargets]);
-  const resolveMentionTags = useCallback(
-    (text: string) =>
-      parseMentions(text)
-        .map((name) => mentionIndex.get(toSearch(name)) || null)
-        .filter((tag): tag is NonNullable<typeof tag> => tag !== null)
-        .map((tag) => ({
-          kind: tag.kind,
-          name: tag.name,
-          id: tag.id,
-        })),
-    [mentionIndex]
-  );
   const { sendMessage: runAgentMessage, cancel: cancelAgentRun } = useStyloAgent({
     runtime,
     projectId,
@@ -1089,10 +1008,7 @@ export const StyloAgent: React.FC<Props> = ({
       const runResult = await runAgentMessage({
         userText: cleanedInput,
         enabledSkillIds: [],
-        uiContext: {
-          ...submittedUiContext,
-          mentionTags: resolveMentionTags(cleanedInput),
-        },
+        uiContext: submittedUiContext,
       });
       if (
         !isRunAccountCurrent() ||
@@ -1197,7 +1113,7 @@ export const StyloAgent: React.FC<Props> = ({
     } finally {
       setIsSending(false);
     }
-  }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, resolveMentionTags, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
+  }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto stylo-panel";
   const dockInset = 16;

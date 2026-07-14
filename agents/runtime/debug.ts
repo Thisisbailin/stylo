@@ -11,12 +11,10 @@ export const isBrowserAgentDebugEnabled = () => {
   if (FORCE_BROWSER_AGENT_DEBUG) return true;
   if (typeof window === "undefined") return false;
   try {
-    if (isTruthy(window.localStorage.getItem(BROWSER_DEBUG_STORAGE_KEY))) return true;
+    return isTruthy(window.localStorage.getItem(BROWSER_DEBUG_STORAGE_KEY));
   } catch {
-    // Ignore localStorage access failures.
+    return false;
   }
-  const env = typeof import.meta !== "undefined" ? (import.meta as any).env : undefined;
-  return isTruthy(env?.VITE_AGENT_DEBUG);
 };
 
 export const browserAgentDebug = (label: string, payload?: unknown) => {

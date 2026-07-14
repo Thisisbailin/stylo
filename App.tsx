@@ -39,6 +39,9 @@ import {
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
 );
+const CineworLab = React.lazy(() =>
+  import('./node-workspace/components/CineworLab').then((module) => ({ default: module.CineworLab }))
+);
 
 type LabModalKey = ModuleKey;
 
@@ -440,7 +443,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
 
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
-  useCloudSync({
+  const { flushProjectSync } = useCloudSync({
     accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
@@ -705,6 +708,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         isSignedIn={!!authSignedIn}
         getAuthToken={getAuthToken}
         syncState={syncState}
+        ensureProjectSynced={flushProjectSync}
         syncRollout={syncRollout}
         onForceSync={forceCloudPull}
         externalProjectSettingsRequest={projectSettingsRequest}
@@ -770,6 +774,16 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         {openLabModal === "agentLab" ? (
           <React.Suspense fallback={null}>
             <AgentLab isOpen onClose={closeLabModal} />
+          </React.Suspense>
+        ) : null}
+        {openLabModal === "cineworLab" ? (
+          <React.Suspense fallback={null}>
+            <CineworLab
+              isOpen
+              onClose={closeLabModal}
+              projectData={projectData}
+              setProjectData={setProjectData}
+            />
           </React.Suspense>
         ) : null}
       </AppShell>

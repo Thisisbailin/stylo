@@ -1289,184 +1289,47 @@ body.stylo-resizing * {
 
 .nodeflow-snap-guide {
   position: absolute;
-  border-radius: 999px;
   opacity: 0;
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--app-accent-strong) 38%, transparent));
   transition:
-    opacity 180ms ease,
-    transform 210ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 210ms ease;
+    opacity 100ms ease-out,
+    transform 80ms linear;
   will-change: opacity, transform;
 }
 
-.nodeflow-snap-guide::before,
-.nodeflow-snap-guide::after {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-}
-
-.nodeflow-snap-guide::before {
-  inset: -8px;
-  border-radius: inherit;
-  opacity: 0.34;
-  filter: blur(7px);
-}
-
-.nodeflow-snap-guide::after {
-  opacity: 0.58;
-}
-
 .nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide {
-  opacity: var(--snap-guide-opacity, 0.88);
-  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--app-accent-strong) 46%, transparent));
+  opacity: var(--snap-guide-opacity, 0.24);
 }
 
 .nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide {
   opacity: 0;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--app-accent-strong) 18%, transparent));
 }
 
 .nodeflow-snap-guide--vertical {
-  top: 5%;
-  bottom: 5%;
-  width: 2px;
-  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.72);
-  transform-origin: center;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  transform: translateX(var(--snap-guide-offset, 0px));
   background: linear-gradient(
     to bottom,
     transparent 0%,
-    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 11%,
-    color-mix(in srgb, var(--app-accent-strong) 88%, transparent) 48%,
-    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 89%,
+    color-mix(in srgb, var(--app-accent-strong) 50%, transparent) 18%,
+    color-mix(in srgb, var(--app-accent-strong) 50%, transparent) 82%,
     transparent 100%
   );
-}
-
-.nodeflow-snap-guide--vertical::before {
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 20%,
-    color-mix(in srgb, var(--app-accent-strong) 58%, transparent) 50%,
-    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 80%,
-    transparent 100%
-  );
-}
-
-.nodeflow-snap-guide--vertical::after {
-  top: 0;
-  left: -1px;
-  width: 4px;
-  height: 23%;
-  border-radius: inherit;
-  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.76), transparent);
-  animation: stylo-snap-guide-sheen-y 1.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-.nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide--vertical {
-  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(1);
-  animation: stylo-snap-guide-in-y 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide--vertical {
-  transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.62);
 }
 
 .nodeflow-snap-guide--horizontal {
-  left: 5%;
-  right: 5%;
-  height: 2px;
-  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.72);
-  transform-origin: center;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  transform: translateY(var(--snap-guide-offset, 0px));
   background: linear-gradient(
     to right,
     transparent 0%,
-    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 11%,
-    color-mix(in srgb, var(--app-accent-strong) 88%, transparent) 48%,
-    color-mix(in srgb, var(--app-accent-strong) 24%, transparent) 89%,
+    color-mix(in srgb, var(--app-accent-strong) 50%, transparent) 18%,
+    color-mix(in srgb, var(--app-accent-strong) 50%, transparent) 82%,
     transparent 100%
   );
-}
-
-.nodeflow-snap-guide--horizontal::before {
-  background: linear-gradient(
-    to right,
-    transparent 0%,
-    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 20%,
-    color-mix(in srgb, var(--app-accent-strong) 58%, transparent) 50%,
-    color-mix(in srgb, var(--app-accent-strong) 26%, transparent) 80%,
-    transparent 100%
-  );
-}
-
-.nodeflow-snap-guide--horizontal::after {
-  top: -1px;
-  left: 0;
-  width: 23%;
-  height: 4px;
-  border-radius: inherit;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.76), transparent);
-  animation: stylo-snap-guide-sheen-x 1.45s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-.nodeflow-snap-guides[data-state="active"] .nodeflow-snap-guide--horizontal {
-  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(1);
-  animation: stylo-snap-guide-in-x 190ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.nodeflow-snap-guides[data-state="exiting"] .nodeflow-snap-guide--horizontal {
-  transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.62);
-}
-
-@keyframes stylo-snap-guide-sheen-y {
-  0% {
-    transform: translateY(-32%);
-    opacity: 0;
-  }
-  26% {
-    opacity: 0.68;
-  }
-  100% {
-    transform: translateY(430%);
-    opacity: 0;
-  }
-}
-
-@keyframes stylo-snap-guide-sheen-x {
-  0% {
-    transform: translateX(-32%);
-    opacity: 0;
-  }
-  26% {
-    opacity: 0.68;
-  }
-  100% {
-    transform: translateX(430%);
-    opacity: 0;
-  }
-}
-
-@keyframes stylo-snap-guide-in-y {
-  from {
-    opacity: 0;
-    transform: translateX(var(--snap-guide-offset, 0px)) scaleY(0.62);
-  }
-  to {
-    opacity: var(--snap-guide-opacity, 0.88);
-    transform: translateX(var(--snap-guide-offset, 0px)) scaleY(1);
-  }
-}
-
-@keyframes stylo-snap-guide-in-x {
-  from {
-    opacity: 0;
-    transform: translateY(var(--snap-guide-offset, 0px)) scaleX(0.62);
-  }
-  to {
-    opacity: var(--snap-guide-opacity, 0.88);
-    transform: translateY(var(--snap-guide-offset, 0px)) scaleX(1);
-  }
 }
 
 @keyframes stylo-node-port-breathe {

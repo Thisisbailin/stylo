@@ -13,7 +13,6 @@ export type AgentAttachment = {
 
 export type AgentUiContext = {
   supplementalContextText?: string;
-  mentionTags?: Array<{ kind: "character" | "location"; name: string; id?: string }>;
   documentSelection?: {
     kind: "script";
     nodeId: string;
@@ -25,100 +24,6 @@ export type AgentUiContext = {
       end: number;
     };
   };
-};
-
-export type AgentEnvironmentProjectDigest = {
-  projectId: string;
-  fileName?: string;
-  episodeCount: number;
-  sceneCount: number;
-  primaryRoles: Array<{
-    id: string;
-    mention: string;
-    displayName: string;
-    summary: string;
-    episodeUsage?: string;
-  }>;
-  sceneRoles: Array<{
-    id: string;
-    mention: string;
-    displayName: string;
-    summary: string;
-    episodeUsage?: string;
-  }>;
-  scriptCoverage: {
-    primaryRoleCount: number;
-    sceneRoleCount: number;
-    archiveCount: number;
-    folderNodeCount: number;
-  };
-  readingLayers: {
-    script: {
-      nodeCount: number;
-      linkCount: number;
-      documentNodeCount: number;
-      archiveNodeCount: number;
-      folderNodeCount: number;
-    };
-    nodeflow: {
-      nodeCount: number;
-      linkCount: number;
-      graphLinkCount: number;
-    };
-  };
-  graphWorld: {
-    centerSurface: "Nodes";
-    planes: {
-      front: "Flow";
-      back: "Script";
-    };
-    actions: {
-      read: {
-        covers: Array<"script" | "nodeflow">;
-      };
-      edit: {
-        target: "script";
-      };
-      operate: {
-        target: "nodeflow";
-      };
-    };
-  };
-};
-
-export type AgentEnvironmentCapabilityManifest = {
-  read: {
-    tools: string[];
-    resources: string[];
-    scopes: string[];
-  };
-  edit: {
-    tools: string[];
-    resources: string[];
-  };
-  operate: {
-    tools: string[];
-    resources: string[];
-    nodeKinds: string[];
-  };
-};
-
-export type AgentEnvironmentRecentAction = {
-  toolName: string;
-  summary: string;
-  createdAt?: number;
-};
-
-export type AgentMemoryToolRecord = {
-  toolName: string;
-  status: "success" | "error";
-  summary: string;
-  createdAt?: number;
-};
-
-export type StyloAgentMemory = {
-  recentSuccessfulTools: AgentMemoryToolRecord[];
-  recentFailedTools: AgentMemoryToolRecord[];
 };
 
 export type StyloToolBudgetContext = {
@@ -134,27 +39,8 @@ export type StyloToolBudgetContext = {
   };
 };
 
-export type StyloAgentEnvironment = {
-  project: AgentEnvironmentProjectDigest;
-  capabilityManifest: AgentEnvironmentCapabilityManifest;
-  executionApprovals: {
-    pendingCount: number;
-    pendingNodeTitles: string[];
-  };
-  runtimeCapabilities: {
-    runtimeMode: "browser" | "edge_full";
-    enabledTools: string[];
-    canRead: boolean;
-    canEdit: boolean;
-    canOperate: boolean;
-  };
-  recentSuccessfulActions: AgentEnvironmentRecentAction[];
-};
-
 export type StyloRunContext = {
   runtimeMode: "browser" | "edge_full";
-  agentEnvironment: StyloAgentEnvironment;
-  agentMemory: StyloAgentMemory;
   toolBudget: StyloToolBudgetContext;
   uiContext?: AgentUiContext;
 };

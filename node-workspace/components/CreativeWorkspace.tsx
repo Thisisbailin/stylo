@@ -52,6 +52,7 @@ interface CreativeWorkspaceProps {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
+  ensureProjectSynced?: () => Promise<void>;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onOpenLanding?: () => void;
@@ -327,6 +328,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   isSignedIn,
   getAuthToken,
   syncState,
+  ensureProjectSynced,
   syncRollout,
   onForceSync,
   onOpenLanding,
@@ -1090,6 +1092,8 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       config={config}
       setProjectData={setProjectData}
       getAuthToken={getAuthToken}
+      syncState={syncState}
+      ensureProjectSynced={ensureProjectSynced}
       onOpenStats={() => openProjectSettingsPanel("provider")}
       settingsOpen={showProjectSettings}
       openRequest={styloOpenRequest}
@@ -1310,6 +1314,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
+          onOpenLookbook={(identityNodeId) => {
+            setEditingScriptNodeId(null);
+            setActiveLookbookNodeId(identityNodeId);
+          }}
           onOpenStylo={() => setStyloOpenRequest((count) => count + 1)}
           onSubmitToStylo={(text, uiContext) => setStyloSubmitRequest({ id: Date.now(), projectId: styloProjectId, text, uiContext })}
           onClose={() => {

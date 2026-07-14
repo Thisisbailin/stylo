@@ -1,8 +1,6 @@
 import type { RunContext } from "@openai/agents";
 import type {
   AgentUiContext,
-  StyloAgentEnvironment,
-  StyloAgentMemory,
   StyloRunContext,
   StyloResolvedSkill,
 } from "./types";
@@ -15,12 +13,12 @@ const BASE_INSTRUCTION = [
   "Use tools when you need grounded project reads, durable document edits, or workflow operations.",
   "Tool calls have a per-run budget. Reuse completed tool results, avoid duplicate reads, and stop to answer or ask for narrowing when the budget is exhausted.",
   "If a tool returns target=tool_error with recoverable=true, treat it as model-visible feedback: adjust arguments, read narrower state, or explain the blocker instead of repeating the same failing call.",
-  "You receive a structured environment snapshot in run context. Treat it as your first project map.",
+  "Start with no project knowledge. Do not receive or assume a project summary, role list, document list, node map, or pending-action summary before using tools.",
+  "When a request depends on project facts or state, discover the minimum necessary scope with find, list, search, or read tools before answering or mutating anything.",
   "A compact runtime manual is available through read_runtime_manual. Do not preload it mentally; use it only when the user asks about this agent's own operation, tool ergonomics, cognitive load, runtime constraints, web-search policy, or source-code orientation.",
   "Web search is available by default through search_web unless the user disables it. Use it for current external facts, provider/API behavior, releases, prices, laws, or other time-sensitive claims; prefer primary sources.",
   "Live read-only access to the full Stylo GitHub repository is available through access_github_repository. Use it when runtime self-assessment, source-level diagnosis, or implementation planning requires current project code.",
-  "The environment contains exactly one active project scope. Treat project.projectId as immutable for the whole run; never infer, read, mention, or operate another project's state from session memory.",
-  "You also receive a compact session memory snapshot. Treat it as compressed working memory, not as guaranteed project truth.",
+  "The runtime binds exactly one active project scope. Never infer, read, mention, or operate another project's state from conversation memory.",
   "Flow is the only project surface. All project content is represented as ordinary Flow nodes plus ordinary Flow links.",
   "Do not think in terms of unrelated modules or old mode tabs. Think in one shared project world expressed through Flow.",
   "Flow holds the canonical graph: Fountain script document nodes, Markdown archive document nodes, note nodes, folder nodes, media/input nodes, and links.",
@@ -49,14 +47,13 @@ const BASE_INSTRUCTION = [
   "If the task is organized around project archive structure, prefer read_project_resource with layer=script, entity=map before reading many individual nodes.",
   "If you need to understand user-facing canvas structure, use read_project_resource and list_project_resources with layer=nodeflow and entity=node, link, map, or approval. Remember that layer=nodeflow is the internal key for the Flow graph runtime.",
   "Choose your own strategy.",
-  "Treat project data and completed tool results as the source of truth.",
+  "Treat fresh project-tool results as the source of truth.",
   "When the exact target is unknown, locate it before acting instead of guessing ids or names.",
   "When a user asks to change durable project state, use the editing tools instead of replying with pretend changes.",
   "When a user asks for workflow artifacts, create only the necessary allowed basic nodes and connections.",
   "Image and video generation are high-privilege execution actions.",
   "Human users operating the canvas directly may trigger generation themselves, but you as the agent must still treat generation execution as approval-gated.",
   "When a user asks the agent to start image or video generation, never assume you may directly execute it.",
-  "If environment executionApprovals.pendingCount is greater than zero, assume there may already be waiting approvals and inspect them before issuing a new one.",
   "Treat pending execution approvals as durable project state, not as transient chat decoration.",
   "Before creating a new generation approval request, inspect current pending execution approvals through the normal list/read/search resource tools when duplication or stale approval state is possible.",
   "Use list_project_resources, read_project_resource, and search_project_resource with layer=nodeflow and entity=approval as the normal approval-state resources inside Flow.",
@@ -82,13 +79,6 @@ const uiContextInstruction = (uiContext?: AgentUiContext) => {
   if (uiContext?.supplementalContextText?.trim()) {
     parts.push(`[Supplemental Context]\n${uiContext.supplementalContextText.trim().slice(0, 4000)}`);
   }
-  if (uiContext?.mentionTags?.length) {
-    parts.push(
-      `[Mentions]\n${uiContext.mentionTags.slice(0, 24)
-        .map((tag) => `- @${tag.name} => ${tag.kind}${tag.id ? ` (${tag.id})` : ""}`)
-        .join("\n")}`
-    );
-  }
   if (uiContext?.documentSelection) {
     parts.push(`[Document Selection]\n${JSON.stringify({
       ...uiContext.documentSelection,
@@ -97,23 +87,6 @@ const uiContextInstruction = (uiContext?: AgentUiContext) => {
     })}`);
   }
   return parts.join("\n\n");
-};
-
-const toJsonBlock = (label: string, value: unknown) => {
-  if (!value) return "";
-  return `[${label}]\n${JSON.stringify(value)}`;
-};
-
-const formatEnvironmentInstruction = (environment?: StyloAgentEnvironment) =>
-  environment ? toJsonBlock("Environment Snapshot", environment) : "";
-
-const formatMemoryInstruction = (memory?: StyloAgentMemory) => {
-  if (!memory) return "";
-  const operationalMemory = {
-    recentSuccessfulTools: memory.recentSuccessfulTools,
-    recentFailedTools: memory.recentFailedTools,
-  };
-  return toJsonBlock("Operational Memory", operationalMemory);
 };
 
 export const composeAgentInstructions = ({
@@ -129,9 +102,7 @@ export const composeAgentInstructions = ({
     .map((skill) => `[Skill Tool Preference: ${skill.title}]\nPrefer these tools when they fit the task:\n${skill.preferredTools!.map((tool) => `- ${tool}`).join("\n")}`)
     .join("\n\n");
   return (runContext: RunContext<StyloRunContext>) => {
-    const environmentBlock = formatEnvironmentInstruction(runContext.context?.agentEnvironment);
-    const memoryBlock = formatMemoryInstruction(runContext.context?.agentMemory);
     const uiBlock = uiContextInstruction(runContext.context?.uiContext as AgentUiContext | undefined);
-    return [BASE_INSTRUCTION, environmentBlock, memoryBlock, preferredToolBlock, ...overlays, uiBlock].filter(Boolean).join("\n\n");
+    return [BASE_INSTRUCTION, preferredToolBlock, ...overlays, uiBlock].filter(Boolean).join("\n\n");
   };
 };

@@ -9,7 +9,14 @@ import {
   normalizeResponseFromDeepSeek,
   normalizeStreamChunkFromDeepSeek,
 } from "../agents/runtime/deepseekCompat";
-import { AgentEventSequenceGuard, parseAgentStreamPacket } from "../agents/runtime/httpProtocol";
+import { createHttpStyloAgentRuntime } from "../agents/runtime/httpClient";
+import {
+  AgentEventSequenceGuard,
+  parseAgentStreamPacket,
+  serializeAgentStreamPacket,
+  type AgentHttpRunRequest,
+} from "../agents/runtime/httpProtocol";
+import { composeAgentInstructions } from "../agents/runtime/instructions";
 import { resolveAgentProvider, resolveApiMode } from "../agents/runtime/providerConfig";
 import { createStyloProviderRuntime } from "../agents/runtime/providerRuntime";
 import {
@@ -36,6 +43,7 @@ import {
   shouldRejectStaleAgentResult,
 } from "../node-workspace/components/stylo/agentResultReconciliation";
 import type { Message } from "../node-workspace/components/stylo/types";
+import { buildAgentProjectStateFromRows } from "../functions/api/_agentProjectState";
 
 const emptyResult = (projectId = "project-1"): StyloRunResult => ({
   projectId,
@@ -585,6 +593,107 @@ test("SSE decoder handles CRLF frames, comments, and multi-line data", () => {
   assert.equal(flushed.remainder, "");
 });
 
+test("Agent run requests carry identity and revision but no project knowledge", () => {
+  const request: AgentHttpRunRequest = {
+    run: {
+      projectId: "project-1",
+      sessionId: "stylo:project-1:conversation-1",
+      userText: "检查项目",
+    },
+    runtime: { provider: "deepseek", model: "deepseek-chat" },
+    project: { expectedRevision: 7 },
+  };
+  assert.deepEqual(Object.keys(request).sort(), ["project", "run", "runtime"]);
+  assert.equal("projectData" in request, false);
+  assert.equal("nodeFlow" in request, false);
+  assert.deepEqual(request.project, { expectedRevision: 7 });
+});
+
+test("HTTP Agent runtime flushes sync before sending the minimal request", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ body: AgentHttpRunRequest; syncFinished: boolean }> = [];
+  let revision = 3;
+  let syncFinished = false;
+  globalThis.fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
+    calls.push({
+      body: JSON.parse(String(init?.body || "{}")) as AgentHttpRunRequest,
+      syncFinished,
+    });
+    return new Response(serializeAgentStreamPacket({ kind: "result", result: emptyResult("project-1") }), {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const runtime = createHttpStyloAgentRuntime({
+      endpoint: "https://stylo.test/api/agent",
+      getRuntimeConfig: () => ({ provider: "deepseek", model: "deepseek-chat" }),
+      beforeRequest: async () => {
+        await Promise.resolve();
+        revision = 9;
+        syncFinished = true;
+      },
+      getProjectRevision: () => revision,
+    });
+    await runtime.run({
+      projectId: "project-1",
+      sessionId: "stylo:project-1:conversation-1",
+      userText: "先自行探索项目",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].syncFinished, true);
+    assert.deepEqual(calls[0].body.project, { expectedRevision: 9 });
+    assert.equal("projectData" in calls[0].body, false);
+    assert.equal("nodeFlow" in calls[0].body, false);
+    assert.deepEqual(Object.keys(calls[0].body).sort(), ["project", "run", "runtime"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Agent instructions start without environment or operational-memory injection", () => {
+  const instructions = composeAgentInstructions({ enabledSkills: [] })({
+    context: {
+      runtimeMode: "edge_full",
+      toolBudget: {
+        totalCalls: 0,
+        lookupCalls: 0,
+        mutationCalls: 0,
+        fullReadCalls: 0,
+        limits: { totalCalls: 10, lookupCalls: 10, mutationCalls: 4, fullReadCalls: 4 },
+      },
+      agentEnvironment: { project: { fileName: "must-not-leak" } },
+      agentMemory: { recentSuccessfulTools: [{ summary: "must-not-leak" }] },
+    },
+  } as any);
+  assert.match(instructions, /Start with no project knowledge/);
+  assert.doesNotMatch(instructions, /Environment Snapshot|Operational Memory|must-not-leak/);
+});
+
+test("Edge Agent rebuilds tool state from D1 project rows", () => {
+  const state = buildAgentProjectStateFromRows("project-1", {
+    meta: { fileName: "Project", roles: [], designAssets: [], canvas: {}, stats: { context: { total: 0, success: 0, error: 0 } } },
+    project: {
+      id: "project-1",
+      title: "Project",
+      color: "#000000",
+      durationMin: 0,
+      rootNodeId: "root",
+      createdAt: 1,
+      updatedAt: 2,
+      flow: { revision: 7, links: [], graphLinks: [], linkStyle: "angular" },
+    },
+    nodes: [{ id: "text-1", type: "text", position: { x: 0, y: 0 }, data: { title: "Note", text: "secret" } }],
+    updatedAt: 9,
+  });
+  assert.equal(state.projectData.activeFlowProjectId, "project-1");
+  assert.equal(state.nodeFlow.revision, 7);
+  assert.equal(state.nodeFlow.nodes[0].data.text, "secret");
+  assert.equal(state.updatedAt, 9);
+});
+
 test("runtime core does not mutate process-wide OpenAI Agents SDK defaults", () => {
   const source = readFileSync("agents/runtime/core.ts", "utf8");
   assert.doesNotMatch(source, /setDefaultOpenAIClient|setOpenAIAPI/);
@@ -602,6 +711,8 @@ test("Edge sessions use optimistic concurrency and the API delegates bridge and 
   assert.match(sessionSource, /Agent session update conflicted repeatedly/);
   const apiSource = readFileSync("functions/api/agent.ts", "utf8");
   assert.match(apiSource, /from "\.\/_agentBridgeState"/);
+  assert.match(apiSource, /from "\.\/_agentProjectState"/);
   assert.match(apiSource, /from "\.\/_agentStream"/);
+  assert.doesNotMatch(apiSource, /body\.projectData|body\.nodeFlow/);
   assert.ok(apiSource.split("\n").length < 450);
 });

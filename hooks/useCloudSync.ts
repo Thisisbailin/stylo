@@ -448,6 +448,26 @@ export const useCloudSync = ({
     void flushSaveQueue();
   };
 
+  const flushProjectSync = useCallback(async () => {
+    if (!isSignedIn || !isLoaded || !hasLoadedRemote) {
+      throw new Error("项目云同步尚未就绪，Agent 工具无法读取权威项目状态。");
+    }
+    if (syncBlockedRef.current) throw new Error(syncBlockedRef.current);
+    if (syncSaveTimeout.current) {
+      window.clearTimeout(syncSaveTimeout.current);
+      syncSaveTimeout.current = null;
+    }
+    enqueueSave(projectDataRef.current, remoteUpdatedAtRef.current ?? 0);
+    const deadline = Date.now() + 20_000;
+    while (isSavingRef.current || pendingOpRef.current || statusRef.current !== "synced") {
+      if (syncBlockedRef.current) throw new Error(syncBlockedRef.current);
+      if (Date.now() >= deadline) {
+        throw new Error("等待项目同步完成超时，Agent 请求未发送。");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    }
+  }, [accountScope, hasLoadedRemote, isLoaded, isSignedIn]);
+
   // Reset loaded flag when sign-out
   useEffect(() => {
     if (!isSignedIn) {
@@ -712,4 +732,6 @@ export const useCloudSync = ({
       }
     };
   }, [accountScope, projectData, isSignedIn, isLoaded, hasLoadedRemote, saveDebounceMs, forceClearKey]);
+
+  return { flushProjectSync };
 };

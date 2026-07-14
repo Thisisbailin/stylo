@@ -7,7 +7,63 @@ const isString = (value: unknown): value is string => typeof value === "string";
 
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const MAX_FLOW_PROJECTS = 3;
+const MAX_CINEWOR_SCENES = 24;
+const MAX_CINEWOR_ACTORS = 24;
+const MAX_CINEWOR_STATES = 64;
+const MAX_CINEWOR_SHOTS = 64;
 const FLOW_HANDLE_TYPES = new Set(["image", "text", "audio", "video", "multi"]);
+
+const validateVector3 = (value: unknown, path: string): ValidationResult => (
+  Array.isArray(value) && value.length === 3 && value.every(isNumber)
+    ? { ok: true }
+    : { ok: false, error: `${path} must be a finite [x, y, z] vector` }
+);
+
+const validateCinewor = (value: unknown, path: string): ValidationResult => {
+  if (value === undefined) return { ok: true };
+  if (!isRecord(value)) return { ok: false, error: `${path} is not an object` };
+  if (value.version !== 1) return { ok: false, error: `${path}.version must be 1` };
+  if (!isString(value.activeSceneId)) return { ok: false, error: `${path}.activeSceneId is not a string` };
+  if (!Array.isArray(value.scenes)) return { ok: false, error: `${path}.scenes is not an array` };
+  if (value.scenes.length > MAX_CINEWOR_SCENES) return { ok: false, error: `${path}.scenes exceeds max ${MAX_CINEWOR_SCENES}` };
+  const sceneIds = new Set<string>();
+  for (let sceneIndex = 0; sceneIndex < value.scenes.length; sceneIndex += 1) {
+    const scene = value.scenes[sceneIndex];
+    const scenePath = `${path}.scenes[${sceneIndex}]`;
+    if (!isRecord(scene) || !isString(scene.id) || !scene.id.trim()) return { ok: false, error: `${scenePath}.id is invalid` };
+    if (sceneIds.has(scene.id)) return { ok: false, error: `${path}.scenes has duplicate id: ${scene.id}` };
+    sceneIds.add(scene.id);
+    if (!isString(scene.title) || !isNumber(scene.duration)) return { ok: false, error: `${scenePath} title or duration is invalid` };
+    if (!isRecord(scene.stage)) return { ok: false, error: `${scenePath}.stage is not an object` };
+    if (![scene.stage.width, scene.stage.depth, scene.stage.height].every(isNumber)) return { ok: false, error: `${scenePath}.stage dimensions are invalid` };
+    if (!Array.isArray(scene.actors) || scene.actors.length > MAX_CINEWOR_ACTORS) return { ok: false, error: `${scenePath}.actors is invalid` };
+    for (let actorIndex = 0; actorIndex < scene.actors.length; actorIndex += 1) {
+      const actor = scene.actors[actorIndex];
+      const actorPath = `${scenePath}.actors[${actorIndex}]`;
+      if (!isRecord(actor) || !isString(actor.id) || !isString(actor.label)) return { ok: false, error: `${actorPath} identity is invalid` };
+      if (!Array.isArray(actor.keyframes) || actor.keyframes.length > MAX_CINEWOR_STATES) return { ok: false, error: `${actorPath}.keyframes is invalid` };
+      for (let frameIndex = 0; frameIndex < actor.keyframes.length; frameIndex += 1) {
+        const frame = actor.keyframes[frameIndex];
+        const framePath = `${actorPath}.keyframes[${frameIndex}]`;
+        if (!isRecord(frame) || !isString(frame.id) || !isNumber(frame.time) || !isNumber(frame.facing)) return { ok: false, error: `${framePath} is invalid` };
+        const vectorValidation = validateVector3(frame.position, `${framePath}.position`);
+        if (!vectorValidation.ok) return vectorValidation;
+      }
+    }
+    if (!Array.isArray(scene.shots) || scene.shots.length > MAX_CINEWOR_SHOTS) return { ok: false, error: `${scenePath}.shots is invalid` };
+    for (let shotIndex = 0; shotIndex < scene.shots.length; shotIndex += 1) {
+      const shot = scene.shots[shotIndex];
+      const shotPath = `${scenePath}.shots[${shotIndex}]`;
+      if (!isRecord(shot) || !isString(shot.id) || !isNumber(shot.time) || !isNumber(shot.fov)) return { ok: false, error: `${shotPath} is invalid` };
+      const positionValidation = validateVector3(shot.position, `${shotPath}.position`);
+      if (!positionValidation.ok) return positionValidation;
+      const targetValidation = validateVector3(shot.target, `${shotPath}.target`);
+      if (!targetValidation.ok) return targetValidation;
+    }
+  }
+  if (value.scenes.length && !sceneIds.has(value.activeSceneId)) return { ok: false, error: `${path}.activeSceneId does not exist` };
+  return { ok: true };
+};
 
 const validateFlow = (value: unknown, path: string): ValidationResult => {
   if (value === undefined) return { ok: true };
@@ -70,6 +126,8 @@ const validateFlowProjects = (value: unknown, activeFlowProjectId?: unknown): Va
     if (project.designAssets !== undefined && !Array.isArray(project.designAssets)) {
       return { ok: false, error: `flowProjects[${i}].designAssets is not an array` };
     }
+    const cineworValidation = validateCinewor(project.cinewor, `flowProjects[${i}].cinewor`);
+    if (!cineworValidation.ok) return cineworValidation;
   }
   if (isString(activeFlowProjectId) && activeFlowProjectId.trim() && value.length > 0 && !ids.has(activeFlowProjectId)) {
     return { ok: false, error: "activeFlowProjectId does not exist in flowProjects" };

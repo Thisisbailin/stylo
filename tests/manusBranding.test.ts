@@ -23,6 +23,6 @@ test("landing and Lab surfaces expose Manus as an active repository wrapper", as
   assert.doesNotMatch(landing, /name: "稿纸"/);
   assert.match(settings, /PRODUCT_REPOSITORIES\.manus/);
   assert.match(settings, /PRODUCT_REPOSITORIES\.lookbook/);
-  assert.match(settings, /PRODUCT_REPOSITORIES\.cinewor/);
+  assert.match(settings, /actionKey: "cineworLab"/);
   assert.match(workspace, /<ManusPanel/);
 });

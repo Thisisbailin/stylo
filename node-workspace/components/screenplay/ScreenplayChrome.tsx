@@ -1,15 +1,21 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowsInSimple,
+  BookmarkSimple,
+  CaretLeft,
+  CaretRight,
   Check,
   CheckCircle,
   CircleNotch,
   FilmSlate,
   Crosshair,
+  GridFour,
   Info,
+  MapPin,
   MagnifyingGlass,
   ShareNetwork,
-  UserCircle,
+  User,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -48,37 +54,229 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
   onToggleInspector,
   onShare,
   onClose,
-}) => (
-  <header className="screenplay-header">
-    <div className="screenplay-header__actions">
-      <div
-        className={`screenplay-save-state is-${saveState}`}
-        role="status"
-        aria-live="polite"
-        aria-label={SAVE_LABELS[saveState]}
-        title={SAVE_LABELS[saveState]}
-      >
-        {saveState === "saved" ? <CheckCircle size={14} weight="fill" /> : null}
-        {saveState === "saving" || saveState === "idle" ? <CircleNotch size={14} /> : null}
-        {saveState === "conflict" || saveState === "error" ? <WarningCircle size={14} weight="fill" /> : null}
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const collapseTimerRef = useRef<number | null>(null);
+
+  const cancelCollapse = useCallback(() => {
+    if (collapseTimerRef.current === null) return;
+    window.clearTimeout(collapseTimerRef.current);
+    collapseTimerRef.current = null;
+  }, []);
+
+  const reveal = useCallback(() => {
+    cancelCollapse();
+    setIsExpanded(true);
+  }, [cancelCollapse]);
+
+  const scheduleCollapse = useCallback((delay = 1400) => {
+    cancelCollapse();
+    collapseTimerRef.current = window.setTimeout(() => {
+      collapseTimerRef.current = null;
+      setIsExpanded(false);
+    }, delay);
+  }, [cancelCollapse]);
+
+  useEffect(() => {
+    scheduleCollapse(2400);
+    return cancelCollapse;
+  }, [cancelCollapse, scheduleCollapse]);
+
+  return (
+    <header
+      className={`screenplay-header ${isExpanded ? "is-expanded" : ""}`}
+      onPointerEnter={reveal}
+      onPointerLeave={() => scheduleCollapse()}
+      onFocusCapture={reveal}
+      onBlurCapture={() => scheduleCollapse()}
+    >
+      <div className="screenplay-header__actions" aria-hidden={!isExpanded}>
+        <div
+          className={`screenplay-save-state is-${saveState}`}
+          role="status"
+          aria-live="polite"
+          aria-label={SAVE_LABELS[saveState]}
+          title={SAVE_LABELS[saveState]}
+        >
+          {saveState === "saved" ? <CheckCircle size={14} weight="fill" /> : null}
+          {saveState === "saving" || saveState === "idle" ? <CircleNotch size={14} /> : null}
+          {saveState === "conflict" || saveState === "error" ? <WarningCircle size={14} weight="fill" /> : null}
+        </div>
+        <span className="screenplay-header__divider" />
+        <button type="button" className={isFocusMode ? "is-active" : ""} onClick={onToggleFocus} title="专注模式" aria-label="切换专注模式">
+          <Crosshair size={18} />
+        </button>
+        <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="Manus 信息" aria-label="打开 Manus 信息">
+          <Info size={18} />
+        </button>
+        <button type="button" onClick={onShare} title="分享 Fountain" aria-label="分享 Fountain">
+          <ShareNetwork size={18} />
+        </button>
+        <span className="screenplay-header__divider" />
+        <button type="button" onClick={onClose} title="退出全屏编辑" aria-label="退出全屏编辑">
+          <ArrowsInSimple size={18} />
+        </button>
       </div>
-      <span className="screenplay-header__divider" />
-      <button type="button" className={isFocusMode ? "is-active" : ""} onClick={onToggleFocus} title="专注模式">
-        <Crosshair size={18} />
+      <button
+        type="button"
+        className="screenplay-header__bookmark"
+        onClick={reveal}
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? "Manus 工具已展开" : "展开 Manus 工具"}
+        title={isExpanded ? "Manus 工具" : "展开 Manus 工具"}
+      >
+        {isExpanded ? <CaretRight size={15} /> : <BookmarkSimple size={16} weight="fill" />}
       </button>
-      <button type="button" className={isInspectorOpen ? "is-active" : ""} onClick={onToggleInspector} title="Manus 信息">
-        <Info size={18} />
+    </header>
+  );
+};
+
+export type ScreenplayIdentityEntry = {
+  role: ProjectRoleIdentity;
+  identityNodeId: string | null;
+};
+
+type IdentityDockProps = {
+  entries: ScreenplayIdentityEntry[];
+  recentIdentityId: string | null;
+  onOpenIdentity: (identityNodeId: string) => void;
+};
+
+const getIdentityImage = (role: ProjectRoleIdentity) =>
+  role.portraits?.find((portrait) => portrait.isPrimary)?.imageUrl ||
+  role.portraits?.[0]?.imageUrl ||
+  role.avatarUrl ||
+  "";
+
+const getIdentityInitials = (role: ProjectRoleIdentity) =>
+  Array.from((role.displayName || role.name || "?").trim()).slice(0, 2).join("").toUpperCase();
+
+const sortIdentityEntries = (entries: ScreenplayIdentityEntry[]) => entries.slice().sort((left, right) => {
+  const leftPriority = left.role.isMain || left.role.isCore ? 0 : 1;
+  const rightPriority = right.role.isMain || right.role.isCore ? 0 : 1;
+  if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+  return (left.role.displayName || left.role.name).localeCompare(
+    right.role.displayName || right.role.name,
+    "zh-Hans-CN"
+  );
+});
+
+const IdentityAvatar: React.FC<{ role: ProjectRoleIdentity; size?: "tile" | "arrival" }> = ({ role, size = "tile" }) => {
+  const imageUrl = getIdentityImage(role);
+  return (
+    <span className={`screenplay-identity-avatar is-${role.kind} is-${size}`}>
+      {imageUrl ? <img src={imageUrl} alt="" draggable={false} /> : <span>{getIdentityInitials(role)}</span>}
+    </span>
+  );
+};
+
+export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
+  entries,
+  recentIdentityId,
+  onOpenIdentity,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const characters = useMemo(
+    () => sortIdentityEntries(entries.filter((entry) => entry.role.kind === "person")),
+    [entries]
+  );
+  const scenes = useMemo(
+    () => sortIdentityEntries(entries.filter((entry) => entry.role.kind === "scene")),
+    [entries]
+  );
+  const recentEntry = useMemo(
+    () => entries.find((entry) => entry.role.id === recentIdentityId) || null,
+    [entries, recentIdentityId]
+  );
+
+  useEffect(() => {
+    if (!recentIdentityId) return;
+    setIsOpen(false);
+    const revealTimer = window.setTimeout(() => setIsOpen(true), 2400);
+    return () => window.clearTimeout(revealTimer);
+  }, [recentIdentityId]);
+
+  const renderSection = (
+    label: string,
+    sectionEntries: ScreenplayIdentityEntry[],
+    Icon: typeof User
+  ) => (
+    <section className="screenplay-identity-dock__section">
+      <header>
+        <Icon size={13} />
+        <span>{label}</span>
+        <small>{sectionEntries.length}</small>
+      </header>
+      {sectionEntries.length ? (
+        <div className="screenplay-identity-grid">
+          {sectionEntries.map((entry) => {
+            const name = entry.role.displayName || entry.role.name;
+            return (
+              <button
+                key={entry.role.id}
+                type="button"
+                className={entry.role.id === recentIdentityId ? "is-recent" : ""}
+                onClick={() => entry.identityNodeId && onOpenIdentity(entry.identityNodeId)}
+                disabled={!entry.identityNodeId}
+                title={entry.identityNodeId ? `打开 ${name} 的 LookBook` : `${name} 的 LookBook 尚未就绪`}
+                aria-label={entry.identityNodeId ? `打开 ${name} 的 LookBook` : `${name} 的 LookBook 尚未就绪`}
+              >
+                <IdentityAvatar role={entry.role} />
+                <span>{name}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : <div className="screenplay-identity-dock__empty">尚未收录</div>}
+    </section>
+  );
+
+  return (
+    <aside className={`screenplay-identity-dock ${isOpen ? "is-open" : ""}`} aria-label="角色与场景 LookBook">
+      <AnimatePresence mode="wait">
+        {recentEntry ? (
+          <motion.div
+            key={recentEntry.role.id}
+            className="screenplay-identity-arrival"
+            initial={{ opacity: 0, y: 16, scale: 0.82 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 24, y: 36, scale: 0.74 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+          >
+            <IdentityAvatar role={recentEntry.role} size="arrival" />
+            <span>
+              <small>{recentEntry.role.kind === "person" ? "新角色" : "新场景"}</small>
+              <strong>{recentEntry.role.displayName || recentEntry.role.name}</strong>
+            </span>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <div className="screenplay-identity-dock__panel" aria-hidden={!isOpen}>
+        <div className="screenplay-identity-dock__heading">
+          <span>LOOKBOOK</span>
+          <button type="button" onClick={() => setIsOpen(false)} aria-label="收起资料格" title="收起资料格">
+            <CaretRight size={13} />
+          </button>
+        </div>
+        {renderSection("角色", characters, User)}
+        {renderSection("场景", scenes, MapPin)}
+      </div>
+
+      <button
+        type="button"
+        className="screenplay-identity-dock__toggle"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        aria-label={isOpen ? "收起角色与场景资料格" : "展开角色与场景资料格"}
+        title={isOpen ? "收起资料格" : "角色与场景资料格"}
+      >
+        {isOpen ? <CaretRight size={15} /> : <GridFour size={16} weight="fill" />}
+        {!isOpen && entries.length ? <small>{entries.length}</small> : null}
       </button>
-      <button type="button" onClick={onShare} title="分享 Fountain">
-        <ShareNetwork size={18} />
-      </button>
-      <span className="screenplay-header__divider" />
-      <button type="button" onClick={onClose} title="退出全屏编辑">
-        <ArrowsInSimple size={18} />
-      </button>
-    </div>
-  </header>
-);
+    </aside>
+  );
+};
 
 type NavigatorProps = {
   analysis: ScreenplayAnalysis;
@@ -150,16 +348,12 @@ export const ScreenplayNavigator: React.FC<NavigatorProps> = ({ analysis, active
 type InspectorProps = {
   analysis: ScreenplayAnalysis;
   activeLine: ScreenplayLine;
-  characterRoles: ProjectRoleIdentity[];
-  onUseCharacter: (role: ProjectRoleIdentity) => void;
   onNavigate: (lineIndex: number) => void;
 };
 
 export const ScreenplayInspector: React.FC<InspectorProps> = ({
   analysis,
   activeLine,
-  characterRoles,
-  onUseCharacter,
   onNavigate,
 }) => {
   const activeScene = [...analysis.scenes].reverse().find((scene) => scene.lineIndex <= activeLine.index);
@@ -207,45 +401,6 @@ export const ScreenplayInspector: React.FC<InspectorProps> = ({
               <span>未发现结构问题</span>
             </div>
           ) : null}
-        </div>
-      </section>
-
-      <section className="screenplay-inspector__section">
-        <span className="screenplay-inspector__label">角色库</span>
-        <div className="screenplay-character-library">
-          {characterRoles.map((role) => {
-            const reference = analysis.characterReferences.find((item) =>
-              item.roleId === role.id || item.name === (role.displayName || role.name)
-            );
-            return (
-              <button key={role.id} type="button" onClick={() => onUseCharacter(role)}>
-                <span className="screenplay-character-library__avatar">
-                  {role.avatarUrl ? <img src={role.avatarUrl} alt="" /> : <UserCircle size={18} />}
-                </span>
-                <span className="screenplay-character-library__copy">
-                  <strong>{role.displayName || role.name}</strong>
-                  <small>@{role.mention || role.name} · {reference?.lineIndexes.length || 0} 处</small>
-                </span>
-                <em>{activeLine.kind === "character" || activeLine.kind === "dual_dialogue" ? "绑定" : "插入"}</em>
-              </button>
-            );
-          })}
-          {!characterRoles.length ? (
-            <div className="screenplay-character-library__empty">
-              <UserCircle size={18} />
-              <span>角色库为空。把一行设为角色并输入名称，保存后会自动创建。</span>
-            </div>
-          ) : null}
-          {analysis.characterReferences.filter((reference) => !reference.bound).map((reference) => (
-            <button key={`unbound-${reference.name}`} type="button" onClick={() => onNavigate(reference.lineIndexes[0])} className="is-unbound">
-              <span className="screenplay-character-library__avatar"><WarningCircle size={16} /></span>
-              <span className="screenplay-character-library__copy">
-                <strong>{reference.name}</strong>
-                <small>尚未绑定 · {reference.lineIndexes.length} 处</small>
-              </span>
-              <em>定位</em>
-            </button>
-          ))}
         </div>
       </section>
 
