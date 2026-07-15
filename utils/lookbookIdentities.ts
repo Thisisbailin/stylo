@@ -149,7 +149,7 @@ const makeIdentityNode = (role: ProjectRoleIdentity, sourceNode: NodeFlowNode | 
     id: `identity-${role.id}`,
     type: "lookbook",
     position: { x: origin.x + (order % 2) * 760, y: origin.y + 360 + Math.floor(order / 2) * 520 },
-    style: { width: 304, height: 208 },
+    style: { width: 236, height: 292 },
     data: {
       title: role.displayName || role.name,
       identityId: role.id,
@@ -295,7 +295,7 @@ export const syncLookbookIdentitiesFromFountain = (
       identityNode = {
         ...identityNode,
         type: "lookbook",
-        style: { ...identityNode.style, width: 304, height: 208 },
+        style: { ...identityNode.style, width: 236, height: 292 },
         data: {
           ...identityNode.data,
           title: role.displayName || role.name,

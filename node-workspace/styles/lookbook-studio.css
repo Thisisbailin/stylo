@@ -104,20 +104,24 @@
   width: min(430px, 34vw);
   min-width: 310px;
   aspect-ratio: 0.72;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
   border: 1px solid var(--app-border-strong);
   border-radius: 2px 8px 8px 2px;
-  background: color-mix(in srgb, var(--app-accent) 17%, var(--app-panel-strong));
-  padding: 26px;
-  color: var(--app-text-primary);
+  background:
+    linear-gradient(108deg, color-mix(in srgb, white 8%, transparent), transparent 36%),
+    color-mix(in srgb, var(--app-accent) 64%, #cd673d);
+  padding: 28px 30px 26px 34px;
+  color: #20211f;
   cursor: pointer;
   text-align: left;
   transform-origin: left center;
   transform-style: preserve-3d;
   box-shadow:
-    18px 18px 34px color-mix(in srgb, var(--app-text-primary) 12%, transparent),
-    inset 4px 0 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
+    18px 20px 38px color-mix(in srgb, var(--app-text-primary) 14%, transparent),
+    inset 6px 0 0 color-mix(in srgb, #20211f 10%, transparent),
+    inset -2px 0 0 color-mix(in srgb, #20211f 13%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 15%, transparent);
 }
 
 .lookbook-book-cover::after {
@@ -138,24 +142,47 @@
 
 .lookbook-book-cover__title {
   z-index: 1;
-  align-self: center;
+  align-self: start;
+  max-width: 8ch;
+  margin-top: 20px;
   font-size: clamp(42px, 5vw, 74px);
   font-weight: 510;
   letter-spacing: -0.075em;
   line-height: 0.9;
+  overflow-wrap: anywhere;
 }
 
-.lookbook-book-cover > img,
-.lookbook-book-cover__empty {
+.lookbook-book-cover__images {
   position: absolute;
   right: 34px;
-  bottom: 75px;
-  width: 43%;
-  height: 39%;
-  border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
-  background: var(--app-panel-muted);
+  bottom: 108px;
+  left: 94px;
+  display: grid;
+  height: 31%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lookbook-book-cover__images[data-count="1"] {
+  left: 60%;
+  grid-template-columns: 1fr;
+}
+
+.lookbook-book-cover__images > img,
+.lookbook-book-cover__empty {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #20211f 44%, transparent);
+  background: color-mix(in srgb, var(--app-panel-strong) 94%, transparent);
   object-fit: cover;
-  opacity: 0.9;
+  box-shadow: 0 6px 14px color-mix(in srgb, #20211f 14%, transparent);
+}
+
+.lookbook-book-cover__empty {
+  background:
+    linear-gradient(135deg, transparent 0 49.8%, color-mix(in srgb, #20211f 15%, transparent) 50%, transparent 50.2%),
+    color-mix(in srgb, var(--app-panel-strong) 90%, transparent);
 }
 
 .lookbook-book-cover__meta {
@@ -172,6 +199,26 @@
 
 .lookbook-book-cover__meta b {
   font-weight: inherit;
+}
+
+.lookbook-book-cover--back {
+  grid-template-rows: auto 1fr auto;
+  background:
+    linear-gradient(108deg, color-mix(in srgb, white 5%, transparent), transparent 36%),
+    color-mix(in srgb, var(--app-accent) 72%, #b85337);
+}
+
+.lookbook-book-cover__back-mark {
+  align-self: center;
+  justify-self: center;
+  max-width: 12ch;
+  color: color-mix(in srgb, #20211f 76%, transparent);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-align: center;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .lookbook-book-shell {

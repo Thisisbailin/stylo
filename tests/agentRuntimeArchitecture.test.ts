@@ -144,7 +144,7 @@ test("every registered Agent tool has a distinct message icon and unknown tools 
   assert.equal(resolveStyloToolMessageVisual("unknown_tool").icon, "tool_generic");
 });
 
-test("Agent message rendering binds themed visual identities to every major message kind", () => {
+test("Agent message rendering reserves visual identities for semantic status and action rows", () => {
   const source = readFileSync(
     "node-workspace/components/stylo/StyloChatContent.tsx",
     "utf8"
@@ -154,9 +154,10 @@ test("Agent message rendering binds themed visual identities to every major mess
     "utf8"
   );
 
-  for (const visualKey of ["user", "assistant", "thinking", "response", "approval"] as const) {
+  for (const visualKey of ["thinking", "response", "approval"] as const) {
     assert.match(source, new RegExp(`STYLO_PRIMARY_MESSAGE_VISUALS\\.${visualKey}`));
   }
+  assert.doesNotMatch(source, /STYLO_PRIMARY_MESSAGE_VISUALS\.(user|assistant)/);
   assert.match(source, /resolveStyloToolMessageVisual\(effectiveTool\.name\)/);
   assert.match(iconSource, /data-tone=\{visual\.tone\}/);
   assert.match(iconSource, /weight="duotone"/);
@@ -538,7 +539,10 @@ test("Agent history rendering coalesces scroll frames and isolates offscreen mes
 
   assert.match(componentSource, /const MessageItemView = memo/);
   assert.match(componentSource, /cancelAnimationFrame\(scrollFrameRef\.current\)/);
-  assert.match(componentSource, /nextPinned === isPinnedToCurrentRef\.current/);
+  assert.match(componentSource, /new ResizeObserver\(followLatestContent\)/);
+  assert.match(componentSource, /new MutationObserver\(followLatestContent\)/);
+  assert.match(componentSource, /currentNode\.scrollTop = currentNode\.scrollHeight/);
+  assert.match(componentSource, /node\.scrollTop = getCurrentAnchorScrollTop\(node, currentNode\)/);
   assert.match(styleSource, /\.stylo-message-item:not\(\[data-current="true"\]\)[\s\S]*content-visibility:\s*auto/);
   assert.match(styleSource, /contain-intrinsic-block-size:\s*auto 76px/);
 });
@@ -564,6 +568,9 @@ test("Agent messages are borderless while approvals remain explicit decision car
   const assistantRule = styleSource.match(/\.stylo-assistant-answer\s*\{([^}]+)\}/)?.[1] || "";
 
   assert.match(componentSource, /className="stylo-assistant-answer/);
+  assert.doesNotMatch(componentSource, /STYLO_PRIMARY_MESSAGE_VISUALS\.(user|assistant)/);
+  assert.match(componentSource, /renderToolThread\(item\.thread\)/);
+  assert.doesNotMatch(componentSource, /stylo-work-detail-row--tool group`} open=/);
   assert.doesNotMatch(componentSource, /WorkStageView|stylo-work-stage/);
   assert.match(componentSource, /data-status=\{approval\.status\}/);
   assert.match(userRule, /border:\s*0/);

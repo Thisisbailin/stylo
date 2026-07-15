@@ -2,7 +2,7 @@ import type { XYPosition } from "@xyflow/react";
 import type { NodeFlowNode, NodeFlowNodeStyle, NodeFlowViewport, NodeType } from "../types";
 
 export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
-  scriptPage: { width: 320, height: 249 },
+  scriptPage: { width: 286, height: 356 },
   mdText: { width: 320, height: 252 },
   folder: { width: 360, height: 240 },
   text: { width: 320, height: 180 },
@@ -10,8 +10,8 @@ export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; 
   audioInput: { width: 340, height: 180 },
   videoInput: { width: 360, height: 220 },
   scriptBoard: { width: 920 },
-  lookbook: { width: 304, height: 208 },
-  identityCard: { width: 304, height: 208 },
+  lookbook: { width: 236, height: 292 },
+  identityCard: { width: 236, height: 292 },
   imageGen: { width: 380, height: 520 },
   nanoBananaImageGen: { width: 380, height: 520 },
   wanImageGen: { width: 380, height: 520 },

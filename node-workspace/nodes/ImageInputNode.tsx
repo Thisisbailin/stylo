@@ -4,13 +4,14 @@ import { ImageInputNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import {
   At,
+  ArrowClockwise,
   CheckCircle,
   CloudArrowUp,
+  DotsThree,
   ImageSquare,
   ShieldCheck,
   ShieldWarning,
   UploadSimple,
-  WarningCircle,
 } from "@phosphor-icons/react";
 import * as SeedanceVideoService from "../../services/seedanceVideoService";
 import {
@@ -28,6 +29,7 @@ import {
   resolveMentionTarget,
   toSearch,
 } from "../utils/entityBindings";
+import { pngHasTransparency } from "../../utils/pngTransparency";
 
 type Props = {
   id: string;
@@ -172,6 +174,12 @@ const readImageDimensions = (url: string) => new Promise<{ width: number; height
   image.src = url;
 });
 
+const readImageHasAlpha = async (file: File) => {
+  const isPng = file.type === "image/png" || file.name.toLocaleLowerCase().endsWith(".png");
+  if (!isPng) return false;
+  return pngHasTransparency(await file.arrayBuffer());
+};
+
 const uploadImageFile = async (file: File): Promise<UploadedImage> => {
   const contentType = file.type || "image/png";
   const uploaded = await uploadStorageFile(file, {
@@ -223,6 +231,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [pendingPreviewUrl, setPendingPreviewUrl] = useState<string | null>(null);
+  const [openControlPanel, setOpenControlPanel] = useState<"review" | "info" | null>(null);
   const dimensionLabel = useMemo(() => {
     if (!data.dimensions?.width || !data.dimensions?.height) return null;
     return `${data.dimensions.width} × ${data.dimensions.height}`;
@@ -466,10 +475,11 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     setIsUploadingImage(true);
     setStorageMessage("正在保存至云端…");
     try {
-      const [dimensions, uploaded] = await Promise.all([
+      const [dimensions, hasAlpha] = await Promise.all([
         readImageDimensions(previewUrl),
-        uploadImageFile(file),
+        readImageHasAlpha(file),
       ]);
+      const uploaded = await uploadImageFile(file);
       const previousObjects = collectOwnedStorageObjects([{ data }]);
       if (previousObjects.length > 0) {
         try {
@@ -488,6 +498,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
         storageBucket: uploaded.object?.bucket || "assets",
         storagePath: uploaded.object?.path || null,
         dimensions,
+        hasAlpha,
         assetAuditStatus: "idle",
         assetAuditMessage: null,
         assetAuditCheckedAt: null,
@@ -499,6 +510,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
         assetSourcePath: null,
         label: data.label || baseName,
       });
+      setOpenControlPanel("info");
       setStorageMessage("已保存至私有云端存储");
     } catch (error) {
       setStorageMessage(error instanceof Error ? error.message : "图片上传失败。");
@@ -513,6 +525,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const runSyntheticPortraitReview = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!data.image || isReviewingAsset) return;
+    setOpenControlPanel("review");
     setIsReviewingAsset(true);
     updateNodeData(id, {
       assetAuditStatus: "uploading",
@@ -631,7 +644,11 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
           ? "上传审核副本"
           : data.assetAuditStatus === "submitting"
             ? "正在提交"
-            : "审核中";
+            : data.assetAuditStatus === "processing"
+              ? "审核中"
+              : "仿真人检测";
+  const hasAssetAuditNotice = ((data.assetAuditStatus && data.assetAuditStatus !== "idle") || !!data.assetAuditMessage);
+  const showReviewPanel = openControlPanel === "review" || hasAssetAuditNotice;
 
   return (
     <BaseNode
@@ -645,7 +662,10 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       <div ref={shellRef} className="image-input-shell relative w-full h-full">
         {displayImage ? (
           <div className="image-input-frame media-input-frame">
-            <div className="image-input-media media-input-asset">
+            <div
+              className="image-input-media media-input-asset"
+              data-sticker={data.hasAlpha || undefined}
+            >
               <img
                 src={displayImage}
                 alt={data.filename || data.label || "图片节点预览"}
@@ -658,9 +678,86 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
               aria-label="图片节点操作"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className="image-input-floating-label image-input-meta-label">
-                <ImageSquare size={15} weight="duotone" aria-hidden="true" />
-                <div className="image-input-meta-copy">
+              <div className="image-input-control-entry">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isUploadingImage}
+                  className="image-input-icon-label"
+                  aria-label={isUploadingImage ? "正在上传图片" : "替换图片"}
+                  title={isUploadingImage ? "正在上传图片" : "替换图片"}
+                >
+                  {isUploadingImage
+                    ? <CloudArrowUp size={16} weight="duotone" aria-hidden="true" />
+                    : <UploadSimple size={16} weight="duotone" aria-hidden="true" />}
+                </button>
+              </div>
+
+              <div className="image-input-control-entry">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (hasAssetAuditNotice || isAssetAuditBusy) {
+                      setOpenControlPanel((current) => current === "review" ? null : "review");
+                      return;
+                    }
+                    void runSyntheticPortraitReview(event);
+                  }}
+                  disabled={!data.image || isReviewingAsset || isUploadingImage}
+                  className="image-input-icon-label"
+                  data-tone={assetAuditTone}
+                  aria-expanded={showReviewPanel}
+                  aria-label={isReviewingAsset || isAssetAuditBusy ? "查看仿真人检测进度" : "仿真人检测"}
+                  title={isReviewingAsset || isAssetAuditBusy ? "查看仿真人检测进度" : "仿真人检测"}
+                >
+                  <AssetAuditIcon size={16} weight="duotone" aria-hidden="true" />
+                  {hasAssetAuditNotice ? <span className="image-input-control-indicator" aria-hidden="true" /> : null}
+                </button>
+                {showReviewPanel ? (
+                  <div className="image-input-floating-label image-input-status-label image-input-control-panel" data-tone={assetAuditTone} role="status">
+                    <AssetAuditIcon size={15} weight="duotone" aria-hidden="true" />
+                    <span>
+                      <strong>{assetAuditLabel}</strong>
+                      {data.assetAuditMessage ? <small>{data.assetAuditMessage}</small> : <small>提交图片进行 Seedance 仿真人素材检测。</small>}
+                      {data.assetUri ? <small className="image-input-asset-uri">{data.assetUri}</small> : null}
+                      {!isAssetAuditBusy ? (
+                        <button
+                          type="button"
+                          className="image-input-panel-action"
+                          onClick={runSyntheticPortraitReview}
+                          disabled={isReviewingAsset || isUploadingImage}
+                        >
+                          <ArrowClockwise size={12} weight="bold" aria-hidden="true" />
+                          {hasAssetAuditNotice ? "重新检测" : "开始检测"}
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="image-input-control-entry">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenControlPanel((current) => current === "info" ? null : "info");
+                  }}
+                  className="image-input-icon-label"
+                  aria-expanded={openControlPanel === "info"}
+                  aria-label="展开图片属性"
+                  title="展开图片属性"
+                >
+                  <DotsThree size={18} weight="bold" aria-hidden="true" />
+                </button>
+                {openControlPanel === "info" ? (
+                  <div className="image-input-floating-label image-input-meta-label image-input-control-panel">
+                    <ImageSquare size={15} weight="duotone" aria-hidden="true" />
+                    <div className="image-input-meta-copy">
                   <div
                     ref={editorRef}
                     className="image-input-editor nodrag"
@@ -720,51 +817,14 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
                     <span>{data.filename || "untitled-image"}</span>
                     {dimensionLabel ? <span>{dimensionLabel}</span> : null}
                   </div>
-                </div>
+                      <div className="image-input-storage-copy" data-tone={storageMessage?.includes("失败") ? "danger" : "neutral"}>
+                        <CloudArrowUp size={12} weight="duotone" aria-hidden="true" />
+                        <span>{storageMessage || (data.storagePath ? "Supabase · private" : "本地或旧版资源")}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingImage}
-                className="image-input-floating-label image-input-action-label"
-              >
-                {isUploadingImage
-                  ? <CloudArrowUp size={15} weight="duotone" aria-hidden="true" />
-                  : <UploadSimple size={15} weight="duotone" aria-hidden="true" />}
-                <span>{isUploadingImage ? "正在上传" : "替换图片"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={runSyntheticPortraitReview}
-                disabled={!data.image || isReviewingAsset || isAssetAuditBusy || isUploadingImage}
-                className="image-input-floating-label image-input-action-label"
-                title="提交到 Seedance 仿真人素材审核；通过后保存 asset:// 引用。"
-              >
-                <ShieldCheck size={15} weight="duotone" aria-hidden="true" />
-                <span>{isReviewingAsset || isAssetAuditBusy ? "审核处理中" : "仿真人审核"}</span>
-              </button>
-
-              {(storageMessage || data.storagePath) ? (
-                <div className="image-input-floating-label image-input-status-label" data-tone={storageMessage?.includes("失败") ? "danger" : "neutral"}>
-                  {storageMessage?.includes("失败")
-                    ? <WarningCircle size={15} weight="duotone" aria-hidden="true" />
-                    : <CloudArrowUp size={15} weight="duotone" aria-hidden="true" />}
-                  <span>{storageMessage || "Supabase · private"}</span>
-                </div>
-              ) : null}
-
-              {(data.assetAuditStatus && data.assetAuditStatus !== "idle") || data.assetAuditMessage ? (
-                <div className="image-input-floating-label image-input-status-label" data-tone={assetAuditTone}>
-                  <AssetAuditIcon size={15} weight="duotone" aria-hidden="true" />
-                  <span>
-                    <strong>{assetAuditLabel}</strong>
-                    {data.assetAuditMessage ? <small>{data.assetAuditMessage}</small> : null}
-                    {data.assetUri ? <small className="image-input-asset-uri">{data.assetUri}</small> : null}
-                  </span>
-                </div>
-              ) : null}
             </div>
           </div>
         ) : (

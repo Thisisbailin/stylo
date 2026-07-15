@@ -92,8 +92,16 @@ test("image card and connection feedback use image-first and theme-driven stylin
 
   assert.match(component, /nodeType="imageInput"/);
   assert.match(component, /image-input-control-rail/);
+  assert.equal(component.match(/className="image-input-icon-label"/g)?.length, 3);
+  assert.match(component, /readImageHasAlpha\(file\)/);
+  assert.match(component, /hasAlpha,/);
+  assert.match(component, /data-sticker=\{data\.hasAlpha \|\| undefined\}/);
   assert.doesNotMatch(component, /<div className="media-input-info">/);
+  assert.doesNotMatch(component, /image-input-action-label/);
   assert.match(css, /\.image-input-control-rail/);
+  assert.match(css, /\.image-input-media\s*\{[\s\S]*background:\s*transparent/);
+  assert.match(css, /data-node-type="imageInput"\]\s+\.node-card-shell::before[\s\S]*background:\s*transparent/);
+  assert.match(css, /\.image-input-icon-label/);
   assert.match(css, /var\(--app-accent\)/);
   assert.doesNotMatch(css, /rgba\(74, 222, 128/);
 });

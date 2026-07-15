@@ -238,10 +238,13 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   const studioSource = readFileSync("node-workspace/components/lookbook/LookbookStudioPanel.tsx", "utf8");
   const itemSource = readFileSync("node-workspace/components/lookbook/LookbookBoardItem.tsx", "utf8");
   const styleSource = readFileSync("node-workspace/styles/lookbook-studio.css", "utf8");
+  const nodeflowStyleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
 
   assert.match(workspaceSource, /<LookbookStudioPanel[\s\S]*setProjectData=\{setProjectData\}/);
   assert.match(flowSurfaceSource, /type: "lookbook"[\s\S]*disabled: true/);
   assert.match(flowSurfaceSource, /isLookbookNodeType\(type\)[\s\S]*\? null/);
+  assert.match(flowSurfaceSource, /wrapperClickTimerRef[\s\S]*toggleWrapperCollapsed/);
+  assert.match(flowSurfaceSource, /handleScriptNodeDoubleClick[\s\S]*onOpenScriptDocument/);
   assert.match(flowSurfaceSource, /label: "Markdown 文本"[\s\S]*type: "text"/);
   assert.match(studioSource, /inspectLookbookImageFiles/);
   assert.match(studioSource, /saveActiveFlowIntoProjects/);
@@ -250,6 +253,10 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(studioSource, /isEditingText/);
   assert.match(studioSource, /eventTarget\.closest\("input, textarea/);
   assert.match(studioSource, /lookbook-book-cover/);
+  assert.match(studioSource, /type BookView[\s\S]*kind: "front"[\s\S]*kind: "spread"[\s\S]*kind: "back"/);
+  assert.match(studioSource, /合上为 Lookbook 封面/);
+  assert.match(studioSource, /合上为 Lookbook 封底/);
+  assert.doesNotMatch(studioSource, /lookbook-book-spread__turning-page/);
   assert.match(studioSource, /addLookbookPage/);
   assert.match(studioSource, /lookbook-studio__close/);
   assert.doesNotMatch(studioSource, /lookbook-studio__header/);
@@ -261,4 +268,6 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.doesNotMatch(styleSource, /lookbook-inspector/);
   assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styleSource, /filter:\s*drop-shadow|text-shadow|#000000/);
+  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"[\s\S]*width:\s*236px\s*!important/);
+  assert.match(nodeflowStyleSource, /data-node-type="script-document"[\s\S]*width:\s*286px\s*!important/);
 });

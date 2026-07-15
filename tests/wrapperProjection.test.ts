@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildWrapperProjection } from "../node-workspace/nodeflow/wrapperProjection";
+import type { NodeFlowLink, NodeFlowNode } from "../node-workspace/types";
+
+const makeNode = (
+  id: string,
+  type: NodeFlowNode["type"],
+  wrapperCollapsed = false
+): NodeFlowNode => ({
+  id,
+  type,
+  position: { x: 0, y: 0 },
+  data: { title: id, wrapperCollapsed } as NodeFlowNode["data"],
+});
+
+test("collapsed Lookbook hides only direct membership nodes and expands without deleting graph data", () => {
+  const nodes = [
+    makeNode("lookbook-1", "lookbook", true),
+    makeNode("index-1", "text"),
+    makeNode("image-1", "imageInput"),
+    makeNode("ordinary-1", "text"),
+  ];
+  const links: NodeFlowLink[] = [
+    { id: "index", source: "lookbook-1", target: "index-1", data: { relation: "lookbook-membership" } },
+    { id: "image", source: "image-1", target: "lookbook-1", data: { relation: "lookbook-membership" } },
+    { id: "ordinary", source: "lookbook-1", target: "ordinary-1" },
+  ];
+
+  const collapsed = buildWrapperProjection(nodes, links);
+  assert.deepEqual(new Set(collapsed.memberIdsByWrapper.get("lookbook-1")), new Set(["index-1", "image-1"]));
+  assert.deepEqual(collapsed.hiddenNodeIds, new Set(["index-1", "image-1"]));
+
+  const expanded = buildWrapperProjection(
+    nodes.map((node) => node.id === "lookbook-1" ? { ...node, data: { ...node.data, wrapperCollapsed: false } } : node),
+    links
+  );
+  assert.deepEqual(expanded.hiddenNodeIds, new Set());
+  assert.equal(expanded.memberIdsByWrapper.get("lookbook-1")?.length, 2);
+});
+
+test("only the screenplay chain root wraps later pages and cyclic dirty links terminate safely", () => {
+  const nodes = [
+    makeNode("page-a", "scriptPage", true),
+    makeNode("page-b", "scriptPage", true),
+    makeNode("page-c", "scriptPage"),
+    makeNode("note", "text"),
+  ];
+  const links: NodeFlowLink[] = [
+    { id: "ab", source: "page-a", target: "page-b", data: { relation: "screenplay-page" } },
+    { id: "bc", source: "page-b", target: "page-c", data: { relation: "screenplay-page" } },
+    { id: "cb", source: "page-c", target: "page-b", data: { relation: "screenplay-page" } },
+    { id: "note", source: "page-a", target: "note" },
+  ];
+
+  const projection = buildWrapperProjection(nodes, links);
+  assert.deepEqual(projection.screenplayRootIds, new Set(["page-a"]));
+  assert.deepEqual(projection.memberIdsByWrapper.get("page-a"), ["page-b", "page-c"]);
+  assert.equal(projection.memberIdsByWrapper.has("page-b"), false);
+  assert.deepEqual(projection.hiddenNodeIds, new Set(["page-b", "page-c"]));
+});

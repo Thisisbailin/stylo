@@ -66,7 +66,7 @@ test("Lookbook synchronization creates one wrapper, Markdown index, and boundary
   assert.equal(second.roles.length, 2);
   const lookbookNodes = second.flow?.flowNodes?.filter((node) => node.type === "lookbook") || [];
   assert.equal(lookbookNodes.length, 2);
-  assert.ok(lookbookNodes.every((node) => node.style?.width === 304 && node.style?.height === 208));
+  assert.ok(lookbookNodes.every((node) => node.style?.width === 236 && node.style?.height === 292));
   assert.equal(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").length, 2);
   assert.ok(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").every((node) => node.type === "text"));
   assert.equal(

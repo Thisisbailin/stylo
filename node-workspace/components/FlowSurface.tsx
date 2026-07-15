@@ -70,6 +70,7 @@ import { buildNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serializ
 import { parseNodeFlowFile } from "../nodeflow/schema";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
 import { collectOwnedStorageObjects, deleteOwnedStorageObjects } from "../nodeflow/storageObjects";
+import { buildWrapperProjection } from "../nodeflow/wrapperProjection";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { getEdgeAlignedPosition } from "../utils/edgeAlignment";
@@ -320,7 +321,7 @@ const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "Seedance", hint: "多模态视频", type: "seedanceVideoGen", Icon: Video, group: "motion", meta: "Video", tone: "is-blue", surface: "motion" },
 ];
 
-const SCRIPT_PAGE_NODE_SIZE = { width: 320, height: 249 };
+const SCRIPT_PAGE_NODE_SIZE = { width: 286, height: 356 };
 const MARKDOWN_TEXT_NODE_SIZE = { width: 320, height: 252 };
 
 const pickOutputHandle = (handles: ScriptHandleType[], preferred?: ScriptHandleType | null) => {
@@ -448,7 +449,11 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   position: node.position || getDefaultFlowNodePosition(index),
   measured: sanitizeScriptMeasured(node.measured),
   selected: false,
-  style: isLookbookNodeType(node.type) ? { ...node.style, width: 304, height: 208 } : node.style,
+  style: isLookbookNodeType(node.type)
+    ? { ...node.style, width: 236, height: 292 }
+    : node.type === "scriptPage"
+      ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
+      : node.style,
   data: {
     ...createDefaultNodeFlowNodeData(node.type),
     ...(node.data || {}),
@@ -1832,6 +1837,7 @@ export const useFlowSurface = ({
   const [showFoundationNodes, setShowFoundationNodes] = useState(false);
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
+  const wrapperClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
   const flow = useMemo(() => ensureFlow(projectData.flow), [projectData.flow]);
   const flowProjects = useMemo(() => getFlowProjectsForState(projectData), [projectData]);
@@ -1841,6 +1847,10 @@ export const useFlowSurface = ({
     [activeFlowProjectId, flowProjects]
   );
   const hydratedStyloProjectRef = useRef(activeFlowProjectId);
+
+  useEffect(() => () => {
+    if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (hydratedStyloProjectRef.current === activeFlowProjectId) return;
@@ -2035,6 +2045,11 @@ export const useFlowSurface = ({
     return positions;
   }, [canvasControls.viewport, foundationBlockVisuals, foundationProjection, isWritingEditorOpen, showFoundationNodes]);
 
+  const wrapperProjection = useMemo(
+    () => buildWrapperProjection(flow.flowNodes || [], flow.links || []),
+    [flow.flowNodes, flow.links]
+  );
+
   const baseNodes = useMemo<FlowRenderNode[]>(() => {
     return (flow.flowNodes || [])
       .filter((node) => !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
@@ -2042,15 +2057,22 @@ export const useFlowSurface = ({
       .map((node, index) => ({
         ...node,
         position: node.position || getDefaultFlowNodePosition(index),
-        style: isLookbookNodeType(node.type) ? { ...node.style, width: 304, height: 208 } : node.style,
+        style: isLookbookNodeType(node.type)
+          ? { ...node.style, width: 236, height: 292 }
+          : node.type === "scriptPage"
+            ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
+            : node.style,
+        hidden: wrapperProjection.hiddenNodeIds.has(node.id),
         selected: selectedNodeIds.has(node.id),
         data: {
           ...createDefaultNodeFlowNodeData(node.type),
           ...(node.data || {}),
+          wrapperMemberCount: wrapperProjection.memberIdsByWrapper.get(node.id)?.length || 0,
+          wrapperRoot: isLookbookNodeType(node.type) || wrapperProjection.screenplayRootIds.has(node.id),
           agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
         } as NodeFlowNodeData,
       }));
-  }, [flow.flowNodes, pendingScriptReviewNodeIds, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds]);
+  }, [flow.flowNodes, pendingScriptReviewNodeIds, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds, wrapperProjection]);
 
   const foundationBlockFolderNodes = useMemo(
     () =>
@@ -3625,24 +3647,53 @@ export const useFlowSurface = ({
     [connectionDrop, handleAddFlowNode, handleAddMarkdownNode, handleAddScriptPage]
   );
 
+  const toggleWrapperCollapsed = useCallback((nodeId: string) => {
+    persistFlow((currentFlow) => ({
+      ...currentFlow,
+      revision: (currentFlow.revision || 0) + 1,
+      flowNodes: (currentFlow.flowNodes || []).map((node) =>
+        node.id === nodeId
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                wrapperCollapsed: node.data?.wrapperCollapsed !== true,
+              },
+            }
+          : node
+      ),
+    }));
+  }, [persistFlow]);
+
   const handleScriptNodeClick = useCallback(
     (node: FlowRenderNode) => {
       const boundaryBlock = allFoundationBlocks.find((block) =>
         block.boundaryNodeIds.includes(node.id)
       );
       if (boundaryBlock) setActiveTimelineBlockId(boundaryBlock.id);
-      if (node.type === "scriptPage") {
-        onOpenScriptDocument(node.id);
-      }
+      const memberCount = typeof node.data.wrapperMemberCount === "number" ? node.data.wrapperMemberCount : 0;
+      const isCollapsibleLookbook = isLookbookNodeType(node.type) && memberCount > 0;
+      const isCollapsibleScreenplay = node.type === "scriptPage" && node.data.wrapperRoot === true && memberCount > 0;
+      if (!isCollapsibleLookbook && !isCollapsibleScreenplay) return;
+      if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
+      wrapperClickTimerRef.current = setTimeout(() => {
+        wrapperClickTimerRef.current = null;
+        toggleWrapperCollapsed(node.id);
+      }, 210);
     },
-    [allFoundationBlocks, onOpenScriptDocument]
+    [allFoundationBlocks, toggleWrapperCollapsed]
   );
 
   const handleScriptNodeDoubleClick = useCallback(
     (node: FlowRenderNode) => {
+      if (wrapperClickTimerRef.current) {
+        clearTimeout(wrapperClickTimerRef.current);
+        wrapperClickTimerRef.current = null;
+      }
       if (isLookbookNodeType(node.type)) onOpenLookbook?.(node.id);
+      else if (node.type === "scriptPage") onOpenScriptDocument(node.id);
     },
-    [onOpenLookbook]
+    [onOpenLookbook, onOpenScriptDocument]
   );
 
   const overlays = (

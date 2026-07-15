@@ -48,6 +48,11 @@ type ContextMenuState = {
   nodeId: string | null;
 };
 
+type BookView =
+  | { kind: "front" }
+  | { kind: "spread"; index: number }
+  | { kind: "back" };
+
 const readString = (value: unknown) => typeof value === "string" ? value : "";
 
 const createLocalNodeId = (prefix: string) => {
@@ -66,8 +71,7 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const spreadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [spreadIndex, setSpreadIndex] = useState(0);
+  const [bookView, setBookView] = useState<BookView>({ kind: "front" });
   const [turnDirection, setTurnDirection] = useState<-1 | 0 | 1>(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -92,6 +96,11 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     [identityNodeId, projectData]
   );
   const spreadCount = useMemo(() => getLookbookSpreadCount(items, pageCount), [items, pageCount]);
+  const spreadIndex = bookView.kind === "spread"
+    ? Math.max(0, Math.min(spreadCount - 1, bookView.index))
+    : bookView.kind === "back"
+      ? Math.max(0, spreadCount - 1)
+      : 0;
   const visibleItems = useMemo(
     () => items.filter((item) => item.spreadIndex === spreadIndex),
     [items, spreadIndex]
@@ -110,35 +119,9 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   }, [items, selectedNodeId]);
 
   useEffect(() => {
-    if (spreadIndex < spreadCount) return;
-    setSpreadIndex(Math.max(0, spreadCount - 1));
-  }, [spreadCount, spreadIndex]);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const eventTarget = event.target as HTMLElement | null;
-      const isEditingText = eventTarget?.matches("input, textarea, [contenteditable='true']") === true;
-      if (event.key === "Escape") {
-        if (contextMenu) setContextMenu(null);
-        else if (selectedNodeId) setSelectedNodeId(null);
-        else onClose();
-      }
-      if (event.key === "ArrowRight" && isOpen && !isEditingText) setSpreadIndex((current) => Math.min(spreadCount - 1, current + 1));
-      if (event.key === "ArrowLeft" && isOpen && !isEditingText) setSpreadIndex((current) => Math.max(0, current - 1));
-    };
-    const dismissMenu = () => setContextMenu(null);
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("pointerdown", dismissMenu);
-    window.addEventListener("blur", dismissMenu);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("pointerdown", dismissMenu);
-      window.removeEventListener("blur", dismissMenu);
-    };
-  }, [contextMenu, isOpen, onClose, selectedNodeId, spreadCount]);
+    if (bookView.kind !== "spread" || bookView.index < spreadCount) return;
+    setBookView({ kind: "spread", index: Math.max(0, spreadCount - 1) });
+  }, [bookView, spreadCount]);
 
   const commitProjectMutation = useCallback((mutation: (previous: ProjectData) => ProjectData) => {
     setProjectData((previous) => {
@@ -165,8 +148,7 @@ export const LookbookStudioPanel: React.FC<Props> = ({
       const assets = inspected.map((asset) => ({ ...asset, id: createLocalNodeId("lookbook-image") }));
       commitProjectMutation((previous) => addLookbookImageAssets(previous, identityNodeId, assets));
       setSelectedNodeId(assets.at(-1)?.id || null);
-      setSpreadIndex(Math.floor((items.length + assets.length - 1) / 6));
-      setIsOpen(true);
+      setBookView({ kind: "spread", index: Math.floor((items.length + assets.length - 1) / 6) });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "图片导入失败");
     } finally {
@@ -184,25 +166,62 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     const nodeId = createLocalNodeId("lookbook-note");
     commitProjectMutation((previous) => addLookbookTextCard(previous, identityNodeId, Date.now(), nodeId).projectData);
     setSelectedNodeId(nodeId);
-    setSpreadIndex(Math.floor(items.length / 6));
-    setIsOpen(true);
+    setBookView({ kind: "spread", index: Math.floor(items.length / 6) });
   }, [commitProjectMutation, identityNodeId, items.length]);
 
   const addPage = useCallback(() => {
     const nextPageCount = pageCount + 1;
     commitProjectMutation((previous) => addLookbookPage(previous, identityNodeId));
-    setSpreadIndex(Math.max(0, Math.ceil(nextPageCount / 2) - 1));
+    setBookView({ kind: "spread", index: Math.max(0, Math.ceil(nextPageCount / 2) - 1) });
     setSelectedNodeId(null);
-    setIsOpen(true);
   }, [commitProjectMutation, identityNodeId, pageCount]);
 
-  const turnTo = useCallback((next: number) => {
-    const bounded = Math.max(0, Math.min(spreadCount - 1, next));
-    if (bounded === spreadIndex || turnDirection !== 0) return;
-    setTurnDirection(bounded > spreadIndex ? 1 : -1);
-    setSpreadIndex(bounded);
+  const currentPosition = bookView.kind === "front" ? -1 : bookView.kind === "back" ? spreadCount : spreadIndex;
+  const turnTo = useCallback((nextPosition: number) => {
+    const bounded = Math.max(-1, Math.min(spreadCount, nextPosition));
+    if (bounded === currentPosition || turnDirection !== 0) return;
+    setTurnDirection(bounded > currentPosition ? 1 : -1);
+    setBookView(
+      bounded < 0
+        ? { kind: "front" }
+        : bounded >= spreadCount
+          ? { kind: "back" }
+          : { kind: "spread", index: bounded }
+    );
     setSelectedNodeId(null);
-  }, [spreadCount, spreadIndex, turnDirection]);
+  }, [currentPosition, spreadCount, turnDirection]);
+
+  useEffect(() => {
+    if (turnDirection === 0) return;
+    const timer = window.setTimeout(() => setTurnDirection(0), 360);
+    return () => window.clearTimeout(timer);
+  }, [turnDirection]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const eventTarget = event.target as HTMLElement | null;
+      const isEditingText = eventTarget?.matches("input, textarea, [contenteditable='true']") === true;
+      if (event.key === "Escape") {
+        if (contextMenu) setContextMenu(null);
+        else if (selectedNodeId) setSelectedNodeId(null);
+        else onClose();
+      }
+      if (event.key === "ArrowRight" && !isEditingText) turnTo(currentPosition + 1);
+      if (event.key === "ArrowLeft" && !isEditingText) turnTo(currentPosition - 1);
+    };
+    const dismissMenu = () => setContextMenu(null);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("pointerdown", dismissMenu);
+    window.addEventListener("blur", dismissMenu);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pointerdown", dismissMenu);
+      window.removeEventListener("blur", dismissMenu);
+    };
+  }, [contextMenu, currentPosition, onClose, selectedNodeId, turnTo]);
 
   const updateContextLayout = (patch: Partial<LookbookLayout>) => {
     if (!contextItem) return;
@@ -215,8 +234,11 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const mention = identity?.mention || name;
   const identityLabel = identity?.kind === "scene" ? "SCENE STUDY" : "CHARACTER STUDY";
   const issue = String(Math.max(1, (projectData.roles || []).findIndex((role) => role.id === identityId) + 1)).padStart(2, "0");
-  const coverImage = items.find((item) => item.node.type === "imageInput");
-  const coverImageUrl = coverImage ? readString(coverImage.node.data.image) : "";
+  const coverImageUrls = items
+    .filter((item) => item.node.type === "imageInput")
+    .map((item) => readString(item.node.data.image))
+    .filter(Boolean)
+    .slice(0, 2);
   const leftPageIndex = spreadIndex * 2;
   const rightPageIndex = leftPageIndex + 1;
   const hasLeftPage = leftPageIndex < pageCount;
@@ -275,38 +297,58 @@ export const LookbookStudioPanel: React.FC<Props> = ({
           void importFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          {!isOpen ? (
+        <AnimatePresence initial={false}>
+          {bookView.kind === "front" ? (
             <motion.button
-              key="cover"
+              key="front-cover"
               type="button"
               className="lookbook-book-cover"
-              onClick={() => setIsOpen(true)}
-              initial={{ opacity: 0, rotateY: -10, scale: 0.98 }}
-              animate={{ opacity: 1, rotateY: 0, scale: 1 }}
-              exit={{ opacity: 0, rotateY: 8, scale: 0.985 }}
-              transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => turnTo(0)}
+              initial={{ opacity: 0, x: -24, scale: 0.985 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -20, scale: 0.99 }}
+              transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
               aria-label={`打开 ${name} Lookbook`}
             >
               <span className="lookbook-book-cover__issue">({issue})</span>
               <span className="lookbook-book-cover__title">{name}</span>
-              {coverImageUrl ? <img src={coverImageUrl} alt="" draggable={false} /> : <span className="lookbook-book-cover__empty" />}
+              <span className="lookbook-book-cover__images" data-count={coverImageUrls.length || 0}>
+                {coverImageUrls.length
+                  ? coverImageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt="" draggable={false} />)
+                  : <><span className="lookbook-book-cover__empty" /><span className="lookbook-book-cover__empty" /></>}
+              </span>
               <span className="lookbook-book-cover__meta"><b>@{mention}</b><b>{identityLabel}</b><b>STYLO ARCHIVE</b></span>
+            </motion.button>
+          ) : bookView.kind === "back" ? (
+            <motion.button
+              key="back-cover"
+              type="button"
+              className="lookbook-book-cover lookbook-book-cover--back"
+              onClick={() => turnTo(spreadCount - 1)}
+              initial={{ opacity: 0, x: 24, scale: 0.985 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 20, scale: 0.99 }}
+              transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+              aria-label={`返回 ${name} Lookbook 最后一页`}
+            >
+              <span className="lookbook-book-cover__issue">END / {issue}</span>
+              <span className="lookbook-book-cover__back-mark">{name}</span>
+              <span className="lookbook-book-cover__meta"><b>STYLO LOOKBOOK</b><b>@{mention}</b></span>
             </motion.button>
           ) : (
             <motion.div
-              key="spread"
+              key={`spread-${spreadIndex}`}
               className="lookbook-book-shell"
-              initial={{ opacity: 0, scale: 0.985 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.985 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              initial={{ opacity: 0, x: turnDirection >= 0 ? 28 : -28, scale: 0.992 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: turnDirection >= 0 ? -22 : 22, scale: 0.994 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
               <button
                 type="button"
                 className="lookbook-book-shell__turn is-previous"
-                aria-label="上一跨页"
-                disabled={spreadIndex === 0 || turnDirection !== 0}
+                aria-label={spreadIndex === 0 ? "合上为 Lookbook 封面" : "上一跨页"}
+                disabled={turnDirection !== 0}
                 onClick={() => turnTo(spreadIndex - 1)}
               ><CaretLeft size={20} /></button>
 
@@ -349,22 +391,13 @@ export const LookbookStudioPanel: React.FC<Props> = ({
                 {hasLeftPage ? <span className="lookbook-book-spread__page-number is-left">{leftPageIndex + 1}</span> : null}
                 {hasRightPage ? <span className="lookbook-book-spread__page-number is-right">{rightPageIndex + 1}</span> : null}
 
-                {turnDirection !== 0 ? (
-                  <motion.div
-                    className={`lookbook-book-spread__turning-page ${turnDirection > 0 ? "is-forward" : "is-backward"}`}
-                    initial={{ rotateY: turnDirection > 0 ? 0 : -180 }}
-                    animate={{ rotateY: turnDirection > 0 ? -180 : 0 }}
-                    transition={{ duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
-                    onAnimationComplete={() => setTurnDirection(0)}
-                  />
-                ) : null}
               </div>
 
               <button
                 type="button"
                 className="lookbook-book-shell__turn is-next"
-                aria-label="下一跨页"
-                disabled={spreadIndex >= spreadCount - 1 || turnDirection !== 0}
+                aria-label={spreadIndex >= spreadCount - 1 ? "合上为 Lookbook 封底" : "下一跨页"}
+                disabled={turnDirection !== 0}
                 onClick={() => turnTo(spreadIndex + 1)}
               ><CaretRight size={20} /></button>
             </motion.div>
@@ -372,12 +405,20 @@ export const LookbookStudioPanel: React.FC<Props> = ({
         </AnimatePresence>
 
         <div className="lookbook-studio__hint">
-          <span>{isOpen ? pageCount + " PAGES · " + String(spreadIndex + 1).padStart(2, "0") + " / " + String(spreadCount).padStart(2, "0") : "COVER"}</span>
+          <span>{bookView.kind === "front"
+            ? "FRONT COVER"
+            : bookView.kind === "back"
+              ? "BACK COVER"
+              : pageCount + " PAGES · " + String(spreadIndex + 1).padStart(2, "0") + " / " + String(spreadCount).padStart(2, "0")}</span>
           <button type="button" className="lookbook-studio__add-page" onClick={addPage}>
             <Plus size={13} weight="bold" />
             <span>新增页</span>
           </button>
-          <span>右键添加与编排 · 拖动移动 · 选中后拖拽边角缩放</span>
+          <span>{bookView.kind === "front"
+            ? "单击封面打开"
+            : bookView.kind === "back"
+              ? "单击封底返回最后一页"
+              : "右键添加与编排 · 拖动移动 · 选中后拖拽边角缩放"}</span>
         </div>
 
         <input
@@ -466,9 +507,12 @@ export const LookbookStudioPanel: React.FC<Props> = ({
             <GridFour size={15} /><span>自动编排整本</span>
           </button>
           <div className="lookbook-context-menu__separator" />
-          <button type="button" role="menuitem" onClick={() => { setIsOpen((current) => !current); setContextMenu(null); }}>
-            {isOpen ? <CaretLeft size={15} /> : <CaretRight size={15} />}
-            <span>{isOpen ? "合上书册" : "打开书册"}</span>
+          <button type="button" role="menuitem" onClick={() => {
+            turnTo(bookView.kind === "spread" ? -1 : bookView.kind === "back" ? spreadCount - 1 : 0);
+            setContextMenu(null);
+          }}>
+            {bookView.kind === "spread" ? <CaretLeft size={15} /> : <CaretRight size={15} />}
+            <span>{bookView.kind === "spread" ? "合上为封面" : "打开书册"}</span>
           </button>
         </div>
       ) : null}

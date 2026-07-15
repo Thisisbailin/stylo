@@ -63,6 +63,12 @@ export interface BaseNodeData extends Record<string, unknown> {
   /** @deprecated Legacy per-node layout. New layouts live on the Lookbook index document. */
   lookbookLayout?: LookbookLayout;
   lookbookBook?: LookbookBookState;
+  /** Persisted wrapper state. Missing means expanded for legacy projects. */
+  wrapperCollapsed?: boolean;
+  /** Runtime-only projection used by physical wrapper node visuals. */
+  wrapperMemberCount?: number;
+  /** Runtime-only marker for the root page of a multi-page screenplay. */
+  wrapperRoot?: boolean;
 }
 
 export interface ImageInputNodeData extends BaseNodeData {

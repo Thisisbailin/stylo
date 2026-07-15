@@ -3,6 +3,7 @@ import { BaseNode } from "./BaseNode";
 import { TextNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { AtSign, FileDiff } from "lucide-react";
+import { Paperclip } from "@phosphor-icons/react";
 import {
     buildMentionIndex,
     buildMentionTargets,
@@ -152,6 +153,9 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
         const clipped = source.slice(0, 180).trimEnd();
         return `${clipped}${fullText.length > clipped.length ? "…" : ""}`;
     }, [data.text, storedScriptPreview]);
+    const scriptMemberCount = typeof data.wrapperMemberCount === "number" ? data.wrapperMemberCount : 0;
+    const isScriptStack = isScriptDocument && data.wrapperRoot === true && scriptMemberCount > 0;
+    const isWrapperCollapsed = data.wrapperCollapsed === true;
 
     const mentionTargets = useMemo(() => {
         const roles = nodeFlowContext?.roles || [];
@@ -436,8 +440,23 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
             >
                 <div className="text-node-drag-rail" aria-hidden="true" />
                 {isScriptDocument ? (
-                    <div className="script-node-preview" title={scriptPreview || "剧本内容为空"}>
-                        {scriptPreview || "剧本内容为空"}
+                    <div
+                        className={`script-manuscript-node ${isScriptStack ? "is-stack" : "is-single-sheet"} ${isWrapperCollapsed ? "is-closed" : "is-open"}`}
+                        aria-label={isScriptStack
+                            ? `${data.title || "剧本文档"}，${scriptMemberCount + 1} 张稿纸，${isWrapperCollapsed ? "已收起" : "已展开"}`
+                            : `${data.title || "剧本文档"}，单张稿纸`}
+                        data-wrapper-state={isWrapperCollapsed ? "closed" : "open"}
+                        data-wrapper-members={scriptMemberCount}
+                    >
+                        {isScriptStack ? <Paperclip className="script-manuscript-node__clip" size={42} weight="light" aria-hidden="true" /> : null}
+                        <div className="script-manuscript-node__head">
+                            <strong>{data.title || "剧本文档"}</strong>
+                            <span>{isScriptStack ? `${scriptMemberCount + 1} SHEETS` : "SINGLE SHEET"}</span>
+                        </div>
+                        <div className="script-node-preview" title={scriptPreview || "剧本内容为空"}>
+                            {scriptPreview || "剧本内容为空"}
+                        </div>
+                        <span className="script-manuscript-node__format">FOUNTAIN MANUSCRIPT</span>
                     </div>
                 ) : (
                   <div

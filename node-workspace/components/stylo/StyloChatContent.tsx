@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { CaretRight, Check, Checks, X } from "@phosphor-icons/react";
 import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessage, ToolMessage, ToolPayload } from "./types";
 import {
@@ -176,8 +176,7 @@ const renderToolExpansion = (thread: ToolThread) => {
   );
 };
 
-const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) => {
-  const expanded = options?.expanded || false;
+const renderToolThread = (thread: ToolThread) => {
   const effectiveTool = thread.result?.tool || thread.request?.tool;
   if (!effectiveTool) return null;
   const hasDetails =
@@ -204,7 +203,7 @@ const renderToolThread = (thread: ToolThread, options?: { expanded?: boolean }) 
   }
 
   return (
-    <details className={`${lineSummaryClass} stylo-work-detail-row--tool group`} open={expanded || undefined}>
+    <details className={`${lineSummaryClass} stylo-work-detail-row--tool group`}>
       <summary className="list-none cursor-pointer py-1 text-left [&::-webkit-details-marker]:hidden">
         {renderDisclosureHeader({
           icon: <StyloMessageIcon visual={visual} status={status} compact active={status === "running"} />,
@@ -466,6 +465,7 @@ type MessageItemViewProps = {
   expanded: boolean;
   attachRef: boolean;
   currentItemRef: React.MutableRefObject<HTMLDivElement | null>;
+  latestBlockMaxHeight?: number;
   onApprovalChoice?: (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => void;
 };
 
@@ -474,6 +474,7 @@ const MessageItemView = memo(function MessageItemView({
   expanded,
   attachRef,
   currentItemRef,
+  latestBlockMaxHeight,
   onApprovalChoice,
 }: MessageItemViewProps) {
   const isUser = item.kind === "chat" && item.message.role === "user";
@@ -485,27 +486,22 @@ const MessageItemView = memo(function MessageItemView({
       className={`stylo-message-item flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
       data-current={attachRef}
       data-message-kind={item.kind}
+      style={attachRef && latestBlockMaxHeight ? { maxHeight: `${latestBlockMaxHeight}px`, overflowY: "auto" } : undefined}
     >
       {item.kind === "status" ? (
         renderStatusLine(item.message, { expanded })
       ) : item.kind === "tool" ? (
-        renderToolThread(item.thread, { expanded })
+        renderToolThread(item.thread)
       ) : item.kind === "approval" ? (
         renderApprovalPanel(item.message, onApprovalChoice)
       ) : isUser ? (
-        <div className="flex max-w-[92%] items-end gap-2 md:max-w-[86%]">
+        <div className="flex max-w-[92%] items-end md:max-w-[86%]">
           <div className="stylo-user-message px-1 py-2 text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed">
             {item.message.text}
           </div>
-          <StyloMessageIcon visual={STYLO_PRIMARY_MESSAGE_VISUALS.user} compact />
         </div>
       ) : (
-        <div className="stylo-assistant-answer flex w-full items-start gap-2.5">
-          <StyloMessageIcon
-            visual={STYLO_PRIMARY_MESSAGE_VISUALS.assistant}
-            status={item.message.meta?.isStreaming ? "running" : "success"}
-            active={item.message.meta?.isStreaming}
-          />
+        <div className="stylo-assistant-answer flex w-full items-start">
           <div className="min-w-0 flex-1 space-y-3">
             {renderAssistantPanel(item.message)}
           </div>
@@ -517,6 +513,7 @@ const MessageItemView = memo(function MessageItemView({
   previous.expanded === next.expanded &&
   previous.attachRef === next.attachRef &&
   previous.currentItemRef === next.currentItemRef &&
+  previous.latestBlockMaxHeight === next.latestBlockMaxHeight &&
   previous.onApprovalChoice === next.onApprovalChoice &&
   areDisplayMessagesEqual(previous.item, next.item)
 );
@@ -531,13 +528,9 @@ export const StyloChatContent: React.FC<Props> = ({
   latestBlockMaxHeight,
 }) => {
   const messagesRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const currentItemRef = useRef<HTMLDivElement | null>(null);
-  const previousItemCountRef = useRef(0);
-  const previousCurrentKeyRef = useRef<string | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
-  const isPinnedToCurrentRef = useRef(true);
-  const [isPinnedToCurrent, setIsPinnedToCurrent] = useState(true);
-  const [currentShiftTick, setCurrentShiftTick] = useState(0);
   const displayMessages = useMemo(() => buildStyloMessageTimeline(messages), [messages]);
 
   const latestRevealItem = useMemo(() => {
@@ -555,75 +548,46 @@ export const StyloChatContent: React.FC<Props> = ({
     [revealMode]
   );
 
-  const isPinnedToCurrentAnchor = useCallback(
-    (node: HTMLDivElement, currentNode: HTMLDivElement) => {
-      const topInset = revealMode === "latest" ? 2 : 6;
-      const headerTarget = Math.max(0, currentNode.offsetTop - topInset);
-      const bottomTarget = Math.max(0, currentNode.offsetTop + currentNode.offsetHeight - node.clientHeight);
-      const tolerance = 10;
-      if (currentNode.offsetHeight + topInset <= node.clientHeight) {
-        return Math.abs(node.scrollTop - headerTarget) <= tolerance;
-      }
-      return Math.abs(node.scrollTop - bottomTarget) <= tolerance;
-    },
-    [revealMode]
-  );
-
-  useEffect(() => {
-    const nextKey = latestRevealItem?.key ?? null;
-    if (!nextKey) {
-      previousCurrentKeyRef.current = null;
-      return;
-    }
-    if (previousCurrentKeyRef.current !== nextKey) {
-      previousCurrentKeyRef.current = nextKey;
-      isPinnedToCurrentRef.current = true;
-      setIsPinnedToCurrent(true);
-      setCurrentShiftTick((value) => value + 1);
-    }
-  }, [latestRevealItem?.key]);
-
-  useEffect(() => {
+  const followLatestContent = useCallback(() => {
     if (revealMode !== "scroll" && revealMode !== "latest") return;
-    const node = messagesRef.current;
-    const currentNode = currentItemRef.current;
-    if (!node || !currentNode || !isPinnedToCurrent) return;
-    const nextCount = displayMessages.length;
-    const behavior: ScrollBehavior = nextCount > previousItemCountRef.current ? "smooth" : "auto";
-    previousItemCountRef.current = nextCount;
     if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
-      const targetTop = getCurrentAnchorScrollTop(node, currentNode);
-      node.scrollTo({ top: targetTop, behavior });
-    });
-    return () => {
-      if (scrollFrameRef.current == null) return;
-      cancelAnimationFrame(scrollFrameRef.current);
-      scrollFrameRef.current = null;
-    };
-  }, [messages, currentShiftTick, displayMessages.length, getCurrentAnchorScrollTop, isPinnedToCurrent, isSending, revealMode]);
-
-  useEffect(() => {
-    if (revealMode !== "scroll" && revealMode !== "latest") return;
-    if (!messagesRef.current) return;
-    const node = messagesRef.current;
-    const handleScroll = () => {
+      const node = messagesRef.current;
       const currentNode = currentItemRef.current;
-      if (!currentNode) return;
-      const nextPinned = isPinnedToCurrentAnchor(node, currentNode);
-      if (nextPinned === isPinnedToCurrentRef.current) return;
-      isPinnedToCurrentRef.current = nextPinned;
-      setIsPinnedToCurrent(nextPinned);
-    };
-    node.addEventListener("scroll", handleScroll, { passive: true });
-    return () => node.removeEventListener("scroll", handleScroll);
-  }, [displayMessages.length, isPinnedToCurrentAnchor, revealMode]);
+      if (!node || !currentNode) return;
+      if (currentNode.scrollHeight > currentNode.clientHeight) {
+        currentNode.scrollTop = currentNode.scrollHeight;
+      }
+      node.scrollTop = getCurrentAnchorScrollTop(node, currentNode);
+    });
+  }, [getCurrentAnchorScrollTop, revealMode]);
 
   useEffect(() => {
-    if (revealMode !== "latest" && revealMode !== "scroll") return;
-    previousItemCountRef.current = displayMessages.length;
-  }, [displayMessages.length, revealMode]);
+    followLatestContent();
+  }, [displayMessages.length, followLatestContent, isSending, latestRevealItem?.key, messages]);
+
+  useEffect(() => {
+    const listNode = messageListRef.current;
+    const currentNode = currentItemRef.current;
+    if (!listNode || !currentNode) return;
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(followLatestContent);
+    resizeObserver?.observe(listNode);
+    resizeObserver?.observe(currentNode);
+    const mutationObserver = typeof MutationObserver === "undefined"
+      ? null
+      : new MutationObserver(followLatestContent);
+    mutationObserver?.observe(currentNode, { childList: true, characterData: true, subtree: true });
+    followLatestContent();
+    return () => {
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [followLatestContent, latestRevealItem?.key]);
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
+  }, []);
 
   return (
     <div
@@ -639,7 +603,7 @@ export const StyloChatContent: React.FC<Props> = ({
         maxHeight: revealMode === "latest" && latestBlockMaxHeight ? `${latestBlockMaxHeight}px` : style?.maxHeight,
       }}
     >
-      <div className="space-y-3">
+      <div ref={messageListRef} className="space-y-3">
         {displayMessages.length === 0 ? (
           <div className="stylo-agent-empty" role="note">
             <strong>从一个目标开始</strong>
@@ -655,6 +619,7 @@ export const StyloChatContent: React.FC<Props> = ({
               expanded={isCurrentReveal}
               attachRef={revealMode === "latest" ? isCurrentReveal : isLatestListItem}
               currentItemRef={currentItemRef}
+              latestBlockMaxHeight={revealMode === "latest" ? latestBlockMaxHeight : undefined}
               onApprovalChoice={onApprovalChoice}
             />
           );
