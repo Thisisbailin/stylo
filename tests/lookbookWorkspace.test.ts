@@ -9,7 +9,10 @@ import {
   addLookbookImageAssets,
   addLookbookTextCard,
   buildAdaptiveLookbookLayouts,
+  fitLookbookLayoutToPage,
+  getLookbookPageIndexForLayout,
   projectLookbookBoardItems,
+  moveLookbookNodeToPage,
   reflowLookbookLayouts,
   sanitizeLookbookLayout,
   getLookbookIndexNode,
@@ -193,12 +196,12 @@ test("Lookbook manual layout persists independently from the Flow canvas positio
   assert.deepEqual(updatedNode?.position, originalPosition);
   assert.equal(updatedNode?.data.lookbookLayout, undefined);
   const indexEntry = (getLookbookIndexNode(updated, "identity-1")?.data.lookbookBook as { entries?: Array<{ nodeId: string; layout: { x: number } }> }).entries?.find((entry) => entry.nodeId === "image-1");
-  assert.equal(indexEntry?.layout.x, 0.52);
+  assert.equal(indexEntry?.layout.x, 0.528);
   assert.equal(projectLookbookBoardItems(updated, "identity-1")[0].layout.zIndex, 9);
 
   const withNewText = addLookbookTextCard(updated, "identity-1", 301).projectData;
   const preservedImage = projectLookbookBoardItems(withNewText, "identity-1").find((item) => item.node.id === "image-1");
-  assert.equal(preservedImage?.layout.x, 0.52);
+  assert.equal(preservedImage?.layout.x, 0.528);
   assert.equal(preservedImage?.layout.zIndex, 9);
 });
 
@@ -215,6 +218,30 @@ test("Lookbook layout sanitization keeps resized items inside the board and skip
     text: textNode!.data.text as string,
   });
   assert.equal(unchanged, created);
+});
+
+test("Lookbook page fitting keeps content inside one physical page", () => {
+  const fitted = fitLookbookLayoutToPage({
+    x: 0.31, y: -0.2, width: 0.68, height: 0.92, rotation: 2, zIndex: 3, fit: "cover",
+  }, 1);
+  assert.ok(fitted.x >= 0.528);
+  assert.ok(fitted.x + fitted.width <= 0.972);
+  assert.ok(fitted.y >= 0.05);
+  assert.ok(fitted.y + fitted.height <= 0.63);
+  assert.equal(getLookbookPageIndexForLayout(0, fitted), 1);
+});
+
+test("Lookbook content can move to an exact page and preserves page-safe geometry", () => {
+  const withPages = addLookbookPage(addLookbookPage(makeProject(), "identity-1", 2), "identity-1", 2);
+  const withImage = addLookbookImageAssets(withPages, "identity-1", [
+    { id: "move-image", name: "move.jpg", dataUrl: "data:image/jpeg;base64,AA==", mimeType: "image/jpeg", width: 900, height: 1200, hasAlpha: false },
+  ], 900);
+  const moved = moveLookbookNodeToPage(withImage, "identity-1", "move-image", 3);
+  const item = projectLookbookBoardItems(moved, "identity-1").find((candidate) => candidate.node.id === "move-image");
+  assert.equal(item?.spreadIndex, 1);
+  assert.equal(item ? getLookbookPageIndexForLayout(item.spreadIndex, item.layout) : -1, 3);
+  assert.ok((item?.layout.x || 0) >= 0.528);
+  assert.ok((item?.layout.x || 0) + (item?.layout.width || 0) <= 0.972);
 });
 
 test("Lookbook reflow is deterministic and writes only the attached index document", () => {
@@ -237,6 +264,7 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   const flowSurfaceSource = readFileSync("node-workspace/components/FlowSurface.tsx", "utf8");
   const studioSource = readFileSync("node-workspace/components/lookbook/LookbookStudioPanel.tsx", "utf8");
   const itemSource = readFileSync("node-workspace/components/lookbook/LookbookBoardItem.tsx", "utf8");
+  const coverSource = readFileSync("node-workspace/nodes/CompactIdentityCardNode.tsx", "utf8");
   const styleSource = readFileSync("node-workspace/styles/lookbook-studio.css", "utf8");
   const nodeflowStyleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
 
@@ -244,8 +272,9 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(flowSurfaceSource, /type: "lookbook"[\s\S]*disabled: true/);
   assert.match(flowSurfaceSource, /isLookbookNodeType\(type\)[\s\S]*\? null/);
   assert.match(flowSurfaceSource, /wrapperClickTimerRef[\s\S]*toggleWrapperCollapsed/);
+  assert.match(flowSurfaceSource, /wrapper-member--\$\{wrapperMemberMotion\?\.mode\}/);
   assert.match(flowSurfaceSource, /handleScriptNodeDoubleClick[\s\S]*onOpenScriptDocument/);
-  assert.match(flowSurfaceSource, /label: "Markdown 文本"[\s\S]*type: "text"/);
+  assert.match(flowSurfaceSource, /label: "文本"[\s\S]*type: "text"[\s\S]*group: "input"/);
   assert.match(studioSource, /inspectLookbookImageFiles/);
   assert.match(studioSource, /saveActiveFlowIntoProjects/);
   assert.match(studioSource, /onDrop=/);
@@ -253,6 +282,9 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(studioSource, /isEditingText/);
   assert.match(studioSource, /eventTarget\.closest\("input, textarea/);
   assert.match(studioSource, /lookbook-book-cover/);
+  assert.match(studioSource, /lookbook-page-strip/);
+  assert.match(studioSource, /moveLookbookNodeToPage/);
+  assert.doesNotMatch(studioSource, /initial=\{\{[^}]*scale:/);
   assert.match(studioSource, /type BookView[\s\S]*kind: "front"[\s\S]*kind: "spread"[\s\S]*kind: "back"/);
   assert.match(studioSource, /合上为 Lookbook 封面/);
   assert.match(studioSource, /合上为 Lookbook 封底/);
@@ -264,10 +296,14 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(itemSource, /dragMomentum=\{false\}/);
   assert.match(itemSource, /requestAnimationFrame\(applyPreview\)/);
   assert.match(itemSource, /window\.removeEventListener\("pointermove"/);
+  assert.doesNotMatch(itemSource, /initial=\{\{\s*opacity:\s*0,\s*y:/);
+  assert.match(coverSource, /if \(typeof image === "string" && image\) return image/);
+  assert.doesNotMatch(coverSource, /slice\(0,\s*2\)|coverImages/);
   assert.match(styleSource, /\.lookbook-spread-item\.is-sticker[\s\S]*background:\s*transparent/);
   assert.doesNotMatch(styleSource, /lookbook-inspector/);
   assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styleSource, /filter:\s*drop-shadow|text-shadow|#000000/);
-  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"[\s\S]*width:\s*236px\s*!important/);
+  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"[\s\S]*width:\s*286px\s*!important/);
   assert.match(nodeflowStyleSource, /data-node-type="script-document"[\s\S]*width:\s*286px\s*!important/);
+  assert.match(nodeflowStyleSource, /@keyframes wrapper-member-collapse[\s\S]*@keyframes wrapper-member-expand/);
 });

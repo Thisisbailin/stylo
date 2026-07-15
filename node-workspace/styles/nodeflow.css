@@ -221,7 +221,62 @@
   .lookbook-cover-visual > img { animation: none; }
 }
 
-/* Lookbook wrapper node: a compact, closed booklet using the first linked image as its cover. */
+/* Wrapper membership choreography: animate the physical contents before React Flow hides them. */
+.react-flow__node.wrapper-member--collapsing .node-card-base,
+.react-flow__node.wrapper-member--expanding .node-card-base {
+  transform-origin: center;
+  animation-duration: 360ms;
+  animation-delay: var(--wrapper-motion-delay, 0ms);
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+  will-change: transform, opacity;
+}
+
+.react-flow__node.wrapper-member--collapsing .node-card-base {
+  animation-name: wrapper-member-collapse;
+}
+
+.react-flow__node.wrapper-member--expanding .node-card-base {
+  animation-name: wrapper-member-expand;
+}
+
+.react-flow__edge.wrapper-edge--collapsing {
+  animation: wrapper-edge-collapse 260ms ease forwards;
+}
+
+.react-flow__edge.wrapper-edge--expanding {
+  animation: wrapper-edge-expand 320ms ease both;
+}
+
+@keyframes wrapper-member-collapse {
+  0% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  62% { opacity: 0.72; }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--wrapper-motion-x, 0), var(--wrapper-motion-y, 0), 0) scale(0.18);
+  }
+}
+
+@keyframes wrapper-member-expand {
+  0% {
+    opacity: 0;
+    transform: translate3d(var(--wrapper-motion-x, 0), var(--wrapper-motion-y, 0), 0) scale(0.18);
+  }
+  44% { opacity: 0.74; }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes wrapper-edge-collapse {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes wrapper-edge-expand {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Lookbook wrapper node: a physical hardcover photobook, not an atomic card. */
 .node-card-base[data-node-type="lookbook-cover"] {
   min-width: 0;
   min-height: 0;
@@ -229,8 +284,8 @@
 }
 
 .react-flow__node:has(.node-card-base[data-node-type="lookbook-cover"]) {
-  width: 236px !important;
-  min-width: 236px !important;
+  width: 286px !important;
+  min-width: 286px !important;
 }
 
 .node-card-base[data-node-type="lookbook-cover"] .node-card-floating-header {
@@ -240,115 +295,173 @@
 .node-card-base[data-node-type="lookbook-cover"] .node-card-shell,
 .node-card-base[data-node-type="lookbook-cover"] .node-card-body,
 .lookbook-node-cover {
-  height: 292px;
-  min-height: 292px;
+  height: 356px;
+  min-height: 356px;
 }
 
 .node-card-base[data-node-type="lookbook-cover"] .node-card-shell {
   overflow: visible;
-  border-radius: 2px 8px 8px 2px;
+  border-radius: 3px 10px 10px 3px;
+  background: transparent;
 }
 
 .node-card-base[data-node-type="lookbook-cover"] .node-card-shell::before {
-  border-radius: 2px 8px 8px 2px;
+  border: 0;
+  border-radius: 3px 10px 10px 3px;
   background: transparent;
-  box-shadow: 12px 15px 28px color-mix(in srgb, var(--app-text-primary) 13%, transparent);
+  box-shadow: 16px 19px 34px color-mix(in srgb, var(--app-text-primary) 15%, transparent);
 }
 
 .node-card-base[data-node-type="lookbook-cover"] .node-card-shell::after {
-  position: absolute;
-  inset: 5px -6px -6px 6px;
-  z-index: 0;
-  width: auto;
-  height: auto;
-  border: 1px solid color-mix(in srgb, var(--node-border-strong) 58%, transparent);
-  border-radius: 1px 7px 7px 2px;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      color-mix(in srgb, var(--node-surface) 96%, white 4%) 0 2px,
-      color-mix(in srgb, var(--node-border) 38%, var(--node-surface)) 2px 3px
-    );
-  box-shadow: 3px 6px 11px color-mix(in srgb, var(--app-text-primary) 10%, transparent);
-  content: "";
-  opacity: 1;
-  pointer-events: none;
-  transform: none;
-  animation: none;
+  content: none;
 }
 
 .lookbook-node-cover {
   position: relative;
-  display: grid;
   width: 100%;
-  overflow: hidden;
-  grid-template-rows: auto 1fr;
-  border: 1px solid color-mix(in srgb, var(--node-border-strong) 76%, transparent);
-  border-radius: 2px 7px 7px 2px;
-  background:
-    linear-gradient(104deg, color-mix(in srgb, white 7%, transparent), transparent 38%),
-    color-mix(in srgb, var(--app-accent) 52%, #c96745);
-  padding: 17px 18px 18px 22px;
-  box-shadow:
-    inset 5px 0 0 color-mix(in srgb, var(--node-text-primary) 11%, transparent),
-    inset 10px 0 12px -12px color-mix(in srgb, #181817 46%, transparent),
-    inset -2px 0 0 color-mix(in srgb, #181817 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  overflow: visible;
   isolation: isolate;
+  perspective: 1180px;
+  transform-style: preserve-3d;
+}
+
+.lookbook-node-cover__back-board,
+.lookbook-node-cover__page-block,
+.lookbook-node-cover__front-board {
+  position: absolute;
+  transform-style: preserve-3d;
   transform-origin: left center;
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: transform;
+  will-change: transform, opacity;
+  transition:
+    transform 440ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 280ms ease,
+    box-shadow 440ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.lookbook-node-cover.is-open {
-  transform: translate3d(-5px, -4px, 0) rotate(-0.65deg);
+.lookbook-node-cover__back-board {
+  inset: 5px -2px 0 5px;
+  z-index: 0;
+  border: 1px solid color-mix(in srgb, #191b1a 52%, var(--node-border));
+  border-radius: 3px 10px 10px 3px;
+  background: color-mix(in srgb, var(--app-accent) 40%, #8f4235);
+  box-shadow: 8px 12px 22px color-mix(in srgb, var(--app-text-primary) 14%, transparent);
+  transform: translate3d(5px, 2px, -10px);
+}
+
+.lookbook-node-cover__page-block {
+  inset: 8px 1px 5px 10px;
+  z-index: 1;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--node-border-strong) 74%, transparent);
+  border-radius: 2px 9px 9px 2px;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--app-panel-strong) 97%, #e8e2d4) 0 2px,
+      color-mix(in srgb, var(--node-border) 44%, var(--app-panel-strong)) 2px 3px
+    );
+  box-shadow: 5px 8px 16px color-mix(in srgb, var(--app-text-primary) 10%, transparent);
+  transform: translate3d(5px, 2px, -2px) rotateY(-1.5deg);
+}
+
+.lookbook-node-cover__page-block > span {
+  position: absolute;
+  top: 24px;
+  right: 18px;
+  left: 24px;
+  height: 1px;
+  background: color-mix(in srgb, var(--node-border) 48%, transparent);
+}
+
+.lookbook-node-cover__page-block > span:nth-child(2) { top: 50%; }
+.lookbook-node-cover__page-block > span:nth-child(3) { top: auto; bottom: 26px; }
+
+.lookbook-node-cover__front-board {
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #171918 58%, var(--node-border));
+  border-radius: 3px 10px 10px 3px;
+  background:
+    linear-gradient(112deg, color-mix(in srgb, white 10%, transparent), transparent 34%),
+    linear-gradient(90deg, color-mix(in srgb, #151716 18%, transparent), transparent 13%),
+    color-mix(in srgb, var(--app-accent) 55%, #bd553f);
+  padding: 22px 22px 20px 28px;
   box-shadow:
-    7px 10px 18px color-mix(in srgb, var(--app-text-primary) 12%, transparent),
-    inset 5px 0 0 color-mix(in srgb, var(--node-text-primary) 11%, transparent),
-    inset 10px 0 12px -12px color-mix(in srgb, #181817 46%, transparent),
-    inset -2px 0 0 color-mix(in srgb, #181817 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+    inset 7px 0 0 color-mix(in srgb, #171918 12%, transparent),
+    inset 12px 0 17px -16px color-mix(in srgb, #171918 78%, transparent),
+    inset -2px 0 0 color-mix(in srgb, #171918 17%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 16%, transparent),
+    8px 11px 22px color-mix(in srgb, var(--app-text-primary) 13%, transparent);
+  transform: translate3d(0, 0, 8px) rotateY(0deg);
 }
 
-.lookbook-node-cover::before {
+.lookbook-node-cover__front-board::before {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 10px;
+  left: 13px;
   width: 1px;
-  background: color-mix(in srgb, var(--node-border-strong) 64%, transparent);
-  box-shadow: 2px 0 0 color-mix(in srgb, white 16%, transparent);
+  background: color-mix(in srgb, #171918 38%, transparent);
+  box-shadow: 2px 0 0 color-mix(in srgb, white 13%, transparent);
   content: "";
 }
 
-.lookbook-node-cover__title {
+.lookbook-node-cover.is-open .lookbook-node-cover__front-board {
+  box-shadow:
+    inset 7px 0 0 color-mix(in srgb, #171918 12%, transparent),
+    inset 12px 0 17px -16px color-mix(in srgb, #171918 78%, transparent),
+    inset -2px 0 0 color-mix(in srgb, #171918 17%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 16%, transparent),
+    18px 15px 28px color-mix(in srgb, var(--app-text-primary) 17%, transparent);
+  transform: translate3d(-13px, -5px, 18px) rotateY(-23deg) rotateZ(-0.55deg);
+}
+
+.lookbook-node-cover.is-open .lookbook-node-cover__page-block {
+  transform: translate3d(8px, 1px, -1px) rotateY(-4deg);
+}
+
+.lookbook-node-cover.is-open .lookbook-node-cover__back-board {
+  transform: translate3d(8px, 3px, -12px) rotateY(1.5deg);
+}
+
+.lookbook-node-cover__edition,
+.lookbook-node-cover__imprint {
+  position: relative;
   z-index: 2;
-  align-self: start;
+  color: color-mix(in srgb, #1f211f 78%, transparent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 7px;
+  font-weight: 680;
+  letter-spacing: 0.12em;
+}
+
+.lookbook-node-cover__edition { justify-self: end; }
+
+.lookbook-node-cover__title {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   max-width: 8ch;
+  margin-top: 15px;
   color: #1f211f;
-  font-size: clamp(30px, 2.5vw, 38px);
-  font-weight: 520;
-  letter-spacing: -0.07em;
-  line-height: 0.9;
+  font-size: clamp(34px, 2.8vw, 44px);
+  font-weight: 540;
+  letter-spacing: -0.072em;
+  line-height: 0.88;
   overflow-wrap: anywhere;
 }
 
 .lookbook-node-cover__visual {
-  position: absolute;
-  right: 20px;
-  bottom: 44px;
-  left: 40px;
-  z-index: 1;
-  display: grid;
-  height: 114px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.lookbook-node-cover.has-single-image .lookbook-node-cover__visual {
-  left: 128px;
-  grid-template-columns: 1fr;
+  position: relative;
+  z-index: 2;
+  align-self: end;
+  justify-self: end;
+  width: 48%;
+  height: 142px;
+  margin: 0 4px 18px 0;
 }
 
 .lookbook-node-cover__visual > img,
@@ -359,7 +472,7 @@
   border: 1px solid color-mix(in srgb, #1f211f 38%, transparent);
   border-radius: 1px;
   background: color-mix(in srgb, var(--app-panel-strong) 94%, transparent);
-  box-shadow: 0 4px 10px color-mix(in srgb, #1f211f 13%, transparent);
+  box-shadow: 0 6px 14px color-mix(in srgb, #1f211f 17%, transparent);
 }
 
 .lookbook-node-cover__visual > img {
@@ -383,8 +496,15 @@
   font-weight: 420;
 }
 
+.lookbook-node-cover__imprint {
+  align-self: end;
+  font-size: 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lookbook-node-cover {
+  .lookbook-node-cover__back-board,
+  .lookbook-node-cover__page-block,
+  .lookbook-node-cover__front-board {
     transition: none;
   }
 }
@@ -2007,6 +2127,13 @@ body.stylo-resizing * {
   color: var(--node-text-secondary);
 }
 
+.text-node-shell[data-has-content="false"] .text-node-editor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
 .node-card-base[data-node-type="script-document"] {
   min-height: 0;
   gap: 0;
@@ -2049,6 +2176,7 @@ body.stylo-resizing * {
 
 .script-node-preview-shell {
   overflow: visible;
+  perspective: 1050px;
 }
 
 .script-manuscript-node {
@@ -2066,7 +2194,8 @@ body.stylo-resizing * {
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
   isolation: isolate;
   transform-origin: left top;
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .script-manuscript-node.is-stack::before,
@@ -2080,30 +2209,32 @@ body.stylo-resizing * {
   box-shadow: 4px 5px 10px color-mix(in srgb, var(--app-text-primary) 7%, transparent);
   content: "";
   transform-origin: left top;
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 260ms ease;
 }
 
 .script-manuscript-node.is-stack::before {
-  transform: translate3d(5px, -4px, 0);
+  transform: translate3d(4px, -3px, -3px) rotateZ(0.2deg);
 }
 
 .script-manuscript-node.is-stack::after {
-  transform: translate3d(9px, -7px, 0);
+  transform: translate3d(7px, -5px, -7px) rotateZ(0.35deg);
 }
 
 .script-manuscript-node.is-stack.is-open {
-  transform: translate3d(-4px, 2px, 0) rotate(-0.45deg);
+  transform: translate3d(-7px, 4px, 12px) rotateX(1.2deg) rotateZ(-1.1deg);
   box-shadow:
     8px 10px 20px color-mix(in srgb, var(--app-text-primary) 8%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
 }
 
 .script-manuscript-node.is-stack.is-open::before {
-  transform: translate3d(9px, -8px, 0) rotate(1deg);
+  opacity: 0.96;
+  transform: translate3d(12px, -11px, -4px) rotateZ(2.1deg);
 }
 
 .script-manuscript-node.is-stack.is-open::after {
-  transform: translate3d(14px, -4px, 0) rotate(1.6deg);
+  opacity: 0.9;
+  transform: translate3d(20px, -5px, -9px) rotateZ(3.4deg);
 }
 
 .script-manuscript-node__clip {
@@ -2168,6 +2299,14 @@ body.stylo-resizing * {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .react-flow__node.wrapper-member--collapsing .node-card-base,
+  .react-flow__node.wrapper-member--expanding .node-card-base,
+  .react-flow__edge.wrapper-edge--collapsing,
+  .react-flow__edge.wrapper-edge--expanding {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+
   .script-manuscript-node,
   .script-manuscript-node.is-stack::before,
   .script-manuscript-node.is-stack::after {
@@ -6189,6 +6328,103 @@ button.script-foundation-gateway-card:hover,
   letter-spacing: 0.18em;
 }
 
+.node-card-base[data-variant="media"]:has(.media-input-empty) .node-card-shell,
+.node-card-base[data-variant="media"]:has(.media-input-empty) .node-card-body {
+  overflow: visible;
+}
+
+.node-card-base[data-variant="media"]:has(.media-input-empty) .node-card-shell::before {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.media-input-empty {
+  display: flex;
+  width: 100%;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  border: 1px solid var(--node-border);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.055), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 32%),
+    var(--node-bg-gradient, var(--node-bg));
+  box-shadow: var(--node-shadow);
+  color: var(--node-text-secondary);
+  padding: 20px;
+  text-align: center;
+  transition:
+    border-color 150ms ease,
+    opacity 150ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.media-input-empty:hover,
+.media-input-empty:focus-visible {
+  border-color: var(--node-border-strong);
+  outline: none;
+  transform: translate3d(0, -1px, 0);
+}
+
+.media-input-empty:active {
+  transform: translate3d(0, 0, 0) scale(0.99);
+}
+
+.media-input-empty-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid var(--node-border);
+  border-radius: 16px;
+  background: var(--node-surface);
+  color: var(--node-text-primary);
+}
+
+.media-input-empty-copy {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.media-input-empty-kicker {
+  color: var(--node-text-secondary);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.media-input-empty-title {
+  color: var(--node-text-primary);
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+
+.media-input-empty-subtitle {
+  color: var(--node-text-secondary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.media-input-empty-cta {
+  border: 1px solid var(--node-border);
+  border-radius: 9px;
+  background: var(--node-surface);
+  color: var(--node-text-primary);
+  padding: 7px 10px;
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .node-media-frame {
   width: 100%;
   max-width: 100%;
@@ -8520,3 +8756,118 @@ button.script-foundation-gateway-card:hover,
     height: 112px !important;
   }
 }
+
+/* Add Nodes behaves like a compact contextual menu, without an internal scroll rail. */
+.script-foundation-node-popover {
+  width: min(304px, calc(100vw - 24px));
+  border-radius: 16px;
+  padding: 6px;
+}
+
+.script-foundation-node-palette,
+.script-foundation-node-palette__groups {
+  gap: 4px;
+  overflow: visible;
+}
+
+.script-foundation-node-palette__groups {
+  max-height: none;
+  padding: 0;
+}
+
+.script-foundation-node-group { gap: 2px; }
+
+.script-foundation-node-group > p {
+  margin: 0;
+  padding: 5px 8px 2px;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+}
+
+.script-foundation-node-grid {
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+
+.script-foundation-node-card {
+  min-height: 34px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 7px;
+  border-color: transparent;
+  border-radius: 9px;
+  background: transparent;
+  padding: 4px 6px;
+  box-shadow: none;
+}
+
+.script-foundation-node-card:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--app-accent-soft) 52%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.script-foundation-node-card__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.script-foundation-node-card::after {
+  height: 22px;
+  min-width: 22px;
+  border-radius: 7px;
+}
+
+.script-foundation-node-card strong { font-size: 11px; }
+.script-foundation-node-card small { display: none; }
+
+.connection-menu {
+  width: min(304px, calc(100vw - 24px));
+  border-radius: 16px;
+}
+
+.connection-menu-header { padding: 8px 10px 6px; }
+.connection-menu-title { font-size: 11px; }
+.connection-menu-subtitle { display: none; }
+
+.connection-menu-list {
+  max-height: none;
+  gap: 4px;
+  overflow: visible;
+  padding: 6px;
+}
+
+.connection-menu-group { gap: 2px; }
+.connection-menu-group-label { padding: 5px 7px 2px; font-size: 8px; }
+
+.connection-menu-grid {
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+
+.connection-menu-item {
+  min-height: 34px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 7px;
+  border-color: transparent;
+  border-radius: 9px;
+  background: transparent;
+  padding: 4px 6px;
+}
+
+.connection-menu-item:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--app-accent-soft) 52%, transparent);
+  box-shadow: none;
+  transform: none;
+}
+
+.connection-menu-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+
+.connection-menu-label { font-size: 11px; }
+.connection-menu-hint { display: none; }

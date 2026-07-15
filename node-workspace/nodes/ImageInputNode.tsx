@@ -831,17 +831,17 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="image-input-empty"
+            className="image-input-empty media-input-empty"
           >
-            <div className="image-input-empty-icon">
+            <div className="image-input-empty-icon media-input-empty-icon">
               <ImageSquare size={22} weight="duotone" />
             </div>
-            <div className="image-input-empty-copy">
-              <div className="image-input-empty-kicker">Image Input</div>
-              <div className="image-input-empty-title">Drop or choose image</div>
-              <div className="image-input-empty-subtitle">JPG, PNG, WebP · click to upload</div>
+            <div className="image-input-empty-copy media-input-empty-copy">
+              <div className="image-input-empty-kicker media-input-empty-kicker">Image Input</div>
+              <div className="image-input-empty-title media-input-empty-title">Drop or choose image</div>
+              <div className="image-input-empty-subtitle media-input-empty-subtitle">JPG, PNG, WebP · click to upload</div>
             </div>
-            <div className="image-input-empty-cta">Select File</div>
+            <div className="image-input-empty-cta media-input-empty-cta">Select File</div>
           </button>
         )}
 

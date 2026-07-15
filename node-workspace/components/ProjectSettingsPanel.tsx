@@ -93,7 +93,7 @@ type Props = {
   onOrganizeFoundationScaffold?: () => void;
   onSetFoundationNodeView?: (visible: boolean) => void;
   foundationNodeView?: boolean;
-  onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab" | "cineworLab">) => void;
+  onOpenVisualLab?: (key?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab" | "cineworLab" | "designSystemLab">) => void;
 };
 
 export type ProjectSettingsPanelKey =
@@ -2887,6 +2887,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                     { key: "glassLab", actionKey: "glassLab" as const, title: "Glass Lab", detail: "调试玻璃、折射与悬浮面板的视觉参数。", Icon: ScanSearch, status: "independent lab" },
                     { key: "filmRollLab", actionKey: "filmRollLab" as const, title: "Film Lab", detail: "校准胶卷盒、leader、阴影和胶片实验室视觉系统。", Icon: ScanSearch, status: "independent lab" },
                     { key: "agentLab", actionKey: "agentLab" as const, title: "Agent Lab", detail: "检查 Agent runtime、工具调用与实验性能力面板。", Icon: Braces, status: "independent lab" },
+                    { key: "designSystemLab", actionKey: "designSystemLab" as const, title: "Design System", detail: "统一 Stylo 的视觉 token、组件层级、包装器材质与动效规则。当前为规范工作台占位。", Icon: ScanSearch, status: "foundation placeholder" },
                     { key: "manus", title: "Manus", detail: "剧本写作包装器：Fountain 解析、专业格式编辑、角色绑定与保存协调。", Icon: FileText, status: "source repository", href: PRODUCT_REPOSITORIES.manus },
                     { key: "lookbookLab", title: "LookBook", detail: "前期美术包装器：组织角色、场景身份与视觉开发资料。", Icon: FileText, status: "source repository", href: PRODUCT_REPOSITORIES.lookbook },
                     { key: "cinewor", actionKey: "cineworLab" as const, title: "Cinewor", detail: "原生电影调度工作台：以 3D 空间组织角色轨迹、机位与交付画幅，数据随当前项目保存。", Icon: Video, status: "integrated experiment" },
@@ -2896,7 +2897,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                     detail: string;
                     Icon: React.ComponentType<{ size?: number }>;
                     status: string;
-                    actionKey?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab" | "cineworLab">;
+                    actionKey?: Extract<ModuleKey, "glassLab" | "filmRollLab" | "agentLab" | "cineworLab" | "designSystemLab">;
                     href?: string;
                   }>).map((lab) => {
                     const content = (

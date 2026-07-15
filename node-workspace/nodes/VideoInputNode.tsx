@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { VideoInputNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { Film, Upload, X } from "lucide-react";
+import { FilmStrip, UploadSimple, X } from "@phosphor-icons/react";
 import { buildApiUrl } from "../../utils/api";
 import { buildAuthorizedJsonHeaders } from "../../utils/authToken";
 
@@ -214,7 +214,7 @@ export const VideoInputNode: React.FC<Props> = ({ id, data, selected }) => {
                   onClick={() => fileInputRef.current?.click()}
                   className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
                 >
-                  <Upload size={12} />
+                  <UploadSimple size={12} />
                   Replace
                 </button>
                 <button
@@ -244,19 +244,19 @@ export const VideoInputNode: React.FC<Props> = ({ id, data, selected }) => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="media-input-empty node-surface node-surface--dashed w-full min-h-[220px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
+            className="media-input-empty"
           >
-            <div className="h-14 w-14 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center shadow-inner">
-              <Film className="text-[var(--node-text-secondary)]" size={28} />
+            <div className="media-input-empty-icon">
+              <FilmStrip size={22} weight="duotone" />
             </div>
-            <div className="text-center">
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">
-                {isUploading ? "Uploading..." : isRefreshingUrl ? "Refreshing URL..." : "Upload Video"}
+            <div className="media-input-empty-copy">
+              <div className="media-input-empty-kicker">Video Input</div>
+              <div className="media-input-empty-title">
+                {isUploading ? "Uploading video…" : isRefreshingUrl ? "Refreshing video…" : "Drop or choose video"}
               </div>
-              <div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[var(--node-text-secondary)]">
-                MP4 / MOV / WebM
-              </div>
+              <div className="media-input-empty-subtitle">MP4, MOV, WebM · click to upload</div>
             </div>
+            <div className="media-input-empty-cta">Select File</div>
           </button>
         )}
 

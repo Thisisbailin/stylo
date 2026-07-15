@@ -7,7 +7,8 @@ export type ModuleKey =
   | "glassLab"
   | "filmRollLab"
   | "agentLab"
-  | "cineworLab";
+  | "cineworLab"
+  | "designSystemLab";
 
 type ModuleItem = {
   key: ModuleKey;
@@ -28,6 +29,7 @@ export const ModuleBar: React.FC<Props> = ({ modules, onOpen }) => {
     filmRollLab: "#f0b429",
     agentLab: "#f26b4f",
     cineworLab: "#6f8f88",
+    designSystemLab: "#7c827d",
   };
 
   return (

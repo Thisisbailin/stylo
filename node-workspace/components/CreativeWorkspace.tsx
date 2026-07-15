@@ -42,7 +42,7 @@ import type {
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
-import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
+import { removeLookbookIdentity, syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 import { analyzeScreenplay, createScreenplayPreview } from "../screenplay/fountainEngine";
 import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
 import type { EnsureProjectSynced } from "../../hooks/useCloudSync";
@@ -527,6 +527,20 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     },
     [setProjectData]
   );
+
+  const deleteLookbookIdentity = useCallback((roleId: string) => {
+    const updatedAt = Date.now();
+    setProjectData((previous) => {
+      const nextData = removeLookbookIdentity(previous, roleId);
+      if (nextData === previous) return previous;
+      return {
+        ...nextData,
+        flowProjects: previous.flowProjects?.length
+          ? saveActiveFlowIntoProjects(nextData, updatedAt)
+          : previous.flowProjects,
+      };
+    });
+  }, [setProjectData]);
 
   const splitScriptDocument = useCallback(
     ({ sourceNodeId, title, sourceContent, nextContent }: ScriptPageSplitCommit) => {
@@ -1323,9 +1337,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           <div className="canvas-empty-state" style={{ left: effectiveAgentDockWidth }} role="status">
             <span>Flow 从节点开始</span>
             <strong>创建第一个节点</strong>
-            <button type="button" onClick={() => handleFlowAddNode("text", { x: 100, y: 100 })}>
+            <button type="button" onClick={() => handleFlowAddNode("scriptPage", { x: 100, y: 100 })}>
               <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
-              <span>新建文本节点</span>
+              <span>创建 Manus</span>
             </button>
           </div>
         ) : null}
@@ -1425,9 +1439,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           setProjectData={setProjectData}
           initialScriptNodeId={editingScriptNodeId}
           isStyloOpen={!isStyloCollapsed}
+          agentDockWidth={effectiveAgentDockWidth}
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
+          onDeleteLookbookIdentity={deleteLookbookIdentity}
           onSplitScriptDocument={splitScriptDocument}
           onOpenLookbook={(identityNodeId) => {
             setEditingScriptNodeId(null);

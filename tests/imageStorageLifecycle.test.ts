@@ -85,8 +85,10 @@ test("Supabase deletion groups paths by bucket", async () => {
 });
 
 test("image card and connection feedback use image-first and theme-driven styling", async () => {
-  const [component, css] = await Promise.all([
+  const [component, audioComponent, videoComponent, css] = await Promise.all([
     readFile(path.resolve("node-workspace/nodes/ImageInputNode.tsx"), "utf8"),
+    readFile(path.resolve("node-workspace/nodes/AudioInputNode.tsx"), "utf8"),
+    readFile(path.resolve("node-workspace/nodes/VideoInputNode.tsx"), "utf8"),
     readFile(path.resolve("node-workspace/styles/nodeflow.css"), "utf8"),
   ]);
 
@@ -102,6 +104,11 @@ test("image card and connection feedback use image-first and theme-driven stylin
   assert.match(css, /\.image-input-media\s*\{[\s\S]*background:\s*transparent/);
   assert.match(css, /data-node-type="imageInput"\]\s+\.node-card-shell::before[\s\S]*background:\s*transparent/);
   assert.match(css, /\.image-input-icon-label/);
+  assert.match(component, /image-input-empty media-input-empty/);
+  assert.match(audioComponent, /className="media-input-empty"/);
+  assert.match(videoComponent, /className="media-input-empty"/);
+  assert.match(css, /\.text-node-shell\[data-has-content="false"\] \.text-node-editor[\s\S]*justify-content: center/);
+  assert.match(css, /\.media-input-empty \{[\s\S]*border: 1px solid var\(--node-border\)/);
   assert.match(css, /var\(--app-accent\)/);
   assert.doesNotMatch(css, /rgba\(74, 222, 128/);
 });

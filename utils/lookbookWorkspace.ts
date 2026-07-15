@@ -21,6 +21,9 @@ const MIN_ITEM_WIDTH = 0.1;
 const MAX_ITEM_WIDTH = 0.72;
 const MAX_WORLD_Y = 24;
 const ITEMS_PER_SPREAD = 6;
+const LOOKBOOK_PAGE_WIDTH = 0.5;
+const LOOKBOOK_PAGE_MARGIN_X = 0.028;
+const LOOKBOOK_PAGE_MARGIN_Y = 0.05;
 
 export const LOOKBOOK_SPREAD_HEIGHT = 0.68;
 
@@ -71,6 +74,43 @@ export const sanitizeLookbookLayout = (layout: LookbookLayout): LookbookLayout =
     rotation: clamp(layout.rotation, -6, 6),
     zIndex: Math.max(1, Math.round(layout.zIndex)),
     fit: layout.fit,
+  };
+};
+
+export const getLookbookPageIndexForLayout = (spreadIndex: number, layout: LookbookLayout) => {
+  const sanitized = sanitizeLookbookLayout(layout);
+  const side = sanitized.x + sanitized.width / 2 >= LOOKBOOK_PAGE_WIDTH ? 1 : 0;
+  return Math.max(0, Math.round(spreadIndex)) * 2 + side;
+};
+
+/** Keep one content item completely inside one physical page of the current spread. */
+export const fitLookbookLayoutToPage = (layout: LookbookLayout, pageIndex: number): LookbookLayout => {
+  const sanitized = sanitizeLookbookLayout(layout);
+  const targetSide = Math.max(0, Math.round(pageIndex)) % 2;
+  const sourceSide = sanitized.x + sanitized.width / 2 >= LOOKBOOK_PAGE_WIDTH ? 1 : 0;
+  const targetLeft = targetSide * LOOKBOOK_PAGE_WIDTH;
+  const sourceLeft = sourceSide * LOOKBOOK_PAGE_WIDTH;
+  // Keep a microscopic safety gutter so floating-point addition can never
+  // place the rendered edge one sub-pixel beyond the physical page.
+  const maximumWidth = LOOKBOOK_PAGE_WIDTH - LOOKBOOK_PAGE_MARGIN_X * 2 - 0.000001;
+  const maximumHeight = LOOKBOOK_SPREAD_HEIGHT - LOOKBOOK_PAGE_MARGIN_Y * 2 - 0.000001;
+  const width = Math.min(sanitized.width, maximumWidth);
+  const height = Math.min(sanitized.height, maximumHeight);
+  const localX = sanitized.x - sourceLeft;
+  return {
+    ...sanitized,
+    x: clamp(
+      targetLeft + localX,
+      targetLeft + LOOKBOOK_PAGE_MARGIN_X,
+      targetLeft + LOOKBOOK_PAGE_WIDTH - LOOKBOOK_PAGE_MARGIN_X - width
+    ),
+    y: clamp(
+      sanitized.y,
+      LOOKBOOK_PAGE_MARGIN_Y,
+      Math.max(LOOKBOOK_PAGE_MARGIN_Y, LOOKBOOK_SPREAD_HEIGHT - LOOKBOOK_PAGE_MARGIN_Y - height)
+    ),
+    width,
+    height,
   };
 };
 
@@ -603,11 +643,12 @@ export const updateLookbookNodeLayout = (
   const identityNodeId = findConnectedIdentityNodeId(projectData, nodeId);
   const indexNode = identityNodeId ? getLookbookIndexNode(projectData, identityNodeId) : undefined;
   if (!identityNodeId || !indexNode) return projectData;
-  const sanitized = sanitizeLookbookLayout(layout);
   const projected = projectLookbookBoardItems(projectData, identityNodeId);
   const currentEntries = readBookEntries(indexNode);
   const item = projected.find((candidate) => candidate.node.id === nodeId);
   if (!item) return projectData;
+  const targetPageIndex = getLookbookPageIndexForLayout(item.spreadIndex, layout);
+  const sanitized = fitLookbookLayoutToPage(layout, targetPageIndex);
   const entries = projected.map((candidate): LookbookBookEntry => ({
     nodeId: candidate.node.id,
     spreadIndex: candidate.spreadIndex,
@@ -638,11 +679,46 @@ export const moveLookbookNodeToSpread = (
   const entries = projectLookbookBoardItems(projectData, identityNodeId).map((item): LookbookBookEntry => ({
     nodeId: item.node.id,
     spreadIndex: item.node.id === nodeId ? nextSpreadIndex : item.spreadIndex,
-    layout: item.layout,
+    layout: item.node.id === nodeId
+      ? fitLookbookLayoutToPage(
+          item.layout,
+          nextSpreadIndex * 2 + (getLookbookPageIndexForLayout(item.spreadIndex, item.layout) % 2)
+        )
+      : item.layout,
   }));
   const currentEntries = readBookEntries(indexNode);
   if (entriesEqual(currentEntries, entries)) return projectData;
   return { ...projectData, flow: { ...flow, revision: (flow.revision || 0) + 1, flowNodes: withIndexEntries(flow.flowNodes, indexNode.id, entries) } };
+};
+
+export const moveLookbookNodeToPage = (
+  projectData: ProjectData,
+  identityNodeId: string,
+  nodeId: string,
+  pageIndex: number
+) => {
+  const flow = projectData.flow;
+  const indexNode = getLookbookIndexNode(projectData, identityNodeId);
+  if (!flow?.flowNodes || !indexNode) return projectData;
+  const nextPageIndex = Math.max(0, Math.round(pageIndex));
+  const nextSpreadIndex = Math.floor(nextPageIndex / 2);
+  const entries = projectLookbookBoardItems(projectData, identityNodeId).map((item): LookbookBookEntry => ({
+    nodeId: item.node.id,
+    spreadIndex: item.node.id === nodeId ? nextSpreadIndex : item.spreadIndex,
+    layout: item.node.id === nodeId
+      ? fitLookbookLayoutToPage(item.layout, nextPageIndex)
+      : item.layout,
+  }));
+  const currentEntries = readBookEntries(indexNode);
+  if (entriesEqual(currentEntries, entries)) return projectData;
+  return {
+    ...projectData,
+    flow: {
+      ...flow,
+      revision: (flow.revision || 0) + 1,
+      flowNodes: withIndexEntries(flow.flowNodes, indexNode.id, entries),
+    },
+  };
 };
 
 export const updateLookbookTextCard = (

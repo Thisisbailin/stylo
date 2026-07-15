@@ -116,6 +116,7 @@ const createRole = (
     profileDocumentId,
     profileNodeId: profileDocumentId,
     sourceDocumentIds: [sourceDocumentId],
+    sourceKind: "fountain",
     lastDerivedAt: now,
   };
 };
@@ -149,7 +150,7 @@ const makeIdentityNode = (role: ProjectRoleIdentity, sourceNode: NodeFlowNode | 
     id: `identity-${role.id}`,
     type: "lookbook",
     position: { x: origin.x + (order % 2) * 760, y: origin.y + 360 + Math.floor(order / 2) * 520 },
-    style: { width: 236, height: 292 },
+    style: { width: 286, height: 356 },
     data: {
       title: role.displayName || role.name,
       identityId: role.id,
@@ -219,6 +220,7 @@ export const addManualLookbookIdentity = (
   const role = {
     ...createRole({ name, kind }, "", now),
     sourceDocumentIds: [],
+    sourceKind: "manual" as const,
   };
   const flow = projectData.flow || { links: [] };
   const nodes = [...(flow.flowNodes || [])];
@@ -267,9 +269,28 @@ export const syncLookbookIdentitiesFromFountain = (
     return true;
   });
   const repairedDuplicates = roles.length !== existingRoles.length || nodes.length !== (flow.flowNodes || []).length;
-  if (!candidates.length && !repairedDuplicates) return projectData;
   const links = [...flow.links];
   const sourceNode = nodes.find((node) => node.id === input.sourceNodeId);
+  const referencedRoleIds = new Set(
+    candidates
+      .map((candidate) => findExactRole(roles, candidate)?.id)
+      .filter((roleId): roleId is string => !!roleId)
+  );
+  let removedSourceReference = false;
+
+  roles.forEach((role, index) => {
+    const sourceDocumentIds = role.sourceDocumentIds || [];
+    if (!sourceDocumentIds.includes(input.sourceNodeId) || referencedRoleIds.has(role.id)) return;
+    removedSourceReference = true;
+    roles[index] = {
+      ...role,
+      sourceDocumentIds: sourceDocumentIds.filter((sourceId) => sourceId !== input.sourceNodeId),
+      sourceKind: role.sourceKind || (role.lastDerivedAt ? "fountain" : undefined),
+      lastDerivedAt: now,
+    };
+  });
+
+  if (!candidates.length && !repairedDuplicates && !removedSourceReference) return projectData;
 
   candidates.forEach((candidate, order) => {
     let role = findExactRole(roles, candidate);
@@ -280,7 +301,10 @@ export const syncLookbookIdentitiesFromFountain = (
       const sourceDocumentIds = Array.from(new Set([...(role.sourceDocumentIds || []), input.sourceNodeId]));
       const profileNodeId = role.profileNodeId || `lookbook-index-${role.id}`;
       const profileDocumentId = role.profileDocumentId || profileNodeId;
-      const nextRole = { ...role, sourceDocumentIds, profileNodeId, profileDocumentId, lastDerivedAt: now };
+      const sourceKind = role.sourceKind || (
+        role.lastDerivedAt && (role.sourceDocumentIds || []).length ? "fountain" : "manual"
+      );
+      const nextRole = { ...role, sourceDocumentIds, sourceKind, profileNodeId, profileDocumentId, lastDerivedAt: now };
       roles[roles.indexOf(role)] = nextRole;
       role = nextRole;
     }
@@ -295,7 +319,7 @@ export const syncLookbookIdentitiesFromFountain = (
       identityNode = {
         ...identityNode,
         type: "lookbook",
-        style: { ...identityNode.style, width: 236, height: 292 },
+        style: { ...identityNode.style, width: 286, height: 356 },
         data: {
           ...identityNode.data,
           title: role.displayName || role.name,
@@ -326,6 +350,48 @@ export const syncLookbookIdentitiesFromFountain = (
       revision: (flow.revision || 0) + 1,
       flowNodes: nodes,
       links,
+    },
+  };
+};
+
+export const removeLookbookIdentity = (projectData: ProjectData, roleId: string): ProjectData => {
+  const role = (projectData.roles || []).find((item) => item.id === roleId);
+  if (!role) return projectData;
+
+  const flow = projectData.flow || { links: [] };
+  const identityNodeIds = new Set(
+    (flow.flowNodes || [])
+      .filter((node) => (
+        isLookbookNodeType(node.type) &&
+        ((node.data as { identityId?: string }).identityId === roleId ||
+          (node.data as { lookbookIdentityId?: string }).lookbookIdentityId === roleId)
+      ))
+      .map((node) => node.id)
+  );
+  const indexNodeIds = new Set(
+    (flow.flowNodes || [])
+      .filter((node) => (
+        node.id === role.profileNodeId ||
+        node.id === role.profileDocumentId ||
+        ((node.data as { lookbookIdentityId?: string; lookbookRole?: string }).lookbookIdentityId === roleId &&
+          (node.data as { lookbookRole?: string }).lookbookRole === "index")
+      ))
+      .map((node) => node.id)
+  );
+  const removedNodeIds = new Set([...identityNodeIds, ...indexNodeIds]);
+
+  return {
+    ...projectData,
+    roles: (projectData.roles || []).filter((item) => item.id !== roleId),
+    designAssets: (projectData.designAssets || []).filter((asset) => asset.refId !== roleId),
+    flow: {
+      ...flow,
+      revision: (flow.revision || 0) + 1,
+      flowNodes: (flow.flowNodes || []).filter((node) => !removedNodeIds.has(node.id)),
+      links: flow.links.filter((link) => !removedNodeIds.has(link.source) && !removedNodeIds.has(link.target)),
+      graphLinks: (flow.graphLinks || []).filter(
+        (link) => !removedNodeIds.has(link.sourceRef) && !removedNodeIds.has(link.targetRef)
+      ),
     },
   };
 };

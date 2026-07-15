@@ -7,6 +7,7 @@ import {
   getFirstLookbookImageNode,
   getVisibleLookbookMemberNodes,
   parseFountainIdentityCandidates,
+  removeLookbookIdentity,
   syncLookbookIdentitiesFromFountain,
 } from "../utils/lookbookIdentities";
 
@@ -66,7 +67,7 @@ test("Lookbook synchronization creates one wrapper, Markdown index, and boundary
   assert.equal(second.roles.length, 2);
   const lookbookNodes = second.flow?.flowNodes?.filter((node) => node.type === "lookbook") || [];
   assert.equal(lookbookNodes.length, 2);
-  assert.ok(lookbookNodes.every((node) => node.style?.width === 236 && node.style?.height === 292));
+  assert.ok(lookbookNodes.every((node) => node.style?.width === 286 && node.style?.height === 356));
   assert.equal(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").length, 2);
   assert.ok(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").every((node) => node.type === "text"));
   assert.equal(
@@ -103,6 +104,7 @@ test("Lookbook synchronization reuses an exact existing identity without overwri
   assert.equal(result.roles[0].summary, "用户确认的主角");
   assert.equal(result.roles[0].description, "保留这段人工档案。");
   assert.equal(result.roles[0].status, "verified");
+  assert.equal(result.roles[0].sourceKind, "manual");
   assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "lookbook").length, 1);
 });
 
@@ -150,6 +152,75 @@ test("Lookbook synchronization repairs duplicate flow node ids", () => {
   });
   const ids = result.flow?.flowNodes?.map((node) => node.id) || [];
   assert.equal(new Set(ids).size, ids.length);
+});
+
+test("Fountain synchronization withdraws only the source that no longer references an identity", () => {
+  const project = makeProject();
+  project.flow!.flowNodes!.push({
+    id: "script-second",
+    type: "scriptPage",
+    position: { x: 600, y: 80 },
+    data: { title: "第二页", text: "", documentKind: "script", format: "fountain" },
+  });
+  const first = syncLookbookIdentitiesFromFountain(project, {
+    sourceNodeId: "script-main",
+    content: "@林默\n出发。",
+    now: 600,
+  });
+  const second = syncLookbookIdentitiesFromFountain(first, {
+    sourceNodeId: "script-second",
+    content: "@林默\n别回头。",
+    now: 700,
+  });
+  const removedFromFirst = syncLookbookIdentitiesFromFountain(second, {
+    sourceNodeId: "script-main",
+    content: "只剩一段动作。",
+    now: 800,
+  });
+
+  assert.deepEqual(removedFromFirst.roles[0].sourceDocumentIds, ["script-second"]);
+  assert.equal(removedFromFirst.roles[0].sourceKind, "fountain");
+
+  const orphaned = syncLookbookIdentitiesFromFountain(removedFromFirst, {
+    sourceNodeId: "script-second",
+    content: "第二页也不再出现角色。",
+    now: 900,
+  });
+  assert.deepEqual(orphaned.roles[0].sourceDocumentIds, []);
+  assert.equal(orphaned.roles[0].sourceKind, "fountain");
+});
+
+test("Removing an orphaned Lookbook identity preserves connected source media", () => {
+  const synced = syncLookbookIdentitiesFromFountain(makeProject(), {
+    sourceNodeId: "script-main",
+    content: "@林默\n出发。",
+    now: 1000,
+  });
+  const role = synced.roles[0];
+  const identityNode = synced.flow!.flowNodes!.find((node) => node.data?.identityId === role.id)!;
+  synced.flow!.flowNodes!.push({
+    id: "portrait-source",
+    type: "imageInput",
+    position: { x: 900, y: 300 },
+    data: { image: "image:data", filename: "portrait.png", dimensions: null },
+  });
+  synced.flow!.links.push({ id: "portrait-link", source: identityNode.id, target: "portrait-source" });
+  synced.designAssets = [{
+    id: "asset-role",
+    category: "identity",
+    refId: role.id,
+    url: "image:data",
+    createdAt: 1000,
+  }];
+
+  const removed = removeLookbookIdentity(synced, role.id);
+
+  assert.equal(removed.roles.some((item) => item.id === role.id), false);
+  assert.equal(removed.flow!.flowNodes!.some((node) => node.data?.identityId === role.id), false);
+  assert.equal(removed.flow!.flowNodes!.some((node) => node.data?.lookbookIdentityId === role.id), false);
+  assert.equal(removed.flow!.flowNodes!.some((node) => node.id === "portrait-source"), true);
+  assert.equal(removed.flow!.links.some((link) => link.source === identityNode.id || link.target === identityNode.id), false);
+  assert.equal(removed.designAssets!.some((asset) => asset.refId === role.id), false);
 });
 
 test("Lookbook projection includes only directly connected archive and media nodes", () => {

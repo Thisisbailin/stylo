@@ -21,7 +21,9 @@ import {
   addLookbookImageAssets,
   addLookbookTextCard,
   getLookbookPageCount,
+  getLookbookPageIndexForLayout,
   getLookbookSpreadCount,
+  moveLookbookNodeToPage,
   moveLookbookNodeToSpread,
   projectLookbookBoardItems,
   reflowLookbookLayouts,
@@ -46,6 +48,7 @@ type ContextMenuState = {
   x: number;
   y: number;
   nodeId: string | null;
+  pageIndex: number | null;
 };
 
 type BookView =
@@ -70,6 +73,8 @@ export const LookbookStudioPanel: React.FC<Props> = ({
 }) => {
   const spreadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingImportPageRef = useRef<number | null>(null);
+  const dragTargetPageRef = useRef<number | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [bookView, setBookView] = useState<BookView>({ kind: "front" });
   const [turnDirection, setTurnDirection] = useState<-1 | 0 | 1>(0);
@@ -77,6 +82,8 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [dragTargetPageIndex, setDragTargetPageIndex] = useState<number | null>(null);
 
   const identityNode = useMemo(
     () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && isLookbookNodeType(node.type)),
@@ -139,16 +146,29 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     commitProjectMutation((previous) => updateLookbookTextCard(previous, nodeId, patch));
   }, [commitProjectMutation]);
 
-  const importFiles = useCallback(async (files: File[]) => {
+  const importFiles = useCallback(async (files: File[], targetPageIndex: number | null = null) => {
     if (!files.length || isImporting) return;
     setIsImporting(true);
     setErrorMessage("");
     try {
       const inspected = await inspectLookbookImageFiles(files);
       const assets = inspected.map((asset) => ({ ...asset, id: createLocalNodeId("lookbook-image") }));
-      commitProjectMutation((previous) => addLookbookImageAssets(previous, identityNodeId, assets));
+      commitProjectMutation((previous) => {
+        let next = addLookbookImageAssets(previous, identityNodeId, assets);
+        if (targetPageIndex !== null) {
+          assets.forEach((asset) => {
+            next = moveLookbookNodeToPage(next, identityNodeId, asset.id!, targetPageIndex);
+          });
+        }
+        return next;
+      });
       setSelectedNodeId(assets.at(-1)?.id || null);
-      setBookView({ kind: "spread", index: Math.floor((items.length + assets.length - 1) / 6) });
+      setBookView({
+        kind: "spread",
+        index: targetPageIndex === null
+          ? Math.floor((items.length + assets.length - 1) / 6)
+          : Math.floor(targetPageIndex / 2),
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "图片导入失败");
     } finally {
@@ -158,15 +178,25 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   }, [commitProjectMutation, identityNodeId, isImporting, items.length]);
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
-    void importFiles(Array.from(event.target.files || []));
+    const targetPageIndex = pendingImportPageRef.current;
+    pendingImportPageRef.current = null;
+    void importFiles(Array.from(event.target.files || []), targetPageIndex);
     event.target.value = "";
   };
 
-  const addTextCard = useCallback(() => {
+  const addTextCard = useCallback((targetPageIndex: number | null = null) => {
     const nodeId = createLocalNodeId("lookbook-note");
-    commitProjectMutation((previous) => addLookbookTextCard(previous, identityNodeId, Date.now(), nodeId).projectData);
+    commitProjectMutation((previous) => {
+      const created = addLookbookTextCard(previous, identityNodeId, Date.now(), nodeId).projectData;
+      return targetPageIndex === null
+        ? created
+        : moveLookbookNodeToPage(created, identityNodeId, nodeId, targetPageIndex);
+    });
     setSelectedNodeId(nodeId);
-    setBookView({ kind: "spread", index: Math.floor(items.length / 6) });
+    setBookView({
+      kind: "spread",
+      index: targetPageIndex === null ? Math.floor(items.length / 6) : Math.floor(targetPageIndex / 2),
+    });
   }, [commitProjectMutation, identityNodeId, items.length]);
 
   const addPage = useCallback(() => {
@@ -190,6 +220,36 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     );
     setSelectedNodeId(null);
   }, [currentPosition, spreadCount, turnDirection]);
+
+  const setDragTargetPage = useCallback((pageIndex: number | null) => {
+    dragTargetPageRef.current = pageIndex;
+    setDragTargetPageIndex(pageIndex);
+  }, []);
+
+  const handleItemDragStart = useCallback((nodeId: string) => {
+    setDraggingNodeId(nodeId);
+    setDragTargetPage(null);
+  }, [setDragTargetPage]);
+
+  const handleItemDragMove = useCallback((_nodeId: string, point: { x: number; y: number }) => {
+    const target = document.elementFromPoint(point.x, point.y)?.closest<HTMLElement>("[data-lookbook-page-index]");
+    const rawPageIndex = target?.dataset.lookbookPageIndex;
+    const nextPageIndex = rawPageIndex === undefined ? Number.NaN : Number(rawPageIndex);
+    setDragTargetPage(Number.isFinite(nextPageIndex) ? nextPageIndex : null);
+  }, [setDragTargetPage]);
+
+  const handleItemDragEnd = useCallback((nodeId: string, layout: LookbookLayout) => {
+    const targetPageIndex = dragTargetPageRef.current;
+    if (targetPageIndex === null) {
+      commitLayout(nodeId, layout);
+    } else {
+      commitProjectMutation((previous) => moveLookbookNodeToPage(previous, identityNodeId, nodeId, targetPageIndex));
+      setBookView({ kind: "spread", index: Math.floor(targetPageIndex / 2) });
+      setSelectedNodeId(nodeId);
+    }
+    setDraggingNodeId(null);
+    setDragTargetPage(null);
+  }, [commitLayout, commitProjectMutation, identityNodeId, setDragTargetPage]);
 
   useEffect(() => {
     if (turnDirection === 0) return;
@@ -238,7 +298,15 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     .filter((item) => item.node.type === "imageInput")
     .map((item) => readString(item.node.data.image))
     .filter(Boolean)
-    .slice(0, 2);
+    .slice(0, 1);
+  const pageItemCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    items.forEach((item) => {
+      const pageIndex = getLookbookPageIndexForLayout(item.spreadIndex, item.layout);
+      counts.set(pageIndex, (counts.get(pageIndex) || 0) + 1);
+    });
+    return counts;
+  }, [items]);
   const leftPageIndex = spreadIndex * 2;
   const rightPageIndex = leftPageIndex + 1;
   const hasLeftPage = leftPageIndex < pageCount;
@@ -269,12 +337,22 @@ export const LookbookStudioPanel: React.FC<Props> = ({
           if (eventTarget.closest("input, textarea, [contenteditable='true']")) return;
           event.preventDefault();
           const nodeElement = eventTarget.closest<HTMLElement>("[data-node-id]");
+          const spreadBounds = spreadRef.current?.getBoundingClientRect();
+          const pageIndex = bookView.kind === "spread" && pageCount > 0 && spreadBounds &&
+            event.clientX >= spreadBounds.left && event.clientX <= spreadBounds.right &&
+            event.clientY >= spreadBounds.top && event.clientY <= spreadBounds.bottom
+            ? Math.min(
+                pageCount - 1,
+                spreadIndex * 2 + (event.clientX >= spreadBounds.left + spreadBounds.width / 2 ? 1 : 0)
+              )
+            : null;
           const width = 220;
           const height = nodeElement ? 360 : 264;
           setContextMenu({
             x: Math.max(10, Math.min(window.innerWidth - width - 10, event.clientX)),
             y: Math.max(56, Math.min(window.innerHeight - height - 10, event.clientY)),
             nodeId: nodeElement?.dataset.nodeId || null,
+            pageIndex,
           });
           if (nodeElement?.dataset.nodeId) setSelectedNodeId(nodeElement.dataset.nodeId);
         }}
@@ -294,19 +372,29 @@ export const LookbookStudioPanel: React.FC<Props> = ({
         }}
         onDrop={(event) => {
           event.preventDefault();
-          void importFiles(Array.from(event.dataTransfer.files));
+          const spreadBounds = spreadRef.current?.getBoundingClientRect();
+          const targetPageIndex = bookView.kind === "spread" && spreadBounds &&
+            event.clientX >= spreadBounds.left && event.clientX <= spreadBounds.right &&
+            event.clientY >= spreadBounds.top && event.clientY <= spreadBounds.bottom
+            ? Math.min(
+                Math.max(0, pageCount - 1),
+                spreadIndex * 2 + (event.clientX >= spreadBounds.left + spreadBounds.width / 2 ? 1 : 0)
+              )
+            : null;
+          void importFiles(Array.from(event.dataTransfer.files), targetPageIndex);
         }}
       >
-        <AnimatePresence initial={false}>
+        <div className="lookbook-studio__book-viewport">
+        <AnimatePresence initial={false} mode="sync">
           {bookView.kind === "front" ? (
             <motion.button
               key="front-cover"
               type="button"
               className="lookbook-book-cover"
               onClick={() => turnTo(0)}
-              initial={{ opacity: 0, x: -24, scale: 0.985 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -20, scale: 0.99 }}
+              initial={{ opacity: 0, x: -22 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -18 }}
               transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
               aria-label={`打开 ${name} Lookbook`}
             >
@@ -314,8 +402,8 @@ export const LookbookStudioPanel: React.FC<Props> = ({
               <span className="lookbook-book-cover__title">{name}</span>
               <span className="lookbook-book-cover__images" data-count={coverImageUrls.length || 0}>
                 {coverImageUrls.length
-                  ? coverImageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt="" draggable={false} />)
-                  : <><span className="lookbook-book-cover__empty" /><span className="lookbook-book-cover__empty" /></>}
+                  ? <img src={coverImageUrls[0]} alt="" draggable={false} />
+                  : <span className="lookbook-book-cover__empty" />}
               </span>
               <span className="lookbook-book-cover__meta"><b>@{mention}</b><b>{identityLabel}</b><b>STYLO ARCHIVE</b></span>
             </motion.button>
@@ -325,9 +413,9 @@ export const LookbookStudioPanel: React.FC<Props> = ({
               type="button"
               className="lookbook-book-cover lookbook-book-cover--back"
               onClick={() => turnTo(spreadCount - 1)}
-              initial={{ opacity: 0, x: 24, scale: 0.985 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 20, scale: 0.99 }}
+              initial={{ opacity: 0, x: 22 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 18 }}
               transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
               aria-label={`返回 ${name} Lookbook 最后一页`}
             >
@@ -339,9 +427,9 @@ export const LookbookStudioPanel: React.FC<Props> = ({
             <motion.div
               key={`spread-${spreadIndex}`}
               className="lookbook-book-shell"
-              initial={{ opacity: 0, x: turnDirection >= 0 ? 28 : -28, scale: 0.992 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: turnDirection >= 0 ? -22 : 22, scale: 0.994 }}
+              initial={{ opacity: 0, x: turnDirection >= 0 ? 24 : -24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: turnDirection >= 0 ? -20 : 20 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
               <button
@@ -372,11 +460,15 @@ export const LookbookStudioPanel: React.FC<Props> = ({
                     item={item}
                     boardRef={spreadRef}
                     worldHeight={LOOKBOOK_SPREAD_HEIGHT}
+                    pageCount={pageCount}
                     selected={selectedNodeId === item.node.id}
                     index={index}
                     onSelect={setSelectedNodeId}
                     onCommitLayout={commitLayout}
                     onCommitText={commitText}
+                    onItemDragStart={handleItemDragStart}
+                    onItemDragMove={handleItemDragMove}
+                    onItemDragEnd={handleItemDragEnd}
                   />
                 ))}
 
@@ -403,6 +495,37 @@ export const LookbookStudioPanel: React.FC<Props> = ({
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
+
+        {bookView.kind === "spread" && pageCount > 0 ? (
+          <nav
+            className={`lookbook-page-strip ${draggingNodeId ? "is-dragging" : ""}`}
+            aria-label="Lookbook 页缩略图"
+          >
+            <span className="lookbook-page-strip__label">{draggingNodeId ? "拖到目标页后释放" : "页面"}</span>
+            <div className="lookbook-page-strip__rail">
+              {Array.from({ length: pageCount }, (_, pageIndex) => {
+                const itemCount = pageItemCounts.get(pageIndex) || 0;
+                const isCurrent = Math.floor(pageIndex / 2) === spreadIndex;
+                return (
+                  <button
+                    key={pageIndex}
+                    type="button"
+                    className={`${isCurrent ? "is-current" : ""} ${dragTargetPageIndex === pageIndex ? "is-drop-target" : ""}`}
+                    data-lookbook-page-index={pageIndex}
+                    aria-label={`跳转到第 ${pageIndex + 1} 页${itemCount ? `，${itemCount} 个内容` : "，空页"}`}
+                    onClick={() => turnTo(Math.floor(pageIndex / 2))}
+                  >
+                    <span className="lookbook-page-strip__paper" data-items={Math.min(itemCount, 3)}>
+                      {Array.from({ length: Math.min(itemCount, 3) }, (_, index) => <i key={index} />)}
+                    </span>
+                    <b>{pageIndex + 1}</b>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        ) : null}
 
         <div className="lookbook-studio__hint">
           <span>{bookView.kind === "front"
@@ -491,10 +614,14 @@ export const LookbookStudioPanel: React.FC<Props> = ({
             </>
           ) : null}
 
-          <button type="button" role="menuitem" onClick={() => { fileInputRef.current?.click(); setContextMenu(null); }}>
+          <button type="button" role="menuitem" onClick={() => {
+            pendingImportPageRef.current = contextMenu.pageIndex;
+            fileInputRef.current?.click();
+            setContextMenu(null);
+          }}>
             <ImageSquare size={15} /><span>导入图片</span>
           </button>
-          <button type="button" role="menuitem" onClick={() => { addTextCard(); setContextMenu(null); }}>
+          <button type="button" role="menuitem" onClick={() => { addTextCard(contextMenu.pageIndex); setContextMenu(null); }}>
             <NotePencil size={15} /><span>添加文本</span>
           </button>
           <button type="button" role="menuitem" onClick={() => { addPage(); setContextMenu(null); }}>

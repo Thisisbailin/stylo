@@ -25,9 +25,9 @@ type Props<T extends string = NodeType> = {
 };
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
-    { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain" },
-    { label: "Markdown 文本", hint: "文本节点即 Markdown 文档", type: "text", Icon: Plus, group: "script", meta: "Markdown" },
-    { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "library", meta: "Auto", disabled: true, disabledHint: "由剧本角色或场景自动生成" },
+    { label: "Manus", hint: "剧本包装器 · Fountain", type: "scriptPage", Icon: Plus, group: "wrapper", meta: "Fountain" },
+    { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "wrapper", meta: "Identity", disabled: true, disabledHint: "由剧本身份生成" },
+    { label: "文本", hint: "Markdown 文本节点", type: "text", Icon: Plus, group: "input", meta: "Text" },
     { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input" },
     { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input" },
     { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input" },
@@ -40,8 +40,7 @@ const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
   ];
 
 const groupLabels: Record<string, string> = {
-  script: "文档",
-  library: "档案",
+  wrapper: "创作包装器",
   input: "输入",
   generation: "图像",
   motion: "视频",

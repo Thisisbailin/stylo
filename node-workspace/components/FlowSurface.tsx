@@ -165,6 +165,12 @@ type FoundationBoundaryEdgeData = {
 };
 
 type FlowRenderEdge = Edge<FoundationBoundaryEdgeData>;
+type WrapperMemberMotion = {
+  wrapperId: string;
+  mode: "collapsing" | "expanding";
+  memberIds: string[];
+  offsets: Record<string, { x: number; y: number; order: number }>;
+};
 type FlowCreateType = "scriptPage" | "mdText" | NodeType;
 type ScriptHandleType = "image" | "text" | "audio" | "video" | "multi";
 type FoundationGatewaySettingsPanel = "assets" | "identity" | "skills";
@@ -289,7 +295,7 @@ const markdownNodeId = (documentId: string) => `md-${documentId}`;
 
 const isScriptPageNodeId = (id?: string | null) => !!id && id.startsWith("script-");
 const isMarkdownNodeId = (id?: string | null) => !!id && id.startsWith("md-");
-type ScriptCreateGroup = "script" | "library" | "input" | "generation" | "motion";
+type ScriptCreateGroup = "wrapper" | "input" | "generation" | "motion";
 type ScriptCreateOption = ConnectionDropMenuOption<FlowCreateType> & {
   group: ScriptCreateGroup;
   meta: string;
@@ -298,20 +304,20 @@ type ScriptCreateOption = ConnectionDropMenuOption<FlowCreateType> & {
 };
 
 const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
-  { key: "script", label: "文档" },
-  { key: "library", label: "资料" },
+  { key: "wrapper", label: "创作包装器" },
   { key: "input", label: "输入" },
   { key: "generation", label: "图像" },
   { key: "motion", label: "影像" },
 ];
 
 const scriptCreateOptions: ScriptCreateOption[] = [
-  { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
-  { label: "Markdown 文本", hint: "文本节点即 Markdown 文档", type: "text", Icon: Plus, group: "script", meta: "Markdown", tone: "is-slate", surface: "paper" },
-  { label: "文件夹", hint: "由 foundation 自动生成", type: "folder", Icon: Folder, group: "script", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "仅可查看" },
-  { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "library", meta: "Auto", tone: "is-moss", surface: "card", disabled: true, disabledHint: "由剧本角色或场景自动生成" },
+  { label: "Manus", hint: "剧本包装器 · 创建第一张稿纸", type: "scriptPage", Icon: FileText, group: "wrapper", meta: "Fountain", tone: "is-slate", surface: "paper" },
+  { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "wrapper", meta: "Identity", tone: "is-moss", surface: "card", disabled: true, disabledHint: "由剧本身份生成" },
+  { label: "Cinewor", hint: "镜头与调度包装器", type: "scriptBoard", Icon: Clapperboard, group: "wrapper", meta: "Soon", tone: "is-rose", surface: "card", disabled: true, disabledHint: "即将开放" },
+  { label: "文件夹", hint: "由 Foundation 自动生成", type: "folder", Icon: Folder, group: "wrapper", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "由系统管理" },
+  { label: "文本", hint: "Markdown 文本节点", type: "text", Icon: Pencil, group: "input", meta: "Text", tone: "is-slate", surface: "paper" },
   { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
-  { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
+  { label: "声音", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
   { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
   { label: "图像生成", hint: "生成概念图", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
   { label: "Nano Banana", hint: "图像生成", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
@@ -450,7 +456,7 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   measured: sanitizeScriptMeasured(node.measured),
   selected: false,
   style: isLookbookNodeType(node.type)
-    ? { ...node.style, width: 236, height: 292 }
+    ? { ...node.style, width: 286, height: 356 }
     : node.type === "scriptPage"
       ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
       : node.style,
@@ -606,6 +612,7 @@ type ScriptFoundationProps = {
   onCreateArchiveNode: () => void;
   onCreateScriptNode: () => void;
   onCreateFlowNode: (type: NodeType) => void;
+  hasScriptPage: boolean;
   flowProjects: NonNullable<ProjectData["flowProjects"]>;
   activeFlowProjectId: string;
   onSwitchFlowProject: (projectId: string) => void;
@@ -765,6 +772,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onCreateArchiveNode,
   onCreateScriptNode,
   onCreateFlowNode,
+  hasScriptPage,
   flowProjects,
   activeFlowProjectId,
   onSwitchFlowProject,
@@ -799,6 +807,10 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isFoundationExpanded, setIsFoundationExpanded] = useState(false);
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
+  const availableScriptCreateOptions = useMemo(
+    () => scriptCreateOptions.filter((option) => option.type !== "scriptPage" || !hasScriptPage),
+    [hasScriptPage]
+  );
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const weightedBlocksByAxis = useMemo(
     () => ({
@@ -1381,7 +1393,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
       {nodeCreateMenu ? (
         <div
           className="script-foundation-node-menu-wrap"
-          style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 430)}
+          style={getFoundationMenuStyle(nodeCreateMenu.x, nodeCreateMenu.y, 320)}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <section className="script-foundation-floating-menu script-foundation-node-popover script-foundation-node-palette">
@@ -1391,7 +1403,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
             </header>
             <div className="script-foundation-node-palette__groups">
               {scriptCreateGroups.map((group) => {
-                const options = scriptCreateOptions.filter((option) => option.group === group.key);
+                const options = availableScriptCreateOptions.filter((option) => option.group === group.key);
                 if (!options.length) return null;
                 return (
                   <div key={group.key} className="script-foundation-node-group">
@@ -1838,6 +1850,8 @@ export const useFlowSurface = ({
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
   const wrapperClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [wrapperMemberMotion, setWrapperMemberMotion] = useState<WrapperMemberMotion | null>(null);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
   const flow = useMemo(() => ensureFlow(projectData.flow), [projectData.flow]);
   const flowProjects = useMemo(() => getFlowProjectsForState(projectData), [projectData]);
@@ -1850,6 +1864,7 @@ export const useFlowSurface = ({
 
   useEffect(() => () => {
     if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
+    if (wrapperMotionTimerRef.current) clearTimeout(wrapperMotionTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -2054,25 +2069,42 @@ export const useFlowSurface = ({
     return (flow.flowNodes || [])
       .filter((node) => !visibleFlowNodeIds || visibleFlowNodeIds.has(node.id))
       .filter((node) => showFoundationNodes || !getFoundationNodeRole(node))
-      .map((node, index) => ({
-        ...node,
-        position: node.position || getDefaultFlowNodePosition(index),
-        style: isLookbookNodeType(node.type)
-          ? { ...node.style, width: 236, height: 292 }
+      .map((node, index) => {
+        const memberMotion = wrapperMemberMotion?.offsets[node.id];
+        const isMotionMember = Boolean(memberMotion);
+        const baseStyle = isLookbookNodeType(node.type)
+          ? { ...node.style, width: 286, height: 356 }
           : node.type === "scriptPage"
             ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
-            : node.style,
-        hidden: wrapperProjection.hiddenNodeIds.has(node.id),
-        selected: selectedNodeIds.has(node.id),
-        data: {
-          ...createDefaultNodeFlowNodeData(node.type),
-          ...(node.data || {}),
-          wrapperMemberCount: wrapperProjection.memberIdsByWrapper.get(node.id)?.length || 0,
-          wrapperRoot: isLookbookNodeType(node.type) || wrapperProjection.screenplayRootIds.has(node.id),
-          agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
-        } as NodeFlowNodeData,
-      }));
-  }, [flow.flowNodes, pendingScriptReviewNodeIds, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds, wrapperProjection]);
+            : node.style;
+        const motionStyle = memberMotion
+          ? {
+              ...baseStyle,
+              "--wrapper-motion-x": `${memberMotion.x}px`,
+              "--wrapper-motion-y": `${memberMotion.y}px`,
+              "--wrapper-motion-delay": `${Math.min(memberMotion.order, 8) * 18}ms`,
+            } as CSSProperties & Record<`--wrapper-motion-${string}`, string>
+          : baseStyle;
+        const existingClassName = (node as NodeFlowNode & { className?: string }).className;
+        return {
+          ...node,
+          position: node.position || getDefaultFlowNodePosition(index),
+          className: [existingClassName, isMotionMember ? `wrapper-member--${wrapperMemberMotion?.mode}` : ""]
+            .filter(Boolean)
+            .join(" "),
+          style: motionStyle,
+          hidden: wrapperProjection.hiddenNodeIds.has(node.id) && !isMotionMember,
+          selected: selectedNodeIds.has(node.id),
+          data: {
+            ...createDefaultNodeFlowNodeData(node.type),
+            ...(node.data || {}),
+            wrapperMemberCount: wrapperProjection.memberIdsByWrapper.get(node.id)?.length || 0,
+            wrapperRoot: isLookbookNodeType(node.type) || wrapperProjection.screenplayRootIds.has(node.id),
+            agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
+          } as NodeFlowNodeData,
+        };
+      });
+  }, [flow.flowNodes, pendingScriptReviewNodeIds, selectedNodeIds, showFoundationNodes, visibleFlowNodeIds, wrapperMemberMotion, wrapperProjection]);
 
   const foundationBlockFolderNodes = useMemo(
     () =>
@@ -2134,6 +2166,10 @@ export const useFlowSurface = ({
     return flow.links
       .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
       .map((link) => {
+        const sourceIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.source]);
+        const targetIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.target]);
+        const isWrapperMotionEdge = sourceIsMotionMember || targetIsMotionMember;
+        const isProjectedHiddenEdge = wrapperProjection.hiddenNodeIds.has(link.source) || wrapperProjection.hiddenNodeIds.has(link.target);
         const sourceVisual = foundationBlockVisuals.get(link.source);
         const targetRole = getFoundationNodeRole(flowNodeById.get(link.target));
         const isFoundationBoundary = Boolean(sourceVisual && !targetRole);
@@ -2160,6 +2196,8 @@ export const useFlowSurface = ({
           targetHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.targetHandle || "text",
           type: isFoundationBoundary ? "foundationBoundary" : "default",
           animated: false,
+          hidden: isProjectedHiddenEdge && !isWrapperMotionEdge,
+          className: isWrapperMotionEdge ? `wrapper-edge--${wrapperMemberMotion?.mode}` : undefined,
           deletable: !isFoundationStructuralLink(flow, link),
           zIndex: isFoundationBoundary ? 2 : 0,
           data: isFoundationBoundary
@@ -2188,6 +2226,8 @@ export const useFlowSurface = ({
     foundationProjection.positions,
     nodeIdSet,
     virtualizedNodeIndex,
+    wrapperMemberMotion,
+    wrapperProjection.hiddenNodeIds,
   ]);
 
   const persistFlow = useCallback(
@@ -3648,6 +3688,27 @@ export const useFlowSurface = ({
   );
 
   const toggleWrapperCollapsed = useCallback((nodeId: string) => {
+    const wrapperNode = (flow.flowNodes || []).find((node) => node.id === nodeId);
+    const memberIds = wrapperProjection.memberIdsByWrapper.get(nodeId) || [];
+    const isCollapsing = wrapperNode?.data?.wrapperCollapsed !== true;
+    const wrapperPosition = wrapperNode?.position || { x: 0, y: 0 };
+    const nodeById = new Map((flow.flowNodes || []).map((node) => [node.id, node]));
+    const offsets = Object.fromEntries(memberIds.flatMap((memberId, order) => {
+      const member = nodeById.get(memberId);
+      if (!member) return [];
+      return [[memberId, {
+        x: wrapperPosition.x - member.position.x,
+        y: wrapperPosition.y - member.position.y,
+        order,
+      }]];
+    }));
+    if (wrapperMotionTimerRef.current) clearTimeout(wrapperMotionTimerRef.current);
+    setWrapperMemberMotion({
+      wrapperId: nodeId,
+      mode: isCollapsing ? "collapsing" : "expanding",
+      memberIds,
+      offsets,
+    });
     persistFlow((currentFlow) => ({
       ...currentFlow,
       revision: (currentFlow.revision || 0) + 1,
@@ -3663,7 +3724,11 @@ export const useFlowSurface = ({
           : node
       ),
     }));
-  }, [persistFlow]);
+    wrapperMotionTimerRef.current = setTimeout(() => {
+      wrapperMotionTimerRef.current = null;
+      setWrapperMemberMotion((current) => current?.wrapperId === nodeId ? null : current);
+    }, 480);
+  }, [flow.flowNodes, persistFlow, wrapperProjection.memberIdsByWrapper]);
 
   const handleScriptNodeClick = useCallback(
     (node: FlowRenderNode) => {
@@ -3701,7 +3766,7 @@ export const useFlowSurface = ({
       {connectionDrop ? (
         <ConnectionDropMenu
           position={connectionDrop.position}
-          options={scriptCreateOptions}
+          options={scriptCreateOptions.filter((option) => option.type !== "scriptPage" || !nodes.some((node) => node.type === "scriptPage"))}
           subtitle="创建 Flow 节点"
           onCreate={handleDropCreate}
           onClose={() => setConnectionDrop(null)}
@@ -3716,7 +3781,7 @@ export const useFlowSurface = ({
             className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-4 text-[13px] font-semibold text-[var(--app-text-primary)] shadow-[var(--app-shadow)] transition hover:border-[var(--app-border-strong)]"
           >
             <Plus size={16} />
-            Flow
+            Manus
           </button>
         </div>
       ) : null}
@@ -3742,6 +3807,7 @@ export const useFlowSurface = ({
           axisRevealRequest={axisRevealRequest}
           onCreateArchiveNode={handleAddMarkdownNodeFromTail}
           onCreateScriptNode={handleAddScriptPageFromTail}
+          hasScriptPage={nodes.some((node) => node.type === "scriptPage")}
           onCreateFlowNode={(type) => {
             const position =
               typeof window === "undefined"

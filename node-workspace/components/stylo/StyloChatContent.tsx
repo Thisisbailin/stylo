@@ -465,7 +465,6 @@ type MessageItemViewProps = {
   expanded: boolean;
   attachRef: boolean;
   currentItemRef: React.MutableRefObject<HTMLDivElement | null>;
-  latestBlockMaxHeight?: number;
   onApprovalChoice?: (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => void;
 };
 
@@ -474,7 +473,6 @@ const MessageItemView = memo(function MessageItemView({
   expanded,
   attachRef,
   currentItemRef,
-  latestBlockMaxHeight,
   onApprovalChoice,
 }: MessageItemViewProps) {
   const isUser = item.kind === "chat" && item.message.role === "user";
@@ -486,7 +484,6 @@ const MessageItemView = memo(function MessageItemView({
       className={`stylo-message-item flex ${isUser ? "justify-end" : "justify-start"} ${isAssistantPanel ? "w-full" : ""}`}
       data-current={attachRef}
       data-message-kind={item.kind}
-      style={attachRef && latestBlockMaxHeight ? { maxHeight: `${latestBlockMaxHeight}px`, overflowY: "auto" } : undefined}
     >
       {item.kind === "status" ? (
         renderStatusLine(item.message, { expanded })
@@ -513,7 +510,6 @@ const MessageItemView = memo(function MessageItemView({
   previous.expanded === next.expanded &&
   previous.attachRef === next.attachRef &&
   previous.currentItemRef === next.currentItemRef &&
-  previous.latestBlockMaxHeight === next.latestBlockMaxHeight &&
   previous.onApprovalChoice === next.onApprovalChoice &&
   areDisplayMessagesEqual(previous.item, next.item)
 );
@@ -549,6 +545,7 @@ export const StyloChatContent: React.FC<Props> = ({
   );
 
   const followLatestContent = useCallback(() => {
+    if (!isSending) return;
     if (revealMode !== "scroll" && revealMode !== "latest") return;
     if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
     scrollFrameRef.current = requestAnimationFrame(() => {
@@ -556,18 +553,21 @@ export const StyloChatContent: React.FC<Props> = ({
       const node = messagesRef.current;
       const currentNode = currentItemRef.current;
       if (!node || !currentNode) return;
-      if (currentNode.scrollHeight > currentNode.clientHeight) {
-        currentNode.scrollTop = currentNode.scrollHeight;
-      }
       node.scrollTop = getCurrentAnchorScrollTop(node, currentNode);
     });
-  }, [getCurrentAnchorScrollTop, revealMode]);
+  }, [getCurrentAnchorScrollTop, isSending, revealMode]);
 
   useEffect(() => {
+    if (!isSending) {
+      if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+      return;
+    }
     followLatestContent();
   }, [displayMessages.length, followLatestContent, isSending, latestRevealItem?.key, messages]);
 
   useEffect(() => {
+    if (!isSending) return;
     const listNode = messageListRef.current;
     const currentNode = currentItemRef.current;
     if (!listNode || !currentNode) return;
@@ -583,7 +583,7 @@ export const StyloChatContent: React.FC<Props> = ({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [followLatestContent, latestRevealItem?.key]);
+  }, [followLatestContent, isSending, latestRevealItem?.key]);
 
   useEffect(() => () => {
     if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
@@ -610,16 +610,18 @@ export const StyloChatContent: React.FC<Props> = ({
             <span>描述你想创建、整理或修改的内容。</span>
           </div>
         ) : displayMessages.map((item) => {
-          const isCurrentReveal = revealMode === "latest" && latestRevealItem ? item.key === latestRevealItem.key : false;
+          const isCurrentReveal = isSending && revealMode === "latest" && latestRevealItem
+            ? item.key === latestRevealItem.key
+            : false;
           const isLatestListItem = item === displayMessages[displayMessages.length - 1];
+          const shouldAttachRef = isSending && (revealMode === "latest" ? isCurrentReveal : isLatestListItem);
           return (
             <MessageItemView
               key={item.key}
               item={item}
               expanded={isCurrentReveal}
-              attachRef={revealMode === "latest" ? isCurrentReveal : isLatestListItem}
+              attachRef={shouldAttachRef}
               currentItemRef={currentItemRef}
-              latestBlockMaxHeight={revealMode === "latest" ? latestBlockMaxHeight : undefined}
               onApprovalChoice={onApprovalChoice}
             />
           );

@@ -10,17 +10,25 @@ import {
 } from "@phosphor-icons/react";
 import type { LookbookLayout } from "../../types";
 import type { LookbookBoardItem } from "../../../utils/lookbookWorkspace";
-import { sanitizeLookbookLayout } from "../../../utils/lookbookWorkspace";
+import {
+  fitLookbookLayoutToPage,
+  getLookbookPageIndexForLayout,
+  sanitizeLookbookLayout,
+} from "../../../utils/lookbookWorkspace";
 
 type Props = {
   item: LookbookBoardItem;
   boardRef: React.RefObject<HTMLDivElement | null>;
   worldHeight: number;
+  pageCount: number;
   selected: boolean;
   index: number;
   onSelect: (nodeId: string) => void;
   onCommitLayout: (nodeId: string, layout: LookbookLayout) => void;
   onCommitText: (nodeId: string, patch: { title?: string; text?: string }) => void;
+  onItemDragStart: (nodeId: string) => void;
+  onItemDragMove: (nodeId: string, point: { x: number; y: number }) => void;
+  onItemDragEnd: (nodeId: string, layout: LookbookLayout) => void;
 };
 
 const readString = (value: unknown) => typeof value === "string" ? value : "";
@@ -39,11 +47,15 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
   item,
   boardRef,
   worldHeight,
+  pageCount,
   selected,
   index,
   onSelect,
   onCommitLayout,
   onCommitText,
+  onItemDragStart,
+  onItemDragMove,
+  onItemDragEnd,
 }: Props) {
   const itemRef = useRef<HTMLElement | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -72,11 +84,16 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
 
   const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const boardWidth = boardRef.current?.getBoundingClientRect().width || 1;
-    onCommitLayout(item.node.id, sanitizeLookbookLayout({
+    const proposed = sanitizeLookbookLayout({
       ...item.layout,
       x: clamp(item.layout.x + info.offset.x / boardWidth, 0, 1 - item.layout.width),
       y: clamp(item.layout.y + info.offset.y / boardWidth, 0, worldHeight - item.layout.height),
-    }));
+    });
+    const inferredPage = Math.min(
+      Math.max(0, pageCount - 1),
+      getLookbookPageIndexForLayout(item.spreadIndex, proposed)
+    );
+    onItemDragEnd(item.node.id, fitLookbookLayoutToPage(proposed, inferredPage));
   };
 
   const beginResize = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -145,8 +162,8 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
         zIndex: item.layout.zIndex,
         rotate: item.layout.rotation,
       }}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ type: "spring", stiffness: 190, damping: 25, delay: Math.min(index, 6) * 0.025 }}
       drag
       dragControls={dragControls}
@@ -155,7 +172,11 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
       dragElastic={0}
       dragConstraints={boardRef}
       whileDrag={{ scale: 1.01 }}
-      onDragStart={() => onSelect(item.node.id)}
+      onDragStart={() => {
+        onSelect(item.node.id);
+        onItemDragStart(item.node.id);
+      }}
+      onDrag={(_event, info) => onItemDragMove(item.node.id, info.point)}
       onDragEnd={handleDragEnd}
       onPointerDown={() => onSelect(item.node.id)}
       aria-label={title}
@@ -224,10 +245,14 @@ export const LookbookBoardItemView = memo(function LookbookBoardItemView({
   sameLayout(previous.item.layout, next.item.layout) &&
   previous.item.aspectRatio === next.item.aspectRatio &&
   previous.worldHeight === next.worldHeight &&
+  previous.pageCount === next.pageCount &&
   previous.selected === next.selected &&
   previous.index === next.index &&
   previous.boardRef === next.boardRef &&
   previous.onSelect === next.onSelect &&
   previous.onCommitLayout === next.onCommitLayout &&
-  previous.onCommitText === next.onCommitText
+  previous.onCommitText === next.onCommitText &&
+  previous.onItemDragStart === next.onItemDragStart &&
+  previous.onItemDragMove === next.onItemDragMove &&
+  previous.onItemDragEnd === next.onItemDragEnd
 );

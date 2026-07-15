@@ -533,7 +533,7 @@ test("message timeline projects a synthetic long conversation within the renderi
   assert.ok(elapsedMs < 1_000, `10,000-message timeline projection took ${elapsedMs.toFixed(1)}ms`);
 });
 
-test("Agent history rendering coalesces scroll frames and isolates offscreen message work", () => {
+test("Agent follows streaming output but releases scroll position after completion", () => {
   const componentSource = readFileSync("node-workspace/components/stylo/StyloChatContent.tsx", "utf8");
   const styleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
 
@@ -541,8 +541,11 @@ test("Agent history rendering coalesces scroll frames and isolates offscreen mes
   assert.match(componentSource, /cancelAnimationFrame\(scrollFrameRef\.current\)/);
   assert.match(componentSource, /new ResizeObserver\(followLatestContent\)/);
   assert.match(componentSource, /new MutationObserver\(followLatestContent\)/);
-  assert.match(componentSource, /currentNode\.scrollTop = currentNode\.scrollHeight/);
+  assert.match(componentSource, /if \(!isSending\) return/);
+  assert.match(componentSource, /const shouldAttachRef = isSending/);
   assert.match(componentSource, /node\.scrollTop = getCurrentAnchorScrollTop\(node, currentNode\)/);
+  assert.doesNotMatch(componentSource, /currentNode\.scrollTop\s*=/);
+  assert.doesNotMatch(componentSource, /style=\{attachRef && latestBlockMaxHeight/);
   assert.match(styleSource, /\.stylo-message-item:not\(\[data-current="true"\]\)[\s\S]*content-visibility:\s*auto/);
   assert.match(styleSource, /contain-intrinsic-block-size:\s*auto 76px/);
 });

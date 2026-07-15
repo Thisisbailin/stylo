@@ -249,6 +249,7 @@ export interface ProjectRoleIdentity {
   profileDocumentId?: string;
   profileNodeId?: string;
   sourceDocumentIds?: string[];
+  sourceKind?: "fountain" | "manual";
   lastDerivedAt?: number;
 }
 

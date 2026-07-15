@@ -642,6 +642,7 @@ export const StyloAgent: React.FC<Props> = ({
   const [messagePanelSize, setMessagePanelSize] = useState({ width: 0, height: 0 });
   const [glassAnchorFrame, setGlassAnchorFrame] = useState({ left: 0, top: 0 });
   const effectiveCollapsed = collapsed;
+  const dockInset = 16;
   const syncStateRef = useRef(syncState);
   syncStateRef.current = syncState;
   const waitForProjectSync = useCallback(async () => {
@@ -921,12 +922,15 @@ export const StyloAgent: React.FC<Props> = ({
   }, [cancelAgentRun, cancelRequest, isSending]);
 
   useEffect(() => {
+    const panelWidth = agentFirstMode
+      ? Math.max(320, viewportSize.width - dockInset * 2)
+      : Math.min(420, Math.max(320, viewportSize.width - dockInset * 2));
     onDockFrameChange?.({
-      dockWidth: 0,
+      dockWidth: effectiveCollapsed ? 0 : Math.min(viewportSize.width, dockInset + panelWidth + 16),
       isSplit: false,
       collapsed: effectiveCollapsed,
     });
-  }, [effectiveCollapsed, onDockFrameChange]);
+  }, [agentFirstMode, dockInset, effectiveCollapsed, onDockFrameChange, viewportSize.width]);
 
   useEffect(() => {
     const proposals = Object.values(pendingExecutionApprovals).sort((a, b) => a.createdAt - b.createdAt);
@@ -1153,7 +1157,6 @@ export const StyloAgent: React.FC<Props> = ({
   }, [accountScope, activeView, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto stylo-panel";
-  const dockInset = 16;
   const titleOrigin = { x: 16, y: 20, width: 126, height: 42, radius: 12 };
   const handleApprovalChoice = useCallback(
     async (approval: ApprovalMessage["approval"], choice: ApprovalChoice) => {

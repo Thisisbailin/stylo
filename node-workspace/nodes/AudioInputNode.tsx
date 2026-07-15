@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { BaseNode } from "./BaseNode";
 import { AudioInputNodeData } from "../types";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { AudioLines, Upload, X } from "lucide-react";
+import { UploadSimple, Waveform, X } from "@phosphor-icons/react";
 
 type Props = {
   id: string;
@@ -57,7 +57,7 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
           <>
             <div className="audio-input-media media-input-asset">
               <div className="audio-input-icon">
-                <AudioLines className="text-[var(--node-text-secondary)]" size={28} />
+                <Waveform className="text-[var(--node-text-secondary)]" size={28} />
               </div>
               <div className="audio-input-kicker">Audio Reference</div>
             </div>
@@ -95,7 +95,7 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
                   onClick={() => fileInputRef.current?.click()}
                   className="node-button h-9 px-3 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] nodrag"
                 >
-                  <Upload size={12} />
+                  <UploadSimple size={12} />
                   Replace
                 </button>
               </div>
@@ -105,19 +105,17 @@ export const AudioInputNode: React.FC<Props> = ({ id, data, selected }) => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="media-input-empty node-surface node-surface--dashed w-full min-h-[220px] flex flex-col items-center justify-center gap-3 transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.02]"
+            className="media-input-empty"
           >
-            <div className="h-14 w-14 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center shadow-inner">
-              <AudioLines className="text-[var(--node-text-secondary)]" size={28} />
+            <div className="media-input-empty-icon">
+              <Waveform size={22} weight="duotone" />
             </div>
-            <div className="text-center">
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">
-                {isLoading ? "Reading..." : "Upload Audio"}
-              </div>
-              <div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[var(--node-text-secondary)]">
-                MP3 / WAV reference
-              </div>
+            <div className="media-input-empty-copy">
+              <div className="media-input-empty-kicker">Audio Input</div>
+              <div className="media-input-empty-title">{isLoading ? "Reading audio…" : "Drop or choose audio"}</div>
+              <div className="media-input-empty-subtitle">MP3, WAV · click to upload</div>
             </div>
+            <div className="media-input-empty-cta">Select File</div>
           </button>
         )}
 

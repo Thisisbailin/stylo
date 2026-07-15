@@ -1,8 +1,9 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowCounterClockwise, Check, PaperPlaneTilt, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, CaretLeft, CaretRight, Check, PaperPlaneTilt, Trash, X } from "@phosphor-icons/react";
 import type { AgentUiContext } from "../../agents/runtime/types";
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
 import { projectRolesToLocations } from "../../utils/projectRoles";
+import { removeLookbookIdentity } from "../../utils/lookbookIdentities";
 import type { NodeFlowNode } from "../types";
 import {
   analyzeFountainLines,
@@ -37,6 +38,7 @@ import {
   ScreenplayIdentityDock,
   ScreenplayInspector,
   type ScreenplayIdentityEntry,
+  type ScreenplayPageArrangement,
   type SaveState,
 } from "./screenplay/ScreenplayChrome";
 import type {
@@ -52,9 +54,11 @@ type Props = {
   onClose?: () => void;
   initialScriptNodeId?: string | null;
   isStyloOpen?: boolean;
+  agentDockWidth?: number;
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
+  onDeleteLookbookIdentity?: (roleId: string) => void;
   onSplitScriptDocument?: (commit: ScriptPageSplitCommit) => string | null;
   onOpenLookbook?: (identityNodeId: string) => void;
   onOpenStylo?: () => void;
@@ -131,9 +135,11 @@ export const WritingPanel: React.FC<Props> = ({
   onClose,
   initialScriptNodeId,
   isStyloOpen = false,
+  agentDockWidth = 0,
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
+  onDeleteLookbookIdentity,
   onSplitScriptDocument,
   onOpenLookbook,
   onOpenStylo,
@@ -178,7 +184,7 @@ export const WritingPanel: React.FC<Props> = ({
   const [navigationRequest, setNavigationRequest] = useState<{ lineIndex: number; id: number } | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
-  const [pageArrangement, setPageArrangement] = useState<"vertical" | "horizontal">("vertical");
+  const [pageArrangement, setPageArrangement] = useState<ScreenplayPageArrangement>("vertical");
   const [autoPagination, setAutoPagination] = useState(false);
   const [selectionCommand, setSelectionCommand] = useState<SelectionCommand | null>(null);
   const [pendingPatch, setPendingPatch] = useState<PendingScriptPatch | null>(null);
@@ -187,7 +193,11 @@ export const WritingPanel: React.FC<Props> = ({
   const previousRoleIdsRef = useRef(new Set((projectData.roles || []).map((role) => role.id)));
   const [identityArrivalQueue, setIdentityArrivalQueue] = useState<string[]>([]);
   const [activeIdentityArrivalId, setActiveIdentityArrivalId] = useState<string | null>(null);
+  const [pendingIdentityRemovalId, setPendingIdentityRemovalId] = useState<string | null>(null);
+  const dismissedIdentityRemovalIdsRef = useRef(new Set<string>());
   const handledProposalIdsRef = useRef(new Set<string>());
+  const pageElementRefs = useRef(new Map<string, HTMLElement>());
+  const edgeHoverTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!initialScriptNodeId) return;
@@ -260,6 +270,43 @@ export const WritingPanel: React.FC<Props> = ({
     const timer = window.setTimeout(() => setActiveIdentityArrivalId(null), 2800);
     return () => window.clearTimeout(timer);
   }, [activeIdentityArrivalId]);
+
+  const orphanedFountainIdentities = useMemo(
+    () => (projectData.roles || []).filter((role) => (
+      role.sourceKind === "fountain" && (role.sourceDocumentIds || []).length === 0
+    )),
+    [projectData.roles]
+  );
+  const pendingIdentityRemoval = useMemo(
+    () => orphanedFountainIdentities.find((role) => role.id === pendingIdentityRemovalId) || null,
+    [orphanedFountainIdentities, pendingIdentityRemovalId]
+  );
+
+  useEffect(() => {
+    const orphanIds = new Set(orphanedFountainIdentities.map((role) => role.id));
+    Array.from(dismissedIdentityRemovalIdsRef.current).forEach((roleId) => {
+      if (!orphanIds.has(roleId)) dismissedIdentityRemovalIdsRef.current.delete(roleId);
+    });
+    if (pendingIdentityRemovalId && orphanIds.has(pendingIdentityRemovalId)) return;
+    const nextIdentity = orphanedFountainIdentities.find(
+      (role) => !dismissedIdentityRemovalIdsRef.current.has(role.id)
+    );
+    setPendingIdentityRemovalId(nextIdentity?.id || null);
+  }, [orphanedFountainIdentities, pendingIdentityRemovalId]);
+
+  const keepOrphanedIdentity = useCallback(() => {
+    if (!pendingIdentityRemovalId) return;
+    dismissedIdentityRemovalIdsRef.current.add(pendingIdentityRemovalId);
+    setPendingIdentityRemovalId(null);
+  }, [pendingIdentityRemovalId]);
+
+  const deleteOrphanedIdentity = useCallback(() => {
+    if (!pendingIdentityRemovalId) return;
+    if (onDeleteLookbookIdentity) onDeleteLookbookIdentity(pendingIdentityRemovalId);
+    else setProjectData((previous) => removeLookbookIdentity(previous, pendingIdentityRemovalId));
+    dismissedIdentityRemovalIdsRef.current.delete(pendingIdentityRemovalId);
+    setPendingIdentityRemovalId(null);
+  }, [onDeleteLookbookIdentity, pendingIdentityRemovalId, setProjectData]);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -439,12 +486,48 @@ export const WritingPanel: React.FC<Props> = ({
     onOpenLookbook?.(identityNodeId);
   }, [commitDraft, onOpenLookbook]);
 
-  const openScriptPage = useCallback((nextIndex: number) => {
+  const openScriptPage = useCallback((nextIndex: number, behavior: ScrollBehavior = "smooth") => {
     const nextNode = pageSequence[nextIndex];
-    if (!nextNode || nextNode.id === scriptNode?.id || externalConflict) return;
-    commitDraft(draftRef.current, true);
-    setActiveScriptNodeId(nextNode.id);
+    if (!nextNode || externalConflict) return;
+    if (nextNode.id !== scriptNode?.id) {
+      commitDraft(draftRef.current, true);
+      setActiveScriptNodeId(nextNode.id);
+    }
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        pageElementRefs.current.get(nextNode.id)?.scrollIntoView({ behavior, block: "center", inline: "center" });
+      });
+    });
   }, [commitDraft, externalConflict, pageSequence, scriptNode?.id]);
+
+  const cancelEdgeNavigation = useCallback(() => {
+    if (edgeHoverTimerRef.current === null) return;
+    window.clearTimeout(edgeHoverTimerRef.current);
+    edgeHoverTimerRef.current = null;
+  }, []);
+
+  const queueEdgeNavigation = useCallback((direction: -1 | 1) => {
+    cancelEdgeNavigation();
+    const nextIndex = pageIndex + direction;
+    if (!pageSequence[nextIndex]) return;
+    edgeHoverTimerRef.current = window.setTimeout(() => {
+      edgeHoverTimerRef.current = null;
+      openScriptPage(nextIndex);
+    }, 360);
+  }, [cancelEdgeNavigation, openScriptPage, pageIndex, pageSequence]);
+
+  useEffect(() => cancelEdgeNavigation, [cancelEdgeNavigation]);
+
+  useEffect(() => {
+    const activeNodeId = scriptNode?.id;
+    if (!activeNodeId) return;
+    const firstFrame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        pageElementRefs.current.get(activeNodeId)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      });
+    });
+    return () => window.cancelAnimationFrame(firstFrame);
+  }, [pageArrangement, scriptNode?.id]);
 
   const createPageFromLine = useCallback((lineIndex: number, activateNewPage = true) => {
     if (!scriptNode?.id || !onSplitScriptDocument || pendingPatch || externalConflict) return null;
@@ -467,6 +550,26 @@ export const WritingPanel: React.FC<Props> = ({
     setSelectionCommand(null);
     if (activateNewPage) setActiveScriptNodeId(nextNodeId);
     return nextNodeId;
+  }, [externalConflict, onSplitScriptDocument, pendingPatch, scriptNode?.id]);
+
+  const createBlankPage = useCallback(() => {
+    if (!scriptNode?.id || !onSplitScriptDocument || pendingPatch || externalConflict) return;
+    const currentDraft = prepareScreenplayDraftForSave(draftRef.current);
+    const nextNodeId = onSplitScriptDocument({
+      sourceNodeId: scriptNode.id,
+      title: currentDraft.title,
+      sourceContent: currentDraft.body,
+      nextContent: "",
+    });
+    if (!nextNodeId) return;
+    draftRef.current = currentDraft;
+    lastCommittedRef.current = currentDraft;
+    lastObservedSourceRef.current = currentDraft;
+    setDraft(currentDraft);
+    setPendingSave(null);
+    setSaveState("saved");
+    setSelectionCommand(null);
+    setActiveScriptNodeId(nextNodeId);
   }, [externalConflict, onSplitScriptDocument, pendingPatch, scriptNode?.id]);
 
   useEffect(() => {
@@ -548,15 +651,36 @@ export const WritingPanel: React.FC<Props> = ({
     downloadFountain(filename, content);
   };
 
-  return (
-    <div
-      className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""} ${isInspectorOpen ? "is-inspector-open" : ""}`}
-      style={{ "--screenplay-agent-inset": isStyloOpen ? "min(440px, 30vw)" : "0px" } as React.CSSProperties}
-    >
-      <div className="screenplay-layout">
-        <main className="screenplay-document-viewport">
-          <div className={`screenplay-document-stage is-${pageArrangement}`}>
-          <article key={scriptNode?.id || "empty-script"} className="screenplay-document">
+  const displayPages = pageSequence.length ? pageSequence : scriptNode ? [scriptNode] : [];
+  const visiblePages = pageArrangement === "filmstrip"
+    ? displayPages.filter((node) => node.id === scriptNode?.id)
+    : displayPages;
+
+  const renderPaper = (node: NodeFlowNode, index: number) => {
+    const isActive = node.id === scriptNode?.id;
+    const paperDraft = isActive ? draft : readScriptNode(node, knownCharacterIdentities);
+    const preview = stripFountainMarkup(paperDraft.body).trim() || "空白稿纸";
+    return (
+      <article
+        key={node.id}
+        ref={(element) => {
+          if (element) pageElementRefs.current.set(node.id, element);
+          else pageElementRefs.current.delete(node.id);
+        }}
+        className={`screenplay-document ${isActive ? "is-active" : "is-preview"}`}
+        data-page-id={node.id}
+        tabIndex={isActive ? undefined : 0}
+        role={isActive ? undefined : "button"}
+        aria-label={isActive ? undefined : `打开第 ${index + 1} 张稿纸：${paperDraft.title}`}
+        onClick={isActive ? undefined : () => openScriptPage(index)}
+        onKeyDown={isActive ? undefined : (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openScriptPage(index);
+        }}
+      >
+        {isActive ? (
+          <>
             <ScreenplayHeader
               saveState={saveState}
               isFocusMode={isFocusMode}
@@ -566,12 +690,11 @@ export const WritingPanel: React.FC<Props> = ({
               onShare={() => void handleShare()}
               onClose={handleClose}
               pageIndex={pageIndex}
-              pageCount={pageSequence.length}
+              pageCount={displayPages.length}
               pageArrangement={pageArrangement}
               autoPagination={autoPagination}
-              onPreviousPage={() => openScriptPage(pageIndex - 1)}
-              onNextPage={() => openScriptPage(pageIndex + 1)}
-              onTogglePageArrangement={() => setPageArrangement((current) => current === "vertical" ? "horizontal" : "vertical")}
+              onPageArrangementChange={setPageArrangement}
+              onCreatePage={createBlankPage}
               onToggleAutoPagination={() => setAutoPagination((enabled) => !enabled)}
             />
             <header className="screenplay-document__masthead">
@@ -583,7 +706,7 @@ export const WritingPanel: React.FC<Props> = ({
                   aria-label="剧本标题"
                 />
               </div>
-              <small>{pageIndex + 1}/{Math.max(1, pageSequence.length)} · {analysis.stats.scenes} 场</small>
+              <small>{pageIndex + 1}/{Math.max(1, displayPages.length)} · {analysis.stats.scenes} 场</small>
             </header>
             <ScreenplayBlockEditor
               body={draft.body}
@@ -600,8 +723,57 @@ export const WritingPanel: React.FC<Props> = ({
               }}
               onCreatePageFromLine={(lineIndex) => createPageFromLine(lineIndex, true)}
             />
-          </article>
+          </>
+        ) : (
+          <div className="screenplay-document__preview">
+            <header>
+              <strong>{paperDraft.title}</strong>
+              <small>{index + 1}/{displayPages.length}</small>
+            </header>
+            <pre>{preview}</pre>
+            <span>单击继续编辑</span>
           </div>
+        )}
+      </article>
+    );
+  };
+
+  return (
+    <div
+      className={`screenplay-workspace ${isFocusMode ? "is-focus-mode" : ""} ${isInspectorOpen ? "is-inspector-open" : ""} ${agentDockWidth > 0 ? "is-agent-open" : ""}`}
+      style={{ "--screenplay-agent-inset": `${Math.max(0, agentDockWidth)}px` } as React.CSSProperties}
+    >
+      <div className="screenplay-layout">
+        <main className={`screenplay-document-viewport is-${pageArrangement}`}>
+          <div className={`screenplay-document-stage is-${pageArrangement}`}>
+            {visiblePages.map((node) => renderPaper(node, displayPages.findIndex((item) => item.id === node.id)))}
+          </div>
+          {pageArrangement === "horizontal" && displayPages.length > 1 ? (
+            <>
+              <button
+                type="button"
+                className="screenplay-page-edge is-previous"
+                disabled={pageIndex <= 0}
+                aria-label="前一张稿纸"
+                onPointerEnter={() => queueEdgeNavigation(-1)}
+                onPointerLeave={cancelEdgeNavigation}
+                onFocus={() => queueEdgeNavigation(-1)}
+                onBlur={cancelEdgeNavigation}
+                onClick={() => openScriptPage(pageIndex - 1)}
+              ><CaretLeft size={18} /></button>
+              <button
+                type="button"
+                className="screenplay-page-edge is-next"
+                disabled={pageIndex >= displayPages.length - 1}
+                aria-label="后一张稿纸"
+                onPointerEnter={() => queueEdgeNavigation(1)}
+                onPointerLeave={cancelEdgeNavigation}
+                onFocus={() => queueEdgeNavigation(1)}
+                onBlur={cancelEdgeNavigation}
+                onClick={() => openScriptPage(pageIndex + 1)}
+              ><CaretRight size={18} /></button>
+            </>
+          ) : null}
         </main>
 
         {isInspectorOpen ? (
@@ -613,11 +785,48 @@ export const WritingPanel: React.FC<Props> = ({
         ) : null}
       </div>
 
+      {pageArrangement === "filmstrip" && displayPages.length > 1 ? (
+        <nav className="screenplay-page-filmstrip" aria-label="稿纸缩略队列">
+          {displayPages.map((node, index) => {
+            const paperDraft = node.id === scriptNode?.id ? draft : readScriptNode(node, knownCharacterIdentities);
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={node.id === scriptNode?.id ? "is-active" : ""}
+                onClick={() => openScriptPage(index)}
+                aria-label={`定位到第 ${index + 1} 张稿纸：${paperDraft.title}`}
+              >
+                <small>{String(index + 1).padStart(2, "0")}</small>
+                <strong>{paperDraft.title}</strong>
+                <span>{stripFountainMarkup(paperDraft.body).trim().slice(0, 46) || "空白稿纸"}</span>
+              </button>
+            );
+          })}
+        </nav>
+      ) : null}
+
       <ScreenplayIdentityDock
         entries={identityEntries}
         recentIdentityId={activeIdentityArrivalId}
         onOpenIdentity={openIdentityLookbook}
       />
+
+      {pendingIdentityRemoval ? (
+        <aside className="screenplay-identity-removal" role="alertdialog" aria-label="移除未引用身份">
+          <span className={`screenplay-identity-removal__mark is-${pendingIdentityRemoval.kind}`} aria-hidden="true">
+            {Array.from(pendingIdentityRemoval.displayName || pendingIdentityRemoval.name).slice(0, 1)}
+          </span>
+          <div>
+            <strong>{pendingIdentityRemoval.displayName || pendingIdentityRemoval.name}</strong>
+            <span>剧本中已无引用，是否从{pendingIdentityRemoval.kind === "person" ? "角色" : "场景"}库移除？</span>
+          </div>
+          <button type="button" onClick={keepOrphanedIdentity}>保留</button>
+          <button type="button" className="is-destructive" onClick={deleteOrphanedIdentity} aria-label="从资料库移除">
+            <Trash size={14} />
+          </button>
+        </aside>
+      ) : null}
 
       {selectionCommand && !pendingPatch ? (
         <form className="screenplay-selection-command" onSubmit={(event) => { event.preventDefault(); submitSelectionCommand(); }}>

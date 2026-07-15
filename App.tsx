@@ -45,6 +45,9 @@ const AgentLab = React.lazy(() =>
 const CineworLab = React.lazy(() =>
   import('./node-workspace/components/CineworLab').then((module) => ({ default: module.CineworLab }))
 );
+const DesignSystemLab = React.lazy(() =>
+  import('./node-workspace/components/DesignSystemLab').then((module) => ({ default: module.DesignSystemLab }))
+);
 
 type LabModalKey = ModuleKey;
 
@@ -811,6 +814,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
               projectData={projectData}
               setProjectData={setProjectData}
             />
+          </React.Suspense>
+        ) : null}
+        {openLabModal === "designSystemLab" ? (
+          <React.Suspense fallback={null}>
+            <DesignSystemLab isOpen onClose={closeLabModal} />
           </React.Suspense>
         ) : null}
       </AppShell>
