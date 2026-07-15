@@ -13,7 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/nodeflow.css";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
-import { NodeType, VideoGenNodeData } from "../types";
+import { NodeType, VideoGenNodeData, type NodeFlowNode } from "../types";
 import { FloatingActionBar } from "./FloatingActionBar";
 import { ProjectSettingsPanel, type ProjectSettingsPanelKey } from "./ProjectSettingsPanel";
 import type { MaterialsSectionKey } from "./MaterialsPanel";
@@ -37,11 +37,14 @@ import type {
   AgentScriptEditProposalBatch,
   StyloSubmitRequest,
   ScriptDocumentCommit,
+  ScriptPageSplitCommit,
 } from "./stylo/interactionTypes";
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
+import { analyzeScreenplay, createScreenplayPreview } from "../screenplay/fountainEngine";
+import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
 import type { EnsureProjectSynced } from "../../hooks/useCloudSync";
 import type { AccountApiSession } from "../../sync/authenticatedFetch";
 
@@ -521,6 +524,111 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
             : previous.flowProjects,
         };
       });
+    },
+    [setProjectData]
+  );
+
+  const splitScriptDocument = useCallback(
+    ({ sourceNodeId, title, sourceContent, nextContent }: ScriptPageSplitCommit) => {
+      const now = Date.now();
+      const nextNodeId = `script-page-${now.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      setProjectData((previous) => {
+        const flow = previous.flow || { links: [] };
+        const sourceNode = (flow.flowNodes || []).find(
+          (node) => node.id === sourceNodeId && node.type === "scriptPage"
+        );
+        if (!sourceNode) return previous;
+        const sourceData = (sourceNode.data || {}) as Record<string, unknown>;
+        const manuscriptId =
+          (typeof sourceData.manuscriptId === "string" && sourceData.manuscriptId) ||
+          (typeof sourceData.documentId === "string" && sourceData.documentId) ||
+          sourceNode.id;
+        const sourcePageNumber = typeof sourceData.pageNumber === "number" ? sourceData.pageNumber : 1;
+        const outgoingPageLink = (flow.links || []).find(
+          (link) => link.source === sourceNodeId && link.data?.relation === SCREENPLAY_PAGE_RELATION
+        );
+        const sourceStats = analyzeScreenplay(sourceContent).stats;
+        const nextStats = analyzeScreenplay(nextContent).stats;
+        const flowNodes = (flow.flowNodes || []).map((node) => {
+          if (node.id !== sourceNodeId) return node;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              title,
+              text: sourceContent,
+              content: sourceContent,
+              documentKind: "script",
+              format: "fountain",
+              manuscriptId,
+              pageNumber: sourcePageNumber,
+              preview: createScreenplayPreview(sourceContent),
+              screenplayStats: sourceStats,
+              revision: typeof sourceData.revision === "number" ? sourceData.revision + 1 : 1,
+              updatedAt: now,
+            },
+          } as NodeFlowNode;
+        });
+        const nextNode: NodeFlowNode = {
+          id: nextNodeId,
+          type: "scriptPage",
+          position: { x: sourceNode.position.x + 380, y: sourceNode.position.y },
+          style: sourceNode.style,
+          data: {
+            title,
+            text: nextContent,
+            content: nextContent,
+            documentId: nextNodeId,
+            documentKind: "script",
+            format: "fountain",
+            manuscriptId,
+            pageNumber: sourcePageNumber + 1,
+            preview: createScreenplayPreview(nextContent),
+            screenplayStats: nextStats,
+            revision: 1,
+            updatedAt: now,
+          },
+        };
+        const links = (flow.links || []).filter((link) => link.id !== outgoingPageLink?.id);
+        links.push({
+          id: `screenplay-page-${sourceNodeId}-${nextNodeId}`,
+          source: sourceNodeId,
+          target: nextNodeId,
+          sourceHandle: "text",
+          targetHandle: "text",
+          data: { relation: SCREENPLAY_PAGE_RELATION },
+        });
+        if (outgoingPageLink) {
+          links.push({
+            ...outgoingPageLink,
+            id: `screenplay-page-${nextNodeId}-${outgoingPageLink.target}`,
+            source: nextNodeId,
+          });
+        }
+        let nextData: ProjectData = {
+          ...previous,
+          rawScript: "",
+          episodes: [],
+          flow: { ...flow, flowNodes: [...flowNodes, nextNode], links },
+        };
+        nextData = syncLookbookIdentitiesFromFountain(nextData, {
+          sourceNodeId,
+          content: sourceContent,
+          now,
+        });
+        nextData = syncLookbookIdentitiesFromFountain(nextData, {
+          sourceNodeId: nextNodeId,
+          content: nextContent,
+          now,
+        });
+        return {
+          ...nextData,
+          flowProjects: previous.flowProjects?.length
+            ? saveActiveFlowIntoProjects(nextData, now)
+            : previous.flowProjects,
+        };
+      });
+      return nextNodeId;
     },
     [setProjectData]
   );
@@ -1148,6 +1256,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onConnect={flowSurface.onConnect}
           onConnectStart={flowSurface.onConnectStart}
           onConnectEnd={flowSurface.onConnectEnd}
+          onBeforeDelete={flowSurface.onBeforeDelete}
           onNodeClick={flowSurface.onNodeClick}
           onNodeDoubleClick={flowSurface.onNodeDoubleClick}
           onNodeDragStart={flowSurface.onNodeDragStart}
@@ -1239,7 +1348,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
       <FloatingActionBar
         onAddText={() => handleFlowAddNode("text", { x: 100, y: 100 })}
-        onAddIdentityCard={() => handleFlowAddNode("identityCard", { x: 220, y: 160 })}
+        onAddIdentityCard={() => handleFlowAddNode("lookbook", { x: 220, y: 160 })}
         onAddImage={() => handleFlowAddNode("imageInput", { x: 200, y: 100 })}
         onAddAudio={() => handleFlowAddNode("audioInput", { x: 220, y: 120 })}
         onAddVideo={() => handleFlowAddNode("videoInput", { x: 240, y: 140 })}
@@ -1319,6 +1428,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           agentScriptEditProposals={agentScriptEditProposals}
           onResolveAgentScriptEditProposal={resolveAgentScriptEditProposal}
           onCommitScriptDocument={commitScriptDocument}
+          onSplitScriptDocument={splitScriptDocument}
           onOpenLookbook={(identityNodeId) => {
             setEditingScriptNodeId(null);
             setActiveLookbookNodeId(identityNodeId);

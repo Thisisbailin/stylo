@@ -33,7 +33,7 @@ const nodeTitle = (node: NodeFlowNode) =>
 
 export const LookbookPanel: React.FC<Props> = ({ projectData, identityNodeId, onClose }) => {
   const identityNode = useMemo(
-    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && node.type === "identityCard"),
+    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && (node.type === "lookbook" || node.type === "identityCard")),
     [identityNodeId, projectData.flow?.flowNodes]
   );
   const identityId = typeof identityNode?.data?.identityId === "string" ? identityNode.data.identityId : "";
@@ -145,7 +145,7 @@ export const LookbookPanel: React.FC<Props> = ({ projectData, identityNodeId, on
               })}
             </div>
           ) : (
-            <div className="lookbook-empty"><FileText size={24} /><p>在 Flow 中将档案文档连接到身份卡，它会出现在这里。</p></div>
+            <div className="lookbook-empty"><FileText size={24} /><p>在 Flow 中将 Markdown 文本连接到 Lookbook，它会出现在这里。</p></div>
           )}
         </section>
 

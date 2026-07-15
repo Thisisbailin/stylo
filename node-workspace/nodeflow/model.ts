@@ -114,6 +114,7 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         episodeId: data.episodeId ?? null,
         sceneId: data.sceneId ?? null,
       };
+    case "lookbook":
     case "identityCard":
       return {
         identityId: data.identityId ?? null,

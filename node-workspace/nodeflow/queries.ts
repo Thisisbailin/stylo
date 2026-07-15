@@ -170,7 +170,7 @@ export const buildConnectedInputs = ({
         } else if (sourceNode.type === "scriptBoard") {
           const value = buildScriptBoardText(sourceNode.data as ScriptBoardNodeData, nodeFlowContext.episodes || []);
           if (value) texts.push(value);
-        } else if (sourceNode.type === "identityCard") {
+        } else if (sourceNode.type === "lookbook" || sourceNode.type === "identityCard") {
           const value = buildIdentityCardText(sourceNode.data as IdentityCardNodeData, nodeFlowContext);
           if (value) texts.push(value);
           const identities = buildProjectIdentities(nodeFlowContext.roles || [], nodeFlowContext.designAssets || []);

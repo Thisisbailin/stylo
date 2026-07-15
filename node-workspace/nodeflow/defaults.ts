@@ -47,6 +47,9 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       return {
         image: null,
         filename: null,
+        mimeType: null,
+        storageBucket: null,
+        storagePath: null,
         dimensions: null,
         assetAuditStatus: "idle",
         assetAuditMessage: null,
@@ -55,6 +58,8 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         assetUri: null,
         assetGroupId: null,
         assetSourceUrl: null,
+        assetSourceBucket: null,
+        assetSourcePath: null,
         label: "",
       } as ImageInputNodeData;
     case "audioInput":
@@ -85,7 +90,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as AnnotationNodeData;
     case "text":
       return {
-        title: "",
+        title: "Markdown 文本",
         text: "",
         documentId: undefined,
         documentKind: "note",
@@ -95,9 +100,10 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       return {
         title: "剧本面板",
       } as ScriptBoardNodeData;
+    case "lookbook":
     case "identityCard":
       return {
-        title: "角色 / 场景身份卡片",
+        title: "Lookbook",
         avatarOverrides: {},
       } as IdentityCardNodeData;
     case "imageGen":

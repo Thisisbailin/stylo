@@ -10,6 +10,8 @@ import {
 import { buildRoleMention, slugifyIdentityKey } from "./projectRoles";
 
 export const LOOKBOOK_MEMBERSHIP_RELATION = "lookbook-membership" as const;
+export const isLookbookNodeType = (type: unknown): type is "lookbook" | "identityCard" =>
+  type === "lookbook" || type === "identityCard";
 
 export type FountainIdentityCandidate = {
   name: string;
@@ -145,11 +147,11 @@ const makeIdentityNode = (role: ProjectRoleIdentity, sourceNode: NodeFlowNode | 
   const origin = sourceNode?.position || { x: 120, y: 120 };
   return {
     id: `identity-${role.id}`,
-    type: "identityCard",
+    type: "lookbook",
     position: { x: origin.x + (order % 2) * 760, y: origin.y + 360 + Math.floor(order / 2) * 520 },
-    style: { width: 240, height: 280 },
+    style: { width: 304, height: 208 },
     data: {
-      title: `${role.displayName || role.name} · 身份卡`,
+      title: role.displayName || role.name,
       identityId: role.id,
       lookbookIdentityId: role.id,
       lookbookIndexNodeId: role.profileNodeId,
@@ -162,7 +164,7 @@ const makeIndexNode = (role: ProjectRoleIdentity, identityNode: NodeFlowNode): N
   const content = buildIndexMarkdown(role);
   return {
     id: role.profileNodeId || `lookbook-index-${role.id}`,
-    type: "mdText",
+    type: "text",
     position: { x: identityNode.position.x + 390, y: identityNode.position.y + 28 },
     data: {
       title: `${role.displayName || role.name} · Lookbook 索引`,
@@ -284,16 +286,20 @@ export const syncLookbookIdentitiesFromFountain = (
     }
 
     let identityNode = nodes.find(
-      (node) => node.type === "identityCard" && (node.data as { identityId?: string }).identityId === role!.id
+      (node) => isLookbookNodeType(node.type) && (node.data as { identityId?: string }).identityId === role!.id
     );
     if (!identityNode) {
       identityNode = makeIdentityNode(role, sourceNode, order);
       nodes.push(identityNode);
-    } else if ((identityNode.data as { lookbookIndexNodeId?: string }).lookbookIndexNodeId !== role.profileNodeId) {
+    } else {
       identityNode = {
         ...identityNode,
+        type: "lookbook",
+        style: { ...identityNode.style, width: 304, height: 208 },
         data: {
           ...identityNode.data,
+          title: role.displayName || role.name,
+          identityId: role.id,
           lookbookIdentityId: role.id,
           lookbookIndexNodeId: role.profileNodeId,
         } as NodeFlowNodeData,

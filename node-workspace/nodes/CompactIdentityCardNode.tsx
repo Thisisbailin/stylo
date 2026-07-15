@@ -30,7 +30,6 @@ export const CompactIdentityCardNode: React.FC<Props> = ({ id, data, selected })
   }, [id, links, nodes]);
   const name = identity?.displayName || identity?.name || data.title || "未命名身份";
   const fallbackLetter = name.trim().slice(0, 1).toLocaleUpperCase() || "I";
-
   return (
     <BaseNode
       title={name}
@@ -38,16 +37,19 @@ export const CompactIdentityCardNode: React.FC<Props> = ({ id, data, selected })
       outputs={["text"]}
       selected={selected}
       variant="media"
-      nodeType="identity-card-compact"
+      nodeType="lookbook-cover"
     >
-      <div className="compact-identity-card" aria-label={`${name} 身份卡`}>
-        {avatarUrl ? (
-          <img src={avatarUrl} alt={`${name} 默认头像`} draggable={false} />
-        ) : (
-          <div className="compact-identity-card__placeholder" aria-label="尚未连接头像图片">
-            <span>{fallbackLetter}</span>
-          </div>
-        )}
+      <div className="lookbook-node-cover" aria-label={`${name} Lookbook`}>
+        <strong className="lookbook-node-cover__title">{name}</strong>
+        <div className="lookbook-node-cover__visual">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={`${name} Lookbook 封面`} draggable={false} />
+          ) : (
+            <div className="lookbook-node-cover__placeholder" aria-label="尚未连接封面图片">
+              <span>{fallbackLetter}</span>
+            </div>
+          )}
+        </div>
       </div>
     </BaseNode>
   );

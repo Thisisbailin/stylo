@@ -62,7 +62,7 @@ export const LookbookLeafPanel: React.FC<Props> = ({ projectData, identityNodeId
   const [pageIndex, setPageIndex] = useState(0);
   const [turnDirection, setTurnDirection] = useState<TurnDirection>(0);
   const identityNode = useMemo(
-    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && node.type === "identityCard"),
+    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && (node.type === "lookbook" || node.type === "identityCard")),
     [identityNodeId, projectData.flow?.flowNodes]
   );
   const identityId = typeof identityNode?.data?.identityId === "string" ? identityNode.data.identityId : "";

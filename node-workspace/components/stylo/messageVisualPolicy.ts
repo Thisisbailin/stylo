@@ -5,7 +5,6 @@ export type StyloMessageVisualTone =
   | "assistant"
   | "thinking"
   | "response"
-  | "work"
   | "approval"
   | "utility"
   | "document"
@@ -22,7 +21,6 @@ export type StyloMessageIconKey =
   | "assistant"
   | "thinking"
   | "response"
-  | "work"
   | "approval"
   | "tool_generic"
   | "health"
@@ -53,7 +51,6 @@ export const STYLO_PRIMARY_MESSAGE_VISUALS = {
   assistant: { icon: "assistant", tone: "assistant" },
   thinking: { icon: "thinking", tone: "thinking" },
   response: { icon: "response", tone: "response" },
-  work: { icon: "work", tone: "work" },
   approval: { icon: "approval", tone: "approval" },
 } as const satisfies Record<string, StyloMessageVisual>;
 
@@ -84,4 +81,3 @@ const fallbackToolVisual: StyloMessageVisual = {
 
 export const resolveStyloToolMessageVisual = (toolName: string): StyloMessageVisual =>
   (STYLO_TOOL_MESSAGE_VISUALS as Record<string, StyloMessageVisual>)[toolName] || fallbackToolVisual;
-

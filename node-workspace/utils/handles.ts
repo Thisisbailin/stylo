@@ -12,6 +12,7 @@ const TEXT_SOURCE_NODE_TYPES = new Set([
   "folder",
   "text",
   "scriptBoard",
+  "lookbook",
   "identityCard",
 ]);
 
@@ -72,6 +73,7 @@ export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: s
       return { inputs: ["text"], outputs: ["text"] };
     case "scriptBoard":
       return { inputs: [], outputs: ["text"] };
+    case "lookbook":
     case "identityCard":
       return { inputs: ["multi", "image", "audio", "video", "text"], outputs: ["text"] };
     case "imageGen":

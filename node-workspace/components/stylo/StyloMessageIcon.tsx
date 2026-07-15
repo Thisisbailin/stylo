@@ -20,7 +20,6 @@ import {
   Pulse,
   ShieldCheck,
   Stack,
-  TerminalWindow,
   TreeStructure,
   UserCircle,
   Wrench,
@@ -34,7 +33,6 @@ const ICON_COMPONENTS: Record<StyloMessageIconKey, Icon> = {
   assistant: PenNib,
   thinking: Brain,
   response: ChatCircleDots,
-  work: TerminalWindow,
   approval: ShieldCheck,
   tool_generic: Wrench,
   health: Pulse,
@@ -83,4 +81,3 @@ export const StyloMessageIcon = memo(function StyloMessageIcon({
     </span>
   );
 });
-

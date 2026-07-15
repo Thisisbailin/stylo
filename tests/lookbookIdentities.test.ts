@@ -50,7 +50,7 @@ test("Fountain identity parsing extracts people and scenes across editor formats
   ]);
 });
 
-test("Lookbook synchronization creates one identity card, index, and boundary per identity", () => {
+test("Lookbook synchronization creates one wrapper, Markdown index, and boundary per identity", () => {
   const content = ".INT. 江边仓库 - NIGHT\n\n@林默\n别回头。";
   const first = syncLookbookIdentitiesFromFountain(makeProject(), {
     sourceNodeId: "script-main",
@@ -64,8 +64,11 @@ test("Lookbook synchronization creates one identity card, index, and boundary pe
   });
 
   assert.equal(second.roles.length, 2);
-  assert.equal(second.flow?.flowNodes?.filter((node) => node.type === "identityCard").length, 2);
+  const lookbookNodes = second.flow?.flowNodes?.filter((node) => node.type === "lookbook") || [];
+  assert.equal(lookbookNodes.length, 2);
+  assert.ok(lookbookNodes.every((node) => node.style?.width === 304 && node.style?.height === 208));
   assert.equal(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").length, 2);
+  assert.ok(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").every((node) => node.type === "text"));
   assert.equal(
     second.flow?.links.filter((link) => link.data?.relation === LOOKBOOK_MEMBERSHIP_RELATION).length,
     2
@@ -100,7 +103,7 @@ test("Lookbook synchronization reuses an exact existing identity without overwri
   assert.equal(result.roles[0].summary, "用户确认的主角");
   assert.equal(result.roles[0].description, "保留这段人工档案。");
   assert.equal(result.roles[0].status, "verified");
-  assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "identityCard").length, 1);
+  assert.equal(result.flow?.flowNodes?.filter((node) => node.type === "lookbook").length, 1);
 });
 
 test("Lookbook parsing binds an unforced alias to an existing role without inventing prose identities", () => {
@@ -152,7 +155,7 @@ test("Lookbook synchronization repairs duplicate flow node ids", () => {
 test("Lookbook projection includes only directly connected archive and media nodes", () => {
   const project = makeProject();
   project.flow!.flowNodes!.push(
-    { id: "identity-1", type: "identityCard", position: { x: 0, y: 0 }, data: { title: "身份", identityId: "role-1" } },
+    { id: "identity-1", type: "lookbook", position: { x: 0, y: 0 }, data: { title: "林默", identityId: "role-1" } },
     { id: "archive-1", type: "mdText", position: { x: 0, y: 0 }, data: { title: "档案", text: "记录" } },
     { id: "index-1", type: "mdText", position: { x: 0, y: 0 }, data: { title: "索引", text: "系统索引", lookbookRole: "index" } },
     { id: "image-1", type: "imageInput", position: { x: 0, y: 0 }, data: { image: "image:data", filename: "look.jpg", dimensions: null } },

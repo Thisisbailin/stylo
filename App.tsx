@@ -691,7 +691,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       };
       const flowNodes = Array.isArray(flow.flowNodes) ? flow.flowNodes : [];
       const existing = flowNodes.find(
-        (node) => node.type === 'identityCard' && (node.data as any)?.identityId === identityId
+        (node) => (node.type === 'lookbook' || node.type === 'identityCard') && (node.data as any)?.identityId === identityId
       );
       if (existing) return prev;
 
@@ -703,11 +703,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
             ...flowNodes,
             {
               id: `identity-${identityId}`,
-              type: 'identityCard',
+              type: 'lookbook',
               position: { x: 280, y: 180 },
               data: {
                 identityId,
-                title: '身份卡片',
+                title: (prev.roles || []).find((role) => role.id === identityId)?.displayName || 'Lookbook',
                 avatarOverrides: {},
               },
             },

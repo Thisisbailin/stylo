@@ -389,7 +389,7 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
                 <div className="text-[9px] text-emerald-100/75">@{connectedIdentity.mention}</div>
               </div>
               <div className="text-[8px] leading-relaxed text-[var(--node-text-secondary)]/75">
-                已通过身份卡片自动绑定。生成结果会直接写回该身份的主定妆照槽位。
+                已通过 Lookbook 自动绑定。生成结果会直接写回该身份的主定妆照槽位。
               </div>
             </div>
           ) : identityOptions.length > 0 ? (
@@ -414,7 +414,7 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
                 ))}
               </select>
               <div className="text-[8px] leading-relaxed text-[var(--node-text-secondary)]/75">
-                如果连接了身份卡片，这里会自动切换为卡片里的身份，并启用固定三视图提示词。
+                如果连接了 Lookbook，这里会自动切换为册子绑定的身份，并启用固定三视图提示词。
               </div>
             </>
           ) : (
@@ -526,7 +526,7 @@ export const NanoBananaImageGenNode: React.FC<Props & { selected?: boolean }> = 
             </button>
             <div className="pr-10">
               <div className="text-[10px] uppercase tracking-[0.24em] text-[var(--node-text-secondary)]">Fixed Prompt</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--node-text-primary)]">身份卡片直连时自动附加</div>
+              <div className="mt-2 text-sm font-semibold text-[var(--node-text-primary)]">Lookbook 直连时自动附加</div>
             </div>
             <pre className="mt-4 whitespace-pre-wrap rounded-[20px] border border-[var(--node-border)] bg-black/20 p-4 text-[12px] leading-6 text-[var(--node-text-secondary)]">
               {NANOBANANA_IDENTITY_PROMPT}

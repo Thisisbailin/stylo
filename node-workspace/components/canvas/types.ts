@@ -10,6 +10,7 @@ import type {
   NodeTypes,
   OnConnectEnd,
   OnConnectStart,
+  OnBeforeDelete,
   PanOnScrollMode,
   XYPosition,
 } from "@xyflow/react";
@@ -52,6 +53,7 @@ export type CanvasSurfaceConfig = {
   onConnect?: (connection: Connection) => void;
   onConnectStart?: OnConnectStart;
   onConnectEnd?: OnConnectEnd;
+  onBeforeDelete?: OnBeforeDelete<any, any>;
   onNodeClick?: (event: React.MouseEvent, node: Node) => void;
   onNodeDoubleClick?: (event: React.MouseEvent, node: Node) => void;
   onNodeDragStart?: (event: React.MouseEvent, node: Node) => void;

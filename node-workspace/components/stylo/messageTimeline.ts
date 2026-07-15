@@ -13,22 +13,7 @@ export type StyloTimelineLeaf =
   | { kind: "approval"; key: string; order: number; message: ApprovalMessage }
   | { kind: "chat"; key: string; order: number; message: ChatMessage };
 
-export type StyloWorkStageChild = Extract<StyloTimelineLeaf, { kind: "status" | "tool" | "chat" }>;
-
-export type StyloWorkStage = {
-  kind: "work";
-  key: string;
-  order: number;
-  runId: string;
-  items: StyloWorkStageChild[];
-  toolCount: number;
-  durationMs: number;
-  hasFinalAnswer: boolean;
-  isRunning: boolean;
-  hasError: boolean;
-};
-
-export type StyloDisplayMessage = StyloTimelineLeaf | StyloWorkStage;
+export type StyloDisplayMessage = StyloTimelineLeaf;
 
 const runIdOf = (item: StyloTimelineLeaf) => {
   if (item.kind === "status") return item.message.statusCard.runId;
@@ -64,67 +49,27 @@ const isFinalAssistant = (item: StyloTimelineLeaf) =>
   item.message.meta?.isStreaming !== true &&
   item.message.meta?.isFinal !== false;
 
-const belongsInWorkStage = (item: StyloTimelineLeaf) => {
-  if (item.kind === "status" || item.kind === "tool") return Boolean(runIdOf(item));
-  return item.kind === "chat" &&
-    item.message.role === "assistant" &&
-    Boolean(item.message.meta?.runId) &&
-    item.message.meta?.isFinal === false;
-};
-
-const isRedundantFinalResponseStatus = (item: StyloWorkStageChild) =>
+const isRedundantFinalResponseStatus = (item: StyloTimelineLeaf) =>
   item.kind === "status" &&
   item.message.statusCard.status === "success" &&
   item.message.statusCard.isThinking !== true &&
   /(?:最终回答|本轮内容|生成|回复)/.test(item.message.statusCard.headline);
 
-const summarizeWorkStage = (
-  runId: string,
-  items: StyloWorkStageChild[],
-  hasFinalAnswer: boolean
-): StyloWorkStage => {
-  let startedAt = Number.POSITIVE_INFINITY;
-  let updatedAt = 0;
-  let firstOrder = Number.POSITIVE_INFINITY;
-  let toolCount = 0;
-  let isRunning = false;
-  let hasError = false;
+const isSuccessfulConnectionStatus = (item: StyloTimelineLeaf) =>
+  item.kind === "status" &&
+  item.message.statusCard.status === "success" &&
+  /Agent 已启动|连接 Agent/.test(item.message.statusCard.headline);
 
-  items.forEach((item) => {
-    firstOrder = Math.min(firstOrder, item.order);
-    if (item.kind === "status") {
-      startedAt = Math.min(startedAt, item.message.statusCard.startedAt);
-      updatedAt = Math.max(updatedAt, item.message.statusCard.updatedAt);
-      isRunning ||= item.message.statusCard.status === "running";
-      hasError ||= item.message.statusCard.status === "error";
-      return;
-    }
-    if (item.kind === "tool") {
-      toolCount += 1;
-      isRunning ||= !item.thread.result && item.thread.request?.tool.status === "running";
-      hasError ||= (item.thread.result?.tool.status || item.thread.request?.tool.status) === "error";
-      return;
-    }
-    isRunning ||= item.message.meta?.isStreaming === true;
-  });
+const isRedundantStreamingStatus = (item: StyloTimelineLeaf) =>
+  item.kind === "status" &&
+  item.message.statusCard.status !== "error" &&
+  item.message.statusCard.isThinking !== true &&
+  /生成内容|最终回答|本轮内容/.test(item.message.statusCard.headline);
 
-  const displayItems = hasFinalAnswer
-    ? items.filter((item) => !isRedundantFinalResponseStatus(item))
-    : items;
-
-  return {
-    kind: "work",
-    key: `work-${runId}`,
-    order: Number.isFinite(firstOrder) ? firstOrder : 0,
-    runId,
-    items: displayItems,
-    toolCount,
-    durationMs: Number.isFinite(startedAt) && updatedAt >= startedAt ? updatedAt - startedAt : 0,
-    hasFinalAnswer,
-    isRunning,
-    hasError,
-  };
-};
+const isCompletedThinkingStatus = (item: StyloTimelineLeaf) =>
+  item.kind === "status" &&
+  item.message.statusCard.isThinking === true &&
+  item.message.statusCard.status === "success";
 
 const buildTimelineLeaves = (messages: Message[]): StyloTimelineLeaf[] => {
   const items: StyloTimelineLeaf[] = [];
@@ -182,35 +127,11 @@ export const buildStyloMessageTimeline = (messages: Message[]): StyloDisplayMess
       .map(runIdOf)
       .filter((runId): runId is string => Boolean(runId))
   );
-  const workByRun = new Map<string, StyloWorkStageChild[]>();
-
-  leaves.forEach((item) => {
+  return leaves.filter((item) => {
     const runId = runIdOf(item);
-    if (!runId || !belongsInWorkStage(item)) return;
-    const existing = workByRun.get(runId);
-    if (existing) {
-      existing.push(item as StyloWorkStageChild);
-      return;
-    }
-    workByRun.set(runId, [item as StyloWorkStageChild]);
+    if (isSuccessfulConnectionStatus(item) || isRedundantStreamingStatus(item)) return false;
+    if (runId && finalRunIds.has(runId) && isCompletedThinkingStatus(item)) return false;
+    if (runId && finalRunIds.has(runId) && isRedundantFinalResponseStatus(item)) return false;
+    return true;
   });
-
-  const emittedRuns = new Set<string>();
-  const result: StyloDisplayMessage[] = [];
-  leaves.forEach((item) => {
-    const runId = runIdOf(item);
-    if (!runId || !belongsInWorkStage(item)) {
-      result.push(item);
-      return;
-    }
-    if (emittedRuns.has(runId)) return;
-    emittedRuns.add(runId);
-    const workStage = summarizeWorkStage(
-      runId,
-      workByRun.get(runId) || [item as StyloWorkStageChild],
-      finalRunIds.has(runId)
-    );
-    if (workStage.items.length > 0) result.push(workStage);
-  });
-  return result;
 };

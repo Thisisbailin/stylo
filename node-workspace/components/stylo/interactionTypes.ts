@@ -38,3 +38,10 @@ export type ScriptDocumentCommit = {
     dialoguePercent: number;
   };
 };
+
+export type ScriptPageSplitCommit = {
+  sourceNodeId: string;
+  title: string;
+  sourceContent: string;
+  nextContent: string;
+};

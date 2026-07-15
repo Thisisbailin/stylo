@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
-import { AudioLines, Layers, Image as ImageIcon, Sparkles, Video, Plus } from "lucide-react";
+import { AudioLines, Image as ImageIcon, Sparkles, Video, Plus } from "lucide-react";
+import { BookOpen } from "@phosphor-icons/react";
 import { NodeType } from "../types";
 
 export type ConnectionDropMenuOption<T extends string = NodeType> = {
@@ -25,8 +26,8 @@ type Props<T extends string = NodeType> = {
 
 const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
     { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain" },
-    { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive" },
-    { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile" },
+    { label: "Markdown 文本", hint: "文本节点即 Markdown 文档", type: "text", Icon: Plus, group: "script", meta: "Markdown" },
+    { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "library", meta: "Auto", disabled: true, disabledHint: "由剧本角色或场景自动生成" },
     { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input" },
     { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input" },
     { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input" },

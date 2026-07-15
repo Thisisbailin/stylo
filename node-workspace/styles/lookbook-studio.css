@@ -2,9 +2,8 @@
   position: fixed;
   inset: 0;
   z-index: 130;
-  display: grid;
+  display: block;
   min-height: 100dvh;
-  grid-template-rows: 52px minmax(0, 1fr);
   overflow: hidden;
   background: var(--app-bg);
   color: var(--app-text-primary);
@@ -22,50 +21,47 @@
   -webkit-app-region: no-drag;
 }
 
-.lookbook-studio__header {
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--app-border);
-  background: color-mix(in srgb, var(--app-panel) 94%, transparent);
-  padding: 0 16px 0 64px;
-  -webkit-app-region: drag;
-}
-
-.lookbook-studio__header > strong {
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.035em;
-}
-
-.lookbook-studio__back,
+.lookbook-studio__close,
 .lookbook-studio__missing button {
   display: inline-flex;
-  min-height: 30px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  padding: 0 9px;
+  border: 1px solid var(--app-border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--app-panel) 90%, transparent);
   color: var(--app-text-secondary);
   cursor: pointer;
-  font-size: 10px;
-  font-weight: 620;
-  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
-.lookbook-studio__back:hover,
+.lookbook-studio__close {
+  position: absolute;
+  top: 20px;
+  right: 22px;
+  z-index: 12;
+  width: 38px;
+  height: 38px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
+}
+
+.lookbook-studio__missing button {
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.lookbook-studio__close:hover,
 .lookbook-studio__missing button:hover {
   background: var(--app-panel-muted);
+  border-color: var(--app-border-strong);
   color: var(--app-text-primary);
 }
 
-.lookbook-studio__back:active,
+.lookbook-studio__close:active,
 .lookbook-studio__missing button:active {
-  transform: scale(0.98);
+  transform: scale(0.94);
 }
 
 .lookbook-studio__stage {
@@ -73,6 +69,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
+  height: 100dvh;
   place-items: center;
   overflow: hidden;
   perspective: 1800px;
@@ -91,19 +88,6 @@
   pointer-events: none;
 }
 
-.lookbook-studio__folio-label {
-  position: absolute;
-  top: 20px;
-  right: 28px;
-  z-index: 3;
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-  pointer-events: none;
-}
-
-.lookbook-studio__folio-label > span,
-.lookbook-studio__folio-label > small,
 .lookbook-studio__hint,
 .lookbook-book-spread__running-head,
 .lookbook-book-spread__page-number {
@@ -112,12 +96,6 @@
   font-size: 8px;
   font-weight: 650;
   letter-spacing: 0.11em;
-}
-
-.lookbook-studio__folio-label > strong {
-  font-size: 13px;
-  font-weight: 640;
-  letter-spacing: -0.03em;
 }
 
 .lookbook-book-cover {
@@ -269,6 +247,17 @@
 
 .lookbook-book-spread__page.is-right {
   right: 0;
+}
+
+.lookbook-book-spread__page.is-uncreated {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 9px,
+      color-mix(in srgb, var(--app-border) 24%, transparent) 9px 10px
+    ),
+    color-mix(in srgb, var(--app-bg) 88%, var(--app-panel) 12%);
+  opacity: 0.42;
 }
 
 .lookbook-book-spread__gutter {
@@ -594,13 +583,40 @@
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   white-space: nowrap;
   transform: translateX(-50%);
 }
 
 .lookbook-studio__hint > span:first-child {
   color: var(--app-text-secondary);
+}
+
+.lookbook-studio__add-page {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 999px;
+  background: var(--app-panel);
+  padding: 0 11px;
+  color: var(--app-text-primary);
+  cursor: pointer;
+  font-family: Outfit, "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
+  font-size: 10px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.lookbook-studio__add-page:hover {
+  background: var(--app-panel-muted);
+}
+
+.lookbook-studio__add-page:active {
+  transform: scale(0.97);
 }
 
 .lookbook-studio__file-input {
@@ -771,8 +787,6 @@
     gap: 4px;
   }
 
-  .lookbook-studio__folio-label > span,
-  .lookbook-studio__folio-label > small,
   .lookbook-studio__hint > span:last-child {
     display: none;
   }

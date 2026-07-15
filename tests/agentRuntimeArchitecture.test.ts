@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { performance } from "node:perf_hooks";
 import { StyloMessageEventState } from "../agents/react/styloMessageState";
+import { AgentStreamEventBuffer } from "../agents/react/streamEventBuffer";
 import {
   normalizeMessagesForDeepSeek,
   normalizeRequestForDeepSeek,
@@ -153,7 +154,7 @@ test("Agent message rendering binds themed visual identities to every major mess
     "utf8"
   );
 
-  for (const visualKey of ["user", "assistant", "thinking", "response", "work", "approval"] as const) {
+  for (const visualKey of ["user", "assistant", "thinking", "response", "approval"] as const) {
     assert.match(source, new RegExp(`STYLO_PRIMARY_MESSAGE_VISUALS\\.${visualKey}`));
   }
   assert.match(source, /resolveStyloToolMessageVisual\(effectiveTool\.name\)/);
@@ -279,6 +280,45 @@ test("React message projection is idempotent for replayed terminal events and tr
   assert.match(abortReason, /连续失败 5 次/);
 });
 
+test("stream event buffering coalesces text deltas without swallowing ordered terminal events", () => {
+  const buffer = new AgentStreamEventBuffer();
+  assert.equal(buffer.push({
+    type: "reasoning_delta",
+    runId: "run-1",
+    delta: "a",
+    accumulatedText: "a",
+    sequence: 1,
+  }), true);
+  assert.equal(buffer.push({
+    type: "reasoning_delta",
+    runId: "run-1",
+    delta: "b",
+    accumulatedText: "ab",
+    sequence: 2,
+  }), true);
+  assert.equal(buffer.push({
+    type: "message_delta",
+    runId: "run-1",
+    messageId: "answer-1",
+    delta: "x",
+    accumulatedText: "x",
+    sequence: 3,
+  }), true);
+  assert.equal(buffer.push({
+    type: "tool_called",
+    runId: "run-1",
+    call: { callId: "call-1", name: "read_document", status: "running" },
+    sequence: 4,
+  }), false);
+
+  const events = buffer.drain();
+  assert.equal(events.length, 2);
+  assert.equal(events[0].type, "reasoning_delta");
+  assert.equal(events[0].type === "reasoning_delta" && events[0].accumulatedText, "ab");
+  assert.equal(events[1].type, "message_delta");
+  assert.deepEqual(buffer.drain(), []);
+});
+
 test("preflight cancellation is projected as a stopped task instead of a connection failure", () => {
   const state = new StyloMessageEventState();
   const pending = state.createPreflight([], "preflight-1");
@@ -344,16 +384,13 @@ test("message timeline pairs tool transactions in O(n) projection order", () => 
   ];
   const timeline = buildStyloMessageTimeline(messages);
   assert.equal(timeline.length, 2);
-  assert.equal(timeline[0].kind, "work");
-  const tool = timeline[0].kind === "work"
-    ? timeline[0].items.find((item) => item.kind === "tool")
-    : undefined;
-  assert.equal(tool?.kind === "tool" && tool.thread.request?.tool.callId, "call-1");
-  assert.equal(tool?.kind === "tool" && tool.thread.result?.tool.callId, "call-1");
-  assert.equal(timeline[0].kind === "work" && timeline[0].hasFinalAnswer, true);
+  assert.equal(timeline[0].kind, "tool");
+  assert.equal(timeline[0].kind === "tool" && timeline[0].thread.request?.tool.callId, "call-1");
+  assert.equal(timeline[0].kind === "tool" && timeline[0].thread.result?.tool.callId, "call-1");
+  assert.equal(timeline[1].kind === "chat" && timeline[1].message.text, "done");
 });
 
-test("message timeline collapses run work, removes redundant completion status, and preserves primary messages", () => {
+test("message timeline renders work directly, removes redundant response status, and preserves approvals", () => {
   const messages: Message[] = [
     {
       role: "assistant",
@@ -424,16 +461,12 @@ test("message timeline collapses run work, removes redundant completion status, 
   ];
 
   const timeline = buildStyloMessageTimeline(messages);
-  const work = timeline.find((item) => item.kind === "work");
-  assert.ok(work && work.kind === "work");
-  assert.equal(work.items.length, 3);
   assert.equal(
-    work.items.some((item) => item.kind === "status" && item.message.statusCard.id === "response-1"),
+    timeline.some((item) => item.kind === "status" && item.message.statusCard.id === "response-1"),
     false
   );
-  assert.equal(work.toolCount, 1);
-  assert.equal(work.durationMs, 1_100);
-  assert.equal(work.hasFinalAnswer, true);
+  assert.equal(timeline.some((item) => item.kind === "status" && item.message.statusCard.id === "thinking-1"), false);
+  assert.equal(timeline.some((item) => item.kind === "tool"), true);
   assert.equal(timeline.some((item) => item.kind === "approval"), true);
   assert.equal(
     timeline.some((item) => item.kind === "chat" && item.message.text === "最终结果。"),
@@ -441,8 +474,9 @@ test("message timeline collapses run work, removes redundant completion status, 
   );
   assert.equal(
     timeline.some((item) => item.kind === "chat" && item.message.text === "继续处理。"),
-    false
+    true
   );
+  assert.equal(timeline.some((item) => (item as { kind?: string }).kind === "work"), false);
 });
 
 test("message timeline projects a synthetic long conversation within the rendering budget", () => {
@@ -523,18 +557,38 @@ test("Agent icons stay editorial while message surfaces follow Account theme pan
   assert.doesNotMatch(approvalRule, /radial-gradient|filter:|text-shadow/);
 });
 
-test("Agent mixed-message hierarchy keeps answers and decisions primary over work details", () => {
+test("Agent messages are borderless while approvals remain explicit decision cards", () => {
   const componentSource = readFileSync("node-workspace/components/stylo/StyloChatContent.tsx", "utf8");
   const styleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
+  const userRule = styleSource.match(/\.stylo-user-message\s*\{([^}]+)\}/)?.[1] || "";
+  const assistantRule = styleSource.match(/\.stylo-assistant-answer\s*\{([^}]+)\}/)?.[1] || "";
 
   assert.match(componentSource, /className="stylo-assistant-answer/);
-  assert.match(componentSource, /className="stylo-work-stage__content/);
+  assert.doesNotMatch(componentSource, /WorkStageView|stylo-work-stage/);
   assert.match(componentSource, /data-status=\{approval\.status\}/);
-  assert.match(styleSource, /\.stylo-assistant-answer\s*\{[\s\S]*var\(--app-panel-muted\)/);
-  assert.match(styleSource, /\.stylo-work-stage__content\s*\{[\s\S]*border-color:/);
+  assert.match(userRule, /border:\s*0/);
+  assert.match(userRule, /background:\s*transparent/);
+  assert.match(userRule, /box-shadow:\s*none/);
+  assert.match(assistantRule, /border:\s*0/);
+  assert.match(assistantRule, /background:\s*transparent/);
+  assert.match(assistantRule, /box-shadow:\s*none/);
   assert.match(styleSource, /\.stylo-work-detail-row \.stylo-message-icon\s*\{[\s\S]*opacity:\s*0\.58/);
   assert.match(styleSource, /\.stylo-approval-panel\[data-status="pending"\]\s*\{[\s\S]*border-color:\s*var\(--app-border-strong\)/);
   assert.doesNotMatch(styleSource, /\.stylo-approval-panel\[data-status="pending"\]\s*\{[^}]*inset 3px/);
+});
+
+test("Agent sending uses a synchronous lock and batches stream persistence work", () => {
+  const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
+  const controllerSource = readFileSync("agents/react/useStyloAgentController.ts", "utf8");
+
+  assert.match(agentSource, /debounceMs:\s*180/);
+  assert.match(agentSource, /conversationStateRef\.current\s*=\s*nextState/);
+  assert.match(agentSource, /if \(!cleanedInput \|\| submittingRef\.current\) return/);
+  assert.match(agentSource, /submittingRef\.current\s*=\s*true/);
+  assert.match(agentSource, /submittingRef\.current\s*=\s*false/);
+  assert.match(controllerSource, /streamEventQueueRef/);
+  assert.match(controllerSource, /requestAnimationFrame/);
+  assert.match(controllerSource, /AgentStreamEventBuffer/);
 });
 
 test("tool display outcomes do not present budget skips or no-ops as success", () => {

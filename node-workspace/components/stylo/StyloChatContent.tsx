@@ -4,7 +4,6 @@ import type { ApprovalChoice, ApprovalMessage, ChatMessage, Message, StatusMessa
 import {
   buildStyloMessageTimeline,
   type StyloDisplayMessage as DisplayMessageItem,
-  type StyloWorkStage,
   type ToolMessageThread as ToolThread,
 } from "./messageTimeline";
 import { renderStyloInlineMarkdown, renderStyloMarkdown } from "./StyloMarkdown";
@@ -60,13 +59,6 @@ const renderFoldoutSurface = (title: string, children: React.ReactNode) => (
     <div className="mt-2 space-y-2 text-[var(--app-text-secondary)]">{children}</div>
   </div>
 );
-
-const formatWorkedDuration = (durationMs: number) => {
-  const totalSeconds = Math.max(1, Math.round(durationMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${totalSeconds}s`;
-};
 
 const formatThoughtDuration = (durationMs: number) => {
   const totalSeconds = Math.max(0.1, durationMs / 1000);
@@ -458,85 +450,6 @@ const renderApprovalPanel = (
   );
 };
 
-const WorkStageView: React.FC<{ stage: StyloWorkStage }> = ({ stage }) => {
-  const [expanded, setExpanded] = useState(!stage.hasFinalAnswer);
-
-  useEffect(() => {
-    if (stage.hasFinalAnswer) setExpanded(false);
-  }, [stage.hasFinalAnswer]);
-
-  const durationLabel = stage.durationMs > 0 ? formatWorkedDuration(stage.durationMs) : null;
-  const headline = stage.hasFinalAnswer
-    ? `已处理${durationLabel ? ` ${durationLabel}` : ""}`
-    : stage.hasError && !stage.isRunning
-      ? "处理未完成"
-      : "正在处理";
-  const itemLabel = stage.toolCount > 0
-    ? `${stage.toolCount} 项工具操作`
-    : `${stage.items.length} 个工作阶段`;
-  const panelId = `${stage.key}-content`;
-
-  return (
-    <details
-      className="stylo-work-stage group w-full"
-      open={expanded}
-      onToggle={(event) => setExpanded(event.currentTarget.open)}
-    >
-      <summary
-        className="flex cursor-pointer list-none items-center gap-2.5 px-1 py-2 text-left [&::-webkit-details-marker]:hidden"
-        aria-controls={panelId}
-      >
-        <StyloMessageIcon
-          visual={STYLO_PRIMARY_MESSAGE_VISUALS.work}
-          status={stage.hasError ? "error" : stage.isRunning ? "running" : "success"}
-          compact
-          active={stage.isRunning}
-        />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--app-text-secondary)]">
-          {headline}
-          <span className="stylo-work-stage__meta ml-1.5 font-normal text-[var(--app-text-muted)]">· {itemLabel}</span>
-        </span>
-        <CaretRight
-          size={14}
-          weight="bold"
-          className="shrink-0 text-[var(--app-text-muted)] transition-transform duration-200 group-open:rotate-90"
-          aria-hidden="true"
-        />
-      </summary>
-      <div id={panelId} className="stylo-work-stage__content ml-[7px] border-l border-[var(--app-border)] pb-1 pl-4 pt-1">
-        <div>
-          {stage.items.map((item) => (
-            <div key={item.key} className="stylo-work-stage__item min-w-0" data-work-kind={item.kind}>
-              {item.kind === "status"
-                ? renderStatusLine(item.message, { expanded: false })
-                : item.kind === "tool"
-                  ? renderToolThread(item.thread, { expanded: false })
-                  : (
-                    <div className="px-1 py-2 text-[var(--app-text-secondary)]">
-                      {renderAssistantPanel(item.message)}
-                    </div>
-                  )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </details>
-  );
-};
-
-const areWorkStageChildrenEqual = (
-  left: StyloWorkStage["items"][number],
-  right: StyloWorkStage["items"][number]
-) => {
-  if (left.kind !== right.kind || left.key !== right.key) return false;
-  if (left.kind === "status" && right.kind === "status") return left.message === right.message;
-  if (left.kind === "chat" && right.kind === "chat") return left.message === right.message;
-  if (left.kind === "tool" && right.kind === "tool") {
-    return left.thread.request === right.thread.request && left.thread.result === right.thread.result;
-  }
-  return false;
-};
-
 const areDisplayMessagesEqual = (left: DisplayMessageItem, right: DisplayMessageItem) => {
   if (left.kind !== right.kind || left.key !== right.key || left.order !== right.order) return false;
   if (left.kind === "chat" && right.kind === "chat") return left.message === right.message;
@@ -544,15 +457,6 @@ const areDisplayMessagesEqual = (left: DisplayMessageItem, right: DisplayMessage
   if (left.kind === "approval" && right.kind === "approval") return left.message === right.message;
   if (left.kind === "tool" && right.kind === "tool") {
     return left.thread.request === right.thread.request && left.thread.result === right.thread.result;
-  }
-  if (left.kind === "work" && right.kind === "work") {
-    return left.durationMs === right.durationMs &&
-      left.toolCount === right.toolCount &&
-      left.hasFinalAnswer === right.hasFinalAnswer &&
-      left.isRunning === right.isRunning &&
-      left.hasError === right.hasError &&
-      left.items.length === right.items.length &&
-      left.items.every((item, index) => areWorkStageChildrenEqual(item, right.items[index]));
   }
   return false;
 };
@@ -582,9 +486,7 @@ const MessageItemView = memo(function MessageItemView({
       data-current={attachRef}
       data-message-kind={item.kind}
     >
-      {item.kind === "work" ? (
-        <WorkStageView stage={item} />
-      ) : item.kind === "status" ? (
+      {item.kind === "status" ? (
         renderStatusLine(item.message, { expanded })
       ) : item.kind === "tool" ? (
         renderToolThread(item.thread, { expanded })
@@ -592,7 +494,7 @@ const MessageItemView = memo(function MessageItemView({
         renderApprovalPanel(item.message, onApprovalChoice)
       ) : isUser ? (
         <div className="flex max-w-[92%] items-end gap-2 md:max-w-[86%]">
-          <div className="stylo-user-message px-4 py-3.5 text-[15px] leading-7 text-[var(--app-text-primary)] md:py-3 md:text-[13px] md:leading-relaxed">
+          <div className="stylo-user-message px-1 py-2 text-[15px] leading-7 text-[var(--app-text-primary)] md:text-[13px] md:leading-relaxed">
             {item.message.text}
           </div>
           <StyloMessageIcon visual={STYLO_PRIMARY_MESSAGE_VISUALS.user} compact />

@@ -413,7 +413,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
 
     return (
         <BaseNode
-            title={data.title || "Text"}
+            title={data.title || "Markdown 文本"}
             onTitleChange={isReadOnly ? undefined : (title) => updateNodeData(id, { title })}
             inputs={isDocumentTextNode ? ["image", "text"] : ["text"]}
             outputs={["text"]}
@@ -445,7 +445,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
                     className="text-node-editor nodrag"
                     contentEditable={!isReadOnly}
                     suppressContentEditableWarning
-                    data-placeholder="Describe or input text here..."
+                    data-placeholder="使用 Markdown 记录文本…"
                     onInput={handleInput}
                     onBeforeInput={(e) => {
                         if (isComposingRef.current) return;

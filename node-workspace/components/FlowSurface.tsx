@@ -12,6 +12,7 @@ import {
   Node,
   NodeChange,
   NodeTypes,
+  OnBeforeDelete,
   OnConnectEnd,
   OnConnectStart,
   Position,
@@ -26,7 +27,6 @@ import {
   FileText,
   Folder,
   Image as ImageIcon,
-  Layers,
   Map as MapIcon,
   Network,
   Pencil,
@@ -39,7 +39,7 @@ import {
   UserRound,
   Clapperboard,
 } from "lucide-react";
-import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
+import { ArrowUp, BookOpen, CircleNotch } from "@phosphor-icons/react";
 import type {
   ProjectData,
   FlowProject,
@@ -69,6 +69,7 @@ import { createIdleNodeFlowExecutionState } from "../nodeflow/sessionState";
 import { buildNodeFlowFile, hydrateImportedNodeFlow } from "../nodeflow/serialization";
 import { parseNodeFlowFile } from "../nodeflow/schema";
 import { downloadNodeFlowPackage } from "../nodeflow/package";
+import { collectOwnedStorageObjects, deleteOwnedStorageObjects } from "../nodeflow/storageObjects";
 import { useNodeFlowStore } from "../store/nodeFlowStore";
 import { useNodeFlowExecutor } from "../store/useNodeFlowExecutor";
 import { getEdgeAlignedPosition } from "../utils/edgeAlignment";
@@ -129,7 +130,7 @@ import {
   isFoundationMembershipLink,
   removeFoundationMembership,
 } from "../foundation/membership";
-import { addManualLookbookIdentity } from "../../utils/lookbookIdentities";
+import { isLookbookNodeType } from "../../utils/lookbookIdentities";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -305,9 +306,9 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 
 const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "剧本文档", hint: "Manus · Fountain", type: "scriptPage", Icon: Plus, group: "script", meta: "Fountain", tone: "is-slate", surface: "paper" },
-  { label: "档案文档", hint: "全局 Markdown", type: "mdText", Icon: Plus, group: "script", meta: "Archive", tone: "is-slate", surface: "paper" },
+  { label: "Markdown 文本", hint: "文本节点即 Markdown 文档", type: "text", Icon: Plus, group: "script", meta: "Markdown", tone: "is-slate", surface: "paper" },
   { label: "文件夹", hint: "由 foundation 自动生成", type: "folder", Icon: Folder, group: "script", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "仅可查看" },
-  { label: "身份卡", hint: "角色与场景资料", type: "identityCard", Icon: Layers, group: "library", meta: "Profile", tone: "is-moss", surface: "card" },
+  { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "library", meta: "Auto", tone: "is-moss", surface: "card", disabled: true, disabledHint: "由剧本角色或场景自动生成" },
   { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
   { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
   { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
@@ -447,7 +448,7 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   position: node.position || getDefaultFlowNodePosition(index),
   measured: sanitizeScriptMeasured(node.measured),
   selected: false,
-  style: node.type === "identityCard" ? { ...node.style, width: 240, height: 280 } : node.style,
+  style: isLookbookNodeType(node.type) ? { ...node.style, width: 304, height: 208 } : node.style,
   data: {
     ...createDefaultNodeFlowNodeData(node.type),
     ...(node.data || {}),
@@ -565,6 +566,7 @@ const nodeTypes: NodeTypes = {
   videoInput: withFoundationBoundaryHandle(VideoInputNode),
   annotation: withFoundationBoundaryHandle(AnnotationNode),
   scriptBoard: withFoundationBoundaryHandle(ScriptBoardNode),
+  lookbook: withFoundationBoundaryHandle(IdentityCardNode),
   identityCard: withFoundationBoundaryHandle(IdentityCardNode),
   imageGen: withFoundationBoundaryHandle(ImageGenNode),
   nanoBananaImageGen: withFoundationBoundaryHandle(NanoBananaImageGenNode),
@@ -2040,7 +2042,7 @@ export const useFlowSurface = ({
       .map((node, index) => ({
         ...node,
         position: node.position || getDefaultFlowNodePosition(index),
-        style: node.type === "identityCard" ? { ...node.style, width: 240, height: 280 } : node.style,
+        style: isLookbookNodeType(node.type) ? { ...node.style, width: 304, height: 208 } : node.style,
         selected: selectedNodeIds.has(node.id),
         data: {
           ...createDefaultNodeFlowNodeData(node.type),
@@ -2973,18 +2975,18 @@ export const useFlowSurface = ({
         const requestedPosition = position || getDefaultMarkdownPosition(nextFlow.flowNodes?.length || 0);
         const nextNode: NodeFlowNode = {
           id: createdNodeId,
-          type: "mdText",
-          position: getSafeScriptNodePosition(nextFlow.flowNodes || [], "mdText", requestedPosition, {
+          type: "text",
+          position: getSafeScriptNodePosition(nextFlow.flowNodes || [], "text", requestedPosition, {
             id: createdNodeId,
-            type: "mdText",
+            type: "text",
             position: requestedPosition,
             style: MARKDOWN_TEXT_NODE_SIZE,
           }),
           style: MARKDOWN_TEXT_NODE_SIZE,
           data: {
-            ...createDefaultNodeFlowNodeData("mdText"),
+            ...createDefaultNodeFlowNodeData("text"),
             documentId: id,
-            title: "档案文档",
+            title: "Markdown 文本",
             text: "",
             content: "",
             preview: compactMarkdownPreview(""),
@@ -2996,7 +2998,7 @@ export const useFlowSurface = ({
         flow: {
           ...nextFlow,
           flowNodes: [...(nextFlow.flowNodes || []), nextNode],
-          links: buildLinkForCreatedNode(nextFlow.links, createdNodeId, "mdText", dropState),
+          links: buildLinkForCreatedNode(nextFlow.links, createdNodeId, "text", dropState),
         },
         };
       });
@@ -3014,7 +3016,7 @@ export const useFlowSurface = ({
       extraData?: Partial<NodeFlowNodeData>,
       fixedNodeId?: string
     ) => {
-      if (type === "folder") return null;
+      if (type === "folder" || isLookbookNodeType(type)) return null;
       const requestedPosition = position || getDefaultFlowNodePosition(flow.flowNodes?.length || 0);
       const commandState = {
         revision: flow.revision || 0,
@@ -3077,35 +3079,6 @@ export const useFlowSurface = ({
       flowRuntimeLinks,
       setProjectData,
     ]
-  );
-
-  const handleAddIdentityCard = useCallback(
-    (
-      position?: { x: number; y: number },
-      dropState: ScriptConnectionDropState | null = null
-    ) => {
-      let createdNodeId: string | null = null;
-      setProjectData((previous) => {
-        const requestedPosition = position || getDefaultFlowNodePosition(previous.flow?.flowNodes?.length || 0);
-        const result = addManualLookbookIdentity(previous, { position: requestedPosition });
-        createdNodeId = result.identityNodeId;
-        const nextFlow = ensureFlow(result.projectData.flow);
-        const nextData = {
-          ...result.projectData,
-          flow: {
-            ...nextFlow,
-            links: buildLinkForCreatedNode(nextFlow.links, result.identityNodeId, "identityCard", dropState),
-          },
-        };
-        return {
-          ...nextData,
-          flowProjects: saveActiveFlowIntoProjects(nextData),
-        };
-      });
-      if (createdNodeId) setSelectedNodeIds(new Set([createdNodeId]));
-      return createdNodeId;
-    },
-    [buildLinkForCreatedNode, setProjectData]
   );
 
   const handleAddMarkdownNodeFromTail = useCallback(() => {
@@ -3259,6 +3232,35 @@ export const useFlowSurface = ({
     }
     alert(started > 0 ? `已启动 ${started} 个生成节点。` : "当前没有可执行的生成节点。");
   }, [runImageGen, runVideoGen, flowRuntimeNodes]);
+
+  const handleBeforeDelete = useCallback<OnBeforeDelete<FlowRenderNode, FlowRenderEdge>>(
+    async ({ nodes: requestedNodes, edges: requestedEdges }) => {
+      const protectedNodeIds = new Set(
+        requestedNodes
+          .filter((node) => isFoundationStructuralNode(node as NodeFlowNode))
+          .map((node) => node.id)
+      );
+      const deletableNodes = requestedNodes.filter((node) => !protectedNodeIds.has(node.id));
+      const deletableEdges = requestedEdges.filter(
+        (edge) => !protectedNodeIds.has(edge.source) && !protectedNodeIds.has(edge.target)
+      );
+      if (requestedNodes.length > 0 && deletableNodes.length === 0) return false;
+
+      const storageObjects = collectOwnedStorageObjects(deletableNodes);
+      if (storageObjects.length > 0) {
+        try {
+          await deleteOwnedStorageObjects(storageObjects);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "未知错误";
+          window.alert(`无法删除节点：云端图片尚未清理。\n${message}`);
+          return false;
+        }
+      }
+
+      return { nodes: deletableNodes, edges: deletableEdges };
+    },
+    []
+  );
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowRenderNode>[]) => {
@@ -3612,8 +3614,7 @@ export const useFlowSurface = ({
         setConnectionDrop(null);
         return;
       }
-      if (type === "identityCard") {
-        handleAddIdentityCard(connectionDrop.flowPosition, connectionDrop);
+      if (isLookbookNodeType(type)) {
         setConnectionDrop(null);
         return;
       }
@@ -3621,7 +3622,7 @@ export const useFlowSurface = ({
       handleAddFlowNode(type, connectionDrop.flowPosition, connectionDrop);
       setConnectionDrop(null);
     },
-    [connectionDrop, handleAddFlowNode, handleAddIdentityCard, handleAddMarkdownNode, handleAddScriptPage]
+    [connectionDrop, handleAddFlowNode, handleAddMarkdownNode, handleAddScriptPage]
   );
 
   const handleScriptNodeClick = useCallback(
@@ -3639,7 +3640,7 @@ export const useFlowSurface = ({
 
   const handleScriptNodeDoubleClick = useCallback(
     (node: FlowRenderNode) => {
-      if (node.type === "identityCard") onOpenLookbook?.(node.id);
+      if (isLookbookNodeType(node.type)) onOpenLookbook?.(node.id);
     },
     [onOpenLookbook]
   );
@@ -3698,8 +3699,7 @@ export const useFlowSurface = ({
                     x: window.innerWidth / 2,
                     y: Math.max(120, window.innerHeight / 2 - 120),
                   });
-            if (type === "identityCard") handleAddIdentityCard(position);
-            else handleAddFlowNode(type, position);
+            if (!isLookbookNodeType(type)) handleAddFlowNode(type, position);
           }}
           flowProjects={flowProjects}
           activeFlowProjectId={activeFlowProjectId}
@@ -3736,6 +3736,7 @@ export const useFlowSurface = ({
     onConnect: handleConnect,
     onConnectStart: handleConnectStart,
     onConnectEnd: handleConnectEnd,
+    onBeforeDelete: handleBeforeDelete as CanvasSurfaceConfig["onBeforeDelete"],
     onNodeClick: (_, node) => handleScriptNodeClick(node as FlowRenderNode),
     onNodeDoubleClick: (_, node) => handleScriptNodeDoubleClick(node as FlowRenderNode),
     onNodeDragStart: (_, node) => updateSnapGuide(node.id, node.position),
@@ -3747,8 +3748,8 @@ export const useFlowSurface = ({
     onlyRenderVisibleElements: false,
     overlays,
     actions: {
-      addNode: (type, position) => type === "identityCard"
-        ? handleAddIdentityCard(position)
+      addNode: (type, position) => isLookbookNodeType(type)
+        ? null
         : handleAddFlowNode(type, position),
       importNodeFlow: handleImportScriptNodeFlow,
       exportNodeFlow: handleExportScriptNodeFlow,

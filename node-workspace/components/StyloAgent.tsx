@@ -545,6 +545,7 @@ export const StyloAgent: React.FC<Props> = ({
   const [conversationState, setConversationState] = usePersistedState<ConversationState>({
     key: effectiveConversationStorageKey,
     initialValue: { activeId: "", items: [] },
+    debounceMs: 180,
     serialize: (value) => JSON.stringify(value),
     deserialize: (value) => {
       try {
@@ -561,6 +562,8 @@ export const StyloAgent: React.FC<Props> = ({
       }
     },
   });
+  const conversationStateRef = useRef(conversationState);
+  conversationStateRef.current = conversationState;
   const [approvalPreferences, setApprovalPreferences] = usePersistedState<ApprovalPreferenceState>({
     key: approvalPreferenceStorageKey,
     initialValue: {},
@@ -587,40 +590,43 @@ export const StyloAgent: React.FC<Props> = ({
   const messages = activeConversation?.messages || [];
   const setMessages = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
-      setConversationState((prev) => {
-        let items = [...prev.items];
-        let activeId = prev.activeId;
-        if (!items.length) {
-          const created = createConversationRecord();
-          items = [created];
-          activeId = created.id;
-        }
-        if (!activeId && items.length) activeId = items[0].id;
-        let idx = items.findIndex((item) => item.id === activeId);
-        if (idx < 0) {
-          const created = createConversationRecord();
-          items = [created, ...items];
-          activeId = created.id;
-          idx = 0;
-        }
-        const current = items[idx];
-        const currentMessages = Array.isArray(current.messages) ? current.messages : [];
-        const nextMessages =
-          typeof updater === "function" ? (updater as (p: Message[]) => Message[])(currentMessages) : updater;
-        const clamped = clampMessages(nextMessages);
-        const nextTitle = current.title && current.title !== "新对话" ? current.title : buildConversationTitle(clamped);
-        items[idx] = {
-          ...current,
-          title: nextTitle,
-          messages: clamped,
-          updatedAt: Date.now(),
-        };
-        return { ...prev, activeId, items };
-      });
+      const previous = conversationStateRef.current;
+      let items = [...previous.items];
+      let activeId = previous.activeId;
+      if (!items.length) {
+        const created = createConversationRecord();
+        items = [created];
+        activeId = created.id;
+      }
+      if (!activeId && items.length) activeId = items[0].id;
+      let idx = items.findIndex((item) => item.id === activeId);
+      if (idx < 0) {
+        const created = createConversationRecord();
+        items = [created, ...items];
+        activeId = created.id;
+        idx = 0;
+      }
+      const current = items[idx];
+      const currentMessages = Array.isArray(current.messages) ? current.messages : [];
+      const nextMessages =
+        typeof updater === "function" ? (updater as (p: Message[]) => Message[])(currentMessages) : updater;
+      const clamped = clampMessages(nextMessages);
+      const nextTitle = current.title && current.title !== "新对话" ? current.title : buildConversationTitle(clamped);
+      items[idx] = {
+        ...current,
+        title: nextTitle,
+        messages: clamped,
+        updatedAt: Date.now(),
+      };
+      const nextState = { ...previous, activeId, items };
+      conversationStateRef.current = nextState;
+      setConversationState(nextState);
+      return clamped;
     },
     [setConversationState, clampMessages]
   );
   const [isSending, setIsSending] = useState(false);
+  const submittingRef = useRef(false);
   const [viewportSize, setViewportSize] = useState(
     typeof window !== "undefined"
       ? { width: window.innerWidth, height: window.innerHeight }
@@ -1015,7 +1021,8 @@ export const StyloAgent: React.FC<Props> = ({
 
   const submitText = useCallback(async (rawText: string, submittedUiContext?: AgentUiContext) => {
     const cleanedInput = rawText.trim();
-    if (!cleanedInput || isSending) return;
+    if (!cleanedInput || submittingRef.current) return;
+    submittingRef.current = true;
     const runProjectId = projectId;
     const runFlowRevision = getNodeFlowSnapshot().revision;
     const runAccountGeneration = useNodeFlowStore.getState().accountGeneration;
@@ -1140,9 +1147,10 @@ export const StyloAgent: React.FC<Props> = ({
         ];
       });
     } finally {
+      submittingRef.current = false;
       setIsSending(false);
     }
-  }, [accountScope, activeView, isSending, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
+  }, [accountScope, activeView, importNodeFlow, linkStyle, nodeFlowContext, onScriptEditProposals, projectId, revision, runAgentMessage, setExecutionApprovals, setMessages, setProjectData, viewport]);
 
   const panelClassName = "pointer-events-auto stylo-panel";
   const dockInset = 16;

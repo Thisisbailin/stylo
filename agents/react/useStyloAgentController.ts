@@ -8,13 +8,14 @@ import {
 import { browserAgentDebug, browserAgentDebugError } from "../runtime/debug";
 import type { AgentRuntimeEvent, StyloAgentRuntime, StyloRunInput, StyloRunResult } from "../runtime/types";
 import { StyloMessageEventState } from "./styloMessageState";
+import { AgentStreamEventBuffer } from "./streamEventBuffer";
 
 type Options = {
   runtime: StyloAgentRuntime;
   projectId: string;
   sessionId: string;
   activityStorageKey?: string;
-  setMessages: (updater: Message[] | ((previous: Message[]) => Message[])) => void;
+  setMessages: (updater: Message[] | ((previous: Message[]) => Message[])) => Message[];
 };
 
 type DisplayAwareError = Error & { styloAlreadyDisplayed?: boolean };
@@ -33,6 +34,38 @@ export const useStyloAgentController = ({
   const mountedRef = useRef(true);
   const projectionRef = useRef(new StyloMessageEventState());
   const displayedErrorRef = useRef<string | null>(null);
+  const streamEventQueueRef = useRef(new AgentStreamEventBuffer());
+  const streamFrameRef = useRef<number | null>(null);
+
+  const projectEvents = useCallback((events: AgentRuntimeEvent[]) => {
+    if (!events.length || !mountedRef.current) return;
+    let abortReason: string | undefined;
+    let displayedError: string | undefined;
+    setMessages((previous) => {
+      let next = previous;
+      events.forEach((event) => {
+        const projected = projectionRef.current.apply(next, event);
+        next = projected.messages;
+        abortReason ||= projected.abortReason;
+        displayedError ||= projected.displayedError;
+      });
+      return next;
+    });
+    if (displayedError) displayedErrorRef.current = displayedError;
+    if (abortReason && abortRef.current && !abortRef.current.signal.aborted) {
+      abortRef.current.abort(abortReason);
+    }
+  }, [setMessages]);
+
+  const flushStreamEvents = useCallback(() => {
+    if (streamFrameRef.current != null) {
+      cancelAnimationFrame(streamFrameRef.current);
+      streamFrameRef.current = null;
+    }
+    const events = streamEventQueueRef.current.drain();
+    if (!events.length) return;
+    projectEvents(events);
+  }, [projectEvents]);
 
   const handleEvent = useCallback((event: AgentRuntimeEvent) => {
     if (!mountedRef.current) return;
@@ -40,15 +73,18 @@ export const useStyloAgentController = ({
     if (event.type === "tool_completed") recordAgentToolCompleted(event.call, activityStorageKey);
     if (event.type === "tool_failed") recordAgentToolFailed(event.call, event.error, activityStorageKey);
 
-    setMessages((previous) => {
-      const projected = projectionRef.current.apply(previous, event);
-      if (projected.abortReason && abortRef.current && !abortRef.current.signal.aborted) {
-        queueMicrotask(() => abortRef.current?.abort(projected.abortReason));
-      }
-      if (projected.displayedError) displayedErrorRef.current = projected.displayedError;
-      return projected.messages;
+    if (!streamEventQueueRef.current.push(event)) {
+      flushStreamEvents();
+      projectEvents([event]);
+      return;
+    }
+    if (streamFrameRef.current != null) return;
+    streamFrameRef.current = requestAnimationFrame(() => {
+      streamFrameRef.current = null;
+      const events = streamEventQueueRef.current.drain();
+      projectEvents(events);
     });
-  }, [activityStorageKey, setMessages]);
+  }, [activityStorageKey, flushStreamEvents, projectEvents]);
 
   const sendMessage = useCallback(async (
     input: Omit<StyloRunInput, "projectId" | "sessionId">
@@ -57,6 +93,7 @@ export const useStyloAgentController = ({
     const controller = new AbortController();
     abortRef.current = controller;
     displayedErrorRef.current = null;
+    flushStreamEvents();
     const preflightId = createId("preflight");
     setMessages((previous) => projectionRef.current.createPreflight(previous, preflightId));
     setIsRunning(true);
@@ -83,11 +120,12 @@ export const useStyloAgentController = ({
       browserAgentDebugError("useStyloAgentController runtime error", error);
       throw error;
     } finally {
+      flushStreamEvents();
       abortRef.current = null;
       setIsRunning(false);
       browserAgentDebug("useStyloAgentController settled", { projectId, sessionId });
     }
-  }, [handleEvent, projectId, runtime, sessionId, setMessages]);
+  }, [flushStreamEvents, handleEvent, projectId, runtime, sessionId, setMessages]);
 
   const cancel = useCallback(() => abortRef.current?.abort("用户已停止当前 Agent 任务。"), []);
 
@@ -95,6 +133,9 @@ export const useStyloAgentController = ({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (streamFrameRef.current != null) cancelAnimationFrame(streamFrameRef.current);
+      streamFrameRef.current = null;
+      streamEventQueueRef.current.clear();
       abortRef.current?.abort("Agent 视图已卸载。");
     };
   }, []);

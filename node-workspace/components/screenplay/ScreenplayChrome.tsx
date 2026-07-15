@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowsInSimple,
-  BookmarkSimple,
+  ArrowsDownUp,
+  ArrowsLeftRight,
   CaretLeft,
   CaretRight,
   Check,
   CheckCircle,
   CircleNotch,
+  FileDashed,
   FilmSlate,
   Crosshair,
   GridFour,
@@ -36,6 +38,14 @@ type HeaderProps = {
   onToggleInspector: () => void;
   onShare: () => void;
   onClose: () => void;
+  pageIndex: number;
+  pageCount: number;
+  pageArrangement: "vertical" | "horizontal";
+  autoPagination: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+  onTogglePageArrangement: () => void;
+  onToggleAutoPagination: () => void;
 };
 
 const SAVE_LABELS: Record<SaveState, string> = {
@@ -54,8 +64,16 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
   onToggleInspector,
   onShare,
   onClose,
+  pageIndex,
+  pageCount,
+  pageArrangement,
+  autoPagination,
+  onPreviousPage,
+  onNextPage,
+  onTogglePageArrangement,
+  onToggleAutoPagination,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const collapseTimerRef = useRef<number | null>(null);
 
   const cancelCollapse = useCallback(() => {
@@ -77,10 +95,7 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
     }, delay);
   }, [cancelCollapse]);
 
-  useEffect(() => {
-    scheduleCollapse(2400);
-    return cancelCollapse;
-  }, [cancelCollapse, scheduleCollapse]);
+  useEffect(() => cancelCollapse, [cancelCollapse]);
 
   return (
     <header
@@ -90,6 +105,7 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
       onFocusCapture={reveal}
       onBlurCapture={() => scheduleCollapse()}
     >
+      <span className="screenplay-header__hot-zone" aria-hidden="true" />
       <div className="screenplay-header__actions" aria-hidden={!isExpanded}>
         <div
           className={`screenplay-save-state is-${saveState}`}
@@ -102,6 +118,22 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
           {saveState === "saving" || saveState === "idle" ? <CircleNotch size={14} /> : null}
           {saveState === "conflict" || saveState === "error" ? <WarningCircle size={14} weight="fill" /> : null}
         </div>
+        <span className="screenplay-header__divider" />
+        <div className="screenplay-header__page-controls" aria-label="稿纸导航">
+          <button type="button" onClick={onPreviousPage} disabled={pageIndex <= 0} title="上一张稿纸" aria-label="上一张稿纸">
+            <CaretLeft size={16} />
+          </button>
+          <small>{pageIndex + 1}/{Math.max(1, pageCount)}</small>
+          <button type="button" onClick={onNextPage} disabled={pageIndex >= pageCount - 1} title="下一张稿纸" aria-label="下一张稿纸">
+            <CaretRight size={16} />
+          </button>
+        </div>
+        <button type="button" onClick={onTogglePageArrangement} title={pageArrangement === "vertical" ? "切换为横向翻页" : "切换为纵向翻页"} aria-label="切换稿纸排列方向">
+          {pageArrangement === "vertical" ? <ArrowsDownUp size={18} /> : <ArrowsLeftRight size={18} />}
+        </button>
+        <button type="button" className={autoPagination ? "is-active" : ""} onClick={onToggleAutoPagination} title={autoPagination ? "关闭自动分页" : "开启自动分页"} aria-label="切换自动分页">
+          <FileDashed size={18} weight={autoPagination ? "fill" : "regular"} />
+        </button>
         <span className="screenplay-header__divider" />
         <button type="button" className={isFocusMode ? "is-active" : ""} onClick={onToggleFocus} title="专注模式" aria-label="切换专注模式">
           <Crosshair size={18} />
@@ -117,16 +149,6 @@ export const ScreenplayHeader: React.FC<HeaderProps> = ({
           <ArrowsInSimple size={18} />
         </button>
       </div>
-      <button
-        type="button"
-        className="screenplay-header__bookmark"
-        onClick={reveal}
-        aria-expanded={isExpanded}
-        aria-label={isExpanded ? "Manus 工具已展开" : "展开 Manus 工具"}
-        title={isExpanded ? "Manus 工具" : "展开 Manus 工具"}
-      >
-        {isExpanded ? <CaretRight size={15} /> : <BookmarkSimple size={16} weight="fill" />}
-      </button>
     </header>
   );
 };
@@ -188,12 +210,12 @@ export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
     () => entries.find((entry) => entry.role.id === recentIdentityId) || null,
     [entries, recentIdentityId]
   );
+  const railEntries = useMemo(() => [...characters, ...scenes].slice(0, 5), [characters, scenes]);
+  const hiddenEntryCount = Math.max(0, entries.length - railEntries.length);
 
   useEffect(() => {
     if (!recentIdentityId) return;
     setIsOpen(false);
-    const revealTimer = window.setTimeout(() => setIsOpen(true), 2400);
-    return () => window.clearTimeout(revealTimer);
   }, [recentIdentityId]);
 
   const renderSection = (
@@ -262,18 +284,33 @@ export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
         {renderSection("角色", characters, User)}
         {renderSection("场景", scenes, MapPin)}
       </div>
-
-      <button
-        type="button"
-        className="screenplay-identity-dock__toggle"
-        onClick={() => setIsOpen((open) => !open)}
-        aria-expanded={isOpen}
-        aria-label={isOpen ? "收起角色与场景资料格" : "展开角色与场景资料格"}
-        title={isOpen ? "收起资料格" : "角色与场景资料格"}
-      >
-        {isOpen ? <CaretRight size={15} /> : <GridFour size={16} weight="fill" />}
-        {!isOpen && entries.length ? <small>{entries.length}</small> : null}
-      </button>
+      <div className="screenplay-identity-dock__rail">
+        {railEntries.map((entry) => {
+          const name = entry.role.displayName || entry.role.name;
+          return (
+            <button
+              key={entry.role.id}
+              type="button"
+              className={entry.role.id === recentIdentityId ? "is-recent" : ""}
+              onClick={() => entry.identityNodeId ? onOpenIdentity(entry.identityNodeId) : setIsOpen(true)}
+              title={entry.identityNodeId ? `打开 ${name} 的 LookBook` : `查看 ${name}`}
+              aria-label={entry.identityNodeId ? `打开 ${name} 的 LookBook` : `查看 ${name}`}
+            >
+              <IdentityAvatar role={entry.role} />
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="screenplay-identity-dock__toggle"
+          onClick={() => setIsOpen((open) => !open)}
+          aria-expanded={isOpen}
+          aria-label={isOpen ? "收起角色与场景资料格" : "展开角色与场景资料格"}
+          title={isOpen ? "收起资料格" : "展开角色与场景"}
+        >
+          {hiddenEntryCount ? <small>+{hiddenEntryCount}</small> : <GridFour size={15} weight="fill" />}
+        </button>
+      </div>
     </aside>
   );
 };

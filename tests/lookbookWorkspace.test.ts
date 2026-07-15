@@ -5,6 +5,7 @@ import type { ProjectData } from "../types";
 import type { NodeFlowNode } from "../node-workspace/types";
 import { pngHasTransparency } from "../utils/pngTransparency";
 import {
+  addLookbookPage,
   addLookbookImageAssets,
   addLookbookTextCard,
   buildAdaptiveLookbookLayouts,
@@ -12,10 +13,13 @@ import {
   reflowLookbookLayouts,
   sanitizeLookbookLayout,
   getLookbookIndexNode,
+  getLookbookPageCount,
+  getLookbookSpreadCount,
   updateLookbookNodeLayout,
   updateLookbookTextCard,
 } from "../utils/lookbookWorkspace";
 import { addManualLookbookIdentity, getLookbookMemberNodes } from "../utils/lookbookIdentities";
+import { createDefaultNodeFlowNodeData } from "../node-workspace/nodeflow/defaults";
 
 const makeProject = (): ProjectData => ({
   fileName: "Lookbook Workspace",
@@ -41,13 +45,13 @@ const makeProject = (): ProjectData => ({
     flowNodes: [
       {
         id: "identity-1",
-        type: "identityCard",
+        type: "lookbook",
         position: { x: 100, y: 120 },
         data: { title: "林默", identityId: "role-1", lookbookIndexNodeId: "lookbook-index-role-1" },
       },
       {
         id: "lookbook-index-role-1",
-        type: "mdText",
+        type: "text",
         position: { x: 490, y: 148 },
         data: {
           title: "林默 · Lookbook 索引",
@@ -55,7 +59,7 @@ const makeProject = (): ProjectData => ({
           content: "# 林默\n\n## Lookbook 索引",
           lookbookIdentityId: "role-1",
           lookbookRole: "index",
-          lookbookBook: { version: 1, entries: [] },
+          lookbookBook: { version: 1, pageCount: 0, entries: [] },
         },
       },
     ],
@@ -139,6 +143,27 @@ test("Lookbook text cards create real connected text nodes and persist editing",
   assert.equal(node?.data.text, "雨水会加深布料颜色。");
 });
 
+test("new text nodes are Markdown documents rather than a separate archive type", () => {
+  const defaults = createDefaultNodeFlowNodeData("text");
+  assert.equal(defaults.title, "Markdown 文本");
+  assert.equal(defaults.format, "markdown");
+  assert.equal(defaults.documentKind, "note");
+});
+
+test("Lookbook can persist empty pages independently from connected content", () => {
+  const first = addLookbookPage(makeProject(), "identity-1");
+  const third = addLookbookPage(first, "identity-1", 2);
+  const items = projectLookbookBoardItems(third, "identity-1");
+  assert.equal(items.length, 0);
+  assert.equal(getLookbookPageCount(first, "identity-1"), 1);
+  assert.equal(getLookbookPageCount(third, "identity-1"), 3);
+  assert.equal(getLookbookSpreadCount(items, getLookbookPageCount(third, "identity-1")), 2);
+  assert.equal(
+    (getLookbookIndexNode(third, "identity-1")?.data.lookbookBook as { pageCount?: number }).pageCount,
+    3
+  );
+});
+
 test("manual identity creation atomically creates its role, index, and Lookbook link", () => {
   const result = addManualLookbookIdentity(makeProject(), {
     position: { x: 320, y: 180 },
@@ -149,6 +174,8 @@ test("manual identity creation atomically creates its role, index, and Lookbook 
   const indexNode = result.projectData.flow?.flowNodes?.find((node) => node.id === role?.profileNodeId);
 
   assert.equal(result.projectData.flow?.revision, 5);
+  assert.equal(identityNode?.type, "lookbook");
+  assert.equal(indexNode?.type, "text");
   assert.deepEqual(identityNode?.position, { x: 320, y: 180 });
   assert.equal(identityNode?.data.lookbookIndexNodeId, indexNode?.id);
   assert.equal(getLookbookMemberNodes(result.projectData, result.identityNodeId).some((node) => node.id === indexNode?.id), true);
@@ -213,7 +240,9 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   const styleSource = readFileSync("node-workspace/styles/lookbook-studio.css", "utf8");
 
   assert.match(workspaceSource, /<LookbookStudioPanel[\s\S]*setProjectData=\{setProjectData\}/);
-  assert.match(flowSurfaceSource, /type === "identityCard"[\s\S]*handleAddIdentityCard/);
+  assert.match(flowSurfaceSource, /type: "lookbook"[\s\S]*disabled: true/);
+  assert.match(flowSurfaceSource, /isLookbookNodeType\(type\)[\s\S]*\? null/);
+  assert.match(flowSurfaceSource, /label: "Markdown 文本"[\s\S]*type: "text"/);
   assert.match(studioSource, /inspectLookbookImageFiles/);
   assert.match(studioSource, /saveActiveFlowIntoProjects/);
   assert.match(studioSource, /onDrop=/);
@@ -221,6 +250,9 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(studioSource, /isEditingText/);
   assert.match(studioSource, /eventTarget\.closest\("input, textarea/);
   assert.match(studioSource, /lookbook-book-cover/);
+  assert.match(studioSource, /addLookbookPage/);
+  assert.match(studioSource, /lookbook-studio__close/);
+  assert.doesNotMatch(studioSource, /lookbook-studio__header/);
   assert.doesNotMatch(studioSource, /lookbook-inspector/);
   assert.match(itemSource, /dragMomentum=\{false\}/);
   assert.match(itemSource, /requestAnimationFrame\(applyPreview\)/);

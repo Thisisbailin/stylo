@@ -13,6 +13,8 @@ export const NODE_TYPES = [
   "annotation",
   "text",
   "scriptBoard",
+  "lookbook",
+  /** @deprecated Legacy name. New identity wrappers use `lookbook`. */
   "identityCard",
   "imageGen",
   "nanoBananaImageGen",
@@ -46,6 +48,8 @@ export interface LookbookBookEntry {
 
 export interface LookbookBookState {
   version: 1;
+  /** Number of explicitly created interior pages. Missing in legacy projects. */
+  pageCount?: number;
   entries: LookbookBookEntry[];
 }
 
@@ -65,6 +69,8 @@ export interface ImageInputNodeData extends BaseNodeData {
   image: string | null;
   filename: string | null;
   mimeType?: string | null;
+  storageBucket?: "assets" | "public-assets" | null;
+  storagePath?: string | null;
   dimensions: { width: number; height: number } | null;
   hasAlpha?: boolean;
   assetAuditStatus?: "idle" | "uploading" | "submitting" | "processing" | "active" | "failed" | "error";
@@ -74,6 +80,8 @@ export interface ImageInputNodeData extends BaseNodeData {
   assetUri?: string | null;
   assetGroupId?: string | null;
   assetSourceUrl?: string | null;
+  assetSourceBucket?: "assets" | "public-assets" | null;
+  assetSourcePath?: string | null;
   identityTag?: string;
   identityId?: string;
   label?: string;
@@ -222,6 +230,8 @@ export interface ScriptPageNodeData extends TextNodeData {
     dialoguePercent: number;
   };
   revision?: number;
+  manuscriptId?: string;
+  pageNumber?: number;
 }
 
 export interface MarkdownTextNodeData extends TextNodeData {
@@ -250,6 +260,8 @@ export interface IdentityCardNodeData extends BaseNodeData {
   lookbookIndexNodeId?: string;
   avatarOverrides?: Record<string, string>;
 }
+
+export type LookbookNodeData = IdentityCardNodeData;
 
 export interface ImageGenNodeData extends BaseNodeData {
   inputImages: string[];
@@ -419,7 +431,7 @@ export interface NodeFlowNode {
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
-  relation?: "foundation-membership" | "lookbook-membership";
+  relation?: "foundation-membership" | "lookbook-membership" | "screenplay-page";
 }
 
 export interface NodeFlowLink {

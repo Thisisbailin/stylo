@@ -2,16 +2,16 @@
 
 ## Outcome
 
-Reset now creates a new project generation: the live Flow revision returns to `0`, mandatory Foundation initialization remains revision-neutral, and project-scoped Agent browser memory is cleared. Agent runtime messages are projected into a compact run-level work stage; tool details are closed by default and the stage automatically closes when the final answer arrives.
+Reset creates a new project generation: the live Flow revision returns to `0`, mandatory Foundation initialization remains revision-neutral, and project-scoped Agent browser memory is cleared. Agent runtime messages now render directly as thinking, tool, and answer rows; approvals remain independently actionable.
 
 ## AC → evidence mapping
 
 - **AC1 — revision-zero reset:** `resetNodeFlowProjectState` rotates the generation/abort boundary and clears project graph, canvas, asset, context, execution, and approval state with `revision: 0`. Unit test passes.
 - **AC2 — scoped Agent memory cleanup:** `resetStyloProjectAgentStorage` removes the matching conversation key, resets activity, and deletes only SDK sessions whose encoded account/project prefix matches. Cross-account preservation unit test passes.
 - **AC3 — no pre-reset Agent influence:** generation rotation invalidates durable results already guarded by `StyloAgent`; the reset token cancels the current run and replaces all in-memory conversations with one new empty conversation. The new conversation id also creates a new server session namespace.
-- **AC4 — run-level work grouping:** the pure timeline projector groups statuses, paired tool transactions, and explicit non-final assistant messages by `runId`. Unit test passes.
-- **AC5 — automatic completion collapse:** `WorkStageView` changes from expanded to collapsed when `hasFinalAnswer` becomes true; final assistant Markdown remains a top-level timeline item.
-- **AC6 — approvals remain actionable:** approvals are excluded from work-stage grouping. Unit test passes.
+- **AC4 — direct work timeline:** the pure timeline projector pairs tool transactions and preserves ordered thinking, tool, intermediate, and final messages without a run-level container. Unit test passes.
+- **AC5 — completion cleanup:** redundant connection and response statuses disappear while final assistant Markdown remains a top-level timeline item.
+- **AC6 — approvals remain actionable:** approvals remain independent decision cards. Unit test passes.
 - **AC7 — repository gates:** all commands below pass.
 
 ## Tool-result semantics

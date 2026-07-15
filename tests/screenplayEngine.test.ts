@@ -24,6 +24,13 @@ import {
   type PendingScriptPatch,
 } from "../node-workspace/screenplay/scriptPatch";
 import { toNodeFlowNodeRecord } from "../node-workspace/nodeflow/model";
+import {
+  findAutomaticPageBreakLine,
+  getConnectedScriptPageSequence,
+  splitScreenplayDocumentAtLine,
+  splitScreenplayLineAtSelection,
+} from "../node-workspace/screenplay/manusPages";
+import type { ProjectData } from "../types";
 
 test("screenplay engine normalizes Chinese and standard scene headings into canonical Fountain", () => {
   assert.deepEqual(parseSceneHeading("【场景】内景｜旧码头｜黎明"), {
@@ -58,6 +65,43 @@ test("visual screenplay block operations preserve canonical line structure", () 
   assert.equal(removeScreenplayLine(body, 1), ".INT. EDIT ROOM - NIGHT\n!画面冻结。");
   assert.equal(getNextScreenplayLineKind("character"), "dialogue");
   assert.equal(getNextScreenplayLineKind("dialogue"), "action");
+});
+
+test("enter splits screenplay content at the actual cursor position", () => {
+  const body = "!风吹过空旷的站台。";
+  const line = analyzeFountainLines(body)[0];
+  assert.equal(splitScreenplayLineAtSelection(body, line, 0), "\n!风吹过空旷的站台。");
+  assert.equal(splitScreenplayLineAtSelection(body, line, 4), "!风吹过空\n!旷的站台。");
+  assert.equal(splitScreenplayLineAtSelection(body, line, line.content.length), "!风吹过空旷的站台。\n");
+});
+
+test("Manus resolves a connected page sequence from any page and splits at line boundaries", () => {
+  const nodes = ["page-a", "page-b", "page-c"].map((id, index) => ({
+    id,
+    type: "scriptPage" as const,
+    position: { x: index * 360, y: 0 },
+    data: { title: "潮汐线", text: `!第${index + 1}页`, documentKind: "script" as const, format: "fountain" as const },
+  }));
+  const projectData = {
+    flow: {
+      flowNodes: nodes,
+      links: [
+        { id: "ab", source: "page-a", target: "page-b", data: { relation: "screenplay-page" as const } },
+        { id: "bc", source: "page-b", target: "page-c", data: { relation: "screenplay-page" as const } },
+      ],
+    },
+  } as ProjectData;
+  assert.deepEqual(getConnectedScriptPageSequence(projectData, "page-c").map((node) => node.id), ["page-a", "page-b", "page-c"]);
+  assert.deepEqual(splitScreenplayDocumentAtLine("!第一行\n!第二行\n!第三行", 1), {
+    currentBody: "!第一行",
+    nextBody: "!第二行\n!第三行",
+  });
+});
+
+test("automatic pagination chooses a real line boundary after physical capacity is exceeded", () => {
+  const body = Array.from({ length: 40 }, (_, index) => `!第 ${index + 1} 行动作描述。`).join("\n");
+  const breakIndex = findAutomaticPageBreakLine(body, 18);
+  assert.ok(typeof breakIndex === "number" && breakIndex > 0 && breakIndex < 40);
 });
 
 test("screenplay analysis builds navigation, production metrics, and continuity diagnostics", () => {

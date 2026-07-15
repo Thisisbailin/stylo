@@ -36,46 +36,63 @@
   opacity: 0.5;
 }
 
+.screenplay-workspace *,
+.screenplay-workspace *::before,
+.screenplay-workspace *::after {
+  scrollbar-width: none;
+}
+
+.screenplay-workspace *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .screenplay-header {
   position: absolute;
   top: 42px;
-  right: -38px;
+  right: -68px;
   z-index: 4;
-  width: 38px;
-  height: 42px;
+  width: 68px;
+  height: 370px;
   display: block;
-  align-items: center;
   color: var(--screenplay-chrome-text);
   pointer-events: auto;
 }
 
+.screenplay-header__hot-zone {
+  position: absolute;
+  inset: 0;
+}
+
 .screenplay-header__actions {
   position: absolute;
-  top: 44px;
-  right: 0;
+  top: 0;
+  right: 10px;
   display: flex;
-  width: 38px;
-  min-height: 216px;
+  width: 44px;
+  min-height: 304px;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
   border: 1px solid var(--screenplay-chrome-line);
-  border-left: 2px solid color-mix(in srgb, var(--screenplay-accent) 54%, var(--screenplay-chrome-line));
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--screenplay-chrome-raised) 94%, transparent);
-  padding: 4px 1px;
-  box-shadow: 9px 18px 30px -24px rgba(24, 24, 23, 0.58), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 8%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--screenplay-chrome-raised) 92%, transparent);
+  padding: 5px 3px;
+  box-shadow: 0 18px 38px -28px rgba(24, 24, 23, 0.58), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 8%, transparent);
   backdrop-filter: blur(18px) saturate(1.15);
   opacity: 0;
   pointer-events: none;
-  transform: translate3d(0, -10px, 0) scale(0.97);
+  transform: translate3d(-8px, 0, 0) scale(0.96);
   transform-origin: top center;
   visibility: hidden;
   transition: opacity 180ms ease, transform 240ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 240ms;
 }
 
-.screenplay-header.is-expanded .screenplay-header__actions {
+.screenplay-header.is-expanded .screenplay-header__actions,
+.screenplay-header:hover .screenplay-header__actions,
+.screenplay-header:focus-within .screenplay-header__actions {
   opacity: 1;
   pointer-events: auto;
   transform: translate3d(0, 0, 0) scale(1);
@@ -105,27 +122,6 @@
 
 .screenplay-header button:active {
   transform: translateY(1px) scale(0.98);
-}
-
-.screenplay-header .screenplay-header__bookmark {
-  position: relative;
-  z-index: 1;
-  width: 38px;
-  height: 42px;
-  border: 1px solid var(--screenplay-chrome-line);
-  border-left: 2px solid var(--screenplay-accent);
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--screenplay-paper) 92%, var(--screenplay-accent) 8%);
-  color: var(--screenplay-accent);
-  box-shadow: 9px 12px 24px -20px rgba(24, 24, 23, 0.58), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
-}
-
-.screenplay-header .screenplay-header__bookmark:hover,
-.screenplay-header .screenplay-header__bookmark:focus-visible {
-  border-color: color-mix(in srgb, var(--screenplay-accent) 46%, var(--screenplay-chrome-line));
-  border-left-color: var(--screenplay-accent);
-  background: color-mix(in srgb, var(--screenplay-paper) 84%, var(--screenplay-accent) 16%);
-  outline: none;
 }
 
 .screenplay-save-state {
@@ -166,6 +162,23 @@
   height: 1px;
   margin: 4px 0;
   background: var(--screenplay-chrome-line);
+}
+
+.screenplay-header__page-controls {
+  display: grid;
+  width: 34px;
+  justify-items: center;
+  gap: 1px;
+}
+
+.screenplay-header__page-controls small {
+  color: var(--screenplay-chrome-muted);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 7px;
+}
+
+.screenplay-header__page-controls button {
+  height: 24px;
 }
 
 .screenplay-layout {
@@ -413,15 +426,37 @@
   padding-top: 56px;
 }
 
+.screenplay-document-stage {
+  width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 .screenplay-document {
   position: relative;
   width: min(816px, calc(100% - 52px));
   min-height: 1056px;
   margin: 28px auto 80px;
   border: 1px solid var(--screenplay-paper-line);
-  border-radius: 3px;
+  border-radius: 8px;
   background: var(--screenplay-paper);
   box-shadow: 0 28px 76px -48px rgba(34, 30, 25, 0.34), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 7%, transparent);
+}
+
+.screenplay-document-stage.is-vertical .screenplay-document {
+  animation: screenplay-paper-enter-vertical 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.screenplay-document-stage.is-horizontal .screenplay-document {
+  animation: screenplay-paper-enter-horizontal 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes screenplay-paper-enter-vertical {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+}
+
+@keyframes screenplay-paper-enter-horizontal {
+  from { opacity: 0; transform: translate3d(12px, 0, 0); }
 }
 
 .screenplay-document__masthead {
@@ -480,17 +515,15 @@
   min-height: 34px;
   margin: 0;
   border-left: 2px solid transparent;
-  transition: background 150ms ease, border-color 150ms ease;
 }
 
 .screenplay-block:hover {
-  background: color-mix(in srgb, var(--screenplay-accent) 3%, transparent);
+  background: transparent;
 }
 
 .screenplay-block.is-active {
-  border-left-color: var(--screenplay-accent);
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--screenplay-accent) 9%, var(--screenplay-paper));
+  border-left-color: transparent;
+  background: transparent;
 }
 
 .screenplay-block--scene_heading {
@@ -626,6 +659,11 @@
   display: block;
   padding: 6px 8px;
   font-size: 9px;
+}
+
+.screenplay-block__format-group.is-page-action button {
+  grid-template-columns: 20px minmax(0, 1fr);
+  color: var(--screenplay-chrome-text);
 }
 
 .screenplay-block__content {
@@ -793,23 +831,23 @@
 }
 
 .screenplay-scene-heading {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 1fr) 124px;
-  gap: 4px;
-  border: 1px solid var(--screenplay-paper-line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--app-panel-muted) 68%, transparent);
-  padding: 5px;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 6%, transparent);
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 0;
 }
 
 .screenplay-scene-heading label {
-  display: grid;
-  gap: 3px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--screenplay-paper) 64%, transparent);
-  padding: 7px 10px;
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  border: 1px solid var(--screenplay-paper-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--app-panel-muted) 58%, transparent);
+  padding: 6px 9px;
   transition: border-color 150ms ease, background 150ms ease;
 }
 
@@ -819,11 +857,11 @@
 }
 
 .screenplay-scene-heading label > span {
-  color: var(--screenplay-muted);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 7px;
-  font-weight: 740;
-  letter-spacing: 0.1em;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .screenplay-scene-heading input,
@@ -833,9 +871,17 @@
   background: transparent;
   color: var(--screenplay-ink);
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 680;
   outline: none;
+}
+
+.screenplay-scene-heading select {
+  width: auto;
+}
+
+.screenplay-scene-heading .is-location {
+  max-width: min(44vw, 28ch);
 }
 
 .screenplay-page-break {
@@ -1245,6 +1291,94 @@
   white-space: nowrap;
 }
 
+.screenplay-identity-dock {
+  right: 16px;
+  bottom: 18px;
+  width: 40px;
+  height: auto;
+}
+
+.screenplay-workspace.is-inspector-open .screenplay-identity-dock {
+  right: 320px;
+}
+
+.screenplay-identity-dock__rail {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 40px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--screenplay-chrome-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--screenplay-chrome-raised) 92%, transparent);
+  padding: 4px;
+  box-shadow: 0 18px 38px -28px rgba(24, 24, 23, 0.58), inset 0 1px 0 color-mix(in srgb, var(--app-text-primary) 8%, transparent);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+.screenplay-identity-dock__rail > button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 6px;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.screenplay-identity-dock__rail > button:hover,
+.screenplay-identity-dock__rail > button.is-recent {
+  background: var(--screenplay-accent-soft);
+}
+
+.screenplay-identity-dock__rail > button:active {
+  transform: scale(0.96);
+}
+
+.screenplay-identity-dock__rail .screenplay-identity-dock__toggle {
+  position: static;
+  width: 32px;
+  height: 28px;
+  border: 0 !important;
+  border-top: 1px solid var(--screenplay-chrome-line) !important;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.screenplay-identity-dock__rail .screenplay-identity-dock__toggle small {
+  position: static;
+  min-width: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--screenplay-chrome-muted);
+  font-size: 8px;
+}
+
+.screenplay-identity-dock__panel {
+  right: 50px;
+  bottom: 0;
+  width: 254px;
+  border-radius: 8px;
+  transform: translate3d(10px, 0, 0) scale(0.98);
+}
+
+.screenplay-identity-avatar.is-tile {
+  width: 28px;
+  height: 28px;
+  font-size: 8px;
+}
+
+.screenplay-identity-arrival {
+  right: 50px;
+  bottom: 0;
+}
+
 .screenplay-selection-command {
   position: fixed;
   left: 50%;
@@ -1478,11 +1612,6 @@
   right: 10px;
 }
 
-.screenplay-workspace.is-focus-mode .screenplay-header .screenplay-header__bookmark {
-  border-left-width: 1px;
-  border-radius: 8px;
-}
-
 .screenplay-workspace.is-focus-mode .screenplay-document-viewport {
   background: var(--screenplay-paper);
   padding-top: 0;
@@ -1525,11 +1654,6 @@
     position: fixed;
     top: 10px;
     right: 10px;
-  }
-
-  .screenplay-header .screenplay-header__bookmark {
-    border-left-width: 1px;
-    border-radius: 8px;
   }
 
   .screenplay-save-state {

@@ -8,15 +8,19 @@ import {
   GridFour,
   ImageSquare,
   NotePencil,
+  Plus,
   SpinnerGap,
   WarningCircle,
+  X,
 } from "@phosphor-icons/react";
 import type { ProjectData } from "../../../types";
 import type { LookbookLayout } from "../../types";
 import {
   LOOKBOOK_SPREAD_HEIGHT,
+  addLookbookPage,
   addLookbookImageAssets,
   addLookbookTextCard,
+  getLookbookPageCount,
   getLookbookSpreadCount,
   moveLookbookNodeToSpread,
   projectLookbookBoardItems,
@@ -25,6 +29,7 @@ import {
   updateLookbookNodeLayout,
   updateLookbookTextCard,
 } from "../../../utils/lookbookWorkspace";
+import { isLookbookNodeType } from "../../../utils/lookbookIdentities";
 import { inspectLookbookImageFiles } from "../../lookbook/imageFiles";
 import { saveActiveFlowIntoProjects } from "../../foundation/scaffold";
 import { LookbookBoardItemView } from "./LookbookBoardItem";
@@ -61,7 +66,7 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const spreadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [spreadIndex, setSpreadIndex] = useState(0);
   const [turnDirection, setTurnDirection] = useState<-1 | 0 | 1>(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -70,7 +75,7 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const [errorMessage, setErrorMessage] = useState("");
 
   const identityNode = useMemo(
-    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && node.type === "identityCard"),
+    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && isLookbookNodeType(node.type)),
     [identityNodeId, projectData.flow?.flowNodes]
   );
   const identityId = readString(identityNode?.data.identityId);
@@ -82,7 +87,11 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     () => projectLookbookBoardItems(projectData, identityNodeId),
     [identityNodeId, projectData]
   );
-  const spreadCount = useMemo(() => getLookbookSpreadCount(items), [items]);
+  const pageCount = useMemo(
+    () => getLookbookPageCount(projectData, identityNodeId),
+    [identityNodeId, projectData]
+  );
+  const spreadCount = useMemo(() => getLookbookSpreadCount(items, pageCount), [items, pageCount]);
   const visibleItems = useMemo(
     () => items.filter((item) => item.spreadIndex === spreadIndex),
     [items, spreadIndex]
@@ -179,6 +188,14 @@ export const LookbookStudioPanel: React.FC<Props> = ({
     setIsOpen(true);
   }, [commitProjectMutation, identityNodeId, items.length]);
 
+  const addPage = useCallback(() => {
+    const nextPageCount = pageCount + 1;
+    commitProjectMutation((previous) => addLookbookPage(previous, identityNodeId));
+    setSpreadIndex(Math.max(0, Math.ceil(nextPageCount / 2) - 1));
+    setSelectedNodeId(null);
+    setIsOpen(true);
+  }, [commitProjectMutation, identityNodeId, pageCount]);
+
   const turnTo = useCallback((next: number) => {
     const bounded = Math.max(0, Math.min(spreadCount - 1, next));
     if (bounded === spreadIndex || turnDirection !== 0) return;
@@ -200,6 +217,10 @@ export const LookbookStudioPanel: React.FC<Props> = ({
   const issue = String(Math.max(1, (projectData.roles || []).findIndex((role) => role.id === identityId) + 1)).padStart(2, "0");
   const coverImage = items.find((item) => item.node.type === "imageInput");
   const coverImageUrl = coverImage ? readString(coverImage.node.data.image) : "";
+  const leftPageIndex = spreadIndex * 2;
+  const rightPageIndex = leftPageIndex + 1;
+  const hasLeftPage = leftPageIndex < pageCount;
+  const hasRightPage = rightPageIndex < pageCount;
 
   if (!identityNode || !identity) {
     return (
@@ -215,13 +236,9 @@ export const LookbookStudioPanel: React.FC<Props> = ({
 
   return (
     <section className="lookbook-studio" role="dialog" aria-modal="true" aria-label={`${name} Lookbook 编辑器`}>
-      <header className="lookbook-studio__header">
-        <strong>Stylo</strong>
-        <button type="button" className="lookbook-studio__back" onClick={onClose}>
-          <ArrowLeft size={14} weight="bold" />
-          <span>返回 Flow</span>
-        </button>
-      </header>
+      <button type="button" className="lookbook-studio__close" onClick={onClose} aria-label="关闭 Lookbook">
+        <X size={18} weight="bold" />
+      </button>
 
       <main
         className={`lookbook-studio__stage ${isDraggingFiles ? "is-dragging-files" : ""}`}
@@ -231,7 +248,7 @@ export const LookbookStudioPanel: React.FC<Props> = ({
           event.preventDefault();
           const nodeElement = eventTarget.closest<HTMLElement>("[data-node-id]");
           const width = 220;
-          const height = nodeElement ? 326 : 228;
+          const height = nodeElement ? 360 : 264;
           setContextMenu({
             x: Math.max(10, Math.min(window.innerWidth - width - 10, event.clientX)),
             y: Math.max(56, Math.min(window.innerHeight - height - 10, event.clientY)),
@@ -258,12 +275,6 @@ export const LookbookStudioPanel: React.FC<Props> = ({
           void importFiles(Array.from(event.dataTransfer.files));
         }}
       >
-        <div className="lookbook-studio__folio-label" aria-hidden="true">
-          <span>LOOKBOOK / {identityLabel}</span>
-          <strong>{name}</strong>
-          <small>@{mention}</small>
-        </div>
-
         <AnimatePresence mode="wait" initial={false}>
           {!isOpen ? (
             <motion.button
@@ -307,8 +318,8 @@ export const LookbookStudioPanel: React.FC<Props> = ({
                   if (event.target === event.currentTarget) setSelectedNodeId(null);
                 }}
               >
-                <div className="lookbook-book-spread__page is-left" aria-hidden="true" />
-                <div className="lookbook-book-spread__page is-right" aria-hidden="true" />
+                <div className={["lookbook-book-spread__page is-left", hasLeftPage ? "" : "is-uncreated"].join(" ")} aria-hidden="true" />
+                <div className={["lookbook-book-spread__page is-right", hasRightPage ? "" : "is-uncreated"].join(" ")} aria-hidden="true" />
                 <div className="lookbook-book-spread__gutter" aria-hidden="true" />
                 <div className="lookbook-book-spread__running-head is-left">{name} / {identityLabel}</div>
                 <div className="lookbook-book-spread__running-head is-right">STYLO LOOKBOOK / {issue}</div>
@@ -329,14 +340,14 @@ export const LookbookStudioPanel: React.FC<Props> = ({
 
                 {!visibleItems.length && !isImporting ? (
                   <div className="lookbook-book-spread__empty">
-                    <span>EMPTY SPREAD / {String(spreadIndex + 1).padStart(2, "0")}</span>
-                    <strong>在纸面右键添加内容</strong>
-                    <small>也可以把 PNG、JPEG 或 WebP 直接拖进书册</small>
+                    <span>{pageCount ? "EMPTY PAGES / " + String(spreadIndex + 1).padStart(2, "0") : "NO INNER PAGES"}</span>
+                    <strong>{pageCount ? "在纸面右键添加内容" : "这本 Lookbook 目前只有封面"}</strong>
+                    <small>{pageCount ? "也可以把 PNG、JPEG 或 WebP 直接拖进书册" : "点击下方“新增页”开始编排"}</small>
                   </div>
                 ) : null}
 
-                <span className="lookbook-book-spread__page-number is-left">{spreadIndex * 2 + 2}</span>
-                <span className="lookbook-book-spread__page-number is-right">{spreadIndex * 2 + 3}</span>
+                {hasLeftPage ? <span className="lookbook-book-spread__page-number is-left">{leftPageIndex + 1}</span> : null}
+                {hasRightPage ? <span className="lookbook-book-spread__page-number is-right">{rightPageIndex + 1}</span> : null}
 
                 {turnDirection !== 0 ? (
                   <motion.div
@@ -361,7 +372,11 @@ export const LookbookStudioPanel: React.FC<Props> = ({
         </AnimatePresence>
 
         <div className="lookbook-studio__hint">
-          <span>{isOpen ? `${String(spreadIndex + 1).padStart(2, "0")} / ${String(spreadCount).padStart(2, "0")}` : "COVER"}</span>
+          <span>{isOpen ? pageCount + " PAGES · " + String(spreadIndex + 1).padStart(2, "0") + " / " + String(spreadCount).padStart(2, "0") : "COVER"}</span>
+          <button type="button" className="lookbook-studio__add-page" onClick={addPage}>
+            <Plus size={13} weight="bold" />
+            <span>新增页</span>
+          </button>
           <span>右键添加与编排 · 拖动移动 · 选中后拖拽边角缩放</span>
         </div>
 
@@ -440,6 +455,9 @@ export const LookbookStudioPanel: React.FC<Props> = ({
           </button>
           <button type="button" role="menuitem" onClick={() => { addTextCard(); setContextMenu(null); }}>
             <NotePencil size={15} /><span>添加文本</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => { addPage(); setContextMenu(null); }}>
+            <Plus size={15} /><span>新增一页</span>
           </button>
           <button type="button" role="menuitem" disabled={!items.length} onClick={() => {
             commitProjectMutation((previous) => reflowLookbookLayouts(previous, identityNodeId));

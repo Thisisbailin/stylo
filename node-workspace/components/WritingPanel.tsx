@@ -26,6 +26,11 @@ import {
   type ScriptPatchLine,
   type ScriptPatchLineStatus,
 } from "../screenplay/scriptPatch";
+import {
+  findAutomaticPageBreakLine,
+  getConnectedScriptPageSequence,
+  splitScreenplayDocumentAtLine,
+} from "../screenplay/manusPages";
 import { ScreenplayBlockEditor, type ScreenplayCharacterSuggestion } from "./screenplay/ScreenplayBlockEditor";
 import {
   ScreenplayHeader,
@@ -34,7 +39,11 @@ import {
   type ScreenplayIdentityEntry,
   type SaveState,
 } from "./screenplay/ScreenplayChrome";
-import type { AgentScriptEditProposalBatch, ScriptDocumentCommit } from "./stylo/interactionTypes";
+import type {
+  AgentScriptEditProposalBatch,
+  ScriptDocumentCommit,
+  ScriptPageSplitCommit,
+} from "./stylo/interactionTypes";
 import "../styles/screenplay.css";
 
 type Props = {
@@ -46,6 +55,7 @@ type Props = {
   agentScriptEditProposals?: AgentScriptEditProposalBatch | null;
   onResolveAgentScriptEditProposal?: (proposalId: string) => void;
   onCommitScriptDocument?: (commit: ScriptDocumentCommit) => void;
+  onSplitScriptDocument?: (commit: ScriptPageSplitCommit) => string | null;
   onOpenLookbook?: (identityNodeId: string) => void;
   onOpenStylo?: () => void;
   onSubmitToStylo?: (text: string, uiContext?: AgentUiContext) => void;
@@ -79,7 +89,7 @@ const findScriptNode = (projectData: ProjectData, nodeId?: string | null): NodeF
   const nodes = Array.isArray(projectData.flow?.flowNodes) ? projectData.flow.flowNodes : [];
   if (nodeId) {
     const explicit = nodes.find((node) => node.id === nodeId && node.type === "scriptPage");
-    if (explicit) return explicit;
+    return explicit || null;
   }
   return nodes.find((node) => node.type === "scriptPage") || null;
 };
@@ -124,6 +134,7 @@ export const WritingPanel: React.FC<Props> = ({
   agentScriptEditProposals = null,
   onResolveAgentScriptEditProposal,
   onCommitScriptDocument,
+  onSplitScriptDocument,
   onOpenLookbook,
   onOpenStylo,
   onSubmitToStylo,
@@ -138,10 +149,20 @@ export const WritingPanel: React.FC<Props> = ({
   );
   const knownCharacterIdentities = useMemo(() => characterRoles.map(roleToKnownIdentity), [characterRoles]);
   const knownSceneIdentities = useMemo(() => sceneRoles.map(roleToKnownIdentity), [sceneRoles]);
-  const scriptNode = useMemo(
+  const initialScriptNode = useMemo(
     () => findScriptNode(projectData, initialScriptNodeId),
     [initialScriptNodeId, projectData.flow?.flowNodes]
   );
+  const [activeScriptNodeId, setActiveScriptNodeId] = useState<string | null>(initialScriptNode?.id || null);
+  const scriptNode = useMemo(
+    () => findScriptNode(projectData, activeScriptNodeId) || initialScriptNode,
+    [activeScriptNodeId, initialScriptNode, projectData.flow?.flowNodes]
+  );
+  const pageSequence = useMemo(
+    () => getConnectedScriptPageSequence(projectData, scriptNode?.id || activeScriptNodeId || initialScriptNodeId),
+    [activeScriptNodeId, initialScriptNodeId, projectData.flow?.flowNodes, projectData.flow?.links, scriptNode?.id]
+  );
+  const pageIndex = Math.max(0, pageSequence.findIndex((node) => node.id === scriptNode?.id));
   const sourceDraft = useMemo(
     () => readScriptNode(scriptNode, knownCharacterIdentities),
     [knownCharacterIdentities, scriptNode]
@@ -157,6 +178,8 @@ export const WritingPanel: React.FC<Props> = ({
   const [navigationRequest, setNavigationRequest] = useState<{ lineIndex: number; id: number } | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [pageArrangement, setPageArrangement] = useState<"vertical" | "horizontal">("vertical");
+  const [autoPagination, setAutoPagination] = useState(false);
   const [selectionCommand, setSelectionCommand] = useState<SelectionCommand | null>(null);
   const [pendingPatch, setPendingPatch] = useState<PendingScriptPatch | null>(null);
   const [lastReviewedSnapshot, setLastReviewedSnapshot] = useState<ReviewedSnapshot | null>(null);
@@ -165,6 +188,11 @@ export const WritingPanel: React.FC<Props> = ({
   const [identityArrivalQueue, setIdentityArrivalQueue] = useState<string[]>([]);
   const [activeIdentityArrivalId, setActiveIdentityArrivalId] = useState<string | null>(null);
   const handledProposalIdsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!initialScriptNodeId) return;
+    setActiveScriptNodeId(initialScriptNodeId);
+  }, [initialScriptNodeId]);
 
   const deferredBody = useDeferredValue(draft.body);
   const analysis = useMemo(
@@ -186,7 +214,7 @@ export const WritingPanel: React.FC<Props> = ({
   const identityEntries = useMemo<ScreenplayIdentityEntry[]>(() => {
     const identityNodeIds = new Map<string, string>();
     (projectData.flow?.flowNodes || []).forEach((node) => {
-      if (node.type !== "identityCard") return;
+      if (node.type !== "identityCard" && node.type !== "lookbook") return;
       const identityId = typeof node.data?.identityId === "string" ? node.data.identityId : "";
       if (identityId && !identityNodeIds.has(identityId)) identityNodeIds.set(identityId, node.id);
     });
@@ -411,6 +439,44 @@ export const WritingPanel: React.FC<Props> = ({
     onOpenLookbook?.(identityNodeId);
   }, [commitDraft, onOpenLookbook]);
 
+  const openScriptPage = useCallback((nextIndex: number) => {
+    const nextNode = pageSequence[nextIndex];
+    if (!nextNode || nextNode.id === scriptNode?.id || externalConflict) return;
+    commitDraft(draftRef.current, true);
+    setActiveScriptNodeId(nextNode.id);
+  }, [commitDraft, externalConflict, pageSequence, scriptNode?.id]);
+
+  const createPageFromLine = useCallback((lineIndex: number, activateNewPage = true) => {
+    if (!scriptNode?.id || !onSplitScriptDocument || pendingPatch || externalConflict) return null;
+    const currentDraft = draftRef.current;
+    const { currentBody, nextBody } = splitScreenplayDocumentAtLine(currentDraft.body, lineIndex);
+    const nextNodeId = onSplitScriptDocument({
+      sourceNodeId: scriptNode.id,
+      title: currentDraft.title,
+      sourceContent: currentBody,
+      nextContent: nextBody,
+    });
+    if (!nextNodeId) return null;
+    const retainedDraft = { ...currentDraft, body: currentBody };
+    draftRef.current = retainedDraft;
+    lastCommittedRef.current = retainedDraft;
+    lastObservedSourceRef.current = retainedDraft;
+    setDraft(retainedDraft);
+    setPendingSave(null);
+    setSaveState("saved");
+    setSelectionCommand(null);
+    if (activateNewPage) setActiveScriptNodeId(nextNodeId);
+    return nextNodeId;
+  }, [externalConflict, onSplitScriptDocument, pendingPatch, scriptNode?.id]);
+
+  useEffect(() => {
+    if (!autoPagination || pendingPatch || pendingSave || externalConflict || !onSplitScriptDocument) return;
+    const breakLineIndex = findAutomaticPageBreakLine(draft.body);
+    if (breakLineIndex === null) return;
+    const timer = window.setTimeout(() => createPageFromLine(breakLineIndex, false), 900);
+    return () => window.clearTimeout(timer);
+  }, [autoPagination, createPageFromLine, draft.body, externalConflict, onSplitScriptDocument, pendingPatch, pendingSave]);
+
   const updatePatch = useCallback((updater: (line: ScriptPatchLine) => ScriptPatchLine) => {
     setPendingPatch((current) => {
       if (!current) return current;
@@ -465,7 +531,11 @@ export const WritingPanel: React.FC<Props> = ({
   const handleShare = async () => {
     const baseName = (projectData.fileName || draft.title || "stylo-script").replace(/\.[^/.]+$/, "");
     const filename = `${baseName}.fountain`;
-    const content = prepareScreenplayDraftForSave(draft).body;
+    const content = pageSequence.length
+      ? pageSequence.map((node) => (
+          node.id === scriptNode?.id ? prepareScreenplayDraftForSave(draft).body : readScriptNode(node, knownCharacterIdentities).body
+        )).join("\n\n")
+      : prepareScreenplayDraftForSave(draft).body;
     const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
     if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
       try {
@@ -485,7 +555,8 @@ export const WritingPanel: React.FC<Props> = ({
     >
       <div className="screenplay-layout">
         <main className="screenplay-document-viewport">
-          <article className="screenplay-document">
+          <div className={`screenplay-document-stage is-${pageArrangement}`}>
+          <article key={scriptNode?.id || "empty-script"} className="screenplay-document">
             <ScreenplayHeader
               saveState={saveState}
               isFocusMode={isFocusMode}
@@ -494,6 +565,14 @@ export const WritingPanel: React.FC<Props> = ({
               onToggleInspector={() => setIsInspectorOpen((open) => !open)}
               onShare={() => void handleShare()}
               onClose={handleClose}
+              pageIndex={pageIndex}
+              pageCount={pageSequence.length}
+              pageArrangement={pageArrangement}
+              autoPagination={autoPagination}
+              onPreviousPage={() => openScriptPage(pageIndex - 1)}
+              onNextPage={() => openScriptPage(pageIndex + 1)}
+              onTogglePageArrangement={() => setPageArrangement((current) => current === "vertical" ? "horizontal" : "vertical")}
+              onToggleAutoPagination={() => setAutoPagination((enabled) => !enabled)}
             />
             <header className="screenplay-document__masthead">
               <div>
@@ -504,7 +583,7 @@ export const WritingPanel: React.FC<Props> = ({
                   aria-label="剧本标题"
                 />
               </div>
-              <small>{analysis.stats.estimatedPages} 页 · {analysis.stats.scenes} 场</small>
+              <small>{pageIndex + 1}/{Math.max(1, pageSequence.length)} · {analysis.stats.scenes} 场</small>
             </header>
             <ScreenplayBlockEditor
               body={draft.body}
@@ -519,8 +598,10 @@ export const WritingPanel: React.FC<Props> = ({
               onSelectionChange={(selection) => {
                 setSelectionCommand(selection ? { ...selection, message: "" } : null);
               }}
+              onCreatePageFromLine={(lineIndex) => createPageFromLine(lineIndex, true)}
             />
           </article>
+          </div>
         </main>
 
         {isInspectorOpen ? (

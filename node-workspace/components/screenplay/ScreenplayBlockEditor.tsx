@@ -5,6 +5,7 @@ import {
   ChatCenteredText,
   Check,
   EyeSlash,
+  FilePlus,
   FilmSlate,
   ListBullets,
   MagnifyingGlass,
@@ -33,6 +34,7 @@ import {
   type ScreenplayLine,
   type ScreenplayLineKind,
 } from "../../screenplay/fountainEngine";
+import { splitScreenplayLineAtSelection } from "../../screenplay/manusPages";
 
 export type ScreenplayCharacterSuggestion = {
   id: string;
@@ -59,6 +61,7 @@ type Props = {
   onChange: (body: string) => void;
   onActiveLineChange: (lineIndex: number) => void;
   onSelectionChange?: (selection: SelectionPayload | null) => void;
+  onCreatePageFromLine?: (lineIndex: number) => void;
 };
 
 const KIND_ICONS: Record<ScreenplayLineKind, React.ComponentType<{ size?: number; weight?: "regular" | "bold" }>> = {
@@ -87,7 +90,9 @@ const PRIMARY_KINDS: ScreenplayLineKind[] = [
   "transition",
 ];
 
-const SECONDARY_KINDS = SCREENPLAY_LINE_KINDS.filter((kind) => !PRIMARY_KINDS.includes(kind));
+const SECONDARY_KINDS = SCREENPLAY_LINE_KINDS.filter(
+  (kind) => kind !== "page_break" && !PRIMARY_KINDS.includes(kind)
+);
 
 const getContentOffset = (line: ScreenplayLine) => {
   if (!line.content) return 0;
@@ -100,10 +105,12 @@ type RowProps = {
   isActive: boolean;
   readOnly: boolean;
   registerEditor: (lineIndex: number, element: HTMLTextAreaElement | HTMLInputElement | null) => void;
-  requestFocus: (lineIndex: number, position?: "start" | "end") => void;
+  requestFocus: (lineIndex: number, position?: "start" | "end", waitForMount?: boolean) => void;
   onReplaceLine: (lineIndex: number, raw: string) => void;
   onInsertAfter: (lineIndex: number, raw: string) => void;
+  onSplitLine: (line: ScreenplayLine, selectionStart: number, selectionEnd: number) => void;
   onRemoveLine: (lineIndex: number) => void;
+  onCreatePageFromLine?: (lineIndex: number) => void;
   onActive: (lineIndex: number) => void;
   onSelectionChange?: (selection: SelectionPayload | null) => void;
   characterSuggestions: ScreenplayCharacterSuggestion[];
@@ -120,7 +127,9 @@ const ScreenplayBlockRow = memo(({
   requestFocus,
   onReplaceLine,
   onInsertAfter,
+  onSplitLine,
   onRemoveLine,
+  onCreatePageFromLine,
   onActive,
   onSelectionChange,
   characterSuggestions,
@@ -169,7 +178,7 @@ const ScreenplayBlockRow = memo(({
     const nextKind = getNextScreenplayLineKind(line.kind);
     const nextRaw = serializeScreenplayLine("", nextKind);
     onInsertAfter(line.index, nextRaw);
-    requestFocus(line.index + 1, "start");
+    requestFocus(line.index + 1, "start", true);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -193,7 +202,10 @@ const ScreenplayBlockRow = memo(({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      insertNextLine();
+      const selectionStart = event.currentTarget.selectionStart || 0;
+      const selectionEnd = event.currentTarget.selectionEnd || selectionStart;
+      onSplitLine(line, selectionStart, selectionEnd);
+      requestFocus(line.index + 1, "start", true);
       return;
     }
     if (event.key === "Backspace" && !line.content && event.currentTarget.selectionStart === 0 && line.index > 0) {
@@ -267,6 +279,14 @@ const ScreenplayBlockRow = memo(({
                 </button>
               ))}
             </div>
+            {onCreatePageFromLine ? (
+              <div className="screenplay-block__format-group is-page-action">
+                <button type="button" onClick={() => { setFormatMenuOpen(false); onCreatePageFromLine(line.index); }}>
+                  <FilePlus size={14} />
+                  <span>从此行新建稿纸</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -290,6 +310,7 @@ const ScreenplayBlockRow = memo(({
               <input
                 ref={(element) => registerEditor(line.index, element)}
                 value={scene.location}
+                style={{ width: `${Math.max(6, Math.min(24, Array.from(scene.location || "地点").length + 2))}ch` }}
                 list="screenplay-location-options"
                 onFocus={() => onActive(line.index)}
                 onChange={(event) => onReplaceLine(line.index, serializeSceneHeading({ ...scene, location: event.target.value }))}
@@ -407,6 +428,7 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
   onChange,
   onActiveLineChange,
   onSelectionChange,
+  onCreatePageFromLine,
 }) => {
   const editorsRef = useRef(new Map<number, HTMLTextAreaElement | HTMLInputElement>());
   const pendingFocusRef = useRef<{ lineIndex: number; position: "start" | "end" } | null>(null);
@@ -429,12 +451,18 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
     onChange(insertScreenplayLine(bodyRef.current, lineIndex, raw));
   }, [onChange]);
 
+  const splitLine = useCallback((line: ScreenplayLine, selectionStart: number, selectionEnd: number) => {
+    onChange(splitScreenplayLineAtSelection(bodyRef.current, line, selectionStart, selectionEnd));
+  }, [onChange]);
+
   const removeLine = useCallback((lineIndex: number) => {
     onChange(removeScreenplayLine(bodyRef.current, lineIndex));
   }, [onChange]);
 
-  const focusLine = useCallback((lineIndex: number, position: "start" | "end" = "start") => {
-    const safeIndex = Math.min(lineCountRef.current - 1, Math.max(0, lineIndex));
+  const focusLine = useCallback((lineIndex: number, position: "start" | "end" = "start", waitForMount = false) => {
+    const safeIndex = waitForMount
+      ? Math.max(0, lineIndex)
+      : Math.min(lineCountRef.current - 1, Math.max(0, lineIndex));
     pendingFocusRef.current = { lineIndex: safeIndex, position };
     onActiveLineChange(safeIndex);
     requestAnimationFrame(() => {
@@ -492,7 +520,9 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
           requestFocus={focusLine}
           onReplaceLine={replaceLine}
           onInsertAfter={insertAfter}
+          onSplitLine={splitLine}
           onRemoveLine={removeLine}
+          onCreatePageFromLine={onCreatePageFromLine}
           onActive={onActiveLineChange}
           onSelectionChange={onSelectionChange}
           characterSuggestions={uniqueCharacters}

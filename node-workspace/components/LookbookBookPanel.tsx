@@ -107,7 +107,7 @@ export const LookbookContentPage: React.FC<{ node: NodeFlowNode; pageNumber: num
 export const LookbookBookPanel: React.FC<Props> = ({ projectData, identityNodeId, onClose }) => {
   const [pageState, setPageState] = useState({ index: 0, direction: 1 });
   const identityNode = useMemo(
-    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && node.type === "identityCard"),
+    () => projectData.flow?.flowNodes?.find((node) => node.id === identityNodeId && (node.type === "lookbook" || node.type === "identityCard")),
     [identityNodeId, projectData.flow?.flowNodes]
   );
   const identityId = typeof identityNode?.data?.identityId === "string" ? identityNode.data.identityId : "";

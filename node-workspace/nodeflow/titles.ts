@@ -43,15 +43,15 @@ const resolveScriptBoardTitle = (data: ScriptBoardNodeData, context?: NodeFlowCo
   return "剧本";
 };
 
-const resolveIdentityCardTitle = (data: IdentityCardNodeData, context?: NodeFlowContextSnapshot) => {
+const resolveLookbookTitle = (data: IdentityCardNodeData, context?: NodeFlowContextSnapshot) => {
   const explicit = trimString(data.title);
-  if (explicit && explicit !== "身份卡片节点") return explicit;
+  if (explicit && explicit !== "身份卡片节点" && explicit !== "Lookbook") return explicit;
   const identities = buildProjectIdentities(context?.roles || [], context?.designAssets || []);
   const activeIdentity = data.identityId ? identities.find((item) => item.id === data.identityId) : identities[0];
   const identityName = trimString(activeIdentity?.name || activeIdentity?.displayName);
-  if (identityName) return `${identityName}身份卡`;
-  if (trimString(data.identityId)) return `${trimString(data.identityId)}身份卡`;
-  return "身份卡";
+  if (identityName) return identityName;
+  if (trimString(data.identityId)) return trimString(data.identityId)!;
+  return "Lookbook";
 };
 
 const resolveGenericNodeTitle = (node: NodeFlowNode) => {
@@ -71,8 +71,9 @@ export const resolveNodeFlowNodeTitle = (
   switch (node.type) {
     case "scriptBoard":
       return resolveScriptBoardTitle(node.data as ScriptBoardNodeData, context);
+    case "lookbook":
     case "identityCard":
-      return resolveIdentityCardTitle(node.data as IdentityCardNodeData, context);
+      return resolveLookbookTitle(node.data as IdentityCardNodeData, context);
     default:
       return resolveGenericNodeTitle(node);
   }
@@ -91,4 +92,4 @@ export const resolveScriptBoardNodeTitle = (
 export const resolveIdentityCardNodeTitle = (
   data: IdentityCardNodeData,
   context?: NodeFlowContextSnapshot
-) => resolveIdentityCardTitle(data, context);
+) => resolveLookbookTitle(data, context);

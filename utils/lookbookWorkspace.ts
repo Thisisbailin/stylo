@@ -11,6 +11,7 @@ import type {
 import {
   LOOKBOOK_MEMBERSHIP_RELATION,
   getVisibleLookbookMemberNodes,
+  isLookbookNodeType,
 } from "./lookbookIdentities";
 
 const COLUMN_COUNT = 12;
@@ -290,20 +291,20 @@ const findConnectedIdentityNodeId = (projectData: ProjectData, memberNodeId: str
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   for (const link of projectData.flow?.links || []) {
     const candidateId = link.source === memberNodeId ? link.target : link.target === memberNodeId ? link.source : "";
-    if (candidateId && nodeById.get(candidateId)?.type === "identityCard") return candidateId;
+    if (candidateId && isLookbookNodeType(nodeById.get(candidateId)?.type)) return candidateId;
   }
   return "";
 };
 
 export const getLookbookIndexNode = (projectData: ProjectData, identityNodeId: string) => {
   const nodes = projectData.flow?.flowNodes || [];
-  const identityNode = nodes.find((node) => node.id === identityNodeId && node.type === "identityCard");
+  const identityNode = nodes.find((node) => node.id === identityNodeId && isLookbookNodeType(node.type));
   if (!identityNode) return undefined;
   const explicitId = typeof identityNode.data.lookbookIndexNodeId === "string" ? identityNode.data.lookbookIndexNodeId : "";
-  const explicit = explicitId ? nodes.find((node) => node.id === explicitId && node.type === "mdText") : undefined;
+  const explicit = explicitId ? nodes.find((node) => node.id === explicitId && (node.type === "text" || node.type === "mdText")) : undefined;
   if (explicit) return explicit;
   const identityId = typeof identityNode.data.identityId === "string" ? identityNode.data.identityId : "";
-  return nodes.find((node) => node.type === "mdText" && node.data.lookbookRole === "index" && node.data.lookbookIdentityId === identityId);
+  return nodes.find((node) => (node.type === "text" || node.type === "mdText") && node.data.lookbookRole === "index" && node.data.lookbookIdentityId === identityId);
 };
 
 export const projectLookbookBoardItems = (
@@ -367,7 +368,7 @@ const ensureIndexDocument = (
 ) => {
   const nodes = [...inputNodes];
   const links = [...inputLinks];
-  const identityIndex = nodes.findIndex((node) => node.id === identityNodeId && node.type === "identityCard");
+  const identityIndex = nodes.findIndex((node) => node.id === identityNodeId && isLookbookNodeType(node.type));
   if (identityIndex < 0) return null;
   let identityNode = nodes[identityIndex]!;
   let indexNode = getLookbookIndexNode({ ...projectData, flow: { ...(projectData.flow || { links: [] }), flowNodes: nodes, links } }, identityNodeId);
@@ -379,7 +380,7 @@ const ensureIndexDocument = (
     const content = `# ${role?.displayName || role?.name || "Lookbook"}\n\n## Lookbook 索引\n\n本页保存书册的内容连接、跨页顺序与排版。`;
     indexNode = {
       id: indexNodeId,
-      type: "mdText",
+      type: "text",
       position: { x: identityNode.position.x + 390, y: identityNode.position.y + 28 },
       data: {
         title,
@@ -390,7 +391,7 @@ const ensureIndexDocument = (
         content,
         lookbookIdentityId: identityId,
         lookbookRole: "index",
-        lookbookBook: { version: 1, entries: [] },
+        lookbookBook: { version: 1, pageCount: 0, entries: [] },
       } as NodeFlowNodeData,
     };
     nodes.push(indexNode);
@@ -411,9 +412,62 @@ const withIndexEntries = (nodes: NodeFlowNode[], indexNodeId: string, entries: L
     ...node,
     data: {
       ...node.data,
-      lookbookBook: { version: 1, entries } satisfies LookbookBookState,
+      lookbookBook: {
+        version: 1,
+        ...(isBookState(node.data.lookbookBook) && isFiniteNumber(node.data.lookbookBook.pageCount)
+          ? { pageCount: Math.max(0, Math.round(node.data.lookbookBook.pageCount)) }
+          : {}),
+        entries,
+      } satisfies LookbookBookState,
     } as NodeFlowNodeData,
   } : node);
+
+const requiredPageCountForItems = (items: LookbookBoardItem[]) =>
+  items.length ? (Math.max(...items.map((item) => item.spreadIndex)) + 1) * 2 : 0;
+
+export const getLookbookPageCount = (projectData: ProjectData, identityNodeId: string) => {
+  const indexNode = getLookbookIndexNode(projectData, identityNodeId);
+  const state = indexNode?.data.lookbookBook;
+  const stored = isBookState(state) && isFiniteNumber(state.pageCount)
+    ? Math.max(0, Math.round(state.pageCount))
+    : 0;
+  return Math.max(stored, requiredPageCountForItems(projectLookbookBoardItems(projectData, identityNodeId)));
+};
+
+export const addLookbookPage = (
+  projectData: ProjectData,
+  identityNodeId: string,
+  amount = 1
+): ProjectData => {
+  const increment = Math.max(1, Math.round(amount));
+  const flow = projectData.flow || { links: [] };
+  const ensured = ensureIndexDocument(projectData, identityNodeId, flow.flowNodes || [], flow.links);
+  if (!ensured) return projectData;
+  const ensuredProject = {
+    ...projectData,
+    flow: { ...flow, flowNodes: ensured.nodes, links: ensured.links },
+  };
+  const pageCount = getLookbookPageCount(ensuredProject, identityNodeId) + increment;
+  return {
+    ...projectData,
+    flow: {
+      ...flow,
+      revision: (flow.revision || 0) + 1,
+      flowNodes: ensured.nodes.map((node) => node.id === ensured.indexNode.id ? {
+        ...node,
+        data: {
+          ...node.data,
+          lookbookBook: {
+            version: 1,
+            pageCount,
+            entries: readBookEntries(ensured.indexNode),
+          } satisfies LookbookBookState,
+        } as NodeFlowNodeData,
+      } : node),
+      links: ensured.links,
+    },
+  };
+};
 
 const flowPositionForMember = (identityNode: NodeFlowNode, index: number) => ({
   x: identityNode.position.x + 340 + (index % 3) * 310,
@@ -622,7 +676,7 @@ export const reflowLookbookLayouts = (
   return { ...projectData, flow: { ...flow, revision: (flow.revision || 0) + 1, flowNodes: withIndexEntries(flow.flowNodes, indexNode.id, entries) } };
 };
 
-export const getLookbookSpreadCount = (items: LookbookBoardItem[]) =>
-  Math.max(1, ...items.map((item) => item.spreadIndex + 1));
+export const getLookbookSpreadCount = (items: LookbookBoardItem[], pageCount = 0) =>
+  Math.max(1, Math.ceil(Math.max(0, pageCount) / 2), ...items.map((item) => item.spreadIndex + 1));
 
 export const getLookbookWorldHeight = (_items: LookbookBoardItem[]) => LOOKBOOK_SPREAD_HEIGHT;

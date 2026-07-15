@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GearSix } from "@phosphor-icons/react";
+import { BookOpen, GearSix } from "@phosphor-icons/react";
 import {
   Plus,
   User,
@@ -11,7 +11,6 @@ import {
   SquareStack,
   Library,
   ChevronRight,
-  Layers,
   FileText,
   Trash2,
   LogOut,
@@ -257,7 +256,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   }, [showFileMenu, showPalette]);
 
   const panelActions = [
-    { label: "身份卡片", hint: "角色 / 场景与定妆照槽位", meta: "档案", onClick: onAddIdentityCard, Icon: Layers, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
+    { label: "Lookbook", hint: "由剧本中的角色或场景自动创建", meta: "自动", onClick: onAddIdentityCard, Icon: BookOpen, tone: "text-emerald-300", surface: "bg-emerald-500/12", disabled: true, disabledHint: "解析身份后自动生成" },
   ];
   const nodeActions = [
     { label: "文本", hint: "提示词、备忘与结构片段", meta: "文本", onClick: onAddText, Icon: MessageSquare, tone: "text-slate-200", surface: "bg-white/5" },
@@ -543,21 +542,25 @@ export const FloatingActionBar: React.FC<Props> = ({
                         <div className="text-[10px] text-[var(--app-text-muted)]">{panelActions.length} 类</div>
                       </div>
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface }) => (
+                        {panelActions.map(({ label, hint, meta, onClick, Icon, tone, surface, disabled, disabledHint }) => (
                           <button
                             key={label}
+                            type="button"
+                            disabled={disabled}
+                            title={disabled ? disabledHint : undefined}
                             onClick={() => {
+                              if (disabled) return;
                               onClick();
                               closeMenus();
                             }}
-                            className="group/node relative overflow-hidden rounded-[16px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--app-border-strong)] hover:bg-[var(--app-panel-soft)] active:translate-y-0"
+                            className="group/node relative overflow-hidden rounded-[16px] border border-[var(--app-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent)] px-3 py-3 text-left transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:border-[var(--app-border-strong)] enabled:hover:bg-[var(--app-panel-soft)] enabled:active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45"
                           >
                             <div className={`flex h-9 w-9 items-center justify-center rounded-[13px] border border-[var(--app-border)] ${surface} ${tone}`}>
                               <Icon size={16} />
                             </div>
                             <div className="mt-2.5">
                               <div className="text-[13px] font-semibold tracking-[-0.02em] text-[var(--app-text-primary)]">{label}</div>
-                              <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{hint}</div>
+                              <div className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-[var(--app-text-secondary)]">{disabled ? disabledHint : hint}</div>
                             </div>
                             <div className="mt-2.5">
                               <span className="inline-flex rounded-full border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">
