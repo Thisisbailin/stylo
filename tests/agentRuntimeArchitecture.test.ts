@@ -639,6 +639,7 @@ test("HTTP Agent runtime flushes sync before sending the minimal request", async
   const calls: Array<{ body: AgentHttpRunRequest; syncFinished: boolean }> = [];
   let revision = 3;
   let syncFinished = false;
+  let leaseReleased = false;
   globalThis.fetch = (async (_input: URL | RequestInfo, init?: RequestInit) => {
     calls.push({
       body: JSON.parse(String(init?.body || "{}")) as AgentHttpRunRequest,
@@ -658,6 +659,12 @@ test("HTTP Agent runtime flushes sync before sending the minimal request", async
         await Promise.resolve();
         revision = 9;
         syncFinished = true;
+        return {
+          expectedRevision: revision,
+          release: () => {
+            leaseReleased = true;
+          },
+        };
       },
       getProjectRevision: () => revision,
     });
@@ -673,25 +680,26 @@ test("HTTP Agent runtime flushes sync before sending the minimal request", async
     assert.equal("projectData" in calls[0].body, false);
     assert.equal("nodeFlow" in calls[0].body, false);
     assert.deepEqual(Object.keys(calls[0].body).sort(), ["project", "run", "runtime"]);
+    assert.equal(leaseReleased, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("Agent project sync barrier follows queue completion instead of UI sync status", () => {
+test("Agent project sync barrier uses an immutable snapshot lease instead of UI polling", () => {
   const syncSource = readFileSync("hooks/useCloudSync.ts", "utf8");
-  assert.match(syncSource, /finally\s*\{\s*isSavingRef\.current = false;/);
-  assert.match(syncSource, /queueMicrotask\(\(\) => void flushSaveQueueRef\.current\(\)\)/);
-  assert.match(syncSource, /while \(isSavingRef\.current \|\| pendingOpRef\.current\)/);
-  assert.match(syncSource, /const cloudData = toCloudProjectData\(data\)/);
-  assert.match(syncSource, /lastSyncErrorRef\.current && saveRetryTimeout\.current/);
-  assert.doesNotMatch(syncSource, /statusRef\.current !== ["']synced["']/);
+  assert.match(syncSource, /return engine\.acquire\(snapshot, expectedRevision\)/);
+  assert.doesNotMatch(syncSource, /while \(readActiveFlowRevision/);
+  assert.doesNotMatch(syncSource, /isSavingRef|pendingOpRef|saveRetryTimeout/);
+
+  const engineSource = readFileSync("sync/versionedSyncEngine.ts", "utf8");
+  assert.match(engineSource, /private commandTail: Promise<void>/);
+  assert.match(engineSource, /this\.holdCount \+= 1/);
+  assert.match(engineSource, /const snapshot = this\.capture\(local\)/);
 
   const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
-  assert.match(
-    agentSource,
-    /if \(ensureProjectSynced\) \{\s*await ensureProjectSynced\(expectedRevision\);\s*return;\s*\}/
-  );
+  assert.match(agentSource, /const snapshot = mergeNodeFlowIntoProjectData/);
+  assert.match(agentSource, /return ensureProjectSynced\(snapshot, expectedRevision\)/);
   assert.match(
     agentSource,
     /nodes: restoreLocalNodeMedia\(parsedCandidateFlow\.nodes, currentFlow\.nodes\)/

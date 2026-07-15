@@ -42,6 +42,7 @@ import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
+import type { EnsureProjectSynced } from "../../hooks/useCloudSync";
 
 interface CreativeWorkspaceProps {
   accountScope: string;
@@ -52,7 +53,7 @@ interface CreativeWorkspaceProps {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
-  ensureProjectSynced?: (expectedRevision?: number) => Promise<void>;
+  ensureProjectSynced?: EnsureProjectSynced;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onOpenLanding?: () => void;

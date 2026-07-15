@@ -39,6 +39,7 @@ import type {
   AgentScriptEditProposalBatch,
   StyloSubmitRequest,
 } from "./stylo/interactionTypes";
+import type { EnsureProjectSynced, ProjectSyncLease } from "../../hooks/useCloudSync";
 
 type Props = {
   accountScope: string;
@@ -48,7 +49,7 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   syncState?: SyncState;
-  ensureProjectSynced?: (expectedRevision?: number) => Promise<void>;
+  ensureProjectSynced?: EnsureProjectSynced;
   onOpenStats?: () => void;
   settingsOpen?: boolean;
   openRequest?: number;
@@ -655,13 +656,31 @@ export const StyloAgent: React.FC<Props> = ({
       await new Promise((resolve) => window.setTimeout(resolve, 120));
     }
   }, []);
-  const prepareProjectToolState = useCallback(async (expectedRevision: number) => {
+  const prepareProjectToolState = useCallback(async (): Promise<ProjectSyncLease> => {
+    const flowState = getNodeFlowSnapshot();
+    const expectedRevision = flowState.revision;
+    const nodeFlowSnapshot: NodeFlowFile = {
+      version: 2,
+      revision: expectedRevision,
+      name: projectDataRef.current.fileName || "Stylo Flow Workspace",
+      nodes: flowState.nodes,
+      links: flowState.links,
+      graphLinks: flowState.graphLinks,
+      linkStyle: flowState.linkStyle,
+      globalAssetHistory: flowState.globalAssetHistory,
+      nodeFlowContext: flowState.nodeFlowContext,
+      viewport: flowState.viewport || undefined,
+      activeView: flowState.activeView,
+    };
+    const snapshot = mergeNodeFlowIntoProjectData(projectDataRef.current, nodeFlowSnapshot);
+    projectDataRef.current = snapshot;
+    setProjectData(snapshot);
     if (ensureProjectSynced) {
-      await ensureProjectSynced(expectedRevision);
-      return;
+      return ensureProjectSynced(snapshot, expectedRevision);
     }
     await waitForProjectSync();
-  }, [ensureProjectSynced, waitForProjectSync]);
+    return { expectedRevision, remoteVersion: 0, release: () => undefined };
+  }, [ensureProjectSynced, setProjectData, waitForProjectSync]);
   const edgeRuntime = useMemo(
     () =>
       createHttpStyloAgentRuntime({

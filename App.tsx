@@ -16,6 +16,7 @@ import { useTheme } from './hooks/useTheme';
 import { useSecretsSync } from './hooks/useSecretsSync';
 import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
+import { SecretsConflictModal } from './components/SecretsConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
 import { resetNodeFlowAccountState, resetNodeFlowProjectState } from './node-workspace/store/nodeFlowStore';
@@ -35,6 +36,8 @@ import {
   LEGACY_PRODUCT_STORAGE,
   migrateLegacyProductStorage,
 } from './utils/styloMigration';
+import type { SecretsPayload } from './sync/secretsSyncAdapter';
+import { AccountApiSession } from './sync/authenticatedFetch';
 
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
@@ -229,6 +232,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       return null;
     }
   }, [accountScope, authSignedIn, authUserId, getToken]);
+  const accountSession = useMemo(
+    () => new AccountApiSession(accountScope, getAuthToken, getDeviceId(), fetch, buildApiUrl),
+    [accountScope, getAuthToken]
+  );
+  useEffect(() => () => accountSession.dispose(), [accountSession]);
   useEffect(() => {
     setApiAuthTokenProvider(authSignedIn ? getAuthToken : null);
     return () => setApiAuthTokenProvider(null);
@@ -275,17 +283,28 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     }
   }, [isDarkMode]);
 
-  const [hasLoadedRemote, setHasLoadedRemote] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>({
     project: { status: 'idle' },
     secrets: { status: 'disabled' }
   });
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine !== false,
+  );
   const [syncRefreshKey, setSyncRefreshKey] = useState(0);
   const [projectResetToken, setProjectResetToken] = useState(0);
-  const conflictQueueRef = useRef<Array<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' }>>([]);
-  const activeConflictRef = useRef<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
-  const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve?: (useRemote: boolean) => void; mode: 'decision' | 'notice' } | null>(null);
+  const conflictQueueRef = useRef<Array<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void }>>([]);
+  const activeConflictRef = useRef<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void } | null>(null);
+  const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void } | null>(null);
+  const secretConflictRef = useRef<{
+    remote: SecretsPayload;
+    local: SecretsPayload;
+    resolve: (useRemote: boolean) => void;
+  } | null>(null);
+  const [secretConflict, setSecretConflict] = useState<{
+    remote: SecretsPayload;
+    local: SecretsPayload;
+    resolve: (useRemote: boolean) => void;
+  } | null>(null);
 
   const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
   const [projectSettingsRequest, setProjectSettingsRequest] = useState<{ panel: ProjectSettingsPanelKey; nonce: number } | null>(null);
@@ -348,6 +367,8 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     conflictQueueRef.current.forEach((item) => item.resolve?.(true));
     conflictQueueRef.current = [];
     activeConflictRef.current = null;
+    secretConflictRef.current?.resolve(true);
+    secretConflictRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -410,7 +431,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const requestConflictResolution = useCallback(({ remote, local }: { remote: ProjectData; local: ProjectData }) => {
     return new Promise<boolean>((resolve) => {
-      conflictQueueRef.current.push({ remote, local, resolve, mode: 'decision' });
+      conflictQueueRef.current.push({ remote, local, resolve });
       if (!activeConflictRef.current) {
         const next = conflictQueueRef.current.shift();
         if (next) setActiveConflict(next);
@@ -418,28 +439,33 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     });
   }, []);
 
-  const requestConflictNotice = useCallback(({ remote, local }: { remote: ProjectData; local: ProjectData }) => {
-    conflictQueueRef.current.push({ remote, local, mode: 'notice' });
-    if (!activeConflictRef.current) {
-      const next = conflictQueueRef.current.shift();
-      if (next) setActiveConflict(next);
-    }
-  }, []);
-
   const handleConflictChoice = useCallback((useRemote: boolean) => {
-    if (!activeConflict || activeConflict.mode !== 'decision') return;
-    activeConflict.resolve?.(useRemote);
+    if (!activeConflict) return;
+    activeConflict.resolve(useRemote);
     setActiveConflict(null);
     const next = conflictQueueRef.current.shift();
     if (next) setActiveConflict(next);
   }, [activeConflict]);
 
-  const handleConflictAcknowledge = useCallback(() => {
-    if (!activeConflict || activeConflict.mode !== 'notice') return;
-    setActiveConflict(null);
-    const next = conflictQueueRef.current.shift();
-    if (next) setActiveConflict(next);
-  }, [activeConflict]);
+  const requestSecretsConflictResolution = useCallback(({
+    remote,
+    local,
+  }: {
+    remote: SecretsPayload;
+    local: SecretsPayload;
+  }) => new Promise<boolean>((resolve) => {
+    const request = { remote, local, resolve };
+    secretConflictRef.current = request;
+    setSecretConflict(request);
+  }), []);
+
+  const handleSecretsConflictChoice = useCallback((useRemote: boolean) => {
+    const conflict = secretConflictRef.current;
+    if (!conflict) return;
+    secretConflictRef.current = null;
+    setSecretConflict(null);
+    conflict.resolve(useRemote);
+  }, []);
 
 
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
@@ -447,11 +473,9 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
-    getToken: getAuthToken,
+    accountSession,
     projectData,
     setProjectData,
-    setHasLoadedRemote,
-    hasLoadedRemote,
     refreshKey: syncRefreshKey,
     localBackupKey,
     remoteBackupKey,
@@ -459,7 +483,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     onError: handleCloudSyncError,
     onStatusChange: updateProjectSyncStatus,
     onConflictConfirm: requestConflictResolution,
-    onConflictNotice: requestConflictNotice,
     saveDebounceMs: 1200
   });
 
@@ -467,11 +490,12 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
-    getToken: getAuthToken,
+    accountSession,
     config,
     setConfig,
     debounceMs: 1200,
-    onStatusChange: updateSecretsSyncStatus
+    onStatusChange: updateSecretsSyncStatus,
+    onConflictConfirm: requestSecretsConflictResolution,
   });
 
   // Fetch avatar from profile (account-scoped) once per session
@@ -479,10 +503,8 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     const fetchProfile = async () => {
       if (!authSignedIn || !isAuthLoaded || hasFetchedProfileAvatar.current) return;
       try {
-        const token = await getAuthToken();
-        if (!token) return;
         hasFetchedProfileAvatar.current = true;
-        const res = await fetch(buildApiUrl('/api/profile'), { headers: { authorization: `Bearer ${token}` } });
+        const res = await accountSession.request('/api/profile');
         if (res.ok) {
           const data = await res.json();
           if (data.avatarUrl) setAvatarUrl(data.avatarUrl);
@@ -492,7 +514,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       }
     };
     fetchProfile();
-  }, [authSignedIn, isAuthLoaded, getAuthToken, setAvatarUrl]);
+  }, [accountSession, authSignedIn, isAuthLoaded, setAvatarUrl]);
 
   // --- Handlers ---
 
@@ -510,13 +532,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       localStorage.removeItem(`${localBackupKey}_last_synced`);
       setAvatarUrl('');
       try {
-        const token = await getAuthToken();
-        if (token) {
-          await fetch(buildApiUrl('/api/account-data-reset'), {
-            method: 'DELETE',
-            headers: { authorization: `Bearer ${token}` },
-          });
-        }
+        await accountSession.request('/api/account-data-reset', { method: 'DELETE' });
       } catch (error) {
         console.warn('Cloud project reset failed', error);
       }
@@ -538,13 +554,9 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         bucket: 'public-assets',
         contentType: file.type
       };
-      const token = await getAuthToken();
-      if (!token) {
-        throw new Error('请先登录后再上传头像。');
-      }
-      const res = await fetch(buildApiUrl('/api/upload-url'), {
+      const res = await accountSession.request('/api/upload-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
@@ -571,9 +583,9 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       setAvatarUrl(storedUrl);
       // Save to profile for multi-device sync
       try {
-        await fetch(buildApiUrl('/api/profile'), {
+        await accountSession.request('/api/profile', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ avatarUrl: storedUrl })
         });
       } catch (e) {
@@ -755,10 +767,16 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
             isOpen={!!activeConflict}
             remoteData={activeConflict.remote}
             localData={activeConflict.local}
-            mode={activeConflict.mode}
-            onUseRemote={activeConflict.mode === 'decision' ? () => handleConflictChoice(true) : undefined}
-            onKeepLocal={activeConflict.mode === 'decision' ? () => handleConflictChoice(false) : undefined}
-            onAcknowledge={activeConflict.mode === 'notice' ? handleConflictAcknowledge : undefined}
+            onUseRemote={() => handleConflictChoice(true)}
+            onKeepLocal={() => handleConflictChoice(false)}
+          />
+        )}
+        {secretConflict && (
+          <SecretsConflictModal
+            remote={secretConflict.remote}
+            local={secretConflict.local}
+            onUseRemote={() => handleSecretsConflictChoice(true)}
+            onKeepLocal={() => handleSecretsConflictChoice(false)}
           />
         )}
         <input

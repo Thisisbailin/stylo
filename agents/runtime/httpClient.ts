@@ -106,7 +106,10 @@ type HttpRuntimeDeps = {
   endpoint: string;
   getRuntimeConfig: () => AgentHttpRunRequest["runtime"];
   getProjectRevision: () => number;
-  beforeRequest?: (expectedRevision: number) => Promise<void>;
+  beforeRequest?: () => Promise<{
+    expectedRevision: number;
+    release?: () => void;
+  }>;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
 };
 
@@ -142,21 +145,12 @@ export const createHttpStyloAgentRuntime = ({
 }: HttpRuntimeDeps): StyloAgentRuntime => ({
   async run(input: StyloRunInput, options?: StyloRunOptions): Promise<StyloRunResult> {
     let expectedRevision = getProjectRevision();
+    let projectLease: Awaited<ReturnType<NonNullable<HttpRuntimeDeps["beforeRequest"]>>> | null = null;
     if (beforeRequest) {
-      let revisionSettled = false;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        await beforeRequest(expectedRevision);
-        const currentRevision = getProjectRevision();
-        if (currentRevision === expectedRevision) {
-          revisionSettled = true;
-          break;
-        }
-        expectedRevision = currentRevision;
-      }
-      if (!revisionSettled) {
-        throw new Error("画布在 Agent 请求前持续变化，无法建立一致的云端修订。请停止编辑后重试。");
-      }
+      projectLease = await beforeRequest();
+      expectedRevision = projectLease.expectedRevision;
     }
+    try {
     const requestBody: AgentHttpRunRequest = {
       run: input,
       runtime: getRuntimeConfig(),
@@ -302,5 +296,8 @@ export const createHttpStyloAgentRuntime = ({
       toolCalls: finalResult.toolCalls.length,
     });
     return finalResult;
+    } finally {
+      projectLease?.release?.();
+    }
   },
 });

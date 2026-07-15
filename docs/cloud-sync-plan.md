@@ -1,123 +1,104 @@
-Cloud Sync Plan (Production-Grade)
+# Account and Cloud Sync Architecture
 
-Purpose
-- Provide a robust, production-ready cloud sync design that prevents data loss and ensures strong correctness guarantees.
-- Support offline-first workflows, multiple devices, and partial connectivity.
-- Make sync behavior observable, testable, and reversible.
+## Scope
 
-Scope
-- User project data (scripts, episodes, assets, settings).
-- User secrets (API keys, tokens) handled separately with stricter security.
-- Not a full backend blueprint; focuses on sync correctness and safety.
+Stylo has one local workspace namespace and one remote data namespace per authenticated account. Project state and encrypted provider secrets share the account transport boundary but use independent versioned resources and conflict decisions.
 
-Non-Negotiables (Safety Guarantees)
-- No silent data loss: every overwrite must be intentional and recoverable.
-- Deterministic conflict resolution: predictable outcomes across devices.
-- Idempotent writes: client retries must not duplicate or corrupt data.
-- Visibility: all sync failures are surfaced and logged with trace IDs.
-- Recovery: user can restore at least the last N snapshots.
+Binary media is not cloud project state. Cloud project snapshots contain metadata and local-media references; the portable project package remains the binary source of truth.
 
-High-Level Architecture
-- Local-first model: client stores authoritative local copy in IndexedDB/SQLite.
-- Server stores canonical record with versioning and audit log.
-- Sync uses optimistic concurrency control (OCC) with server-issued version IDs.
-- Delta sync over a cursor; avoid full document overwrites when possible.
+## Required Invariants
 
-Data Model
-- Split project data into normalized tables (single-project per account):
-  - user_project_meta: fileName/rawScript/guides/roles/designAssets/nodeFlow/nodeDefaults/usage/stats + updated_at (global version)
-  - user_project_episodes: episode-level fields (no scenes)
-  - user_project_scenes: scene rows keyed by (episode_id, scene_id)
-- Secrets remain separate (user_secrets).
-- Global OCC version uses user_project_meta.updated_at; any write bumps it.
-- Maintain an audit log:
-  - eventId, action, status, deviceId, timestamp, detail
+1. No request from account A may complete into account B's state.
+2. No push is allowed before a successful initial remote handshake.
+3. Every push uses an immutable value, a server-issued base version, and a payload-bound operation ID.
+4. At most one write per resource may be in flight.
+5. A retry reuses the same operation ID and exact payload.
+6. A CAS conflict creates a new operation only after adopting the returned remote version.
+7. A non-empty remote project cannot be replaced by an empty local project without the explicit reset marker.
+8. Local and remote divergence is never resolved by a timeout or silent last-write-wins rule.
+9. `synced` means the server returned a valid version receipt. Agent preparation additionally requires an exact project-revision receipt.
+10. Agent requests start with no project payload. They receive only project identity and the confirmed expected revision, then explore through tools.
 
-Sync Protocol (Recommended)
-1. Initial handshake
-   - Client sends deviceId + lastKnownVersion per aggregate.
-   - Server returns current version + cursor for deltas.
-2. Pull phase
-   - Client requests latest project snapshot (full GET).
-3. Apply locally
-   - Client validates schema, applies changes, updates local version.
-4. Push phase
-   - Client sends per-entity deltas (meta/episodes/scenes/roles) with baseVersion.
-   - Server applies with compare-and-swap:
-     - If baseVersion matches, accept -> new version.
-     - If mismatch, return 409 conflict with latest version and server state.
-5. Conflict handling
-   - Client runs deterministic merge policy.
-   - If auto-merge not safe, prompt user and store both copies.
-6. Snapshotting
-   - Server keeps rolling snapshots (e.g., last 10 versions).
-   - Client keeps local backups before applying remote changes.
+## Account Boundary
 
-Conflict Resolution Strategy
-- Prefer structured merges over full document overwrites.
-- Example rules:
-  - Arrays of objects keyed by id: merge by id.
-  - For scalar fields: last-write-wins by server version, not client time.
-  - For large text fields: keep both (append conflict marker) or prompt user.
-- For secrets: never auto-merge; require explicit user confirmation.
+`AccountApiSession` is the sole authenticated HTTP boundary for a mounted account scope.
 
-Offline and Retry Behavior
-- Local queue of pending mutations with stable operation IDs.
-- Retry with exponential backoff + jitter.
-- All operations must be idempotent; server de-duplicates by operation ID.
-- If offline, UI indicates "local only" and shows pending count.
+- It binds every request to the account's stable token provider and device ID.
+- It retries authentication exactly once with `skipCache` after 401/403.
+- It aborts pending token acquisition and all network requests when the account scope is disposed.
+- Project sync, secret sync, profile, avatar metadata, and account reset use the same session.
+- Clerk bridge callbacks have stable identities; React renders cannot recreate the account session.
 
-Security and Privacy
-- Secrets should be encrypted before storage:
-  - Client-side encryption with per-user key (recommended).
-  - Or server-side encryption with KMS + strict access controls.
-- Avoid sending secrets in project sync payloads.
-- Enforce auth on every API call; include deviceId for auditability.
-- Remove secrets from logs and crash reports.
+Local storage keys include the encoded account scope. Agent conversations additionally include the project ID. Legacy unscoped data remains quarantined until the user explicitly imports it.
 
-Observability and Monitoring
-- Add structured logs with traceId, userId, deviceId, version, action.
-- Metrics:
-  - sync_success, sync_conflict, sync_failed, sync_latency
-- Alerts for sustained failure rates or conflict spikes.
-- Client-side telemetry for "last sync time" and "pending ops".
+## Sync State Machine
 
-Failure Modes and Guardrails
-- Never allow empty local state to overwrite non-empty server state.
-- Never write to server if initial pull has not completed successfully.
-- Validate payloads against schema before saving.
-- If validation fails, halt sync and surface error.
+`VersionedSyncEngine<T>` is independent of React. React hooks are lifecycle adapters only.
 
-User Experience Requirements
-- Clear status: "Synced", "Syncing", "Offline", "Conflict".
-- Manual "Sync now" and "Restore version" actions.
-- Transparent conflict UI with preview of both versions.
+```text
+disabled -> loading -> synced
+                    -> syncing -> synced
+                    -> conflict -> syncing | synced
+                    -> offline  -> loading | syncing
+                    -> error    -> refresh | next explicit attempt
+```
 
-Testing and Verification
-- Unit tests: merge logic, OCC, tombstones, idempotency.
-- Integration tests: multi-device conflicts, offline edits, retry storms.
-- Chaos tests: delayed responses, partial failures, server rollbacks.
-- Automated regression suite for sync edge cases.
+The engine owns:
 
-Rollout Plan
-1. Add versioning and idempotency on server.
-2. Add local op queue and delta sync on client.
-3. Introduce conflict UI and snapshot restore.
-4. Gradually enable for a percentage of users (feature flag).
+- a serialized command tail;
+- one confirmed remote snapshot and opaque remote version;
+- one debounced latest local snapshot;
+- retry state with exponential backoff and jitter;
+- an abort controller scoped to the account lifecycle;
+- explicit conflict resolution;
+- short-lived write holds used by Agent revision leases.
 
-Implementation Notes for This Codebase
-- Project sync uses normalized tables and a delta payload; `/api/project` supports:
-  - GET: reconstruct full ProjectData from tables.
-  - PUT: accept `delta` (preferred) or full `projectData` for initial load.
-- Secrets sync remains independent.
-- Use server-issued `updated_at` from meta for conflict checks.
-- Surface sync errors in UI with actionable detail.
+The engine does not own React state, Clerk, fetch URL construction, or project-specific delta logic.
 
-Checklist (Minimum for Production)
-- Server-side OCC with version IDs and 409 conflicts.
-- Client op queue with idempotency keys.
-- Snapshotting and restore UI.
-- Conflict resolution UI for non-mergeable changes.
-- Explicit "initial pull completed" gating before any push.
-- Schema validation on client and server.
-- Observability and alerting in place.
+## Project Protocol
+
+`GET /api/project` returns:
+
+```json
+{
+  "projectData": {},
+  "updatedAt": 123,
+  "projectRevision": 42
+}
+```
+
+`PUT /api/project` sends `If-Match`, the same `updatedAt` in the body, an operation ID, and the active project revision. The operation ID is cryptographically bound to mode, base version, revision, and the complete sanitized payload.
+
+The D1 write guard and data mutations execute in one batch. A successful response confirms both the new remote version and project revision. A 409 response includes the latest hydrated project, remote version, and project revision.
+
+## Agent Revision Lease
+
+Agent startup does not wait for the whole canvas to become idle.
+
+1. Capture one NodeFlow store snapshot.
+2. Merge that exact snapshot into a project value.
+3. Acquire a sync lease for its revision.
+4. Force a full project save and verify the server revision receipt.
+5. Send only `expectedRevision` to the Agent API.
+6. Hold later background project writes until the Agent stream ends or fails.
+7. Release the lease in `finally`.
+
+This gives the Agent one stable remote starting revision while preserving the zero-knowledge exploration rule.
+
+## Secrets
+
+Secrets use the same engine and CAS rules but a separate endpoint, baseline, and encrypted server record. Secret values are never merged. If both local and remote changed, the user selects one version in a UI that reveals only which provider slots are configured, never secret text.
+
+## Failure Handling
+
+- Network, 408, 425, 429, and 5xx failures retry with bounded backoff and jitter.
+- Authentication refresh happens in the account session, not in each resource hook.
+- Validation, malformed receipts, 4xx protocol errors, and revision mismatches fail immediately.
+- Going offline preserves the latest staged snapshot without consuming retries.
+- Account disposal aborts loads, saves, token waits, conflict waits, and Agent leases.
+- Project conflict choices create local/remote backups before replacement.
+- Server snapshots and audit records remain the recovery path for committed remote versions.
+
+## Verification
+
+The regression suite covers account isolation, token refresh, token-wait abort, initial pull gating, immutable snapshots, serialized writes, retry idempotency, CAS conflict choices, remote-version rebasing, Agent write holds, exact revision receipts, offline/runtime compatibility, and disposal during in-flight work.

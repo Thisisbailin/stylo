@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import {
   ClerkProvider as BaseClerkProvider,
   useAuth as useBaseAuth,
@@ -75,6 +75,18 @@ const ClerkBridge: React.FC<React.PropsWithChildren> = ({ children }) => {
   const user = useBaseUser();
   const clerk = useBaseClerk();
   const auth = useBaseAuth();
+  const openSignInRef = useRef(clerk.openSignIn);
+  const signOutRef = useRef(clerk.signOut);
+  const getTokenRef = useRef(auth.getToken);
+  openSignInRef.current = clerk.openSignIn;
+  signOutRef.current = clerk.signOut;
+  getTokenRef.current = auth.getToken;
+
+  const openSignIn = useCallback((...args: any[]) => {
+    void openSignInRef.current(...args);
+  }, []);
+  const signOut = useCallback((...args: any[]) => signOutRef.current(...args), []);
+  const getToken = useCallback((...args: any[]) => getTokenRef.current(...args), []);
 
   const value = useMemo<AuthContextValue>(() => ({
     clerkEnabled: true,
@@ -84,18 +96,26 @@ const ClerkBridge: React.FC<React.PropsWithChildren> = ({ children }) => {
       user: (user.user as AuthUser) ?? null,
     },
     clerkState: {
-      openSignIn: (...args: any[]) => {
-        void clerk.openSignIn(...args);
-      },
-      signOut: (...args: any[]) => clerk.signOut(...args),
+      openSignIn,
+      signOut,
     },
     sessionState: {
       isLoaded: auth.isLoaded,
       isSignedIn: !!auth.isSignedIn,
       userId: auth.userId || null,
-      getToken: (...args: any[]) => auth.getToken(...args),
+      getToken,
     },
-  }), [auth, clerk, user]);
+  }), [
+    auth.isLoaded,
+    auth.isSignedIn,
+    auth.userId,
+    getToken,
+    openSignIn,
+    signOut,
+    user.isLoaded,
+    user.isSignedIn,
+    user.user,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -83,15 +83,15 @@ test("remote cloud metadata preserves matching local media by node id", () => {
   );
 });
 
-test("project API rejects inline media before idempotency binding", () => {
+test("project API rejects inline media before binding idempotency to the sanitized write payload", () => {
   const source = readFileSync("functions/api/project.ts", "utf8");
   const inlineGuardIndex = source.indexOf("hasInlineProjectMedia(inlineMediaScope");
   const idempotencyIndex = source.indexOf('bindOperationId("project-put"');
 
   assert.ok(inlineGuardIndex >= 0);
   assert.ok(idempotencyIndex > inlineGuardIndex);
-  assert.doesNotMatch(
-    source.slice(idempotencyIndex, idempotencyIndex + 240),
+  assert.match(
+    source.slice(idempotencyIndex, idempotencyIndex + 320),
     /payload:\s*delta\s*\|\|\s*projectData/
   );
 });

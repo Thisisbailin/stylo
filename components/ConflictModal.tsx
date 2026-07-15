@@ -111,16 +111,10 @@ export const ConflictModal: React.FC<Props> = ({
   const isNotice = mode === "notice";
 
   useEffect(() => {
-    if (!isOpen) return undefined;
-    const timeoutId = window.setTimeout(() => {
-      if (isNotice) {
-        onAcknowledge?.();
-      } else {
-        onKeepLocal?.();
-      }
-    }, 3000);
+    if (!isOpen || !isNotice) return undefined;
+    const timeoutId = window.setTimeout(() => onAcknowledge?.(), 3000);
     return () => window.clearTimeout(timeoutId);
-  }, [isNotice, isOpen, onAcknowledge, onKeepLocal]);
+  }, [isNotice, isOpen, onAcknowledge]);
 
   if (!isOpen) return null;
 

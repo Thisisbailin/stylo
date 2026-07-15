@@ -96,6 +96,28 @@ const toFlowProjects = (value: unknown) =>
         .slice(0, MAX_FLOW_PROJECTS)
     : [];
 
+const readProjectRevision = (value: unknown) => {
+  if (!value || typeof value !== "object") return null;
+  const project = value as Record<string, unknown>;
+  const activeProjectId = typeof project.activeFlowProjectId === "string"
+    ? project.activeFlowProjectId
+    : undefined;
+  const flowProjects = Array.isArray(project.flowProjects)
+    ? project.flowProjects.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+  const activeProject = flowProjects.find((item) => item.id === activeProjectId) || flowProjects[0];
+  const activeFlow = activeProject?.flow && typeof activeProject.flow === "object"
+    ? activeProject.flow as Record<string, unknown>
+    : null;
+  const legacyFlow = project.flow && typeof project.flow === "object"
+    ? project.flow as Record<string, unknown>
+    : null;
+  const revision = activeFlow?.revision ?? legacyFlow?.revision;
+  return typeof revision === "number" && Number.isSafeInteger(revision) && revision >= 0
+    ? revision
+    : null;
+};
+
 const splitFlowProject = (project: Record<string, unknown>) => {
   const flow = project.flow && typeof project.flow === "object" ? project.flow as Record<string, unknown> : {};
   const flowNodes = Array.isArray(flow.flowNodes) ? flow.flowNodes : [];
@@ -410,7 +432,11 @@ export const onRequestGet = async (context: {
     }
 
     return jsonResponse(
-      { projectData: data.projectData, updatedAt: data.updatedAt },
+      {
+        projectData: data.projectData,
+        updatedAt: data.updatedAt,
+        projectRevision: readProjectRevision(data.projectData),
+      },
       { headers: { etag: String(data.updatedAt) } }
     );
   } catch (err: any) {
@@ -490,7 +516,37 @@ export const onRequestPut = async (context: {
       );
     }
 
-    const clientUpdatedAt = typeof (body as any).updatedAt === "number" ? (body as any).updatedAt : undefined;
+    const bodyUpdatedAt = typeof (body as any).updatedAt === "number" &&
+      Number.isSafeInteger((body as any).updatedAt) && (body as any).updatedAt >= 0
+      ? (body as any).updatedAt as number
+      : undefined;
+    const ifMatchHeader = context.request.headers.get("if-match");
+    const ifMatchVersion = ifMatchHeader !== null && /^\d+$/.test(ifMatchHeader.trim())
+      ? Number(ifMatchHeader.trim())
+      : undefined;
+    if (ifMatchHeader !== null && ifMatchVersion === undefined) {
+      return jsonResponse({ error: "Invalid If-Match project version" }, { status: 400 });
+    }
+    if (bodyUpdatedAt !== undefined && ifMatchVersion !== undefined && bodyUpdatedAt !== ifMatchVersion) {
+      return jsonResponse({ error: "Project version differs between body and If-Match" }, { status: 400 });
+    }
+    const clientUpdatedAt = ifMatchVersion ?? bodyUpdatedAt;
+    const rawProjectRevision = (body as any).projectRevision;
+    const clientProjectRevision = typeof rawProjectRevision === "number" &&
+      Number.isSafeInteger(rawProjectRevision) && rawProjectRevision >= 0
+      ? rawProjectRevision as number
+      : null;
+    if (rawProjectRevision !== undefined && clientProjectRevision === null) {
+      return jsonResponse({ error: "Invalid projectRevision" }, { status: 400 });
+    }
+    const payloadProjectRevision = readProjectRevision(delta?.meta || projectData);
+    if (
+      clientProjectRevision !== null &&
+      payloadProjectRevision !== null &&
+      clientProjectRevision !== payloadProjectRevision
+    ) {
+      return jsonResponse({ error: "projectRevision does not match project payload" }, { status: 400 });
+    }
     const rawOpId = (body as any).opId;
     const opId = rawOpId === undefined ? "" : normalizeOperationId(rawOpId);
     if (rawOpId !== undefined && !opId) {
@@ -500,6 +556,8 @@ export const onRequestPut = async (context: {
       ? await bindOperationId("project-put", opId, {
           mode,
           updatedAt: clientUpdatedAt,
+          projectRevision: clientProjectRevision,
+          payload: delta || projectData,
         })
       : "";
 
@@ -511,7 +569,11 @@ export const onRequestPut = async (context: {
 
     if (existingMeta && boundOpId && existingMeta.last_op_id === boundOpId) {
       return jsonResponse(
-        { ok: true, updatedAt: existingMeta.updated_at },
+        {
+          ok: true,
+          updatedAt: existingMeta.updated_at,
+          projectRevision: clientProjectRevision,
+        },
         { headers: { etag: String(existingMeta.updated_at) } }
       );
     }
@@ -521,7 +583,12 @@ export const onRequestPut = async (context: {
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "missing_version", updatedAt: existingMeta.updated_at, mode, ...auditDevice });
         const remoteData = await loadProjectData(context.env, userId);
         return jsonResponse(
-          { error: "Conflict", projectData: remoteData?.projectData, updatedAt: existingMeta.updated_at },
+          {
+            error: "Conflict",
+            projectData: remoteData?.projectData,
+            updatedAt: existingMeta.updated_at,
+            projectRevision: readProjectRevision(remoteData?.projectData),
+          },
           { status: 409 }
         );
       }
@@ -529,7 +596,12 @@ export const onRequestPut = async (context: {
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "version_mismatch", updatedAt: existingMeta.updated_at, mode, ...auditDevice });
         const remoteData = await loadProjectData(context.env, userId);
         return jsonResponse(
-          { error: "Conflict", projectData: remoteData?.projectData, updatedAt: existingMeta.updated_at },
+          {
+            error: "Conflict",
+            projectData: remoteData?.projectData,
+            updatedAt: existingMeta.updated_at,
+            projectRevision: readProjectRevision(remoteData?.projectData),
+          },
           { status: 409 }
         );
       }
@@ -637,7 +709,11 @@ export const onRequestPut = async (context: {
     if (!hasChanges && delta) {
       const unchangedVersion = existingMeta ? Number(existingMeta.updated_at) || 0 : 0;
       return jsonResponse(
-        { ok: true, updatedAt: unchangedVersion },
+        {
+          ok: true,
+          updatedAt: unchangedVersion,
+          projectRevision: clientProjectRevision,
+        },
         { headers: { etag: String(unchangedVersion) } }
       );
     }
@@ -789,14 +865,23 @@ export const onRequestPut = async (context: {
         const latestUpdatedAt = latestMeta ? Number(latestMeta.updated_at) || 0 : 0;
         if (boundOpId && latestMeta?.last_op_id === boundOpId) {
           return jsonResponse(
-            { ok: true, updatedAt: latestUpdatedAt },
+            {
+              ok: true,
+              updatedAt: latestUpdatedAt,
+              projectRevision: clientProjectRevision,
+            },
             { headers: { etag: String(latestUpdatedAt) } }
           );
         }
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "cas_guard_failed", updatedAt: existingMeta?.updated_at, mode, ...auditDevice });
         const remoteData = await loadProjectData(context.env, userId);
         return jsonResponse(
-          { error: "Conflict", projectData: remoteData?.projectData, updatedAt: remoteData?.updatedAt ?? existingMeta?.updated_at },
+          {
+            error: "Conflict",
+            projectData: remoteData?.projectData,
+            updatedAt: remoteData?.updatedAt ?? existingMeta?.updated_at,
+            projectRevision: readProjectRevision(remoteData?.projectData),
+          },
           { status: 409 }
         );
       }
@@ -812,7 +897,7 @@ export const onRequestPut = async (context: {
       });
     }
     return jsonResponse(
-      { ok: true, updatedAt },
+      { ok: true, updatedAt, projectRevision: clientProjectRevision },
       { headers: { etag: String(updatedAt) } }
     );
   } catch (err: any) {

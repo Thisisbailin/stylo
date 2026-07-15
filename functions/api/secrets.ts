@@ -90,10 +90,21 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
     const auditDevice = deviceId ? { deviceId } : {};
 
     const secrets = normalizeUserSecretsPayload(body.secrets);
-    const clientUpdatedAt = typeof body.updatedAt === "number" &&
+    const bodyUpdatedAt = typeof body.updatedAt === "number" &&
       Number.isSafeInteger(body.updatedAt) && body.updatedAt >= 0
       ? body.updatedAt
       : undefined;
+    const ifMatchHeader = context.request.headers.get("if-match");
+    const ifMatchVersion = ifMatchHeader !== null && /^\d+$/.test(ifMatchHeader.trim())
+      ? Number(ifMatchHeader.trim())
+      : undefined;
+    if (ifMatchHeader !== null && ifMatchVersion === undefined) {
+      return secretJsonResponse({ error: "Invalid If-Match secrets version" }, { status: 400 });
+    }
+    if (bodyUpdatedAt !== undefined && ifMatchVersion !== undefined && bodyUpdatedAt !== ifMatchVersion) {
+      return secretJsonResponse({ error: "Secrets version differs between body and If-Match" }, { status: 400 });
+    }
+    const clientUpdatedAt = ifMatchVersion ?? bodyUpdatedAt;
     const opId = normalizeSecretOpId(body.opId);
     const boundOpId = opId
       ? await bindOperationId("secrets-put", opId, secrets)
