@@ -19,6 +19,7 @@ export const LeporelloNode: React.FC<Props> = ({ data, selected }) => {
       .map((node) => [node.id, (node.data as ImageInputNodeData).image || ""])
   ), [nodes]);
   const isCollapsed = data.wrapperCollapsed === true;
+  const visiblePages = book.pages.slice(0, isCollapsed ? 2 : 3);
 
   return (
     <BaseNode
@@ -36,7 +37,7 @@ export const LeporelloNode: React.FC<Props> = ({ data, selected }) => {
         aria-label={`${data.title || "Leporello"}，${isCollapsed ? "已折叠" : "已展开"}，双击打开故事板`}
       >
         <div className="leporello-node__strip" aria-hidden="true">
-          {book.pages.slice(0, 5).map((page, index) => {
+          {visiblePages.map((page, index) => {
             const image = page.imageNodeId ? imageById.get(page.imageNodeId) : "";
             return (
               <span

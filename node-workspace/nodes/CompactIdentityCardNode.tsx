@@ -35,7 +35,7 @@ export const CompactIdentityCardNode: React.FC<Props> = ({ id, data, selected })
   return (
     <BaseNode
       title={name}
-      inputs={["multi", "image", "audio", "video", "text"]}
+      inputs={["image", "audio", "video", "text"]}
       outputs={["text"]}
       selected={selected}
       variant="media"

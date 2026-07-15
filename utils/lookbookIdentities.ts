@@ -1,5 +1,6 @@
 import type { FlowLink, ProjectData, ProjectRoleIdentity, ProjectRoleKind } from "../types";
 import type { NodeFlowNode, NodeFlowNodeData } from "../node-workspace/types";
+import { LOOKBOOK_WRAPPER_DIMENSIONS } from "../node-workspace/lookbook/constants";
 import {
   analyzeFountainLines,
   normalizeScreenplayIdentity,
@@ -150,7 +151,7 @@ const makeIdentityNode = (role: ProjectRoleIdentity, sourceNode: NodeFlowNode | 
     id: `identity-${role.id}`,
     type: "lookbook",
     position: { x: origin.x + (order % 2) * 760, y: origin.y + 360 + Math.floor(order / 2) * 520 },
-    style: { width: 286, height: 356 },
+    style: { ...LOOKBOOK_WRAPPER_DIMENSIONS },
     data: {
       title: role.displayName || role.name,
       identityId: role.id,
@@ -319,7 +320,7 @@ export const syncLookbookIdentitiesFromFountain = (
       identityNode = {
         ...identityNode,
         type: "lookbook",
-        style: { ...identityNode.style, width: 286, height: 356 },
+        style: { ...identityNode.style, ...LOOKBOOK_WRAPPER_DIMENSIONS },
         data: {
           ...identityNode.data,
           title: role.displayName || role.name,

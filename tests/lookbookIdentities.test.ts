@@ -10,6 +10,15 @@ import {
   removeLookbookIdentity,
   syncLookbookIdentitiesFromFountain,
 } from "../utils/lookbookIdentities";
+import { LOOKBOOK_WRAPPER_DIMENSIONS } from "../node-workspace/lookbook/constants";
+
+test("Lookbook wrapper is square while keeping approximately the Manus footprint", () => {
+  assert.equal(LOOKBOOK_WRAPPER_DIMENSIONS.width, LOOKBOOK_WRAPPER_DIMENSIONS.height);
+  assert.equal(LOOKBOOK_WRAPPER_DIMENSIONS.width, 320);
+  assert.ok(Math.abs(
+    LOOKBOOK_WRAPPER_DIMENSIONS.width * LOOKBOOK_WRAPPER_DIMENSIONS.height - 286 * 356
+  ) < 1_000);
+});
 
 const makeProject = (): ProjectData => ({
   fileName: "Lookbook Test",
@@ -67,7 +76,7 @@ test("Lookbook synchronization creates one wrapper, Markdown index, and boundary
   assert.equal(second.roles.length, 2);
   const lookbookNodes = second.flow?.flowNodes?.filter((node) => node.type === "lookbook") || [];
   assert.equal(lookbookNodes.length, 2);
-  assert.ok(lookbookNodes.every((node) => node.style?.width === 286 && node.style?.height === 356));
+  assert.ok(lookbookNodes.every((node) => node.style?.width === 320 && node.style?.height === 320));
   assert.equal(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").length, 2);
   assert.ok(second.flow?.flowNodes?.filter((node) => node.data?.lookbookRole === "index").every((node) => node.type === "text"));
   assert.equal(

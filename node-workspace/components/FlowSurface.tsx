@@ -132,8 +132,10 @@ import {
   isFoundationMembershipLink,
   removeFoundationMembership,
 } from "../foundation/membership";
-import { isLookbookNodeType } from "../../utils/lookbookIdentities";
+import { LOOKBOOK_MEMBERSHIP_RELATION, isLookbookNodeType } from "../../utils/lookbookIdentities";
+import { LOOKBOOK_WRAPPER_DIMENSIONS } from "../lookbook/constants";
 import { createInitialLeporelloData, resolveLeporelloProjectName } from "../../utils/leporelloWorkspace";
+import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -460,7 +462,7 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   measured: sanitizeScriptMeasured(node.measured),
   selected: false,
   style: isLookbookNodeType(node.type)
-    ? { ...node.style, width: 286, height: 356 }
+    ? { ...node.style, ...LOOKBOOK_WRAPPER_DIMENSIONS }
     : node.type === "leporello"
       ? { ...node.style, width: 356, height: 180 }
     : node.type === "scriptPage"
@@ -572,6 +574,26 @@ const FoundationBoundaryEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
   return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
 };
 
+const WrapperMembershipEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  markerEnd,
+  style,
+}) => {
+  const deltaX = targetX - sourceX;
+  const deltaY = targetY - sourceY;
+  const path = [
+    `M ${sourceX} ${sourceY}`,
+    `C ${sourceX + deltaX * 0.36} ${sourceY + deltaY * 0.08}`,
+    `${sourceX + deltaX * 0.64} ${sourceY + deltaY * 0.92}`,
+    `${targetX} ${targetY}`,
+  ].join(" ");
+  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+};
+
 const nodeTypes: NodeTypes = {
   foundationAnchor: FoundationProjectionAnchor,
   folder: withFoundationBoundaryHandle(FolderNode),
@@ -596,6 +618,7 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes: EdgeTypes = {
   foundationBoundary: FoundationBoundaryEdge,
+  wrapperMembership: WrapperMembershipEdge,
 };
 
 type ScriptFoundationProps = {
@@ -1864,6 +1887,7 @@ export const useFlowSurface = ({
   const applyingFlowRuntimeRef = useRef(false);
   const wrapperClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperToggleLockRef = useRef(new Map<string, number>());
   const [wrapperMemberMotion, setWrapperMemberMotion] = useState<WrapperMemberMotion | null>(null);
   const { runImageGen, runVideoGen } = useNodeFlowExecutor();
   const flow = useMemo(() => ensureFlow(projectData.flow), [projectData.flow]);
@@ -1878,6 +1902,7 @@ export const useFlowSurface = ({
   useEffect(() => () => {
     if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
     if (wrapperMotionTimerRef.current) clearTimeout(wrapperMotionTimerRef.current);
+    wrapperToggleLockRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -2086,7 +2111,7 @@ export const useFlowSurface = ({
         const memberMotion = wrapperMemberMotion?.offsets[node.id];
         const isMotionMember = Boolean(memberMotion);
         const baseStyle = isLookbookNodeType(node.type)
-          ? { ...node.style, width: 286, height: 356 }
+          ? { ...node.style, ...LOOKBOOK_WRAPPER_DIMENSIONS }
           : node.type === "leporello"
             ? { ...node.style, width: 356, height: 180 }
           : node.type === "scriptPage"
@@ -2181,6 +2206,8 @@ export const useFlowSurface = ({
     return flow.links
       .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
       .map((link) => {
+        const isWrapperMembership = link.data?.relation === LOOKBOOK_MEMBERSHIP_RELATION ||
+          link.data?.relation === SCREENPLAY_PAGE_RELATION;
         const sourceIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.source]);
         const targetIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.target]);
         const isWrapperMotionEdge = sourceIsMotionMember || targetIsMotionMember;
@@ -2209,10 +2236,13 @@ export const useFlowSurface = ({
           target: link.target,
           sourceHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.sourceHandle || "text",
           targetHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.targetHandle || "text",
-          type: isFoundationBoundary ? "foundationBoundary" : "default",
+          type: isFoundationBoundary ? "foundationBoundary" : isWrapperMembership ? "wrapperMembership" : "default",
           animated: false,
           hidden: isProjectedHiddenEdge && !isWrapperMotionEdge,
-          className: isWrapperMotionEdge ? `wrapper-edge--${wrapperMemberMotion?.mode}` : undefined,
+          className: [
+            isWrapperMembership ? "wrapper-membership-edge" : "",
+            isWrapperMotionEdge ? `wrapper-edge--${wrapperMemberMotion?.mode}` : "",
+          ].filter(Boolean).join(" ") || undefined,
           deletable: !isFoundationStructuralLink(flow, link),
           zIndex: isFoundationBoundary ? 2 : 0,
           data: isFoundationBoundary
@@ -3063,7 +3093,7 @@ export const useFlowSurface = ({
           data: {
             ...createDefaultNodeFlowNodeData("text"),
             documentId: id,
-            title: "Markdown 文本",
+            title: "文本",
             text: "",
             content: "",
             preview: compactMarkdownPreview(""),
@@ -3708,6 +3738,9 @@ export const useFlowSurface = ({
   );
 
   const toggleWrapperCollapsed = useCallback((nodeId: string) => {
+    const now = Date.now();
+    if ((wrapperToggleLockRef.current.get(nodeId) || 0) > now) return;
+    wrapperToggleLockRef.current.set(nodeId, now + 600);
     const wrapperNode = (flow.flowNodes || []).find((node) => node.id === nodeId);
     const memberIds = wrapperProjection.memberIdsByWrapper.get(nodeId) || [];
     const isCollapsing = wrapperNode?.data?.wrapperCollapsed !== true;

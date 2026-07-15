@@ -74,6 +74,10 @@ export const resolveNodeFlowNodeTitle = (
     case "lookbook":
     case "identityCard":
       return resolveLookbookTitle(node.data as IdentityCardNodeData, context);
+    case "text": {
+      const title = trimString((node.data as BaseNodeData).title);
+      return !title || title === "Markdown 文本" ? "文本" : title;
+    }
     default:
       return resolveGenericNodeTitle(node);
   }

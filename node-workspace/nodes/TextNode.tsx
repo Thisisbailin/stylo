@@ -146,6 +146,11 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
     const [isFocused, setIsFocused] = useState(false);
     const [pickerPos, setPickerPos] = useState<{ left: number; top: number } | null>(null);
     const isScriptDocument = data.documentKind === "script" || data.format === "fountain";
+    const nodeTitle = isScriptDocument
+        ? data.title || "剧本文档"
+        : !data.title || data.title === "Markdown 文本"
+            ? "文本"
+            : data.title;
     const storedScriptPreview = (data as TextNodeData & { preview?: string }).preview;
     const scriptPreview = useMemo(() => {
         const fullText = (data.text || "").replace(/\s+/g, " ").trim();
@@ -417,7 +422,7 @@ export const TextNode: React.FC<Props & { selected?: boolean }> = ({ data, id, s
 
     return (
         <BaseNode
-            title={data.title || "Markdown 文本"}
+            title={nodeTitle}
             onTitleChange={isReadOnly ? undefined : (title) => updateNodeData(id, { title })}
             inputs={isDocumentTextNode ? ["image", "text"] : ["text"]}
             outputs={["text"]}

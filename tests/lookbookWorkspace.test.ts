@@ -23,6 +23,7 @@ import {
 } from "../utils/lookbookWorkspace";
 import { addManualLookbookIdentity, getLookbookMemberNodes } from "../utils/lookbookIdentities";
 import { createDefaultNodeFlowNodeData } from "../node-workspace/nodeflow/defaults";
+import { resolveNodeFlowNodeTitle } from "../node-workspace/nodeflow/titles";
 
 const makeProject = (): ProjectData => ({
   fileName: "Lookbook Workspace",
@@ -148,9 +149,21 @@ test("Lookbook text cards create real connected text nodes and persist editing",
 
 test("new text nodes are Markdown documents rather than a separate archive type", () => {
   const defaults = createDefaultNodeFlowNodeData("text");
-  assert.equal(defaults.title, "Markdown 文本");
+  assert.equal(defaults.title, "文本");
   assert.equal(defaults.format, "markdown");
   assert.equal(defaults.documentKind, "note");
+  assert.equal(resolveNodeFlowNodeTitle({
+    id: "legacy-text",
+    type: "text",
+    position: { x: 0, y: 0 },
+    data: { title: "Markdown 文本" },
+  }), "文本");
+  assert.equal(resolveNodeFlowNodeTitle({
+    id: "custom-text",
+    type: "text",
+    position: { x: 0, y: 0 },
+    data: { title: "服装记录" },
+  }), "服装记录");
 });
 
 test("Lookbook can persist empty pages independently from connected content", () => {
@@ -265,6 +278,7 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   const studioSource = readFileSync("node-workspace/components/lookbook/LookbookStudioPanel.tsx", "utf8");
   const itemSource = readFileSync("node-workspace/components/lookbook/LookbookBoardItem.tsx", "utf8");
   const coverSource = readFileSync("node-workspace/nodes/CompactIdentityCardNode.tsx", "utf8");
+  const textNodeSource = readFileSync("node-workspace/nodes/TextNode.tsx", "utf8");
   const styleSource = readFileSync("node-workspace/styles/lookbook-studio.css", "utf8");
   const nodeflowStyleSource = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
 
@@ -272,6 +286,9 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(flowSurfaceSource, /type: "lookbook"[\s\S]*disabled: true/);
   assert.match(flowSurfaceSource, /isLookbookNodeType\(type\)[\s\S]*\? null/);
   assert.match(flowSurfaceSource, /wrapperClickTimerRef[\s\S]*toggleWrapperCollapsed/);
+  assert.match(flowSurfaceSource, /WrapperMembershipEdge[\s\S]*deltaX \* 0\.36[\s\S]*deltaY \* 0\.92/);
+  assert.match(flowSurfaceSource, /LOOKBOOK_MEMBERSHIP_RELATION[\s\S]*SCREENPLAY_PAGE_RELATION[\s\S]*wrapperMembership/);
+  assert.match(flowSurfaceSource, /wrapperToggleLockRef[\s\S]*now \+ 600/);
   assert.match(flowSurfaceSource, /wrapper-member--\$\{wrapperMemberMotion\?\.mode\}/);
   assert.match(flowSurfaceSource, /handleScriptNodeDoubleClick[\s\S]*onOpenScriptDocument/);
   assert.match(flowSurfaceSource, /label: "文本"[\s\S]*type: "text"[\s\S]*group: "input"/);
@@ -298,12 +315,26 @@ test("Lookbook active UI uses the editable studio with bounded high-frequency in
   assert.match(itemSource, /window\.removeEventListener\("pointermove"/);
   assert.doesNotMatch(itemSource, /initial=\{\{\s*opacity:\s*0,\s*y:/);
   assert.match(coverSource, /if \(typeof image === "string" && image\) return image/);
+  assert.match(coverSource, /inputs=\{\["image", "audio", "video", "text"\]\}/);
+  assert.doesNotMatch(coverSource, /inputs=\{\["multi"/);
   assert.doesNotMatch(coverSource, /slice\(0,\s*2\)|coverImages/);
+  assert.match(textNodeSource, /script-manuscript-node/);
   assert.match(styleSource, /\.lookbook-spread-item\.is-sticker[\s\S]*background:\s*transparent/);
   assert.doesNotMatch(styleSource, /lookbook-inspector/);
   assert.match(styleSource, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styleSource, /filter:\s*drop-shadow|text-shadow|#000000/);
-  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"[\s\S]*width:\s*286px\s*!important/);
+  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"[\s\S]*width:\s*320px\s*!important/);
+  assert.match(nodeflowStyleSource, /\.lookbook-node-cover \{[\s\S]*height:\s*320px/);
   assert.match(nodeflowStyleSource, /data-node-type="script-document"[\s\S]*width:\s*286px\s*!important/);
+  assert.match(nodeflowStyleSource, /data-node-type="lookbook-cover"\]\[data-variant="media"\][\s\S]*content:\s*none/);
+  const pageBlockRule = nodeflowStyleSource.match(/\.lookbook-node-cover__page-block \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(pageBlockRule, /repeating-linear-gradient/);
+  assert.doesNotMatch(pageBlockRule, /linear-gradient/);
+  const frontBoardRule = nodeflowStyleSource.match(/\.lookbook-node-cover__front-board \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(frontBoardRule, /linear-gradient|white|glow/);
+  const studioCoverRule = styleSource.match(/\.lookbook-book-cover \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(studioCoverRule, /linear-gradient|radial-gradient/);
+  const studioMediaRule = styleSource.match(/\.lookbook-spread-item__media \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.doesNotMatch(studioMediaRule, /box-shadow|filter/);
   assert.match(nodeflowStyleSource, /@keyframes wrapper-member-collapse[\s\S]*@keyframes wrapper-member-expand/);
 });

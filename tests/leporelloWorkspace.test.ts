@@ -76,17 +76,24 @@ test("uploaded and sketched pages remain real image nodes referenced by the wrap
 
 test("Leporello UI is a continuous accordion and macOS sketch bridge is desktop-only", () => {
   const flowSource = readFileSync("node-workspace/components/FlowSurface.tsx", "utf8");
+  const nodeSource = readFileSync("node-workspace/nodes/LeporelloNode.tsx", "utf8");
   const studioSource = readFileSync("node-workspace/components/leporello/LeporelloStudioPanel.tsx", "utf8");
   const styles = readFileSync("node-workspace/styles/leporello-studio.css", "utf8");
+  const nodeStyles = readFileSync("node-workspace/styles/nodeflow.css", "utf8");
   const preload = readFileSync("electron/preload.cjs", "utf8");
   const main = readFileSync("electron/main.cjs", "utf8");
 
   assert.match(flowSource, /label: "Manus"[\s\S]*label: "Lookbook"[\s\S]*label: "Leporello"/);
   assert.match(flowSource, /type === "leporello"[\s\S]*some\(\(node\) => node\.type === "leporello"\)/);
   assert.match(studioSource, /isUnfolded/);
+  assert.match(studioSource, /book\.pages\.slice\(0, 2\)/);
+  assert.match(nodeSource, /book\.pages\.slice\(0, isCollapsed \? 2 : 3\)/);
   assert.doesNotMatch(studioSource, /previousPage|nextPage|上一页|下一页/);
   assert.match(studioSource, /网页端不提供手绘能力/);
   assert.match(styles, /aspect-ratio: 21 \/ 9/);
+  assert.match(styles, /is-unfolded[\s\S]*rotateY/);
+  assert.match(styles, /is-folded[\s\S]*nth-child\(2\)/);
+  assert.match(nodeStyles, /\.leporello-node__panel[\s\S]*aspect-ratio: 21 \/ 9/);
   assert.match(styles, /overflow-x: auto/);
   assert.match(preload, /startLeporelloSketch/);
   assert.match(main, /process\.platform !== "darwin"/);

@@ -1,5 +1,6 @@
 import type { XYPosition } from "@xyflow/react";
 import type { NodeFlowNode, NodeFlowNodeStyle, NodeFlowViewport, NodeType } from "../types";
+import { LOOKBOOK_WRAPPER_DIMENSIONS } from "../lookbook/constants";
 
 export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; height?: number }>> = {
   scriptPage: { width: 286, height: 356 },
@@ -10,9 +11,9 @@ export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; 
   audioInput: { width: 340, height: 180 },
   videoInput: { width: 360, height: 220 },
   scriptBoard: { width: 920 },
-  lookbook: { width: 286, height: 356 },
+  lookbook: LOOKBOOK_WRAPPER_DIMENSIONS,
   leporello: { width: 356, height: 180 },
-  identityCard: { width: 286, height: 356 },
+  identityCard: LOOKBOOK_WRAPPER_DIMENSIONS,
   imageGen: { width: 380, height: 520 },
   nanoBananaImageGen: { width: 380, height: 520 },
   wanImageGen: { width: 380, height: 520 },

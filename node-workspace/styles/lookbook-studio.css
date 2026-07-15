@@ -122,9 +122,7 @@
   overflow: hidden;
   border: 1px solid var(--app-border-strong);
   border-radius: 2px 8px 8px 2px;
-  background:
-    linear-gradient(108deg, color-mix(in srgb, white 8%, transparent), transparent 36%),
-    color-mix(in srgb, var(--app-accent) 64%, #cd673d);
+  background: color-mix(in srgb, var(--app-accent) 64%, #cd673d);
   padding: 28px 30px 26px 34px;
   color: #20211f;
   cursor: pointer;
@@ -134,8 +132,7 @@
   box-shadow:
     18px 20px 38px color-mix(in srgb, var(--app-text-primary) 14%, transparent),
     inset 6px 0 0 color-mix(in srgb, #20211f 10%, transparent),
-    inset -2px 0 0 color-mix(in srgb, #20211f 13%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 15%, transparent);
+    inset -2px 0 0 color-mix(in srgb, #20211f 13%, transparent);
 }
 
 .lookbook-book-cover::after {
@@ -184,7 +181,6 @@
   border: 1px solid color-mix(in srgb, #20211f 44%, transparent);
   background: color-mix(in srgb, var(--app-panel-strong) 94%, transparent);
   object-fit: cover;
-  box-shadow: 0 6px 14px color-mix(in srgb, #20211f 14%, transparent);
 }
 
 .lookbook-book-cover__empty {
@@ -211,9 +207,7 @@
 
 .lookbook-book-cover--back {
   grid-template-rows: auto 1fr auto;
-  background:
-    linear-gradient(108deg, color-mix(in srgb, white 5%, transparent), transparent 36%),
-    color-mix(in srgb, var(--app-accent) 72%, #b85337);
+  background: color-mix(in srgb, var(--app-accent) 72%, #b85337);
 }
 
 .lookbook-book-cover__back-mark {
@@ -413,13 +407,7 @@
 }
 
 .lookbook-book-spread__page.is-uncreated {
-  background:
-    repeating-linear-gradient(
-      -45deg,
-      transparent 0 9px,
-      color-mix(in srgb, var(--app-border) 24%, transparent) 9px 10px
-    ),
-    color-mix(in srgb, var(--app-bg) 88%, var(--app-panel) 12%);
+  background: color-mix(in srgb, var(--app-bg) 88%, var(--app-panel) 12%);
   opacity: 0.42;
 }
 
@@ -429,8 +417,8 @@
   bottom: 0;
   left: 50%;
   z-index: 40;
-  width: 24px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--app-text-primary) 10%, transparent), transparent);
+  width: 1px;
+  background: color-mix(in srgb, var(--app-border-strong) 58%, transparent);
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -563,7 +551,6 @@
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--app-border) 74%, transparent);
   background: var(--app-panel-muted);
-  box-shadow: 0 5px 12px color-mix(in srgb, var(--app-text-primary) 9%, transparent);
 }
 
 .lookbook-spread-item__media img,

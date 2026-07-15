@@ -91,7 +91,7 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
       } as AnnotationNodeData;
     case "text":
       return {
-        title: "Markdown 文本",
+        title: "文本",
         text: "",
         documentId: undefined,
         documentKind: "note",

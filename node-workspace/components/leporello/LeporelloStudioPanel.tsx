@@ -78,6 +78,7 @@ export const LeporelloStudioPanel: React.FC<Props> = ({
     desktopApi.startLeporelloSketch &&
     desktopApi.completeLeporelloSketch
   );
+  const visiblePages = isUnfolded ? book.pages : book.pages.slice(0, 2);
 
   const commitProjectMutation = useCallback((updater: (previous: ProjectData) => ProjectData) => {
     setProjectData((previous) => {
@@ -204,8 +205,12 @@ export const LeporelloStudioPanel: React.FC<Props> = ({
       </div>
 
       <div className={`leporello-studio__viewport ${isUnfolded ? "is-unfolded" : "is-folded"}`}>
-        <div className="leporello-studio__strip" style={{ "--leporello-pages": book.pages.length } as React.CSSProperties}>
-          {book.pages.map((page, index) => {
+        <div
+          className="leporello-studio__strip"
+          data-visible-pages={isUnfolded ? Math.min(3, book.pages.length) : visiblePages.length}
+          style={{ "--leporello-pages": book.pages.length } as React.CSSProperties}
+        >
+          {visiblePages.map((page, index) => {
             const image = getLeporelloPageImage(projectData, page);
             const isSelected = selectedPage?.id === page.id;
             return (
@@ -215,7 +220,6 @@ export const LeporelloStudioPanel: React.FC<Props> = ({
                 className={`leporello-sheet is-${page.kind} is-${page.face} ${isSelected ? "is-selected" : ""}`}
                 style={{ "--leporello-index": index } as React.CSSProperties}
                 onClick={() => page.kind === "panel" && setSelectedPageId(page.id)}
-                disabled={!isUnfolded && page.kind !== "cover"}
                 aria-label={page.kind === "cover" ? `${projectName} 封面` : page.kind === "back" ? "Leporello 封底 FIN" : `折页 ${index}`}
               >
                 <span className="leporello-sheet__face">{page.face === "lit" ? "受光面" : "背光面"}</span>
@@ -236,7 +240,7 @@ export const LeporelloStudioPanel: React.FC<Props> = ({
 
       <div className="leporello-studio__footer">
         <div className="leporello-studio__status">
-          <span>{isUnfolded ? "连续纸带 · 横向滚动查看全部折页" : "手风琴已收起 · 展开后编辑内容页"}</span>
+          <span>{isUnfolded ? "三页展开 · 明暗折面连续纸带" : "双页收起 · 21:9 对页装帧"}</span>
           <strong>{book.pages.length} 页 / {Math.max(1, book.pages.length - 2)} 个内容面</strong>
         </div>
         <div className="leporello-studio__page-tools">
