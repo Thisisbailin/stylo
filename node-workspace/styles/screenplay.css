@@ -1929,13 +1929,13 @@
 
 /* Manus floating chrome shares the compact material language of the canvas dock. */
 .screenplay-header {
-  right: -58px;
-  width: 58px;
-  display: none;
+  right: 4px;
+  width: 52px;
+  display: block;
 }
 
 .screenplay-header__actions {
-  right: 7px;
+  right: 4px;
   width: 44px;
   border-color: color-mix(in srgb, var(--app-border-strong) 58%, transparent);
   border-radius: 999px;
@@ -1955,7 +1955,7 @@
 
 .screenplay-workspace.is-agent-open .screenplay-document-stage.is-vertical {
   align-items: flex-end;
-  padding-right: 0;
+  padding-right: 8px;
 }
 
 .screenplay-workspace.is-agent-open .screenplay-document-stage.is-vertical .screenplay-document {
@@ -1965,7 +1965,7 @@
 
 .screenplay-workspace.is-agent-open .screenplay-document-stage.is-filmstrip {
   justify-content: flex-end;
-  padding-right: 0;
+  padding-right: 8px;
 }
 
 .screenplay-workspace.is-agent-open .screenplay-document-stage.is-filmstrip .screenplay-document {
@@ -1986,13 +1986,22 @@
 }
 
 .screenplay-identity-dock__surface {
-  width: 42px;
+  width: 36px;
   max-width: min(286px, calc(100vw - var(--screenplay-agent-inset) - 32px));
   max-height: min(470px, calc(100dvh - 36px));
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screenplay-identity-dock.is-open .screenplay-identity-dock__surface {
+  width: 286px;
+  border-radius: 8px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--app-border-strong) 58%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--app-panel-strong) 95%, transparent);
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent);
   box-shadow:
     0 18px 42px -28px rgba(24, 24, 23, 0.38),
     0 5px 14px -10px rgba(24, 24, 23, 0.26),
@@ -2001,30 +2010,39 @@
   -webkit-backdrop-filter: blur(22px) saturate(1.06);
 }
 
-.screenplay-identity-dock.is-open .screenplay-identity-dock__surface {
-  width: 286px;
-  border-radius: 8px;
-}
-
 .screenplay-identity-dock__rail {
   position: static;
-  width: 40px;
+  width: 36px;
   max-height: min(420px, calc(100dvh - 40px));
   overflow-y: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 4px;
+  gap: 6px;
+  padding: 0;
   box-shadow: none;
   backdrop-filter: none;
 }
 
 .screenplay-identity-dock__rail > button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 58%, transparent) !important;
   border-radius: 50%;
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent) !important;
+  box-shadow:
+    0 10px 24px -18px rgba(24, 24, 23, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(18px) saturate(1.04);
+  -webkit-backdrop-filter: blur(18px) saturate(1.04);
 }
 
 .screenplay-identity-dock__rail .screenplay-identity-dock__toggle {
+  width: 36px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 58%, transparent) !important;
   border-radius: 50%;
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent) !important;
 }
 
 .screenplay-identity-dock__panel {
@@ -2057,6 +2075,116 @@
 
 .screenplay-identity-dock__heading button {
   border-radius: 50%;
+}
+
+.screenplay-document-stage.is-vertical {
+  gap: 12px;
+  padding-bottom: 28px;
+}
+
+.screenplay-document-stage.is-vertical .screenplay-document {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.screenplay-document-stage.is-horizontal {
+  gap: 20px;
+  padding: 64px 48px 56px;
+  scroll-padding-inline: 48px;
+}
+
+.screenplay-document.is-preview .screenplay-block-editor {
+  pointer-events: none;
+}
+
+.screenplay-document.is-preview :disabled {
+  opacity: 1;
+}
+
+.screenplay-document__masthead strong {
+  overflow: hidden;
+  color: var(--screenplay-ink);
+  font-size: 13px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screenplay-selection-command {
+  right: auto;
+  bottom: auto;
+  display: grid;
+  width: auto;
+  min-width: 0;
+  grid-template-columns: none;
+  gap: 0;
+  border: 1px solid color-mix(in srgb, var(--app-border-strong) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-panel-strong) 96%, transparent);
+  padding: 5px;
+  box-shadow:
+    0 18px 42px -28px rgba(24, 24, 23, 0.42),
+    0 5px 14px -10px rgba(24, 24, 23, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  transform: translate(-50%, -100%);
+  backdrop-filter: blur(22px) saturate(1.06);
+  -webkit-backdrop-filter: blur(22px) saturate(1.06);
+  transition: width 140ms ease, border-radius 140ms ease;
+}
+
+.screenplay-selection-command.is-asking {
+  width: min(390px, calc(100vw - var(--screenplay-agent-inset) - 24px));
+  border-radius: 8px;
+}
+
+.screenplay-selection-command__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.screenplay-selection-command__tools button,
+.screenplay-selection-command__ask button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--screenplay-chrome-muted);
+}
+
+.screenplay-selection-command__tools button:hover,
+.screenplay-selection-command__tools button.is-active {
+  background: var(--app-panel-soft);
+  color: var(--screenplay-chrome-text);
+}
+
+.screenplay-selection-command__ask {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 6px;
+  margin-top: 5px;
+  border-top: 1px solid var(--screenplay-chrome-line);
+  padding: 6px 2px 1px;
+}
+
+.screenplay-selection-command__ask input {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--app-panel-soft) 72%, transparent);
+  padding: 0 10px;
+  color: var(--screenplay-chrome-text);
+  font-size: 11px;
+  outline: none;
+}
+
+.screenplay-selection-command__ask button.is-primary {
+  background: var(--screenplay-accent);
+  color: var(--app-panel-strong);
 }
 
 .screenplay-identity-arrival {
@@ -2149,7 +2277,7 @@
 @media (max-width: 720px) {
   .screenplay-workspace.is-agent-open .screenplay-document-stage.is-vertical,
   .screenplay-workspace.is-agent-open .screenplay-document-stage.is-filmstrip {
-    padding-right: 0;
+    padding-right: 8px;
   }
 
   .screenplay-identity-dock,

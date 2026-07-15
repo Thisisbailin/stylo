@@ -1,5 +1,18 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowCounterClockwise, CaretLeft, CaretRight, Check, PaperPlaneTilt, Trash, X } from "@phosphor-icons/react";
+import {
+  ArrowCounterClockwise,
+  CaretLeft,
+  CaretRight,
+  ChatCenteredDots,
+  Check,
+  Clipboard,
+  Copy,
+  PaperPlaneTilt,
+  Scissors,
+  TextStrikethrough,
+  Trash,
+  X,
+} from "@phosphor-icons/react";
 import type { AgentUiContext } from "../../agents/runtime/types";
 import type { ProjectData, ProjectRoleIdentity } from "../../types";
 import { projectRolesToLocations } from "../../utils/projectRoles";
@@ -75,6 +88,9 @@ type SelectionCommand = {
   start: number;
   end: number;
   lineIndex: number;
+  anchorX: number;
+  anchorY: number;
+  isAsking: boolean;
   message: string;
 };
 
@@ -495,10 +511,14 @@ export const WritingPanel: React.FC<Props> = ({
     }
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        pageElementRefs.current.get(nextNode.id)?.scrollIntoView({ behavior, block: "center", inline: "center" });
+        pageElementRefs.current.get(nextNode.id)?.scrollIntoView({
+          behavior,
+          block: pageArrangement === "vertical" ? "start" : "center",
+          inline: "center",
+        });
       });
     });
-  }, [commitDraft, externalConflict, pageSequence, scriptNode?.id]);
+  }, [commitDraft, externalConflict, pageArrangement, pageSequence, scriptNode?.id]);
 
   const cancelEdgeNavigation = useCallback(() => {
     if (edgeHoverTimerRef.current === null) return;
@@ -523,7 +543,11 @@ export const WritingPanel: React.FC<Props> = ({
     if (!activeNodeId) return;
     const firstFrame = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        pageElementRefs.current.get(activeNodeId)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+        pageElementRefs.current.get(activeNodeId)?.scrollIntoView({
+          behavior: "smooth",
+          block: pageArrangement === "vertical" ? "start" : "center",
+          inline: "center",
+        });
       });
     });
     return () => window.cancelAnimationFrame(firstFrame);
@@ -625,6 +649,43 @@ export const WritingPanel: React.FC<Props> = ({
     setSelectionCommand(null);
   }, [draft.title, isStyloOpen, onOpenStylo, onSubmitToStylo, scriptNode, selectionCommand]);
 
+  const writeSelectionToClipboard = useCallback(async () => {
+    if (!selectionCommand?.text) return false;
+    try {
+      await navigator.clipboard.writeText(selectionCommand.text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [selectionCommand?.text]);
+
+  const replaceSelectedText = useCallback((replacement: string) => {
+    if (!selectionCommand) return;
+    setDraft((current) => ({
+      ...current,
+      body: `${current.body.slice(0, selectionCommand.start)}${replacement}${current.body.slice(selectionCommand.end)}`,
+    }));
+    setSelectionCommand(null);
+  }, [selectionCommand]);
+
+  const cutSelectedText = useCallback(async () => {
+    if (await writeSelectionToClipboard()) replaceSelectedText("");
+  }, [replaceSelectedText, writeSelectionToClipboard]);
+
+  const pasteOverSelectedText = useCallback(async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (clipboardText) replaceSelectedText(clipboardText);
+    } catch {
+      // Clipboard permission can be unavailable in a regular browser tab.
+    }
+  }, [replaceSelectedText]);
+
+  const underlineSelectedText = useCallback(() => {
+    if (!selectionCommand) return;
+    replaceSelectedText(`_${selectionCommand.text}_`);
+  }, [replaceSelectedText, selectionCommand]);
+
   const handleClose = () => {
     if (externalConflict) return;
     commitDraft(draftRef.current, true);
@@ -659,7 +720,12 @@ export const WritingPanel: React.FC<Props> = ({
   const renderPaper = (node: NodeFlowNode, index: number) => {
     const isActive = node.id === scriptNode?.id;
     const paperDraft = isActive ? draft : readScriptNode(node, knownCharacterIdentities);
-    const preview = stripFountainMarkup(paperDraft.body).trim() || "空白稿纸";
+    const paperLines = isActive
+      ? liveLines
+      : analyzeFountainLines(paperDraft.body, knownCharacterIdentities);
+    const paperAnalysis = isActive
+      ? analysis
+      : analyzeScreenplay(paperDraft.body, knownCharacterIdentities, knownSceneIdentities);
     return (
       <article
         key={node.id}
@@ -679,8 +745,8 @@ export const WritingPanel: React.FC<Props> = ({
           openScriptPage(index);
         }}
       >
-        {isActive ? (
-          <>
+        <>
+          {isActive ? (
             <ScreenplayHeader
               saveState={saveState}
               isFocusMode={isFocusMode}
@@ -697,43 +763,37 @@ export const WritingPanel: React.FC<Props> = ({
               onCreatePage={createBlankPage}
               onToggleAutoPagination={() => setAutoPagination((enabled) => !enabled)}
             />
-            <header className="screenplay-document__masthead">
-              <div>
+          ) : null}
+          <header className="screenplay-document__masthead">
+            <div>
+              {isActive ? (
                 <input
                   value={draft.title}
                   onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
                   placeholder="未命名剧本"
                   aria-label="剧本标题"
                 />
-              </div>
-              <small>{pageIndex + 1}/{Math.max(1, displayPages.length)} · {analysis.stats.scenes} 场</small>
-            </header>
-            <ScreenplayBlockEditor
-              body={draft.body}
-              lines={liveLines}
-              activeLineIndex={activeLine.index}
-              navigationRequest={navigationRequest}
-              readOnly={!!pendingPatch}
-              characterSuggestions={characterSuggestions}
-              locationSuggestions={locationSuggestions}
-              onChange={(body) => setDraft((current) => ({ ...current, body }))}
-              onActiveLineChange={setActiveLineIndex}
-              onSelectionChange={(selection) => {
-                setSelectionCommand(selection ? { ...selection, message: "" } : null);
-              }}
-              onCreatePageFromLine={(lineIndex) => createPageFromLine(lineIndex, true)}
-            />
-          </>
-        ) : (
-          <div className="screenplay-document__preview">
-            <header>
-              <strong>{paperDraft.title}</strong>
-              <small>{index + 1}/{displayPages.length}</small>
-            </header>
-            <pre>{preview}</pre>
-            <span>单击继续编辑</span>
-          </div>
-        )}
+              ) : <strong>{draft.title}</strong>}
+            </div>
+            <small>{index + 1}/{Math.max(1, displayPages.length)} · {paperAnalysis.stats.scenes} 场</small>
+          </header>
+          <ScreenplayBlockEditor
+            body={paperDraft.body}
+            lines={paperLines}
+            activeLineIndex={isActive ? activeLine.index : -1}
+            navigationRequest={isActive ? navigationRequest : null}
+            readOnly={!isActive || !!pendingPatch}
+            characterSuggestions={characterSuggestions}
+            locationSuggestions={locationSuggestions}
+            locationOptionsId={`screenplay-location-options-${node.id}`}
+            onChange={isActive ? (body) => setDraft((current) => ({ ...current, body })) : () => undefined}
+            onActiveLineChange={isActive ? setActiveLineIndex : () => undefined}
+            onSelectionChange={isActive ? (selection) => {
+              setSelectionCommand(selection ? { ...selection, isAsking: false, message: "" } : null);
+            } : undefined}
+            onCreatePageFromLine={isActive ? (lineIndex) => createPageFromLine(lineIndex, true) : undefined}
+          />
+        </>
       </article>
     );
   };
@@ -829,22 +889,49 @@ export const WritingPanel: React.FC<Props> = ({
       ) : null}
 
       {selectionCommand && !pendingPatch ? (
-        <form className="screenplay-selection-command" onSubmit={(event) => { event.preventDefault(); submitSelectionCommand(); }}>
-          <span title={selectionCommand.text}>“{selectionCommand.text.replace(/\s+/g, " ").slice(0, 26)}”</span>
-          <input
-            autoFocus
-            value={selectionCommand.message}
-            onChange={(event) => setSelectionCommand((current) => current ? { ...current, message: event.target.value } : current)}
-            placeholder="让 Stylo 重写、压缩或检查这段内容"
-            aria-label="针对选中文本向 Stylo 提问"
-          />
-          <button type="submit" className="is-primary" disabled={!selectionCommand.message.trim()} aria-label="发送给 Stylo">
-            <PaperPlaneTilt size={15} weight="fill" />
-          </button>
-          <button type="button" onClick={() => setSelectionCommand(null)} aria-label="关闭">
-            <X size={14} />
-          </button>
-        </form>
+        <div
+          className={`screenplay-selection-command ${selectionCommand.isAsking ? "is-asking" : ""}`}
+          style={{ left: selectionCommand.anchorX, top: selectionCommand.anchorY }}
+        >
+          <div className="screenplay-selection-command__tools" aria-label="文本选中操作">
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void cutSelectedText()} aria-label="剪切" title="剪切">
+              <Scissors size={15} />
+            </button>
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void writeSelectionToClipboard()} aria-label="复制" title="复制">
+              <Copy size={15} />
+            </button>
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => void pasteOverSelectedText()} aria-label="粘贴" title="粘贴">
+              <Clipboard size={15} />
+            </button>
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={underlineSelectedText} aria-label="划线" title="划线">
+              <TextStrikethrough size={15} />
+            </button>
+            <button
+              type="button"
+              className={selectionCommand.isAsking ? "is-active" : ""}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setSelectionCommand((current) => current ? { ...current, isAsking: !current.isAsking } : current)}
+              aria-label="询问 Stylo"
+              title="Ask"
+            >
+              <ChatCenteredDots size={15} />
+            </button>
+          </div>
+          {selectionCommand.isAsking ? (
+            <form className="screenplay-selection-command__ask" onSubmit={(event) => { event.preventDefault(); submitSelectionCommand(); }}>
+              <input
+                autoFocus
+                value={selectionCommand.message}
+                onChange={(event) => setSelectionCommand((current) => current ? { ...current, message: event.target.value } : current)}
+                placeholder="Ask Stylo"
+                aria-label="针对选中文本向 Stylo 提问"
+              />
+              <button type="submit" className="is-primary" disabled={!selectionCommand.message.trim()} aria-label="发送给 Stylo">
+                <PaperPlaneTilt size={14} weight="fill" />
+              </button>
+            </form>
+          ) : null}
+        </div>
       ) : null}
 
       {externalConflict ? (

@@ -4,7 +4,7 @@ import {
   ArrowsInSimple,
   ArrowsDownUp,
   ArrowsLeftRight,
-  CaretRight,
+  CaretDown,
   Check,
   CheckCircle,
   CircleNotch,
@@ -13,7 +13,6 @@ import {
   FilmStrip,
   FilmSlate,
   Crosshair,
-  GridFour,
   Info,
   MapPin,
   MagnifyingGlass,
@@ -214,7 +213,6 @@ export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
     [entries, recentIdentityId]
   );
   const railEntries = useMemo(() => [...characters, ...scenes].slice(0, 5), [characters, scenes]);
-  const hiddenEntryCount = Math.max(0, entries.length - railEntries.length);
 
   useEffect(() => {
     if (!recentIdentityId) return;
@@ -277,41 +275,22 @@ export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
         ) : null}
       </AnimatePresence>
 
-      <motion.div
-        layout
-        className="screenplay-identity-dock__surface"
-        transition={{ type: "spring", stiffness: 330, damping: 32 }}
-      >
-        <AnimatePresence initial={false} mode="wait">
-          {isOpen ? (
-            <motion.div
-              key="panel"
-              className="screenplay-identity-dock__panel"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.16 }}
-            >
+      <div className="screenplay-identity-dock__surface">
+        {isOpen ? (
+            <div className="screenplay-identity-dock__panel">
               <div className="screenplay-identity-dock__heading">
                 <span>LOOKBOOK</span>
                 <button type="button" onClick={() => setIsOpen(false)} aria-label="收起资料格" title="收起资料格">
-                  <CaretRight size={13} />
+                  <X size={13} />
                 </button>
               </div>
               <div className="screenplay-identity-dock__content">
                 {renderSection("角色", characters, User)}
                 {renderSection("场景", scenes, MapPin)}
               </div>
-            </motion.div>
+            </div>
           ) : (
-            <motion.div
-              key="rail"
-              className="screenplay-identity-dock__rail"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-            >
+            <div className="screenplay-identity-dock__rail">
               {railEntries.map((entry) => {
                 const name = entry.role.displayName || entry.role.name;
                 return (
@@ -335,12 +314,11 @@ export const ScreenplayIdentityDock: React.FC<IdentityDockProps> = ({
                 aria-label="展开角色与场景资料格"
                 title="展开角色与场景"
               >
-                {hiddenEntryCount ? <small>+{hiddenEntryCount}</small> : <GridFour size={15} weight="fill" />}
+                <CaretDown size={15} weight="bold" />
               </button>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
-      </motion.div>
+      </div>
     </aside>
   );
 };

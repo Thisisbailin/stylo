@@ -41,6 +41,7 @@ export const buildWrapperProjection = (
 ): WrapperProjection => {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const lookbookIds = new Set(nodes.filter((node) => isLookbookNodeType(node.type)).map((node) => node.id));
+  const leporelloIds = new Set(nodes.filter((node) => node.type === "leporello").map((node) => node.id));
   const scriptNodeIds = new Set(nodes.filter((node) => node.type === "scriptPage").map((node) => node.id));
   const memberSets = new Map<string, Set<string>>();
   const screenplayIncoming = new Set<string>();
@@ -50,6 +51,11 @@ export const buildWrapperProjection = (
     if (link.data?.relation === "lookbook-membership") {
       if (lookbookIds.has(link.source) && nodeById.has(link.target)) addMember(memberSets, link.source, link.target);
       if (lookbookIds.has(link.target) && nodeById.has(link.source)) addMember(memberSets, link.target, link.source);
+      return;
+    }
+    if (link.data?.relation === "leporello-membership") {
+      if (leporelloIds.has(link.source) && nodeById.has(link.target)) addMember(memberSets, link.source, link.target);
+      if (leporelloIds.has(link.target) && nodeById.has(link.source)) addMember(memberSets, link.target, link.source);
       return;
     }
     if (

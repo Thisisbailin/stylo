@@ -14,6 +14,7 @@ export const NODE_TYPES = [
   "text",
   "scriptBoard",
   "lookbook",
+  "leporello",
   /** @deprecated Legacy name. New identity wrappers use `lookbook`. */
   "identityCard",
   "imageGen",
@@ -51,6 +52,22 @@ export interface LookbookBookState {
   /** Number of explicitly created interior pages. Missing in legacy projects. */
   pageCount?: number;
   entries: LookbookBookEntry[];
+}
+
+export type LeporelloPageKind = "cover" | "panel" | "back";
+export type LeporelloPageFace = "lit" | "shadow";
+
+export interface LeporelloPage {
+  id: string;
+  kind: LeporelloPageKind;
+  face: LeporelloPageFace;
+  imageNodeId?: string;
+}
+
+export interface LeporelloBookState {
+  version: 1;
+  aspectRatio: "21:9";
+  pages: LeporelloPage[];
 }
 
 export interface BaseNodeData extends Record<string, unknown> {
@@ -269,6 +286,12 @@ export interface IdentityCardNodeData extends BaseNodeData {
 
 export type LookbookNodeData = IdentityCardNodeData;
 
+export interface LeporelloNodeData extends BaseNodeData {
+  title: string;
+  aspectRatio: "21:9";
+  leporelloBook: LeporelloBookState;
+}
+
 export interface ImageGenNodeData extends BaseNodeData {
   inputImages: string[];
   outputImage: string | null;
@@ -403,6 +426,7 @@ export type NodeFlowNodeData =
   | FolderNodeData
   | ScriptBoardNodeData
   | IdentityCardNodeData
+  | LeporelloNodeData
   | ImageGenNodeData
   | VideoGenNodeData
   | ViduVideoGenNodeData
@@ -437,7 +461,7 @@ export interface NodeFlowNode {
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
-  relation?: "foundation-membership" | "lookbook-membership" | "screenplay-page";
+  relation?: "foundation-membership" | "lookbook-membership" | "leporello-membership" | "screenplay-page";
 }
 
 export interface NodeFlowLink {

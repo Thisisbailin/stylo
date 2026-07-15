@@ -25,6 +25,7 @@ import { EdgeAlignmentGuides } from "./EdgeAlignmentGuides";
 import { ViewportControls } from "./ViewportControls";
 import { ManusPanel } from "./ManusPanel";
 import { LookbookStudioPanel } from "./lookbook/LookbookStudioPanel";
+import { LeporelloStudioPanel } from "./leporello/LeporelloStudioPanel";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
@@ -44,7 +45,7 @@ import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { removeLookbookIdentity, syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 import { analyzeScreenplay, createScreenplayPreview } from "../screenplay/fountainEngine";
-import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
+import { getConnectedScriptPageSequence, SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
 import type { EnsureProjectSynced } from "../../hooks/useCloudSync";
 import type { AccountApiSession } from "../../sync/authenticatedFetch";
 
@@ -354,6 +355,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
   const [activeLookbookNodeId, setActiveLookbookNodeId] = useState<string | null>(null);
+  const [activeLeporelloNodeId, setActiveLeporelloNodeId] = useState<string | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [projectSettingsPanel, setProjectSettingsPanel] = useState<ProjectSettingsPanelKey>("provider");
@@ -472,10 +474,21 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       };
       setProjectData((previous) => {
         const flow = previous.flow || { links: [] };
+        const manuscriptNodeIds = new Set(
+          getConnectedScriptPageSequence(previous, nodeId).map((node) => node.id)
+        );
         let didUpdate = false;
         let didFind = false;
         const flowNodes = (flow.flowNodes || []).map((node) => {
-          if (node.id !== nodeId || node.type !== "scriptPage") return node;
+          if (node.type !== "scriptPage" || !manuscriptNodeIds.has(node.id)) return node;
+          if (node.id !== nodeId) {
+            if (node.data?.title === title) return node;
+            didUpdate = true;
+            return {
+              ...node,
+              data: { ...node.data, title, updatedAt },
+            };
+          }
           didFind = true;
           const data = (node.data || {}) as Record<string, unknown>;
           if (
@@ -832,6 +845,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     setProjectData,
     onOpenScriptDocument: handleOpenScriptDocument,
     onOpenLookbook: (nodeId) => setActiveLookbookNodeId(nodeId),
+    onOpenLeporello: (nodeId) => setActiveLeporelloNodeId(nodeId),
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
     isActive: true,
@@ -1462,6 +1476,14 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           setProjectData={setProjectData}
           identityNodeId={activeLookbookNodeId}
           onClose={() => setActiveLookbookNodeId(null)}
+        />
+      ) : null}
+      {activeLeporelloNodeId !== null ? (
+        <LeporelloStudioPanel
+          projectData={projectData}
+          setProjectData={setProjectData}
+          leporelloNodeId={activeLeporelloNodeId}
+          onClose={() => setActiveLeporelloNodeId(null)}
         />
       ) : null}
       <Toast />

@@ -39,7 +39,7 @@ import {
   UserRound,
   Clapperboard,
 } from "lucide-react";
-import { ArrowUp, BookOpen, CircleNotch } from "@phosphor-icons/react";
+import { ArrowUp, BookOpen, CircleNotch, Rows } from "@phosphor-icons/react";
 import type {
   ProjectData,
   FlowProject,
@@ -56,6 +56,7 @@ import {
   TextNode,
   ScriptBoardNode,
   IdentityCardNode,
+  LeporelloNode,
   ImageGenNode,
   NanoBananaImageGenNode,
   WanImageGenNode,
@@ -132,6 +133,7 @@ import {
   removeFoundationMembership,
 } from "../foundation/membership";
 import { isLookbookNodeType } from "../../utils/lookbookIdentities";
+import { createInitialLeporelloData, resolveLeporelloProjectName } from "../../utils/leporelloWorkspace";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -263,6 +265,7 @@ type Props = {
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   onOpenScriptDocument: (nodeId: string) => void;
   onOpenLookbook?: (nodeId: string) => void;
+  onOpenLeporello?: (nodeId: string) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
   isActive?: boolean;
@@ -313,6 +316,7 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "Manus", hint: "剧本包装器 · 创建第一张稿纸", type: "scriptPage", Icon: FileText, group: "wrapper", meta: "Fountain", tone: "is-slate", surface: "paper" },
   { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "wrapper", meta: "Identity", tone: "is-moss", surface: "card", disabled: true, disabledHint: "由剧本身份生成" },
+  { label: "Leporello", hint: "21:9 手风琴分镜故事板", type: "leporello", Icon: Rows, group: "wrapper", meta: "Storyboard", tone: "is-amber", surface: "paper" },
   { label: "Cinewor", hint: "镜头与调度包装器", type: "scriptBoard", Icon: Clapperboard, group: "wrapper", meta: "Soon", tone: "is-rose", surface: "card", disabled: true, disabledHint: "即将开放" },
   { label: "文件夹", hint: "由 Foundation 自动生成", type: "folder", Icon: Folder, group: "wrapper", meta: "System", tone: "is-blue", surface: "folder", disabled: true, disabledHint: "由系统管理" },
   { label: "文本", hint: "Markdown 文本节点", type: "text", Icon: Pencil, group: "input", meta: "Text", tone: "is-slate", surface: "paper" },
@@ -457,6 +461,8 @@ const toRuntimeFlowNode = (node: NodeFlowNode, index: number): NodeFlowNode => (
   selected: false,
   style: isLookbookNodeType(node.type)
     ? { ...node.style, width: 286, height: 356 }
+    : node.type === "leporello"
+      ? { ...node.style, width: 356, height: 180 }
     : node.type === "scriptPage"
       ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
       : node.style,
@@ -578,6 +584,7 @@ const nodeTypes: NodeTypes = {
   annotation: withFoundationBoundaryHandle(AnnotationNode),
   scriptBoard: withFoundationBoundaryHandle(ScriptBoardNode),
   lookbook: withFoundationBoundaryHandle(IdentityCardNode),
+  leporello: withFoundationBoundaryHandle(LeporelloNode),
   identityCard: withFoundationBoundaryHandle(IdentityCardNode),
   imageGen: withFoundationBoundaryHandle(ImageGenNode),
   nanoBananaImageGen: withFoundationBoundaryHandle(NanoBananaImageGenNode),
@@ -613,6 +620,7 @@ type ScriptFoundationProps = {
   onCreateScriptNode: () => void;
   onCreateFlowNode: (type: NodeType) => void;
   hasScriptPage: boolean;
+  hasLeporello: boolean;
   flowProjects: NonNullable<ProjectData["flowProjects"]>;
   activeFlowProjectId: string;
   onSwitchFlowProject: (projectId: string) => void;
@@ -773,6 +781,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onCreateScriptNode,
   onCreateFlowNode,
   hasScriptPage,
+  hasLeporello,
   flowProjects,
   activeFlowProjectId,
   onSwitchFlowProject,
@@ -808,8 +817,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [isAgentTailOpen, setIsAgentTailOpen] = useState(false);
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const availableScriptCreateOptions = useMemo(
-    () => scriptCreateOptions.filter((option) => option.type !== "scriptPage" || !hasScriptPage),
-    [hasScriptPage]
+    () => scriptCreateOptions.filter((option) =>
+      (option.type !== "scriptPage" || !hasScriptPage) &&
+      (option.type !== "leporello" || !hasLeporello)
+    ),
+    [hasLeporello, hasScriptPage]
   );
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const weightedBlocksByAxis = useMemo(
@@ -1814,6 +1826,7 @@ export const useFlowSurface = ({
   setProjectData,
   onOpenScriptDocument,
   onOpenLookbook,
+  onOpenLeporello,
   canvasControls,
   screenToFlowPosition,
   isActive = false,
@@ -2074,6 +2087,8 @@ export const useFlowSurface = ({
         const isMotionMember = Boolean(memberMotion);
         const baseStyle = isLookbookNodeType(node.type)
           ? { ...node.style, width: 286, height: 356 }
+          : node.type === "leporello"
+            ? { ...node.style, width: 356, height: 180 }
           : node.type === "scriptPage"
             ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
             : node.style;
@@ -2099,7 +2114,7 @@ export const useFlowSurface = ({
             ...createDefaultNodeFlowNodeData(node.type),
             ...(node.data || {}),
             wrapperMemberCount: wrapperProjection.memberIdsByWrapper.get(node.id)?.length || 0,
-            wrapperRoot: isLookbookNodeType(node.type) || wrapperProjection.screenplayRootIds.has(node.id),
+            wrapperRoot: isLookbookNodeType(node.type) || node.type === "leporello" || wrapperProjection.screenplayRootIds.has(node.id),
             agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
           } as NodeFlowNodeData,
         };
@@ -3079,6 +3094,10 @@ export const useFlowSurface = ({
       fixedNodeId?: string
     ) => {
       if (type === "folder" || isLookbookNodeType(type)) return null;
+      if (type === "leporello" && (flow.flowNodes || []).some((node) => node.type === "leporello")) return null;
+      const resolvedExtraData = type === "leporello"
+        ? { ...createInitialLeporelloData(resolveLeporelloProjectName(projectData)), ...(extraData || {}) }
+        : extraData;
       const requestedPosition = position || getDefaultFlowNodePosition(flow.flowNodes?.length || 0);
       const commandState = {
         revision: flow.revision || 0,
@@ -3094,7 +3113,7 @@ export const useFlowSurface = ({
         state: commandState,
         type,
         position: requestedPosition,
-        extraData,
+        extraData: resolvedExtraData,
         allocateNodeId: fixedNodeId ? () => fixedNodeId : createScriptFlowNodeId,
       });
       const createdNode = createResult.state.nodes.find((node) => !commandState.nodes.some((existing) => existing.id === node.id));
@@ -3106,7 +3125,7 @@ export const useFlowSurface = ({
           position: requestedPosition,
           data: {
             ...createDefaultNodeFlowNodeData(type),
-            ...(extraData || {}),
+            ...(resolvedExtraData || {}),
           } as NodeFlowNodeData,
         };
       setProjectData((previous) => {
@@ -3139,6 +3158,7 @@ export const useFlowSurface = ({
       flowRuntimeContext,
       flowRuntimeNodes,
       flowRuntimeLinks,
+      projectData,
       setProjectData,
     ]
   );
@@ -3738,8 +3758,9 @@ export const useFlowSurface = ({
       if (boundaryBlock) setActiveTimelineBlockId(boundaryBlock.id);
       const memberCount = typeof node.data.wrapperMemberCount === "number" ? node.data.wrapperMemberCount : 0;
       const isCollapsibleLookbook = isLookbookNodeType(node.type) && memberCount > 0;
+      const isCollapsibleLeporello = node.type === "leporello" && memberCount > 0;
       const isCollapsibleScreenplay = node.type === "scriptPage" && node.data.wrapperRoot === true && memberCount > 0;
-      if (!isCollapsibleLookbook && !isCollapsibleScreenplay) return;
+      if (!isCollapsibleLookbook && !isCollapsibleLeporello && !isCollapsibleScreenplay) return;
       if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
       wrapperClickTimerRef.current = setTimeout(() => {
         wrapperClickTimerRef.current = null;
@@ -3756,9 +3777,10 @@ export const useFlowSurface = ({
         wrapperClickTimerRef.current = null;
       }
       if (isLookbookNodeType(node.type)) onOpenLookbook?.(node.id);
+      else if (node.type === "leporello") onOpenLeporello?.(node.id);
       else if (node.type === "scriptPage") onOpenScriptDocument(node.id);
     },
-    [onOpenLookbook, onOpenScriptDocument]
+    [onOpenLeporello, onOpenLookbook, onOpenScriptDocument]
   );
 
   const overlays = (
@@ -3766,7 +3788,10 @@ export const useFlowSurface = ({
       {connectionDrop ? (
         <ConnectionDropMenu
           position={connectionDrop.position}
-          options={scriptCreateOptions.filter((option) => option.type !== "scriptPage" || !nodes.some((node) => node.type === "scriptPage"))}
+          options={scriptCreateOptions.filter((option) =>
+            (option.type !== "scriptPage" || !nodes.some((node) => node.type === "scriptPage")) &&
+            (option.type !== "leporello" || !nodes.some((node) => node.type === "leporello"))
+          )}
           subtitle="创建 Flow 节点"
           onCreate={handleDropCreate}
           onClose={() => setConnectionDrop(null)}
@@ -3808,6 +3833,7 @@ export const useFlowSurface = ({
           onCreateArchiveNode={handleAddMarkdownNodeFromTail}
           onCreateScriptNode={handleAddScriptPageFromTail}
           hasScriptPage={nodes.some((node) => node.type === "scriptPage")}
+          hasLeporello={nodes.some((node) => node.type === "leporello")}
           onCreateFlowNode={(type) => {
             const position =
               typeof window === "undefined"

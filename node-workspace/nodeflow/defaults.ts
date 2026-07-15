@@ -5,6 +5,7 @@
   IdentityCardNodeData,
   ImageGenNodeData,
   ImageInputNodeData,
+  LeporelloNodeData,
   MarkdownTextNodeData,
   NodeFlowNodeData,
   NodeType,
@@ -106,6 +107,20 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         title: "Lookbook",
         avatarOverrides: {},
       } as IdentityCardNodeData;
+    case "leporello":
+      return {
+        title: "未命名项目",
+        aspectRatio: "21:9",
+        leporelloBook: {
+          version: 1,
+          aspectRatio: "21:9",
+          pages: [
+            { id: "cover", kind: "cover", face: "lit" },
+            { id: "panel-1", kind: "panel", face: "shadow" },
+            { id: "back", kind: "back", face: "lit" },
+          ],
+        },
+      } as LeporelloNodeData;
     case "imageGen":
       return {
         inputImages: [],

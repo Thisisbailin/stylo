@@ -11,6 +11,7 @@ export const DEFAULT_NODE_DIMENSIONS: Partial<Record<NodeType, { width: number; 
   videoInput: { width: 360, height: 220 },
   scriptBoard: { width: 920 },
   lookbook: { width: 286, height: 356 },
+  leporello: { width: 356, height: 180 },
   identityCard: { width: 286, height: 356 },
   imageGen: { width: 380, height: 520 },
   nanoBananaImageGen: { width: 380, height: 520 },

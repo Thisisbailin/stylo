@@ -48,6 +48,8 @@ type SelectionPayload = {
   start: number;
   end: number;
   lineIndex: number;
+  anchorX: number;
+  anchorY: number;
 };
 
 type Props = {
@@ -62,6 +64,7 @@ type Props = {
   onActiveLineChange: (lineIndex: number) => void;
   onSelectionChange?: (selection: SelectionPayload | null) => void;
   onCreatePageFromLine?: (lineIndex: number) => void;
+  locationOptionsId?: string;
 };
 
 const KIND_ICONS: Record<ScreenplayLineKind, React.ComponentType<{ size?: number; weight?: "regular" | "bold" }>> = {
@@ -117,6 +120,7 @@ type RowProps = {
   mentionOpen: boolean;
   onOpenMention: (lineIndex: number) => void;
   onCloseMention: () => void;
+  locationOptionsId: string;
 };
 
 const ScreenplayBlockRow = memo(({
@@ -136,6 +140,7 @@ const ScreenplayBlockRow = memo(({
   mentionOpen,
   onOpenMention,
   onCloseMention,
+  locationOptionsId,
 }: RowProps) => {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
@@ -232,11 +237,14 @@ const ScreenplayBlockRow = memo(({
       return;
     }
     const contentOffset = getContentOffset(line);
+    const rect = target.getBoundingClientRect();
     onSelectionChange?.({
       text: target.value.slice(start, end),
       start: line.start + contentOffset + start,
       end: line.start + contentOffset + end,
       lineIndex: line.index,
+      anchorX: Math.max(76, Math.min(window.innerWidth - 76, rect.left + rect.width / 2)),
+      anchorY: Math.max(68, rect.top - 8),
     });
   };
 
@@ -311,7 +319,7 @@ const ScreenplayBlockRow = memo(({
                 ref={(element) => registerEditor(line.index, element)}
                 value={scene.location}
                 style={{ width: `${Math.max(6, Math.min(24, Array.from(scene.location || "地点").length + 2))}ch` }}
-                list="screenplay-location-options"
+                list={locationOptionsId}
                 onFocus={() => onActive(line.index)}
                 onChange={(event) => onReplaceLine(line.index, serializeSceneHeading({ ...scene, location: event.target.value }))}
                 onKeyDown={(event) => {
@@ -412,6 +420,7 @@ const ScreenplayBlockRow = memo(({
   previous.isActive === next.isActive &&
   previous.readOnly === next.readOnly &&
   previous.mentionOpen === next.mentionOpen &&
+  previous.locationOptionsId === next.locationOptionsId &&
   previous.characterSuggestions === next.characterSuggestions
 );
 
@@ -429,6 +438,7 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
   onActiveLineChange,
   onSelectionChange,
   onCreatePageFromLine,
+  locationOptionsId = "screenplay-location-options",
 }) => {
   const editorsRef = useRef(new Map<number, HTMLTextAreaElement | HTMLInputElement>());
   const pendingFocusRef = useRef<{ lineIndex: number; position: "start" | "end" } | null>(null);
@@ -507,7 +517,7 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
 
   return (
     <div className="screenplay-block-editor" role="textbox" aria-multiline="true" aria-label="可视化剧本编辑器">
-      <datalist id="screenplay-location-options">
+      <datalist id={locationOptionsId}>
         {uniqueLocations.map((name) => <option key={name} value={name} />)}
       </datalist>
       {lines.map((line) => (
@@ -529,6 +539,7 @@ export const ScreenplayBlockEditor: React.FC<Props> = ({
           mentionOpen={mentionLineIndex === line.index}
           onOpenMention={setMentionLineIndex}
           onCloseMention={() => setMentionLineIndex(null)}
+          locationOptionsId={locationOptionsId}
         />
       ))}
       {!lines.length ? (

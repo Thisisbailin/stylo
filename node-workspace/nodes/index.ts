@@ -6,6 +6,7 @@ export { FolderNode } from "./FolderNode";
 export * from "./TextNode";
 export * from "./ScriptBoardNode";
 export { CompactIdentityCardNode as IdentityCardNode } from "./CompactIdentityCardNode";
+export { LeporelloNode } from "./LeporelloNode";
 export { ImageGenNode } from "./ImageGenNode";
 export { NanoBananaImageGenNode } from "./NanoBananaImageGenNode";
 export { WanImageGenNode } from "./WanImageGenNode";
