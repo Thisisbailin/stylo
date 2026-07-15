@@ -1,14 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle, Cloud, Shield, Trash2 } from "lucide-react";
 import type { AppConfig, SyncState } from "../../types";
-import { getDeviceId } from "../../utils/device";
-import { buildApiUrl } from "../../utils/api";
+import type { AccountApiSession } from "../../sync/authenticatedFetch";
 
 type Props = {
   config: AppConfig;
   onConfigChange: (c: AppConfig) => void;
   isSignedIn?: boolean;
-  getAuthToken?: () => Promise<string | null>;
+  accountSession?: AccountApiSession;
   onForceSync?: () => void;
   syncState?: SyncState;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
@@ -25,7 +24,7 @@ export const SyncPanel: React.FC<Props> = ({
   config,
   onConfigChange,
   isSignedIn,
-  getAuthToken,
+  accountSession,
   onForceSync,
   syncState,
   syncRollout,
@@ -36,7 +35,6 @@ export const SyncPanel: React.FC<Props> = ({
   showSidebar = true,
 }) => {
   const [internalActive, setInternalActive] = useState<SyncSectionKey>(initialSection);
-  const deviceIdRef = useRef<string>(getDeviceId());
   const active = activeSection ?? internalActive;
   const [snapshots, setSnapshots] = useState<{ version: number; createdAt: number }[]>([]);
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
@@ -111,21 +109,14 @@ export const SyncPanel: React.FC<Props> = ({
       setSnapshotMessage({ type: "error", text: "Cloud sync is not enabled yet." });
       return;
     }
-    if (!getAuthToken || !isSignedIn) {
+    if (!accountSession || !isSignedIn) {
       setSnapshotMessage({ type: "error", text: "Sign in to view cloud snapshots." });
       return;
     }
     setIsLoadingSnapshots(true);
     setSnapshotMessage(null);
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        setSnapshotMessage({ type: "error", text: "Auth token missing. Please re-login." });
-        return;
-      }
-      const res = await fetch(buildApiUrl("/api/project-snapshots"), {
-        headers: { authorization: `Bearer ${token}`, "x-device-id": deviceIdRef.current },
-      });
+      const res = await accountSession.request("/api/project-snapshots");
       if (!res.ok) {
         throw new Error(`Failed to load snapshots (${res.status})`);
       }
@@ -144,7 +135,7 @@ export const SyncPanel: React.FC<Props> = ({
       setSnapshotMessage({ type: "error", text: "Cloud sync is not enabled yet." });
       return;
     }
-    if (!getAuthToken || !isSignedIn) {
+    if (!accountSession || !isSignedIn) {
       setSnapshotMessage({ type: "error", text: "Sign in to restore snapshots." });
       return;
     }
@@ -152,14 +143,7 @@ export const SyncPanel: React.FC<Props> = ({
     if (!confirmRestore) return;
     setIsRestoringSnapshot(true);
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        setSnapshotMessage({ type: "error", text: "Auth token missing. Please re-login." });
-        return;
-      }
-      const indexRes = await fetch(buildApiUrl("/api/project-snapshots"), {
-        headers: { authorization: `Bearer ${token}`, "x-device-id": deviceIdRef.current },
-      });
+      const indexRes = await accountSession.request("/api/project-snapshots");
       if (!indexRes.ok) {
         throw new Error(`Failed to read the current project version (${indexRes.status})`);
       }
@@ -173,12 +157,10 @@ export const SyncPanel: React.FC<Props> = ({
       }
       const opId = globalThis.crypto?.randomUUID?.() ||
         `restore-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const res = await fetch(buildApiUrl("/api/project-restore"), {
+      const res = await accountSession.request("/api/project-restore", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "x-device-id": deviceIdRef.current,
           "if-match": String(expectedUpdatedAt),
         },
         body: JSON.stringify({ version, expectedUpdatedAt, opId }),
@@ -204,21 +186,14 @@ export const SyncPanel: React.FC<Props> = ({
       setAuditMessage({ type: "error", text: "Cloud sync is not enabled yet." });
       return;
     }
-    if (!getAuthToken || !isSignedIn) {
+    if (!accountSession || !isSignedIn) {
       setAuditMessage({ type: "error", text: "Sign in to view audit logs." });
       return;
     }
     setIsLoadingAudit(true);
     setAuditMessage(null);
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        setAuditMessage({ type: "error", text: "Auth token missing. Please re-login." });
-        return;
-      }
-      const res = await fetch(buildApiUrl("/api/sync-audit"), {
-        headers: { authorization: `Bearer ${token}`, "x-device-id": deviceIdRef.current },
-      });
+      const res = await accountSession.request("/api/sync-audit");
       if (!res.ok) {
         throw new Error(`Failed to load logs (${res.status})`);
       }

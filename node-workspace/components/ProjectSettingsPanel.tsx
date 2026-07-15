@@ -63,6 +63,7 @@ import { InfoPanel } from "./InfoPanel";
 import { MaterialsPanel, type MaterialsSectionKey } from "./MaterialsPanel";
 import { SyncPanel } from "./SyncPanel";
 import type { ModuleKey } from "./ModuleBar";
+import type { AccountApiSession } from "../../sync/authenticatedFetch";
 import { PRODUCT_REPOSITORIES } from "../../constants/productRepositories";
 import {
   buildStyloAccountSessionId,
@@ -81,6 +82,7 @@ type Props = {
   setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
+  accountSession?: AccountApiSession;
   syncState?: SyncState;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
@@ -459,6 +461,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   setConfig,
   isSignedIn = false,
   getAuthToken,
+  accountSession,
   syncState,
   syncRollout,
   onForceSync,
@@ -2956,7 +2959,7 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                         config={config}
                         onConfigChange={setConfig}
                         isSignedIn={isSignedIn}
-                        getAuthToken={getAuthToken}
+                        accountSession={accountSession}
                         onForceSync={onForceSync}
                         syncState={syncState}
                         syncRollout={syncRollout}

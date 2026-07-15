@@ -14,6 +14,8 @@ import {
   DEFAULT_TIMELINE_DURATION,
   ensureFoundationGraphSkeleton,
 } from "../node-workspace/foundation/scaffold";
+import { isProjectEmpty } from "../utils/persistence";
+import { normalizeProjectData } from "../utils/projectData";
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -56,6 +58,11 @@ test("project reset returns the live Flow to revision zero and invalidates stale
 });
 
 test("initializing the system Foundation scaffold does not consume a project revision", () => {
+  const descriptor = {
+    rootNodeId: "project-root-flow-project-main",
+    title: "主项目",
+    durationMin: DEFAULT_TIMELINE_DURATION,
+  };
   const initialized = ensureFoundationGraphSkeleton({
     revision: 0,
     flowNodes: [],
@@ -64,13 +71,52 @@ test("initializing the system Foundation scaffold does not consume a project rev
     globalAssetHistory: [],
     linkStyle: "curved",
     activeView: null,
-  }, {
-    rootNodeId: "project-root-flow-project-main",
-    title: "主项目",
-    durationMin: DEFAULT_TIMELINE_DURATION,
-  });
+  }, descriptor);
   assert.equal(initialized.revision, 0);
   assert.ok((initialized.flowNodes || []).length > 0);
+  assert.strictEqual(
+    ensureFoundationGraphSkeleton(initialized, descriptor),
+    initialized,
+    "a settled Foundation skeleton must be referentially idempotent",
+  );
+  const normalized = normalizeProjectData({
+    fileName: "主项目",
+    rawScript: "",
+    episodes: [],
+    roles: [],
+    designAssets: [],
+    canvas: {},
+    flow: initialized,
+    activeFlowProjectId: "flow-project-main",
+    flowProjects: [{
+      id: "flow-project-main",
+      title: "主项目",
+      color: "amber",
+      durationMin: DEFAULT_TIMELINE_DURATION,
+      rootNodeId: descriptor.rootNodeId,
+      createdAt: 1,
+      updatedAt: 1,
+      flow: initialized,
+    }],
+    stats: { context: { total: 0, success: 0, error: 0 } },
+  });
+  assert.strictEqual(
+    ensureFoundationGraphSkeleton(normalized.flow!, descriptor),
+    normalized.flow,
+    "project normalization must not create a Foundation repair loop",
+  );
+  assert.equal(isProjectEmpty({
+    fileName: "",
+    rawScript: "",
+    episodes: [],
+    roles: [],
+    designAssets: [],
+    canvas: {},
+    flow: initialized,
+    activeFlowProjectId: "flow-project-main",
+    flowProjects: [],
+    stats: { context: { total: 0, success: 0, error: 0 } },
+  }), true);
 });
 
 test("project reset clears only the matching account and project Agent memory", () => {

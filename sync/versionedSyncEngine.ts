@@ -77,6 +77,7 @@ export type VersionedSyncEngineOptions<T> = {
   onEmptyOverwriteCommitted?: () => void;
   debounceMs?: number;
   maxRetries?: number;
+  maxLoadRetries?: number;
   retryBaseMs?: number;
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   random?: () => number;
@@ -130,6 +131,7 @@ export class VersionedSyncEngine<T> {
   private readonly createOperationId: () => string;
   private readonly debounceMs: number;
   private readonly maxRetries: number;
+  private readonly maxLoadRetries: number;
   private readonly retryBaseMs: number;
   private commandTail: Promise<void> = Promise.resolve();
   private confirmed: T | null = null;
@@ -154,6 +156,7 @@ export class VersionedSyncEngine<T> {
     this.createOperationId = options.createOperationId || defaultOperationId;
     this.debounceMs = options.debounceMs ?? 1200;
     this.maxRetries = options.maxRetries ?? 6;
+    this.maxLoadRetries = options.maxLoadRetries ?? 1;
     this.retryBaseMs = options.retryBaseMs ?? 600;
   }
 
@@ -175,7 +178,7 @@ export class VersionedSyncEngine<T> {
     if (this.disposed) return;
     const snapshot = this.capture(local);
     this.stageGeneration += 1;
-    if (this.confirmed && this.isEqual(snapshot, this.confirmed) && this.activeWrites === 0) {
+    if (this.confirmed && this.isSettledEquivalent(snapshot, this.confirmed) && this.activeWrites === 0) {
       this.staged = null;
       this.clearStageTimer();
       this.emit("synced");
@@ -183,6 +186,10 @@ export class VersionedSyncEngine<T> {
     }
     this.staged = snapshot;
     this.armStageTimer();
+    if (!this.ready && this.status === "error") {
+      this.emit("error", this.lastError);
+      return;
+    }
     this.emit(this.ready ? this.status : "loading");
   }
 
@@ -255,6 +262,11 @@ export class VersionedSyncEngine<T> {
     return this.options.codec.fingerprint(left) === this.options.codec.fingerprint(right);
   }
 
+  private isSettledEquivalent(left: T, right: T) {
+    return this.isEqual(left, right)
+      || (this.options.codec.isEmpty(left) && this.options.codec.isEmpty(right));
+  }
+
   private enqueue<R>(command: () => Promise<R>): Promise<R> {
     if (this.disposed) return Promise.reject(new DOMException("Sync engine disposed", "AbortError"));
     const result = this.commandTail.then(() => {
@@ -266,54 +278,70 @@ export class VersionedSyncEngine<T> {
   }
 
   private async reconcile(local: T) {
+    let reconciledLocal = local;
     this.emit("loading");
     try {
-      const remote = await this.retry("loading", () => this.options.transport.load(this.controller.signal));
+      const remote = await this.retry(
+        "loading",
+        () => this.options.transport.load(this.controller.signal),
+        this.maxLoadRetries,
+      );
       this.controller.signal.throwIfAborted();
       this.ready = true;
+      // React may stage the same initial value while the handshake is running,
+      // or a genuinely newer edit. Reconcile against the latest captured value
+      // and clear only the exact generation consumed by this handshake.
+      reconciledLocal = this.staged ?? local;
 
       if (!remote) {
         this.remoteVersion = 0;
-        if (this.options.codec.isEmpty(local)) {
-          this.acceptConfirmed(local, 0);
+        if (this.options.codec.isEmpty(reconciledLocal)) {
+          this.acceptConfirmed(reconciledLocal, 0);
+          this.options.onEmptyOverwriteCommitted?.();
           this.emit("synced");
           return;
         }
         this.confirmed = null;
-        await this.commit(local, true);
+        await this.commit(reconciledLocal, true);
         return;
       }
 
       const remoteValue = this.capture(remote.value);
-      const localEmpty = this.options.codec.isEmpty(local);
+      const localEmpty = this.options.codec.isEmpty(reconciledLocal);
       const remoteEmpty = this.options.codec.isEmpty(remoteValue);
 
-      if (this.isEqual(local, remoteValue)) {
+      if (this.isEqual(reconciledLocal, remoteValue)) {
         this.acceptConfirmed(remoteValue, remote.version);
         this.emit("synced");
         return;
       }
 
+      if (localEmpty && remoteEmpty) {
+        this.options.onEmptyOverwriteCommitted?.();
+        this.applyRemote(remoteValue, reconciledLocal, remote.version);
+        return;
+      }
+
       if (this.options.allowEmptyOverwrite?.() && localEmpty) {
         this.acceptConfirmed(remoteValue, remote.version);
-        await this.commit(local, true);
+        await this.commit(reconciledLocal, true);
         return;
       }
 
       if (localEmpty && !remoteEmpty) {
-        this.options.onBackupLocal?.(local);
-        this.applyRemote(remoteValue, local, remote.version);
+        this.options.onBackupLocal?.(reconciledLocal);
+        this.applyRemote(remoteValue, reconciledLocal, remote.version);
         return;
       }
 
       if (remoteEmpty && !localEmpty) {
         this.acceptConfirmed(remoteValue, remote.version);
-        await this.commit(local, true);
+        await this.commit(reconciledLocal, true);
         return;
       }
 
       const baseline = this.options.baselineStore.read();
-      const localFingerprint = this.options.codec.fingerprint(local);
+      const localFingerprint = this.options.codec.fingerprint(reconciledLocal);
       const remoteFingerprint = this.options.codec.fingerprint(remoteValue);
       const localChanged = baseline ? localFingerprint !== baseline.fingerprint : true;
       const remoteChanged = baseline
@@ -323,31 +351,37 @@ export class VersionedSyncEngine<T> {
       if (baseline && localChanged && !remoteChanged) {
         this.options.onBackupRemote?.(remoteValue);
         this.acceptConfirmed(remoteValue, remote.version);
-        await this.commit(local, false);
+        await this.commit(reconciledLocal, false);
         return;
       }
       if (baseline && !localChanged && remoteChanged) {
-        this.options.onBackupLocal?.(local);
-        this.applyRemote(remoteValue, local, remote.version);
+        this.options.onBackupLocal?.(reconciledLocal);
+        this.applyRemote(remoteValue, reconciledLocal, remote.version);
         return;
       }
 
       this.emit("conflict");
-      const choice = await this.resolveConflict({ local, remote: remoteValue, reason: "bootstrap" });
+      const choice = await this.resolveConflict({ local: reconciledLocal, remote: remoteValue, reason: "bootstrap" });
       this.controller.signal.throwIfAborted();
       if (choice === "remote") {
-        this.options.onBackupLocal?.(local);
-        this.applyRemote(remoteValue, local, remote.version);
+        this.options.onBackupLocal?.(reconciledLocal);
+        this.applyRemote(remoteValue, reconciledLocal, remote.version);
         return;
       }
       this.options.onBackupRemote?.(remoteValue);
       this.acceptConfirmed(remoteValue, remote.version);
-      await this.commit(local, true);
+      await this.commit(reconciledLocal, true);
     } catch (error) {
       if (this.controller.signal.aborted) throw error;
       this.lastError = toErrorMessage(error);
       this.emit("error", this.lastError);
       throw error;
+    } finally {
+      if (this.ready && this.staged && this.isSettledEquivalent(this.staged, reconciledLocal)) {
+        this.staged = null;
+        this.clearStageTimer();
+        if (this.status === "synced") this.emit("synced");
+      }
     }
   }
 
@@ -425,6 +459,9 @@ export class VersionedSyncEngine<T> {
       throw error;
     } finally {
       this.activeWrites = Math.max(0, this.activeWrites - 1);
+      // A successful save emits while the write is still active so callers can
+      // observe its receipt. Publish the settled count as the final snapshot.
+      if (this.status === "synced") this.emit("synced");
     }
   }
 
@@ -446,7 +483,11 @@ export class VersionedSyncEngine<T> {
     this.emit("synced");
   }
 
-  private async retry<R>(status: "loading" | "syncing", operation: () => Promise<R>) {
+  private async retry<R>(
+    status: "loading" | "syncing",
+    operation: () => Promise<R>,
+    maxRetries = this.maxRetries,
+  ) {
     let attempt = 0;
     while (true) {
       await this.waitUntilOnline();
@@ -457,7 +498,7 @@ export class VersionedSyncEngine<T> {
         return result;
       } catch (error) {
         if (this.controller.signal.aborted) throw error;
-        if (!isRetryableError(error) || attempt >= this.maxRetries) throw error;
+        if (!isRetryableError(error) || attempt >= maxRetries) throw error;
         attempt += 1;
         this.retryCount = attempt;
         this.lastAttemptAt = Date.now();

@@ -44,6 +44,9 @@ const createQwenWebSocketProxy = (routePrefix: RegExp): ProxyOptions => ({
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  const devApiTarget = (env.STYLO_DEV_API_BASE || env.VITE_API_BASE || 'https://node-qalam.pages.dev')
+    .trim()
+    .replace(/\/+$/, '');
   return {
     server: {
       port: 3000,
@@ -52,6 +55,11 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api/qwen-ws': createQwenWebSocketProxy(/^\/api\/qwen-ws/),
         '/api/qwen-tts-ws': createQwenWebSocketProxy(/^\/api\/qwen-tts-ws/),
+        '/api': {
+          target: devApiTarget,
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
     plugins: [react(), tailwindcss()],

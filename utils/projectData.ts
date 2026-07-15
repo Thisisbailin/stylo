@@ -89,8 +89,22 @@ const normalizeCanvasViewport = (value: any): ProjectData["canvas"]["viewport"] 
 const normalizeFlow = (value: any): NonNullable<ProjectData["flow"]> => {
   const revision = typeof value?.revision === "number" && Number.isFinite(value.revision) ? value.revision : 0;
 
+  const usedNodeIds = new Set<string>();
   const flowNodes = Array.isArray(value?.flowNodes)
-    ? value.flowNodes.map(normalizeNodeFlowNode).filter(Boolean)
+    ? value.flowNodes
+        .map(normalizeNodeFlowNode)
+        .filter(Boolean)
+        .map((node: any) => {
+          const baseId = node.id;
+          let id = baseId;
+          let duplicateIndex = 2;
+          while (usedNodeIds.has(id)) {
+            id = `${baseId}-${duplicateIndex}`;
+            duplicateIndex += 1;
+          }
+          usedNodeIds.add(id);
+          return id === baseId ? node : { ...node, id };
+        })
     : [];
 
   const nodeIds = new Set<string>([
@@ -464,11 +478,25 @@ export const normalizeProjectData = (data: any): ProjectData => {
   };
   base.rawScript = typeof projectData?.rawScript === "string" ? projectData.rawScript : "";
   base.fileName = typeof projectData?.fileName === "string" ? projectData.fileName : "";
-  const normalizedFlow = normalizeFlow(projectData?.flow);
+  const rawFlowProjects = Array.isArray(projectData?.flowProjects)
+    ? projectData.flowProjects
+    : [];
+  const requestedActiveProjectId = typeof projectData?.activeFlowProjectId === "string"
+    ? projectData.activeFlowProjectId
+    : undefined;
+  const serializedActiveProject = rawFlowProjects.find(
+    (project: any) => project?.id === requestedActiveProjectId,
+  ) || rawFlowProjects[0];
+  // Cloud packages omit the duplicate top-level flow. In that representation
+  // the active project's flow is authoritative and must be restored before the
+  // project list is normalized; otherwise every cloud snapshot becomes rev 0.
+  const normalizedFlow = normalizeFlow(
+    projectData?.flow ?? serializedActiveProject?.flow,
+  );
   const normalizedProjects = normalizeFlowProjects(
     projectData?.flowProjects,
     normalizedFlow as NonNullable<ProjectData["flow"]>,
-    typeof projectData?.activeFlowProjectId === "string" ? projectData.activeFlowProjectId : undefined,
+    requestedActiveProjectId,
     base.fileName
   );
   base.flow = normalizedProjects.flow;

@@ -143,6 +143,29 @@ test("project normalization preserves duplicate legacy projects with repaired id
   assert.equal(normalized.activeFlowProjectId, "legacy-duplicate");
 });
 
+test("project normalization repairs duplicate Flow node ids before React Flow renders", () => {
+  const project = makeProject();
+  const duplicateNode = {
+    id: "flow-project-main",
+    type: "text" as const,
+    position: { x: 0, y: 0 },
+    data: { title: "duplicate" },
+  };
+  const normalized = normalizeProjectData({
+    ...project,
+    flow: {
+      revision: 1,
+      links: [],
+      flowNodes: [duplicateNode, { ...duplicateNode, position: { x: 10, y: 10 } }],
+    },
+  });
+
+  assert.deepEqual(normalized.flow?.flowNodes?.map((node) => node.id), [
+    "flow-project-main",
+    "flow-project-main-2",
+  ]);
+});
+
 test("Cinewor is a lazy native Lab without iframe or CDN coupling", async () => {
   const [app, settings, moduleBar, lab, viewport, viteConfig] = await Promise.all([
     readFile(path.join(process.cwd(), "App.tsx"), "utf8"),

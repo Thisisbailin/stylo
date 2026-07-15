@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectData, SyncStatus } from "../types";
 import { backupData } from "../utils/persistence";
 import { restoreLocalProjectMedia } from "../utils/cloudProjectData";
@@ -36,6 +36,7 @@ export type EnsureProjectSynced = (
   snapshot: ProjectData,
   expectedRevision: number
 ) => Promise<ProjectSyncLease>;
+export type ResumeProjectSync = () => void;
 
 const isAbortError = (error: unknown) =>
   error instanceof DOMException && error.name === "AbortError";
@@ -57,6 +58,8 @@ export const useCloudSync = ({
   onStatusChange,
 }: UseCloudSyncOptions) => {
   const engineRef = useRef<VersionedSyncEngine<ProjectData> | null>(null);
+  const suspendedRef = useRef(false);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const projectDataRef = useRef(projectData);
   const callbacksRef = useRef({ onError, onConflictConfirm, onStatusChange, setProjectData });
   const lastRefreshKeyRef = useRef(refreshKey);
@@ -65,7 +68,7 @@ export const useCloudSync = ({
   callbacksRef.current = { onError, onConflictConfirm, onStatusChange, setProjectData };
 
   useEffect(() => {
-    if (!isSignedIn || !isLoaded) {
+    if (!isSignedIn || !isLoaded || suspendedRef.current) {
       callbacksRef.current.onStatusChange?.("disabled", { pendingOps: 0, retryCount: 0 });
       return undefined;
     }
@@ -118,9 +121,10 @@ export const useCloudSync = ({
       if (engineRef.current === engine) engineRef.current = null;
       engine.dispose();
     };
-  }, [accountScope, accountSession, forceClearKey, isLoaded, isSignedIn, localBackupKey, remoteBackupKey, saveDebounceMs]);
+  }, [accountScope, accountSession, forceClearKey, isLoaded, isSignedIn, localBackupKey, remoteBackupKey, saveDebounceMs, sessionGeneration]);
 
   useEffect(() => {
+    if (suspendedRef.current) return;
     engineRef.current?.stage(projectData);
   }, [projectData]);
 
@@ -142,5 +146,28 @@ export const useCloudSync = ({
     return engine.acquire(snapshot, expectedRevision);
   }, []);
 
-  return { flushProjectSync };
+  const suspendProjectSync = useCallback((): ResumeProjectSync => {
+    if (suspendedRef.current) {
+      throw new Error("项目同步会话已处于重置状态。");
+    }
+    suspendedRef.current = true;
+    const engine = engineRef.current;
+    engineRef.current = null;
+    engine?.dispose();
+    callbacksRef.current.onStatusChange?.("syncing", {
+      pendingOps: 1,
+      retryCount: 0,
+      lastAttemptAt: Date.now(),
+    });
+
+    let resumed = false;
+    return () => {
+      if (resumed) return;
+      resumed = true;
+      suspendedRef.current = false;
+      setSessionGeneration((generation) => generation + 1);
+    };
+  }, []);
+
+  return { flushProjectSync, suspendProjectSync };
 };

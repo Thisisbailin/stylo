@@ -837,7 +837,6 @@ const buildFoundationMarkdownIndex = (
       `  - 其它连接：${relatedTitles.length ? relatedTitles.join("、") : "无"}`,
     ];
   }),
-  "",
   ...FOUNDATION_WEIGHTED_AXES.flatMap((axis) => [
     "",
     `## ${getFoundationAxisDefinition(axis).label}`,

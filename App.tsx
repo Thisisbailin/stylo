@@ -37,7 +37,7 @@ import {
   migrateLegacyProductStorage,
 } from './utils/styloMigration';
 import type { SecretsPayload } from './sync/secretsSyncAdapter';
-import { AccountApiSession } from './sync/authenticatedFetch';
+import { AccountApiSession, requireOkResponse } from './sync/authenticatedFetch';
 
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
@@ -236,7 +236,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     () => new AccountApiSession(accountScope, getAuthToken, getDeviceId(), fetch, buildApiUrl),
     [accountScope, getAuthToken]
   );
-  useEffect(() => () => accountSession.dispose(), [accountSession]);
+  useEffect(() => accountSession.retain(), [accountSession]);
   useEffect(() => {
     setApiAuthTokenProvider(authSignedIn ? getAuthToken : null);
     return () => setApiAuthTokenProvider(null);
@@ -469,7 +469,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
 
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
-  const { flushProjectSync } = useCloudSync({
+  const { flushProjectSync, suspendProjectSync } = useCloudSync({
     accountScope,
     isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
@@ -520,21 +520,29 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const handleResetProject = async () => {
     if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
+      const resumeProjectSync = suspendProjectSync();
       const resetProjectId = resolveStyloProjectId(projectDataRef.current);
-      resetNodeFlowProjectState();
-      resetStyloProjectAgentStorage(accountScope, resetProjectId);
-      setProjectResetToken((token) => token + 1);
-      localStorage.setItem(forceCloudClearKey, "1");
-      setProjectData(INITIAL_PROJECT_DATA);
-      localStorage.removeItem(projectStorageKey);
-      localStorage.removeItem(localBackupKey);
-      localStorage.removeItem(remoteBackupKey);
-      localStorage.removeItem(`${localBackupKey}_last_synced`);
-      setAvatarUrl('');
       try {
-        await accountSession.request('/api/account-data-reset', { method: 'DELETE' });
+        resetNodeFlowProjectState();
+        resetStyloProjectAgentStorage(accountScope, resetProjectId);
+        setProjectResetToken((token) => token + 1);
+        localStorage.setItem(forceCloudClearKey, "1");
+        const emptyProject = normalizeProjectData(INITIAL_PROJECT_DATA);
+        projectDataRef.current = emptyProject;
+        setProjectData(emptyProject);
+        localStorage.removeItem(projectStorageKey);
+        localStorage.removeItem(localBackupKey);
+        localStorage.removeItem(remoteBackupKey);
+        localStorage.removeItem(`${localBackupKey}_last_synced`);
+
+        const response = await accountSession.request('/api/account-data-reset', { method: 'DELETE' });
+        await requireOkResponse(response, '清空云端项目失败');
       } catch (error) {
         console.warn('Cloud project reset failed', error);
+      } finally {
+        // A new engine must handshake from version zero. The force-clear marker
+        // remains until that handshake confirms the empty project remotely.
+        resumeProjectSync();
       }
     }
   };
@@ -719,6 +727,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         setConfig={setConfig}
         isSignedIn={!!authSignedIn}
         getAuthToken={getAuthToken}
+        accountSession={accountSession}
         syncState={syncState}
         ensureProjectSynced={flushProjectSync}
         syncRollout={syncRollout}

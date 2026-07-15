@@ -43,6 +43,7 @@ import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 import type { EnsureProjectSynced } from "../../hooks/useCloudSync";
+import type { AccountApiSession } from "../../sync/authenticatedFetch";
 
 interface CreativeWorkspaceProps {
   accountScope: string;
@@ -52,6 +53,7 @@ interface CreativeWorkspaceProps {
   setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
+  accountSession?: AccountApiSession;
   syncState?: SyncState;
   ensureProjectSynced?: EnsureProjectSynced;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
@@ -328,6 +330,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   setConfig,
   isSignedIn,
   getAuthToken,
+  accountSession,
   syncState,
   ensureProjectSynced,
   syncRollout,
@@ -1294,6 +1297,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         setConfig={setConfig}
         isSignedIn={isSignedIn}
         getAuthToken={getAuthToken}
+        accountSession={accountSession}
         syncState={syncState}
         syncRollout={syncRollout}
         onForceSync={onForceSync}

@@ -18,6 +18,10 @@ Binary media is not cloud project state. Cloud project snapshots contain metadat
 8. Local and remote divergence is never resolved by a timeout or silent last-write-wins rule.
 9. `synced` means the server returned a valid version receipt. Agent preparation additionally requires an exact project-revision receipt.
 10. Agent requests start with no project payload. They receive only project identity and the confirmed expected revision, then explore through tools.
+11. The compact cloud representation may omit the duplicate top-level Flow, but normalization must restore it from the selected active project before reading its revision.
+12. Project reset is a synchronization-generation boundary: the previous engine is disposed before local clearing or remote deletion begins.
+13. A terminal `synced` state is published only after active-write accounting settles; `pendingOps` must be zero unless a newer local snapshot exists.
+14. Foundation-only project variants are semantically empty, and Foundation-generated documents must remain byte-stable after project normalization.
 
 ## Account Boundary
 
@@ -25,8 +29,9 @@ Binary media is not cloud project state. Cloud project snapshots contain metadat
 
 - It binds every request to the account's stable token provider and device ID.
 - It retries authentication exactly once with `skipCache` after 401/403.
+- Every request has a hard timeout; a stalled transport cannot leave the UI loading indefinitely.
 - It aborts pending token acquisition and all network requests when the account scope is disposed.
-- Project sync, secret sync, profile, avatar metadata, and account reset use the same session.
+- Project sync, secret sync, profile, avatar metadata, snapshots, restore, audit diagnostics, and account reset use the same session.
 - Clerk bridge callbacks have stable identities; React renders cannot recreate the account session.
 
 Local storage keys include the encoded account scope. Agent conversations additionally include the project ID. Legacy unscoped data remains quarantined until the user explicitly imports it.
@@ -71,6 +76,12 @@ The engine does not own React state, Clerk, fetch URL construction, or project-s
 
 The D1 write guard and data mutations execute in one batch. A successful response confirms both the new remote version and project revision. A 409 response includes the latest hydrated project, remote version, and project revision.
 
+## Project Reset
+
+Reset pauses project synchronization and disposes the current engine before revision zero is installed locally. The client then clears project-scoped Agent state, local baselines and backups, requests remote deletion, and finally starts a new engine generation that performs a version-zero handshake.
+
+The explicit empty-overwrite marker remains until the new handshake confirms either an absent remote project or a committed empty snapshot. Every existing project, Agent, audit, asset, and write-guard row is deleted in one ordered D1 batch. Object-storage cleanup is best-effort after the authoritative D1 reset and cannot convert an already committed project reset into a false failure response.
+
 ## Agent Revision Lease
 
 Agent startup does not wait for the whole canvas to become idle.
@@ -92,6 +103,7 @@ Secrets use the same engine and CAS rules but a separate endpoint, baseline, and
 ## Failure Handling
 
 - Network, 408, 425, 429, and 5xx failures retry with bounded backoff and jitter.
+- Initial loading uses a shorter retry budget than writes, then transitions to an actionable error.
 - Authentication refresh happens in the account session, not in each resource hook.
 - Validation, malformed receipts, 4xx protocol errors, and revision mismatches fail immediately.
 - Going offline preserves the latest staged snapshot without consuming retries.
@@ -101,4 +113,4 @@ Secrets use the same engine and CAS rules but a separate endpoint, baseline, and
 
 ## Verification
 
-The regression suite covers account isolation, token refresh, token-wait abort, initial pull gating, immutable snapshots, serialized writes, retry idempotency, CAS conflict choices, remote-version rebasing, Agent write holds, exact revision receipts, offline/runtime compatibility, and disposal during in-flight work.
+The regression suite covers account isolation, token refresh, token-wait abort, initial pull gating, immutable snapshots, serialized writes, settled pending counts, semantic-empty Foundation variants, Foundation normalization idempotency, atomic account reset, retry idempotency, CAS conflict choices, remote-version rebasing, Agent write holds, exact revision receipts, offline/runtime compatibility, and disposal during in-flight work.

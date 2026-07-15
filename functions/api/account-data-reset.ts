@@ -21,63 +21,57 @@ const getSupabaseAdmin = (env: Env) => {
   return createClient(supabaseUrl, serviceRole);
 };
 
-const tableExists = async (env: Env, table: string) => {
-  const row = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?1")
-    .bind(table)
-    .first();
-  return !!row;
-};
+type ResetPlan = { table: string; sql: string; requires?: string };
 
-const deleteIfTableExists = async (env: Env, table: string, sql: string, ...bindings: unknown[]) => {
-  if (!(await tableExists(env, table))) return 0;
-  const result = await env.DB.prepare(sql).bind(...bindings).run();
-  return Number(result?.meta?.changes || 0);
-};
+const PROJECT_RESET_PLANS: ResetPlan[] = [
+  {
+    table: "agent_spans",
+    sql: "DELETE FROM agent_spans WHERE trace_id IN (SELECT trace_id FROM agent_traces WHERE user_id = ?1)",
+    requires: "agent_traces",
+  },
+  { table: "agent_traces", sql: "DELETE FROM agent_traces WHERE user_id = ?1" },
+  { table: "agent_sessions", sql: "DELETE FROM agent_sessions WHERE user_id = ?1" },
+  { table: "user_project_flow_nodes", sql: "DELETE FROM user_project_flow_nodes WHERE user_id = ?1" },
+  { table: "user_seedance_assets", sql: "DELETE FROM user_seedance_assets WHERE user_id = ?1" },
+  { table: "user_project_scenes", sql: "DELETE FROM user_project_scenes WHERE user_id = ?1" },
+  { table: "user_project_episodes", sql: "DELETE FROM user_project_episodes WHERE user_id = ?1" },
+  { table: "user_project_snapshots", sql: "DELETE FROM user_project_snapshots WHERE user_id = ?1" },
+  { table: "user_project_characters", sql: "DELETE FROM user_project_characters WHERE user_id = ?1" },
+  { table: "user_project_locations", sql: "DELETE FROM user_project_locations WHERE user_id = ?1" },
+  { table: "user_project_flow_projects", sql: "DELETE FROM user_project_flow_projects WHERE user_id = ?1" },
+  { table: "user_project_write_guards", sql: "DELETE FROM user_project_write_guards WHERE user_id = ?1" },
+  { table: "user_projects", sql: "DELETE FROM user_projects WHERE user_id = ?1" },
+  { table: "user_project_changes", sql: "DELETE FROM user_project_changes WHERE user_id = ?1" },
+  { table: "user_project_meta", sql: "DELETE FROM user_project_meta WHERE user_id = ?1" },
+  { table: "user_sync_audit", sql: "DELETE FROM user_sync_audit WHERE user_id = ?1" },
+];
 
-const resetD1UserData = async (env: Env, userId: string, includeAccountSettings: boolean) => {
-  const changes: Record<string, number> = {};
-  const add = (table: string, count: number) => {
-    changes[table] = (changes[table] || 0) + count;
-  };
+const ACCOUNT_RESET_PLANS: ResetPlan[] = [
+  { table: "user_profile", sql: "DELETE FROM user_profile WHERE user_id = ?1" },
+  { table: "user_secrets", sql: "DELETE FROM user_secrets WHERE user_id = ?1" },
+];
 
-  if (await tableExists(env, "agent_traces")) {
-    add(
-      "agent_spans",
-      await deleteIfTableExists(
-        env,
-        "agent_spans",
-        "DELETE FROM agent_spans WHERE trace_id IN (SELECT trace_id FROM agent_traces WHERE user_id = ?1)",
-        userId
-      )
-    );
-  }
-  add("agent_traces", await deleteIfTableExists(env, "agent_traces", "DELETE FROM agent_traces WHERE user_id = ?1", userId));
-  add("agent_sessions", await deleteIfTableExists(env, "agent_sessions", "DELETE FROM agent_sessions WHERE user_id = ?1", userId));
+export const resetD1UserData = async (env: Env, userId: string, includeAccountSettings: boolean) => {
+  const tableRows = await env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table'"
+  ).all();
+  const existingTables = new Set<string>(
+    (tableRows?.results || [])
+      .map((row: { name?: unknown }) => typeof row.name === "string" ? row.name : "")
+      .filter(Boolean)
+  );
+  const plans = [
+    ...PROJECT_RESET_PLANS,
+    ...(includeAccountSettings ? ACCOUNT_RESET_PLANS : []),
+  ].filter((plan) => existingTables.has(plan.table) && (!plan.requires || existingTables.has(plan.requires)));
+  if (!plans.length) return {};
 
-  const projectTables = [
-    "user_project_flow_nodes",
-    "user_project_flow_projects",
-    "user_project_scenes",
-    "user_project_episodes",
-    "user_project_snapshots",
-    "user_project_characters",
-    "user_project_locations",
-    "user_project_meta",
-    "user_projects",
-    "user_project_changes",
-  ];
-  for (const table of projectTables) {
-    add(table, await deleteIfTableExists(env, table, `DELETE FROM ${table} WHERE user_id = ?1`, userId));
-  }
-
-  add("user_sync_audit", await deleteIfTableExists(env, "user_sync_audit", "DELETE FROM user_sync_audit WHERE user_id = ?1", userId));
-
-  if (includeAccountSettings) {
-    add("user_profile", await deleteIfTableExists(env, "user_profile", "DELETE FROM user_profile WHERE user_id = ?1", userId));
-    add("user_secrets", await deleteIfTableExists(env, "user_secrets", "DELETE FROM user_secrets WHERE user_id = ?1", userId));
-  }
-
-  return changes;
+  const results = await env.DB.batch(
+    plans.map((plan) => env.DB.prepare(plan.sql).bind(userId))
+  );
+  return Object.fromEntries(
+    plans.map((plan, index) => [plan.table, Number(results?.[index]?.meta?.changes || 0)])
+  );
 };
 
 const collectStoragePaths = async (
@@ -163,12 +157,32 @@ const handleReset = async (context: { request: Request; env: Env }) => {
     const { scope } = await parseResetOptions(context.request);
     const includeAccountSettings = scope === "all";
     const d1 = await resetD1UserData(context.env, userId, includeAccountSettings);
-    const storage = await deleteStorageUserData(context.env, userId);
+    let storage: Awaited<ReturnType<typeof deleteStorageUserData>> | {
+      skipped: true;
+      reason: string;
+      buckets: Record<string, never>;
+    };
+    const warnings: string[] = [];
+    try {
+      storage = await deleteStorageUserData(context.env, userId);
+    } catch (error) {
+      // D1 is the source of truth for project and Agent state. Object cleanup is
+      // best-effort and must not turn an already committed reset into a false
+      // failure response that causes the client to replay stale project writes.
+      console.error("Account storage cleanup failed after D1 reset", error);
+      warnings.push("Project state was reset, but some object storage cleanup must be retried.");
+      storage = {
+        skipped: true,
+        reason: "Storage cleanup failed after project reset",
+        buckets: {},
+      };
+    }
     return jsonResponse({
       ok: true,
       scope,
       d1,
       storage,
+      ...(warnings.length ? { warnings } : {}),
     });
   } catch (error: any) {
     if (error instanceof Response) return error;

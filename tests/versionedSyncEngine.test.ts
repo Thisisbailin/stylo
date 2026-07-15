@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   RemoteConflictAcceptedError,
+  type SyncStatusDetail,
   SyncProtocolError,
   VersionedSyncEngine,
   type SyncBaseline,
@@ -44,6 +45,9 @@ const createEngine = (
     createOperationId?: () => string;
     baseline?: ReturnType<typeof createBaselineStore>;
     debounceMs?: number;
+    onEmptyOverwriteCommitted?: () => void;
+    onStatusChange?: (status: string, error?: string) => void;
+    onStatusDetail?: (status: string, detail?: SyncStatusDetail) => void;
   } = {}
 ) => new VersionedSyncEngine<TestDocument>({
   transport,
@@ -56,6 +60,11 @@ const createEngine = (
   sleep: async () => undefined,
   random: () => 0,
   createOperationId: options.createOperationId,
+  onEmptyOverwriteCommitted: options.onEmptyOverwriteCommitted,
+  onStatusChange: (status, detail) => {
+    options.onStatusChange?.(status, detail?.error);
+    options.onStatusDetail?.(status, detail);
+  },
 });
 
 test("initial handshake applies a non-empty remote snapshot without pushing local empty state", async () => {
@@ -77,6 +86,136 @@ test("initial handshake applies a non-empty remote snapshot without pushing loca
 
   assert.deepEqual(applied, { revision: 4, text: "remote" });
   assert.equal(saves, 0);
+  engine.dispose();
+});
+
+test("an absent remote confirms an explicit empty reset and clears its reset marker", async () => {
+  let resetConfirmed = 0;
+  const engine = createEngine({
+    load: async () => null,
+    save: async () => {
+      throw new Error("must not save an already absent project");
+    },
+  }, {
+    onEmptyOverwriteCommitted: () => {
+      resetConfirmed += 1;
+    },
+  });
+
+  await engine.start({ revision: 0, text: "" });
+
+  assert.equal(resetConfirmed, 1);
+  engine.dispose();
+});
+
+test("the initial React stage echo is consumed by the handshake instead of remaining pending", async () => {
+  let markLoadStarted: () => void = () => undefined;
+  const loadStarted = new Promise<void>((resolve) => {
+    markLoadStarted = resolve;
+  });
+  let resolveLoad: (value: { value: TestDocument; version: number }) => void = () => {
+    throw new Error("load did not start");
+  };
+  let saves = 0;
+  const engine = createEngine({
+    load: async () => new Promise((resolve) => {
+      resolveLoad = resolve;
+      markLoadStarted();
+    }),
+    save: async () => {
+      saves += 1;
+      return { kind: "saved" as const, version: 2, revision: 1 };
+    },
+  });
+  const initial = { revision: 1, text: "same" };
+  const started = engine.start(initial);
+  engine.stage(initial);
+  await loadStarted;
+  resolveLoad({ value: initial, version: 1 });
+
+  await started;
+  await tick();
+
+  assert.equal(saves, 0);
+  engine.dispose();
+});
+
+test("a real edit staged during the handshake is reconciled instead of discarded", async () => {
+  let markLoadStarted: () => void = () => undefined;
+  const loadStarted = new Promise<void>((resolve) => {
+    markLoadStarted = resolve;
+  });
+  let resolveLoad: (value: { value: TestDocument; version: number }) => void = () => {
+    throw new Error("load did not start");
+  };
+  const saved: TestDocument[] = [];
+  const engine = createEngine({
+    load: async () => new Promise((resolve) => {
+      resolveLoad = resolve;
+      markLoadStarted();
+    }),
+    save: async (request) => {
+      saved.push(request.value);
+      return { kind: "saved" as const, version: 2, revision: request.value.revision };
+    },
+  });
+  const started = engine.start({ revision: 1, text: "base" });
+  engine.stage({ revision: 2, text: "edited while loading" });
+  await loadStarted;
+  resolveLoad({ value: { revision: 1, text: "base" }, version: 1 });
+
+  await started;
+
+  assert.deepEqual(saved, [{ revision: 2, text: "edited while loading" }]);
+  engine.dispose();
+});
+
+test("a successful write publishes a settled zero pending count", async () => {
+  const statusDetails: Array<{ status: string; pendingOps?: number }> = [];
+  const engine = createEngine({
+    load: async () => ({ value: { revision: 1, text: "base" }, version: 1 }),
+    save: async (request) => ({
+      kind: "saved" as const,
+      version: 2,
+      revision: request.value.revision,
+    }),
+  }, {
+    onStatusDetail: (status, detail) => statusDetails.push({
+      status,
+      pendingOps: detail?.pendingOps,
+    }),
+  });
+
+  await engine.start({ revision: 1, text: "base" });
+  const lease = await engine.acquire({ revision: 2, text: "saved" }, 2);
+  lease.release();
+
+  assert.deepEqual(statusDetails.at(-1), { status: "synced", pendingOps: 0 });
+  engine.dispose();
+});
+
+test("system-only empty variants do not create phantom pending writes", async () => {
+  const statusDetails: Array<{ status: string; pendingOps?: number }> = [];
+  let saves = 0;
+  const engine = createEngine({
+    load: async () => ({ value: { revision: 0, text: "" }, version: 4 }),
+    save: async () => {
+      saves += 1;
+      throw new Error("must not persist a semantically empty scaffold variant");
+    },
+  }, {
+    onStatusDetail: (status, detail) => statusDetails.push({
+      status,
+      pendingOps: detail?.pendingOps,
+    }),
+  });
+
+  await engine.start({ revision: 1, text: "" });
+  engine.stage({ revision: 2, text: "" });
+  await tick();
+
+  assert.equal(saves, 0);
+  assert.deepEqual(statusDetails.at(-1), { status: "synced", pendingOps: 0 });
   engine.dispose();
 });
 
@@ -309,5 +448,27 @@ test("a failed initial handshake never enables a project push", async () => {
   await assert.rejects(engine.start({ revision: 1, text: "local" }), /invalid auth/);
   await assert.rejects(engine.acquire({ revision: 1, text: "local" }, 1), /invalid auth|首次握手/);
   assert.equal(saves, 0);
+  engine.dispose();
+});
+
+test("staging after a failed handshake cannot disguise the error as loading", async () => {
+  const statuses: Array<{ status: string; error?: string }> = [];
+  const engine = createEngine({
+    load: async () => {
+      throw new Error("backend unavailable");
+    },
+    save: async () => {
+      throw new Error("must not save");
+    },
+  }, {
+    debounceMs: 50,
+    onStatusChange: (status, error) => statuses.push({ status, error }),
+  });
+
+  await assert.rejects(engine.start({ revision: 0, text: "" }), /backend unavailable/);
+  engine.stage({ revision: 1, text: "local edit" });
+
+  assert.equal(statuses.at(-1)?.status, "error");
+  assert.match(statuses.at(-1)?.error || "", /backend unavailable/);
   engine.dispose();
 });

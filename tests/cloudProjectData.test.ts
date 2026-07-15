@@ -7,6 +7,8 @@ import {
   restoreLocalProjectMedia,
   toCloudProjectData,
 } from "../utils/cloudProjectData";
+import { normalizeProjectData } from "../utils/projectData";
+import { projectSyncCodec, readActiveFlowRevision } from "../sync/projectSyncAdapter";
 
 const createProject = (): ProjectData => {
   const image = `data:image/png;base64,${"a".repeat(2_000_000)}`;
@@ -68,6 +70,19 @@ test("cloud project projection excludes inline media and duplicate legacy flow",
   assert.equal(hasInlineProjectMedia(local), true);
   assert.ok(JSON.stringify(cloud).length < 20_000);
   assert.match(String(local.flowProjects?.[0]?.flow.flowNodes?.[0]?.data.image), /^data:image\/png/);
+});
+
+test("cloud projection round-trip preserves the active Flow and its revision", () => {
+  const local = createProject();
+  const wireProject = JSON.parse(JSON.stringify(toCloudProjectData(local))) as ProjectData;
+  const normalized = normalizeProjectData(wireProject);
+  const immutableSnapshot = projectSyncCodec.snapshot(local);
+
+  assert.equal(normalized.flow?.revision, 4);
+  assert.equal(normalized.flowProjects?.[0]?.flow.revision, 4);
+  assert.equal(normalized.flow?.flowNodes?.[0]?.id, "image-1");
+  assert.equal(readActiveFlowRevision(immutableSnapshot), 4);
+  assert.equal(immutableSnapshot.flowProjects?.[0]?.flow.flowNodes?.[0]?.id, "image-1");
 });
 
 test("remote cloud metadata preserves matching local media by node id", () => {

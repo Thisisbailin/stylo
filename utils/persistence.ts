@@ -7,29 +7,37 @@ export const dropFileReplacer = (_key: string, value: any) => {
   return value;
 };
 
+const hasUserFlowContent = (flow: ProjectData["flow"]) => {
+  const nodes = Array.isArray(flow?.flowNodes) ? flow.flowNodes : [];
+  const userNodeIds = new Set(
+    nodes
+      .filter((node) => {
+        const data = node?.data as Record<string, unknown> | undefined;
+        return typeof data?.foundationRole !== "string";
+      })
+      .map((node) => node.id),
+  );
+  const hasUserLinks = Array.isArray(flow?.links) && flow.links.some(
+    (link) => userNodeIds.has(link.source) || userNodeIds.has(link.target),
+  );
+  return (
+    userNodeIds.size > 0 ||
+    hasUserLinks ||
+    (Array.isArray(flow?.graphLinks) && flow.graphLinks.length > 0) ||
+    (Array.isArray(flow?.globalAssetHistory) && flow.globalAssetHistory.length > 0)
+  );
+};
+
 export const isProjectEmpty = (data: ProjectData) => {
   const hasEps = Array.isArray(data.episodes) && data.episodes.length > 0;
   const hasScript = !!(data.rawScript && data.rawScript.trim().length > 0);
   const hasDesignAssets = Array.isArray(data.designAssets) && data.designAssets.length > 0;
   const hasRoles = Array.isArray(data.roles) && data.roles.length > 0;
-  const hasActiveFlowNodes = Array.isArray(data.flow?.flowNodes) && data.flow.flowNodes.length > 0;
-  const hasActiveFlowLinks =
-    (Array.isArray(data.flow?.links) && data.flow.links.length > 0) ||
-    (Array.isArray(data.flow?.graphLinks) && data.flow.graphLinks.length > 0);
-  const hasActiveFlowAssets =
-    Array.isArray(data.flow?.globalAssetHistory) && data.flow.globalAssetHistory.length > 0;
+  const hasActiveFlowContent = hasUserFlowContent(data.flow);
   const hasFlowProjects =
     Array.isArray(data.flowProjects) &&
-    data.flowProjects.some((project) => {
-      const flow = project?.flow;
-      return (
-        (Array.isArray(flow?.flowNodes) && flow.flowNodes.length > 0) ||
-        (Array.isArray(flow?.links) && flow.links.length > 0) ||
-        (Array.isArray(flow?.graphLinks) && flow.graphLinks.length > 0) ||
-        (Array.isArray(flow?.globalAssetHistory) && flow.globalAssetHistory.length > 0)
-      );
-    });
-  return !hasEps && !hasScript && !hasDesignAssets && !hasRoles && !hasActiveFlowNodes && !hasActiveFlowLinks && !hasActiveFlowAssets && !hasFlowProjects;
+    data.flowProjects.some((project) => hasUserFlowContent(project?.flow));
+  return !hasEps && !hasScript && !hasDesignAssets && !hasRoles && !hasActiveFlowContent && !hasFlowProjects;
 };
 
 export const backupData = (key: string, data: ProjectData) => {

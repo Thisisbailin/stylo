@@ -78,13 +78,16 @@ const isRetryableStatus = (status: number) =>
  */
 export class AccountApiSession {
   private readonly controller = new AbortController();
+  private leaseCount = 0;
+  private leaseGeneration = 0;
 
   constructor(
     readonly accountScope: string,
     private readonly getToken: AccountTokenProvider,
     private readonly deviceId: string,
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly resolveUrl: (path: string) => string = (path) => path
+    private readonly resolveUrl: (path: string) => string = (path) => path,
+    private readonly requestTimeoutMs = 10_000,
   ) {}
 
   get signal() {
@@ -95,32 +98,79 @@ export class AccountApiSession {
     this.controller.abort();
   }
 
+  /**
+   * Keeps a memoized session alive across React StrictMode's synthetic cleanup.
+   * The final release disposes in a microtask, giving an immediate remount a
+   * chance to acquire a new lease without reusing an aborted session.
+   */
+  retain() {
+    this.signal.throwIfAborted();
+    this.leaseCount += 1;
+    this.leaseGeneration += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.leaseCount = Math.max(0, this.leaseCount - 1);
+      const releaseGeneration = ++this.leaseGeneration;
+      queueMicrotask(() => {
+        if (this.leaseCount === 0 && this.leaseGeneration === releaseGeneration) {
+          this.dispose();
+        }
+      });
+    };
+  }
+
   async request(path: string, init: RequestInit = {}, signal?: AbortSignal) {
     this.signal.throwIfAborted();
-    const combined = combineAbortSignals([this.signal, signal, init.signal ?? undefined]);
+    const timeoutController = new AbortController();
+    const timeout = this.requestTimeoutMs > 0
+      ? setTimeout(() => timeoutController.abort(), this.requestTimeoutMs)
+      : null;
+    const combined = combineAbortSignals([
+      this.signal,
+      signal,
+      init.signal ?? undefined,
+      timeoutController.signal,
+    ]);
     const requestSignal = combined.signal;
+    const callerAborted = () =>
+      this.signal.aborted || signal?.aborted === true || init.signal?.aborted === true;
 
     const execute = async (skipCache: boolean) => {
-      const token = await awaitWithAbort(
-        this.getToken(skipCache ? { skipCache: true } : undefined),
-        requestSignal
-      );
-      requestSignal?.throwIfAborted();
-      if (!token) {
-        throw new SyncTransportError("无法取得当前账户的认证令牌。", { status: 401 });
-      }
       try {
-        return await this.fetchImpl(this.resolveUrl(path), {
-          ...init,
-          headers: {
-            ...Object.fromEntries(new Headers(init.headers).entries()),
-            authorization: `Bearer ${token}`,
-            "x-device-id": this.deviceId,
+        const token = await awaitWithAbort(
+          this.getToken(skipCache ? { skipCache: true } : undefined),
+          requestSignal
+        );
+        requestSignal?.throwIfAborted();
+        if (!token) {
+          throw new SyncTransportError("无法取得当前账户的认证令牌。", { status: 401 });
+        }
+        const response = await this.fetchImpl.call(
+          globalThis,
+          this.resolveUrl(path),
+          {
+            ...init,
+            headers: {
+              ...Object.fromEntries(new Headers(init.headers).entries()),
+              authorization: `Bearer ${token}`,
+              "x-device-id": this.deviceId,
+            },
+            signal: requestSignal,
           },
-          signal: requestSignal,
-        });
+        );
+        return response;
       } catch (error) {
-        if (requestSignal?.aborted) throw new DOMException("Account sync session was disposed", "AbortError");
+        if (callerAborted()) {
+          throw new DOMException("Account sync session was disposed", "AbortError");
+        }
+        if (timeoutController.signal.aborted) {
+          throw new SyncTransportError(`请求超时（${this.requestTimeoutMs}ms）。`, {
+            retryable: true,
+          });
+        }
+        if (error instanceof SyncTransportError) throw error;
         throw new SyncTransportError(
           error instanceof Error ? error.message : "网络请求失败。",
           { retryable: true }
@@ -136,6 +186,7 @@ export class AccountApiSession {
       }
       return response;
     } finally {
+      if (timeout) clearTimeout(timeout);
       combined.cleanup();
     }
   }
