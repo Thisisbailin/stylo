@@ -1,5 +1,6 @@
 import { getUserId, jsonResponse } from "./_auth";
 import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
+import { requireRequestProjectId } from "./_projectScope";
 
 type Env = {
   DB: any;
@@ -37,16 +38,17 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         { status: 403 }
       );
     }
+    const projectId = requireRequestProjectId(context.request);
     const [rows, currentMeta] = await Promise.all([
       context.env.DB.prepare(
-        "SELECT version, created_at FROM user_project_snapshots WHERE user_id = ?1 ORDER BY version DESC LIMIT 20"
+        "SELECT version, created_at FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 ORDER BY version DESC LIMIT 20"
       )
-        .bind(userId)
+        .bind(userId, projectId)
         .all(),
       context.env.DB.prepare(
-        "SELECT updated_at FROM user_project_meta WHERE user_id = ?1"
+        "SELECT updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
       )
-        .bind(userId)
+        .bind(userId, projectId)
         .first(),
     ]);
 

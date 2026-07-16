@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getUserId, JSON_HEADERS } from './_auth';
 import { readJsonRequest } from './_request';
 import type { PagesContext } from './_types';
+import { normalizeProjectId } from './_projectScope';
 
 type Env = {
   CLERK_SECRET_KEY: string;
@@ -49,16 +50,17 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     const userId = await getUserId(request, env);
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const path = sanitizePath(payload?.path);
+    const projectId = normalizeProjectId(payload?.projectId);
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
     const expiresIn = normalizeExpiresIn(payload?.expiresIn ?? 3600);
-    if (!path) {
+    if (!path || !projectId) {
       return new Response('path required', { status: 400 });
     }
     if (!bucket) {
       return new Response('bucket not allowed', { status: 400 });
     }
-    const userPrefix = `users/${userId}/`;
-    if (!path.startsWith(userPrefix)) {
+    const projectPrefix = `users/${userId}/projects/${projectId}/`;
+    if (!path.startsWith(projectPrefix)) {
       return new Response('path forbidden', { status: 403 });
     }
     const supabaseUrl = env.SUPABASE_URL;

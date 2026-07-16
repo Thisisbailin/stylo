@@ -218,9 +218,17 @@ For local D1 development, use the same command with `--local`. The migration fil
 
 - `functions/api/agent.ts`: edge agent runtime over `@openai/agents`
 - `functions/api/project.ts`: authenticated project persistence and delta sync
+- `functions/api/projects.ts`: authenticated cloud-project catalog
+- `functions/api/project-lease.ts`: exclusive per-project edit lease and heartbeat
 - `functions/api/project-snapshots.ts`: snapshot history
 - `functions/api/project-restore.ts`: restore from snapshots
 - `functions/api/upload-url.ts`: Supabase signed upload URL helper
+
+Cloud project authorities are isolated by `(user_id, project_id)`. D1 project,
+Agent, trace, and generated-asset rows carry an explicit `project_id`; Supabase
+objects live below `users/{user_id}/projects/{project_id}/`. Migration `0003`
+intentionally clears pre-scope development project data while preserving account
+profiles and encrypted secrets.
 - `functions/api/download-url.ts`: Supabase download URL helper
 
 ## Product Structure

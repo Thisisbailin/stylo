@@ -180,12 +180,13 @@ const readImageHasAlpha = async (file: File) => {
   return pngHasTransparency(await file.arrayBuffer());
 };
 
-const uploadImageFile = async (file: File): Promise<UploadedImage> => {
+const uploadImageFile = async (file: File, projectId: string): Promise<UploadedImage> => {
   const contentType = file.type || "image/png";
   const uploaded = await uploadStorageFile(file, {
     fileName: buildStorageFileName("image-inputs", file.name, contentType),
     bucket: "assets",
     contentType,
+    projectId,
   });
   return { url: uploaded.url, object: uploaded.object };
 };
@@ -193,7 +194,8 @@ const uploadImageFile = async (file: File): Promise<UploadedImage> => {
 const uploadImageForAssetReview = async (
   source: string,
   filename?: string | null,
-  forcePublicCopy = false
+  forcePublicCopy = false,
+  projectId = ""
 ): Promise<UploadedImage> => {
   if (isPublicHttpsUrl(source) && !forcePublicCopy) return { url: source, object: null };
 
@@ -205,6 +207,7 @@ const uploadImageForAssetReview = async (
     fileName: buildStorageFileName("seedance-assets", filename || "stylo-aigc-portrait", contentType),
     bucket: "public-assets",
     contentType,
+    projectId,
   });
   if (!isPublicHttpsUrl(uploaded.url)) {
     throw new Error("仿真人审核需要 public-assets 返回稳定 HTTPS publicUrl。");
@@ -222,6 +225,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
   const skipNextCursorUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
   const { updateNodeData, updateNodeStyle, getNodeById, nodeFlowContext } = useNodeFlowStore();
+  const projectId = nodeFlowContext.projectId || "";
 
   const [labelDraft, setLabelDraft] = useState(data.label || "");
   const [cursorPos, setCursorPos] = useState(labelDraft.length);
@@ -455,7 +459,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     resolvePrivateStorageUrl({
       bucket: data.storageBucket || "assets",
       path: data.storagePath,
-    })
+    }, projectId)
       .then((url) => {
         if (!cancelled && url && url !== data.image) updateNodeData(id, { image: url });
       })
@@ -465,7 +469,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
     return () => {
       cancelled = true;
     };
-  }, [data.storageBucket, data.storagePath, id, updateNodeData]);
+  }, [data.storageBucket, data.storagePath, id, projectId, updateNodeData]);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -479,13 +483,13 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
         readImageDimensions(previewUrl),
         readImageHasAlpha(file),
       ]);
-      const uploaded = await uploadImageFile(file);
+      const uploaded = await uploadImageFile(file, projectId);
       const previousObjects = collectOwnedStorageObjects([{ data }]);
       if (previousObjects.length > 0) {
         try {
-          await deleteOwnedStorageObjects(previousObjects);
+          await deleteOwnedStorageObjects(previousObjects, projectId);
         } catch (error) {
-          await deleteOwnedStorageObjects(uploaded.object ? [uploaded.object] : []).catch(() => undefined);
+          await deleteOwnedStorageObjects(uploaded.object ? [uploaded.object] : [], projectId).catch(() => undefined);
           throw error;
         }
       }
@@ -535,7 +539,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       assetUri: null,
     });
     try {
-      const uploadedSource = await uploadImageForAssetReview(data.image, data.filename, !!data.storagePath);
+      const uploadedSource = await uploadImageForAssetReview(data.image, data.filename, !!data.storagePath, projectId);
       const previousReviewObjects = collectOwnedStorageObjects([{
         data: {
           assetSourceBucket: data.assetSourceBucket,
@@ -544,9 +548,9 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       }]);
       if (previousReviewObjects.length > 0) {
         try {
-          await deleteOwnedStorageObjects(previousReviewObjects);
+          await deleteOwnedStorageObjects(previousReviewObjects, projectId);
         } catch (error) {
-          await deleteOwnedStorageObjects(uploadedSource.object ? [uploadedSource.object] : []).catch(() => undefined);
+          await deleteOwnedStorageObjects(uploadedSource.object ? [uploadedSource.object] : [], projectId).catch(() => undefined);
           throw error;
         }
       }
@@ -558,6 +562,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
         assetSourcePath: uploadedSource.object?.path || null,
       });
       const created = await SeedanceVideoService.createSeedanceAsset({
+        projectId,
         url: uploadedSource.url,
         name: data.filename || data.label || `stylo-aigc-${Date.now()}`,
         groupId: data.assetGroupId || null,
@@ -575,7 +580,7 @@ export const ImageInputNode: React.FC<Props> = ({ id, data, selected }) => {
       if (created.status === "Active") return;
       for (let attempt = 0; attempt < 60; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
-        const current = await SeedanceVideoService.getSeedanceAsset(created.assetId);
+        const current = await SeedanceVideoService.getSeedanceAsset(projectId, created.assetId);
         if (current.status === "Active") {
           updateNodeData(id, {
             assetAuditStatus: "active",

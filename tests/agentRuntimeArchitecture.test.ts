@@ -824,7 +824,7 @@ test("prompt catalog follows the registered tool graph and excludes legacy tool 
 
 test("Edge sessions use optimistic concurrency and the API delegates bridge and stream adapters", () => {
   const sessionSource = readFileSync("functions/api/_agentSessions.ts", "utf8");
-  assert.match(sessionSource, /WHERE session_key=\?1 AND updated_at=\?7/);
+  assert.match(sessionSource, /WHERE session_key=\?1 AND project_id=\?4 AND user_id IS \?3 AND updated_at=\?8/);
   assert.match(sessionSource, /Agent session update conflicted repeatedly/);
   const apiSource = readFileSync("functions/api/agent.ts", "utf8");
   assert.match(apiSource, /from "\.\/_agentBridgeState"/);

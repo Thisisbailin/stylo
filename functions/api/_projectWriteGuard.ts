@@ -12,6 +12,7 @@ export const createProjectWriteGuardId = (userId: string, opId?: string) =>
 export const buildProjectWriteGuardStatement = (
   db: D1DatabaseLike,
   userId: string,
+  projectId: string,
   guardId: string,
   existing: boolean,
   expectedUpdatedAt?: number
@@ -23,12 +24,12 @@ export const buildProjectWriteGuardStatement = (
          SELECT CASE
            WHEN EXISTS (
              SELECT 1 FROM user_project_meta
-             WHERE user_id = ?2 AND updated_at = ?3
+             WHERE user_id = ?2 AND project_id = ?3 AND updated_at = ?4
            )
            THEN 1 ELSE NULL
          END
        ))`
-    ).bind(guardId, userId, expectedUpdatedAt);
+    ).bind(guardId, userId, projectId, expectedUpdatedAt);
   }
 
   return db.prepare(
@@ -37,12 +38,12 @@ export const buildProjectWriteGuardStatement = (
        SELECT CASE
          WHEN NOT EXISTS (
            SELECT 1 FROM user_project_meta
-           WHERE user_id = ?2
+           WHERE user_id = ?2 AND project_id = ?3
          )
          THEN 1 ELSE NULL
        END
      ))`
-  ).bind(guardId, userId);
+  ).bind(guardId, userId, projectId);
 };
 
 export const buildProjectWriteGuardCleanupStatement = (

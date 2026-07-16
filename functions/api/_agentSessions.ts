@@ -60,16 +60,22 @@ const normalizeRecord = (row: any): PersistedAgentSessionRecord => {
   return { items, messages, updatedAt };
 };
 
-const readAgentSessionRecord = async (env: EnvWithDb, sessionKey: string): Promise<PersistedAgentSessionRecord> => {
+const readAgentSessionRecord = async (
+  env: EnvWithDb,
+  projectId: string,
+  sessionKey: string,
+  userId: string | null,
+): Promise<PersistedAgentSessionRecord> => {
   const row = await env.DB.prepare(
-    "SELECT items, messages, updated_at FROM agent_sessions WHERE session_key = ?1"
-  ).bind(sessionKey).first();
+    "SELECT items, messages, updated_at FROM agent_sessions WHERE session_key = ?1 AND project_id = ?2 AND user_id IS ?3"
+  ).bind(sessionKey, projectId, userId).first();
   if (!row) return { items: [], messages: [], updatedAt: 0 };
   return normalizeRecord(row);
 };
 
 const compareAndSetAgentSessionRecord = async (
   env: EnvWithDb,
+  projectId: string,
   sessionKey: string,
   sessionId: string,
   userId: string | null,
@@ -80,16 +86,17 @@ const compareAndSetAgentSessionRecord = async (
     sessionKey,
     sessionId,
     userId,
+    projectId,
     JSON.stringify(record.items),
     JSON.stringify(record.messages),
     record.updatedAt,
   ];
   const result = expectedUpdatedAt === 0
     ? await env.DB.prepare(
-        "INSERT INTO agent_sessions (session_key, session_id, user_id, items, messages, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(session_key) DO NOTHING"
+        "INSERT INTO agent_sessions (session_key, session_id, user_id, project_id, items, messages, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(session_key) DO NOTHING"
       ).bind(...values).run()
     : await env.DB.prepare(
-        "UPDATE agent_sessions SET session_id=?2, user_id=?3, items=?4, messages=?5, updated_at=?6 WHERE session_key=?1 AND updated_at=?7"
+        "UPDATE agent_sessions SET session_id=?2, user_id=?3, project_id=?4, items=?5, messages=?6, updated_at=?7 WHERE session_key=?1 AND project_id=?4 AND user_id IS ?3 AND updated_at=?8"
       ).bind(...values, expectedUpdatedAt).run();
   return Number(result?.meta?.changes ?? result?.changes ?? 0) > 0;
 };
@@ -116,14 +123,15 @@ export const migrateLegacyD1AgentSession = async (
 ) => {
   if (!sessionId.startsWith(CURRENT_AGENT_SESSION_PREFIX)) return false;
   const currentSessionKey = createAgentSessionKey(projectId, sessionId, userId);
-  const current = await readAgentSessionRecord(env, currentSessionKey);
+  const current = await readAgentSessionRecord(env, projectId, currentSessionKey, userId);
   if (current.updatedAt > 0) return false;
   const legacySessionId = `${LEGACY_AGENT_SESSION_PREFIX}${sessionId.slice(CURRENT_AGENT_SESSION_PREFIX.length)}`;
   const legacySessionKey = createAgentSessionKey(projectId, legacySessionId, userId);
-  const legacy = await readAgentSessionRecord(env, legacySessionKey);
+  const legacy = await readAgentSessionRecord(env, projectId, legacySessionKey, userId);
   if (legacy.updatedAt <= 0) return false;
   return compareAndSetAgentSessionRecord(
     env,
+    projectId,
     currentSessionKey,
     sessionId,
     userId,
@@ -135,6 +143,7 @@ export const migrateLegacyD1AgentSession = async (
 export class D1EdgeSession implements Session {
   constructor(
     private readonly env: EnvWithDb,
+    private readonly projectId: string,
     private readonly sessionId: string,
     private readonly sessionKey: string,
     private readonly userId: string | null
@@ -145,19 +154,20 @@ export class D1EdgeSession implements Session {
   }
 
   async getItems(limit?: number): Promise<AgentInputItem[]> {
-    const record = await readAgentSessionRecord(this.env, this.sessionKey);
+    const record = await readAgentSessionRecord(this.env, this.projectId, this.sessionKey, this.userId);
     return trimSessionItems(record.items, limit);
   }
 
   async addItems(items: AgentInputItem[]): Promise<void> {
     if (!items.length) return;
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+      const existing = await readAgentSessionRecord(this.env, this.projectId, this.sessionKey, this.userId);
       const merged = [...existing.items, ...items.map(cloneItem)];
       const timestampBase = Date.now();
       const projectedMessages = projectAgentItemsToSessionMessages(items.map(cloneItem), timestampBase);
       const written = await compareAndSetAgentSessionRecord(
         this.env,
+        this.projectId,
         this.sessionKey,
         this.sessionId,
         this.userId,
@@ -175,13 +185,14 @@ export class D1EdgeSession implements Session {
 
   async popItem(): Promise<AgentInputItem | undefined> {
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+      const existing = await readAgentSessionRecord(this.env, this.projectId, this.sessionKey, this.userId);
       if (!existing.items.length) return undefined;
       const nextItems = existing.items.slice(0, -1);
       const removed = existing.items[existing.items.length - 1];
       const timestampBase = Date.now();
       const written = await compareAndSetAgentSessionRecord(
         this.env,
+        this.projectId,
         this.sessionKey,
         this.sessionId,
         this.userId,
@@ -198,23 +209,27 @@ export class D1EdgeSession implements Session {
   }
 
   async clearSession(): Promise<void> {
-    await this.env.DB.prepare("DELETE FROM agent_sessions WHERE session_key = ?1").bind(this.sessionKey).run();
+    await this.env.DB.prepare(
+      "DELETE FROM agent_sessions WHERE session_key = ?1 AND project_id = ?2 AND user_id IS ?3"
+    ).bind(this.sessionKey, this.projectId, this.userId).run();
   }
 
   async replaceItemsIfUnchanged(expectedItems: AgentInputItem[], nextItems: AgentInputItem[]): Promise<boolean> {
-    const existing = await readAgentSessionRecord(this.env, this.sessionKey);
+    const existing = await readAgentSessionRecord(this.env, this.projectId, this.sessionKey, this.userId);
     const expected = repairSessionToolTransactions(expectedItems);
     if (JSON.stringify(existing.items) !== JSON.stringify(expected)) return false;
     const normalizedNext = compactAgentSessionItems(nextItems, { maxItems: STORED_SESSION_ITEM_LIMIT });
     const updatedAt = Math.max(Date.now(), existing.updatedAt + 1);
     const result = await this.env.DB.prepare(
-      "UPDATE agent_sessions SET items = ?1, messages = ?2, updated_at = ?3 WHERE session_key = ?4 AND updated_at = ?5"
+      "UPDATE agent_sessions SET items = ?1, messages = ?2, updated_at = ?3 WHERE session_key = ?4 AND project_id = ?5 AND user_id IS ?6 AND updated_at = ?7"
     )
       .bind(
         JSON.stringify(normalizedNext),
         JSON.stringify(projectAgentItemsToSessionMessages(normalizedNext, updatedAt).slice(-STORED_SESSION_MESSAGE_LIMIT)),
         updatedAt,
         this.sessionKey,
+        this.projectId,
+        this.userId,
         existing.updatedAt
       )
       .run();
@@ -371,8 +386,13 @@ export class StyloChatCompactionSession implements Session {
   }
 }
 
-export const readD1SessionMessages = async (env: EnvWithDb, sessionKey: string) => {
-  const record = await readAgentSessionRecord(env, sessionKey);
+export const readD1SessionMessages = async (
+  env: EnvWithDb,
+  projectId: string,
+  sessionKey: string,
+  userId: string | null,
+) => {
+  const record = await readAgentSessionRecord(env, projectId, sessionKey, userId);
   return record.messages;
 };
 

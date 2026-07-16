@@ -88,12 +88,18 @@ test("Leporello UI is a continuous accordion and macOS sketch bridge is desktop-
   assert.match(studioSource, /isUnfolded/);
   assert.match(studioSource, /book\.pages\.slice\(0, 2\)/);
   assert.match(nodeSource, /book\.pages\.slice\(0, isCollapsed \? 2 : 3\)/);
+  assert.match(nodeSource, /foldDepthLayers = isCollapsed \? 6 : 0/);
+  assert.match(nodeSource, /leporello-node__underfold/);
+  assert.doesNotMatch(nodeSource, /leporello-node__meta/);
   assert.doesNotMatch(studioSource, /previousPage|nextPage|上一页|下一页/);
   assert.match(studioSource, /网页端不提供手绘能力/);
   assert.match(styles, /aspect-ratio: 21 \/ 9/);
   assert.match(styles, /is-unfolded[\s\S]*rotateY/);
   assert.match(styles, /is-folded[\s\S]*nth-child\(2\)/);
   assert.match(nodeStyles, /\.leporello-node__panel[\s\S]*aspect-ratio: 21 \/ 9/);
+  assert.match(nodeStyles, /width: 420px !important/);
+  assert.match(nodeStyles, /height: 240px/);
+  assert.match(nodeStyles, /\.leporello-node__underfold[\s\S]*--fold-depth/);
   assert.match(styles, /overflow-x: auto/);
   assert.match(preload, /startLeporelloSketch/);
   assert.match(main, /process\.platform !== "darwin"/);

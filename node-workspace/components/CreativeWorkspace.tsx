@@ -58,6 +58,7 @@ interface CreativeWorkspaceProps {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   accountSession?: AccountApiSession;
+  projectEditLeaseId?: string;
   syncState?: SyncState;
   ensureProjectSynced?: EnsureProjectSynced;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
@@ -68,6 +69,7 @@ interface CreativeWorkspaceProps {
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
   onResetProject?: () => void;
+  onDeleteFlowProject?: (projectId: string) => Promise<boolean>;
   projectResetToken?: number;
   onSignOut?: () => void;
   accountInfo?: {
@@ -335,6 +337,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   isSignedIn,
   getAuthToken,
   accountSession,
+  projectEditLeaseId,
   syncState,
   ensureProjectSynced,
   syncRollout,
@@ -345,6 +348,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   onOpenModule,
   syncIndicator,
   onResetProject,
+  onDeleteFlowProject,
   projectResetToken = 0,
   onSignOut,
   accountInfo,
@@ -678,12 +682,13 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
 
   useEffect(() => {
     setNodeFlowContext({
+      projectId: styloProjectId,
       rawScript: "",
       episodes: [],
       designAssets: projectData.designAssets || [],
       roles: projectData.roles || [],
     });
-  }, [projectData.designAssets, projectData.roles, setNodeFlowContext]);
+  }, [projectData.designAssets, projectData.roles, setNodeFlowContext, styloProjectId]);
 
   useEffect(() => {
     setProjectRoleUpdater((roleId, updater) => {
@@ -862,6 +867,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     onOpenProjectSettingsPanel: (panel, assetsSection) => openProjectSettingsPanel(panel, assetsSection),
     onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
     pendingScriptReviewNodeIds,
+    onDeleteFlowProject,
   });
 
   const effectiveAgentDockWidth = isStyloCollapsed ? 0 : agentDockWidth;
@@ -1435,6 +1441,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         isSignedIn={isSignedIn}
         getAuthToken={getAuthToken}
         accountSession={accountSession}
+        projectEditLeaseId={projectEditLeaseId}
         syncState={syncState}
         syncRollout={syncRollout}
         onForceSync={onForceSync}

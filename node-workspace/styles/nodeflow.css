@@ -229,8 +229,8 @@
 }
 
 .react-flow__node:has(.node-card-base[data-node-type="leporello-cover"]) {
-  width: 356px !important;
-  min-width: 356px !important;
+  width: 420px !important;
+  min-width: 420px !important;
 }
 
 .node-card-base[data-node-type="leporello-cover"] .node-card-floating-header { display: none; }
@@ -238,39 +238,49 @@
 .node-card-base[data-node-type="leporello-cover"] .node-card-shell,
 .node-card-base[data-node-type="leporello-cover"] .node-card-body,
 .leporello-node {
-  height: 180px;
-  min-height: 180px;
+  height: 240px;
+  min-height: 240px;
 }
 
-.node-card-base[data-node-type="leporello-cover"] .node-card-shell {
+.node-card-base[data-node-type="leporello-cover"] .node-card-shell,
+.node-card-base[data-node-type="leporello-cover"][data-selected="true"] .node-card-shell {
   overflow: visible;
-  border-radius: 3px;
+  border-radius: 0;
   background: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .node-card-base[data-node-type="leporello-cover"] .node-card-shell::before,
+.node-card-base[data-node-type="leporello-cover"][data-selected="true"] .node-card-shell::before,
 .node-card-base[data-node-type="leporello-cover"] .node-card-shell::after { content: none; }
 
 .leporello-node {
   position: relative;
   width: 100%;
+  overflow: visible;
   isolation: isolate;
-  perspective: 960px;
+  perspective: 1180px;
+  transform-style: preserve-3d;
 }
 
 .leporello-node__strip {
   position: absolute;
-  inset: 9px 8px 28px;
+  top: 14px;
+  right: 10px;
+  left: 10px;
+  z-index: 8;
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 9px 7px color-mix(in srgb, #252621 18%, transparent));
+  filter: drop-shadow(0 9px 7px color-mix(in srgb, #252621 19%, transparent));
+  transform: translate3d(0, 0, 28px) rotateX(1.25deg);
   transform-style: preserve-3d;
 }
 
 .leporello-node__panel {
   position: relative;
-  flex: 0 0 106px;
+  flex: 1 1 0;
   aspect-ratio: 21 / 9;
   min-width: 0;
   overflow: hidden;
@@ -315,6 +325,70 @@
   text-align: center;
 }
 
+.leporello-node__depth {
+  position: absolute;
+  inset: 14px 10px auto;
+  z-index: 1;
+  aspect-ratio: 42 / 9;
+  transform-style: preserve-3d;
+}
+
+.leporello-node__underfold {
+  position: absolute;
+  inset: 0;
+  z-index: calc(7 - var(--fold-depth));
+  display: block;
+  border: 1px solid color-mix(in srgb, #292b26 54%, var(--node-border));
+  border-radius: 8px 7px 7px 8px;
+  background:
+    linear-gradient(
+      90deg,
+      #e9e5db 0%,
+      #f3f0e8 43%,
+      color-mix(in srgb, #292b26 22%, #ddd8cc) 49.7%,
+      color-mix(in srgb, white 68%, #ddd8cc) 50.3%,
+      #d5d0c5 58%,
+      #ece8de 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 72%, transparent),
+    0 7px 11px color-mix(in srgb, var(--app-text-primary) 10%, transparent);
+  transform:
+    translate3d(
+      var(--fold-jog),
+      calc(var(--fold-depth) * 17px),
+      calc(var(--fold-depth) * -11px)
+    )
+    rotateX(calc(var(--fold-depth) * -0.35deg));
+  transform-origin: center top;
+}
+
+.leporello-node__underfold::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 18px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, #292b26 19%, transparent), transparent);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.leporello-node__underfold::after {
+  position: absolute;
+  right: 2px;
+  bottom: -5px;
+  left: 2px;
+  height: 5px;
+  border: 1px solid color-mix(in srgb, #292b26 38%, transparent);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  background: color-mix(in srgb, #292b26 19%, #d5d0c5);
+  content: "";
+  transform: rotateX(-54deg);
+  transform-origin: center top;
+}
+
 .leporello-node.is-unfolded .leporello-node__panel:nth-child(odd) {
   transform: rotateY(5deg) translateZ(-1px);
   transform-origin: right center;
@@ -346,12 +420,13 @@
   background: linear-gradient(-90deg, color-mix(in srgb, white 58%, transparent), transparent);
 }
 
-.leporello-node.is-folded .leporello-node__strip {
-  filter: drop-shadow(0 8px 6px color-mix(in srgb, #252621 24%, transparent));
+.leporello-node.is-unfolded .leporello-node__strip {
+  top: 82px;
+  right: 8px;
+  left: 8px;
 }
 
 .leporello-node.is-folded .leporello-node__panel {
-  flex-basis: 145px;
   border-top: 4px solid #292b26;
   border-bottom: 4px solid #292b26;
 }
@@ -372,24 +447,9 @@
   transform-origin: left center;
 }
 
-.leporello-node__meta {
-  position: absolute;
-  right: 8px;
-  bottom: 7px;
-  left: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--app-text-secondary);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
-  letter-spacing: 0.11em;
-}
-
-.leporello-node__meta strong { color: var(--app-text-primary); font-size: inherit; }
-
 @media (prefers-reduced-motion: reduce) {
-  .leporello-node__panel { transition: none; }
+  .leporello-node__panel,
+  .leporello-node__underfold { transition: none; }
 }
 
 /* Wrapper membership choreography: animate the physical contents before React Flow hides them. */

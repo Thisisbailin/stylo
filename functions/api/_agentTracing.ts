@@ -12,6 +12,7 @@ type BufferedTraceState = {
 
 type PersistTraceContext = {
   traceId: string;
+  projectId: string;
   sessionId: string;
   sessionKey: string;
   userId: string | null;
@@ -134,13 +135,14 @@ export const persistBufferedTrace = async (env: EnvWithDb, context: PersistTrace
   const traceJson = JSON.stringify(bundle.trace || {});
   const metadataJson = JSON.stringify(context.metadata || {});
   await env.DB.prepare(
-    "INSERT INTO agent_traces (trace_id, session_key, session_id, user_id, provider, model, workflow_name, group_id, metadata, trace_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) ON CONFLICT(trace_id) DO UPDATE SET session_key = excluded.session_key, session_id = excluded.session_id, user_id = excluded.user_id, provider = excluded.provider, model = excluded.model, workflow_name = excluded.workflow_name, group_id = excluded.group_id, metadata = excluded.metadata, trace_json = excluded.trace_json, updated_at = excluded.updated_at"
+    "INSERT INTO agent_traces (trace_id, session_key, session_id, user_id, project_id, provider, model, workflow_name, group_id, metadata, trace_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT(trace_id) DO UPDATE SET session_key = excluded.session_key, session_id = excluded.session_id, user_id = excluded.user_id, project_id = excluded.project_id, provider = excluded.provider, model = excluded.model, workflow_name = excluded.workflow_name, group_id = excluded.group_id, metadata = excluded.metadata, trace_json = excluded.trace_json, updated_at = excluded.updated_at"
   )
     .bind(
       context.traceId,
       context.sessionKey,
       context.sessionId,
       context.userId,
+      context.projectId,
       context.provider,
       context.model,
       context.workflowName,
@@ -168,11 +170,13 @@ export const persistBufferedTrace = async (env: EnvWithDb, context: PersistTrace
           ? String(span.error)
           : null;
     await env.DB.prepare(
-      "INSERT INTO agent_spans (span_id, trace_id, parent_id, span_type, span_name, started_at, ended_at, error, span_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) ON CONFLICT(span_id) DO UPDATE SET trace_id = excluded.trace_id, parent_id = excluded.parent_id, span_type = excluded.span_type, span_name = excluded.span_name, started_at = excluded.started_at, ended_at = excluded.ended_at, error = excluded.error, span_json = excluded.span_json, updated_at = excluded.updated_at"
+      "INSERT INTO agent_spans (span_id, trace_id, user_id, project_id, parent_id, span_type, span_name, started_at, ended_at, error, span_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) ON CONFLICT(span_id) DO UPDATE SET trace_id = excluded.trace_id, user_id = excluded.user_id, project_id = excluded.project_id, parent_id = excluded.parent_id, span_type = excluded.span_type, span_name = excluded.span_name, started_at = excluded.started_at, ended_at = excluded.ended_at, error = excluded.error, span_json = excluded.span_json, updated_at = excluded.updated_at"
     )
       .bind(
         span.id,
         context.traceId,
+        context.userId,
+        context.projectId,
         typeof span.parent_id === "string" ? span.parent_id : null,
         spanType,
         spanName,

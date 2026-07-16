@@ -284,6 +284,7 @@ type Props = {
   onOpenProjectSettingsPanel?: (panel: FoundationGatewaySettingsPanel, assetsSection?: FoundationGatewayAssetsSection) => void;
   onOpenVisualLab?: (key?: "glassLab" | "filmRollLab") => void;
   pendingScriptReviewNodeIds?: ReadonlySet<string>;
+  onDeleteFlowProject?: (projectId: string) => Promise<boolean>;
 };
 
 const ensureFlow = (flow?: FlowState): FlowState => ({
@@ -649,7 +650,7 @@ type ScriptFoundationProps = {
   onSwitchFlowProject: (projectId: string) => void;
   onCreateFlowProject: (input: { title: string; durationMin: number }) => void;
   onUpdateFlowProject: (projectId: string, patch: { title: string; durationMin: number }) => void;
-  onDeleteFlowProject: (projectId: string) => void;
+  onDeleteFlowProject: (projectId: string) => Promise<boolean>;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
   agentComposerValue?: string;
@@ -1784,8 +1785,9 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
                       type="button"
                       className="is-danger"
                       onClick={() => {
-                        onDeleteFlowProject(pendingProject.id);
-                        closeMarkdownCard();
+                        void onDeleteFlowProject(pendingProject.id).then((deleted) => {
+                          if (deleted) closeMarkdownCard();
+                        });
                       }}
                     >
                       <Trash2 size={14} strokeWidth={1.9} />
@@ -1866,6 +1868,7 @@ export const useFlowSurface = ({
   onOpenProjectSettingsPanel,
   onOpenVisualLab,
   pendingScriptReviewNodeIds,
+  onDeleteFlowProject,
 }: Props): CanvasSurfaceConfig => {
   const {
     isLocked,
@@ -2410,7 +2413,12 @@ export const useFlowSurface = ({
   );
 
   const handleDeleteFlowProject = useCallback(
-    (projectId: string) => {
+    async (projectId: string) => {
+      const existingProjects = saveActiveFlowIntoProjects(projectData);
+      if (existingProjects.length <= 1 || !existingProjects.some((project) => project.id === projectId)) {
+        return false;
+      }
+      if (onDeleteFlowProject && !(await onDeleteFlowProject(projectId))) return false;
       setSelectedNodeIds(new Set());
       setConnectionDrop(null);
       setProjectData((previous) => {
@@ -2434,8 +2442,9 @@ export const useFlowSurface = ({
           flowProjects: remainingProjects,
         };
       });
+      return true;
     },
-    [setProjectData]
+    [onDeleteFlowProject, projectData, setProjectData]
   );
 
   const handleOrganizeFoundationScaffold = useCallback(() => {
@@ -3361,7 +3370,7 @@ export const useFlowSurface = ({
       const storageObjects = collectOwnedStorageObjects(deletableNodes);
       if (storageObjects.length > 0) {
         try {
-          await deleteOwnedStorageObjects(storageObjects);
+          await deleteOwnedStorageObjects(storageObjects, activeFlowProjectId);
         } catch (error) {
           const message = error instanceof Error ? error.message : "未知错误";
           window.alert(`无法删除节点：云端图片尚未清理。\n${message}`);
@@ -3371,7 +3380,7 @@ export const useFlowSurface = ({
 
       return { nodes: deletableNodes, edges: deletableEdges };
     },
-    []
+    [activeFlowProjectId]
   );
 
   const handleNodesChange = useCallback(

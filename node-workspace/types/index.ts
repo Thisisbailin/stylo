@@ -496,6 +496,7 @@ export type GlobalAssetHistoryItem = {
 };
 
 export type NodeFlowContextSnapshot = {
+  projectId?: string;
   rawScript: string;
   episodes: Episode[];
   designAssets: DesignAssetItem[];

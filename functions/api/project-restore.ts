@@ -3,6 +3,7 @@ import { logAudit } from "./audit";
 import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
 import { readJsonRequest } from "./_request";
+import { buildProjectEditLeaseGuardStatement, requireProjectEditLease } from "./_projectEditLease";
 import {
   buildProjectWriteGuardCleanupStatement,
   buildProjectWriteGuardStatement,
@@ -185,38 +186,38 @@ const collectProjectParts = (projectData: any) => {
   };
 };
 
-const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
+const loadCurrentProjectSnapshot = async (env: Env, userId: string, projectId: string) => {
   const metaRow = await env.DB.prepare(
-    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1"
+    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .first();
   if (!metaRow) return null;
 
   const meta = safeJsonParse<ProjectMeta>(metaRow.data as string, DEFAULT_META);
 
   const episodesResult = await env.DB.prepare(
-    "SELECT episode_id, data FROM user_project_episodes WHERE user_id = ?1"
+    "SELECT episode_id, data FROM user_project_episodes WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const scenesResult = await env.DB.prepare(
-    "SELECT episode_id, scene_id, data FROM user_project_scenes WHERE user_id = ?1"
+    "SELECT episode_id, scene_id, data FROM user_project_scenes WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const flowProjectsResult = await env.DB.prepare(
-    "SELECT project_id, data FROM user_project_flow_projects WHERE user_id = ?1 ORDER BY updated_at ASC, project_id ASC"
+    "SELECT project_id, data FROM user_project_flow_projects WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const flowNodesResult = await env.DB.prepare(
-    "SELECT project_id, node_id, node_index, data FROM user_project_flow_nodes WHERE user_id = ?1 ORDER BY project_id ASC, node_index ASC"
+    "SELECT project_id, node_id, node_index, data FROM user_project_flow_nodes WHERE user_id = ?1 AND project_id = ?2 ORDER BY node_index ASC"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const episodesMap = new Map<number, any>();
@@ -276,12 +277,7 @@ const loadCurrentProjectSnapshot = async (env: Env, userId: string) => {
   const flowProjects = flowProjectsFromRows.length > 0
     ? flowProjectsFromRows
     : toFlowProjects(meta.flowProjects);
-  const activeFlowProjectId =
-    typeof meta.activeFlowProjectId === "string"
-      ? meta.activeFlowProjectId
-      : typeof flowProjects[0]?.id === "string"
-        ? flowProjects[0].id as string
-        : undefined;
+  const activeFlowProjectId = projectId;
   const activeFlowProject = activeFlowProjectId
     ? flowProjects.find((project: any) => project.id === activeFlowProjectId)
     : flowProjects[0];
@@ -310,6 +306,7 @@ type RestoreRequest = {
   expectedUpdatedAt?: unknown;
   opId?: unknown;
   deviceId?: unknown;
+  projectId?: unknown;
 };
 
 const parseVersionTag = (value: string | null): number | undefined => {
@@ -338,6 +335,9 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
 
+    const editLease = await requireProjectEditLease(context.env, context.request, userId);
+    const projectId = editLease.project_id;
+
     const body = await readJsonRequest<RestoreRequest>(context.request, MAX_RESTORE_REQUEST_BYTES);
     const deviceId = getDeviceId(context.request, body);
     const auditDevice = deviceId ? { deviceId } : {};
@@ -353,7 +353,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     if (!opId) {
       return jsonResponse({ error: "A valid opId is required" }, { status: 400 });
     }
-    const boundOpId = await bindOperationId("project-restore", opId, { version });
+    const boundOpId = await bindOperationId("project-restore", opId, { projectId, version });
 
     const ifMatchHeader = context.request.headers.get("if-match");
     const headerVersion = parseVersionTag(ifMatchHeader);
@@ -380,8 +380,8 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     const currentMeta = await context.env.DB.prepare(
-      "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
-    ).bind(userId).first();
+      "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
+    ).bind(userId, projectId).first();
     const currentUpdatedAt = currentMeta ? Number(currentMeta.updated_at) || 0 : 0;
 
     if (currentMeta?.last_op_id === boundOpId) {
@@ -408,9 +408,9 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     const snapshot = await context.env.DB.prepare(
-      "SELECT data FROM user_project_snapshots WHERE user_id = ?1 AND version = ?2"
+      "SELECT data FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 AND version = ?3"
     )
-      .bind(userId, version)
+      .bind(userId, projectId, version)
       .first();
 
     if (!snapshot) {
@@ -419,7 +419,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     }
 
     const currentSnapshot = currentMeta
-      ? await loadCurrentProjectSnapshot(context.env, userId)
+      ? await loadCurrentProjectSnapshot(context.env, userId, projectId)
       : null;
 
     let parsed: unknown;
@@ -436,6 +436,19 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       const error = (validation as any).error;
       if (userId) await logAudit(context.env, userId, "project.restore", "invalid", { error, version, ...auditDevice });
       return jsonResponse({ error: `Snapshot invalid: ${error}` }, { status: 400 });
+    }
+    const snapshotScope = projectData as Record<string, unknown>;
+    const snapshotProjects = Array.isArray(snapshotScope.flowProjects)
+      ? snapshotScope.flowProjects.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      : [];
+    if (
+      snapshotScope.activeFlowProjectId !== projectId ||
+      snapshotProjects.some((item) => item.id !== projectId)
+    ) {
+      return jsonResponse(
+        { error: "Snapshot does not belong to requested projectId", code: "PROJECT_SCOPE_MISMATCH" },
+        { status: 400 },
+      );
     }
 
     const builtMeta = buildMetaFromProject(projectData);
@@ -466,10 +479,13 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     });
 
     const guardId = createProjectWriteGuardId(userId, boundOpId);
+    const leaseGuardId = `${guardId}:lease`;
     const statements = [
+      buildProjectEditLeaseGuardStatement(context.env.DB, editLease, leaseGuardId),
       buildProjectWriteGuardStatement(
         context.env.DB,
         userId,
+        projectId,
         guardId,
         Boolean(currentMeta),
         expectedUpdatedAt
@@ -481,11 +497,11 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       const snapshotBytes = new TextEncoder().encode(snapshotPayload).length;
       if (snapshotBytes <= MAX_PROJECT_BYTES) {
         statements.push(context.env.DB.prepare(
-          "INSERT OR IGNORE INTO user_project_snapshots (user_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4)"
-        ).bind(userId, currentSnapshot.updatedAt, snapshotPayload, Date.now()));
+          "INSERT OR IGNORE INTO user_project_snapshots (user_id, project_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)"
+        ).bind(userId, projectId, currentSnapshot.updatedAt, snapshotPayload, Date.now()));
         statements.push(context.env.DB.prepare(
-          "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 ORDER BY version DESC LIMIT ?2)"
-        ).bind(userId, SNAPSHOT_LIMIT));
+          "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 ORDER BY version DESC LIMIT ?3)"
+        ).bind(userId, projectId, SNAPSHOT_LIMIT));
       } else {
         console.warn("Skipping pre-restore snapshot larger than D1 row limit guard", {
           userId,
@@ -495,12 +511,12 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       }
     }
 
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId));
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId));
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1").bind(userId));
-    statements.push(context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1").bind(userId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_characters WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+    statements.push(context.env.DB.prepare("DELETE FROM user_project_locations WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
 
     const flowProjectRows: Array<{ projectId: string; data: unknown }> = [];
     const flowNodeRows: Array<{
@@ -527,6 +543,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     statements.push(...buildBulkProjectInsertStatements(
       context.env.DB,
       userId,
+      projectId,
       updatedAt,
       {
         episodes: parts.episodes.map((episode: any) => ({ id: episode.id, data: episode })),
@@ -541,17 +558,24 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     ));
 
     statements.push(context.env.DB.prepare(
-      "INSERT INTO user_project_meta (user_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id) DO UPDATE SET data=?2, updated_at=?3, last_op_id=?4"
-    ).bind(userId, metaSerialized, updatedAt, boundOpId));
+      "INSERT INTO user_project_meta (user_id, project_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, project_id) DO UPDATE SET data=?3, updated_at=?4, last_op_id=?5"
+    ).bind(userId, projectId, metaSerialized, updatedAt, boundOpId));
     statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
+    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, leaseGuardId));
 
     try {
       await context.env.DB.batch(statements);
     } catch (batchError) {
       if (isProjectWriteGuardError(batchError)) {
+        try {
+          await requireProjectEditLease(context.env, context.request, userId);
+        } catch (leaseError) {
+          if (leaseError instanceof Response) return leaseError;
+          throw leaseError;
+        }
         const latestMeta = await context.env.DB.prepare(
-          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
-        ).bind(userId).first();
+          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
+        ).bind(userId, projectId).first();
         const latestUpdatedAt = latestMeta ? Number(latestMeta.updated_at) || 0 : 0;
         if (latestMeta?.last_op_id === boundOpId) {
           return jsonResponse(

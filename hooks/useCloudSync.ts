@@ -6,8 +6,9 @@ import type { AccountApiSession } from "../sync/authenticatedFetch";
 import { createLocalStorageBaselineStore } from "../sync/localBaselineStore";
 import {
   createProjectSyncTransport,
-  projectSyncCodec,
+  createProjectSyncCodec,
 } from "../sync/projectSyncAdapter";
+import { mergeStyloScopedProjectData } from "../agents/runtime/projectScope";
 import {
   VersionedSyncEngine,
   type SyncStatusDetail,
@@ -16,9 +17,12 @@ import {
 
 type UseCloudSyncOptions = {
   accountScope: string;
+  projectId: string;
   isSignedIn: boolean;
   isLoaded: boolean;
   accountSession: AccountApiSession;
+  projectEditLeaseId?: string;
+  onProjectEditLeaseLost?: () => void;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   refreshKey?: number;
@@ -43,9 +47,12 @@ const isAbortError = (error: unknown) =>
 
 export const useCloudSync = ({
   accountScope,
+  projectId,
   isSignedIn,
   isLoaded,
   accountSession,
+  projectEditLeaseId,
+  onProjectEditLeaseLost,
   projectData,
   setProjectData,
   refreshKey,
@@ -68,21 +75,26 @@ export const useCloudSync = ({
   callbacksRef.current = { onError, onConflictConfirm, onStatusChange, setProjectData };
 
   useEffect(() => {
-    if (!isSignedIn || !isLoaded || suspendedRef.current) {
+    if (!isSignedIn || !isLoaded || !projectEditLeaseId || suspendedRef.current) {
       callbacksRef.current.onStatusChange?.("disabled", { pendingOps: 0, retryCount: 0 });
       return undefined;
     }
 
-    const baselineStore = createLocalStorageBaselineStore(`${localBackupKey}_last_synced`);
+    const baselineStore = createLocalStorageBaselineStore(
+      `${localBackupKey}_last_synced:${encodeURIComponent(projectId)}`,
+    );
     const engine = new VersionedSyncEngine<ProjectData>({
-      transport: createProjectSyncTransport(accountSession),
-      codec: projectSyncCodec,
+      transport: createProjectSyncTransport(accountSession, projectId, projectEditLeaseId, onProjectEditLeaseLost),
+      codec: createProjectSyncCodec(projectId),
       baselineStore,
       debounceMs: saveDebounceMs,
       onStatusChange: (status, detail) => callbacksRef.current.onStatusChange?.(status, detail),
       onApplyRemote: (remote) => {
-        projectDataRef.current = remote;
-        callbacksRef.current.setProjectData(remote);
+        callbacksRef.current.setProjectData((local) => {
+          const merged = mergeStyloScopedProjectData(local, remote, projectId);
+          projectDataRef.current = merged;
+          return merged;
+        });
       },
       restoreRemote: restoreLocalProjectMedia,
       onConflict: async ({ remote, local }) => {
@@ -121,7 +133,7 @@ export const useCloudSync = ({
       if (engineRef.current === engine) engineRef.current = null;
       engine.dispose();
     };
-  }, [accountScope, accountSession, forceClearKey, isLoaded, isSignedIn, localBackupKey, remoteBackupKey, saveDebounceMs, sessionGeneration]);
+  }, [accountScope, accountSession, forceClearKey, isLoaded, isSignedIn, localBackupKey, onProjectEditLeaseLost, projectEditLeaseId, projectId, remoteBackupKey, saveDebounceMs, sessionGeneration]);
 
   useEffect(() => {
     if (suspendedRef.current) return;

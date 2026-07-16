@@ -115,8 +115,8 @@ export const loadAgentProjectState = async (
   projectId: string
 ) => {
   const metaRow = await db.prepare(
-    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1"
-  ).bind(userId).first<Record<string, unknown>>();
+    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
+  ).bind(userId, projectId).first<Record<string, unknown>>();
   if (!metaRow) throw new Error("云端项目尚未建立，请等待项目同步完成后重试。");
 
   const projectRow = await db.prepare(

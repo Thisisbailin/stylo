@@ -33,6 +33,67 @@ export const buildStyloScopedProjectData = (projectData: ProjectData, projectId:
   };
 };
 
+export const mergeStyloScopedProjectData = (
+  local: ProjectData,
+  remote: ProjectData,
+  projectId: string,
+): ProjectData => {
+  const normalizedProjectId = assertStyloProjectScope(projectId, remote);
+  const remoteProject = remote.flowProjects?.find((project) => project.id === normalizedProjectId);
+  if (!remoteProject) {
+    throw new Error(`云端项目 ${normalizedProjectId} 缺少对应的 Flow 数据。`);
+  }
+  const localProjects = Array.isArray(local.flowProjects) ? local.flowProjects : [];
+  const existingIndex = localProjects.findIndex((project) => project.id === normalizedProjectId);
+  const mergedProjects = [...localProjects];
+  if (existingIndex >= 0) mergedProjects[existingIndex] = remoteProject;
+  else mergedProjects.push(remoteProject);
+
+  if (resolveStyloProjectId(local) !== normalizedProjectId) {
+    return { ...local, flowProjects: mergedProjects };
+  }
+  return {
+    ...remote,
+    activeFlowProjectId: normalizedProjectId,
+    flow: remoteProject.flow || remote.flow,
+    flowProjects: mergedProjects,
+  };
+};
+
+export const resetStyloScopedProjectData = (
+  local: ProjectData,
+  emptyTemplate: ProjectData,
+  projectId: string,
+): ProjectData => {
+  const normalizedProjectId = assertStyloProjectScope(projectId);
+  const localProjects = Array.isArray(local.flowProjects) ? local.flowProjects : [];
+  const existing = localProjects.find((project) => project.id === normalizedProjectId);
+  const template = emptyTemplate.flowProjects?.[0];
+  if (!existing || !template) {
+    throw new Error(`无法为项目 ${normalizedProjectId} 创建空白投影。`);
+  }
+  const resetProject = {
+    ...template,
+    id: normalizedProjectId,
+    title: existing.title,
+    color: existing.color,
+    rootNodeId: existing.rootNodeId,
+    createdAt: existing.createdAt,
+    updatedAt: Date.now(),
+    roles: [],
+    designAssets: [],
+  };
+  return {
+    ...emptyTemplate,
+    fileName: existing.title || emptyTemplate.fileName,
+    activeFlowProjectId: normalizedProjectId,
+    flow: resetProject.flow,
+    flowProjects: localProjects.map((project) =>
+      project.id === normalizedProjectId ? resetProject : project
+    ),
+  };
+};
+
 export const buildStyloConversationStorageKey = (projectId: string) =>
   `${STYLO_CONVERSATION_STORAGE_PREFIX}:${encodeScopePart(normalizeScopePart(projectId, DEFAULT_STYLO_PROJECT_ID))}`;
 

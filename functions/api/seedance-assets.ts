@@ -2,6 +2,7 @@ import { getUserId, jsonResponse } from "./_auth";
 import { enforceRateLimit } from "./_rateLimit";
 import { readJsonRequest } from "./_request";
 import type { D1DatabaseLike, PagesContext } from "./_types";
+import { normalizeProjectId } from "./_projectScope";
 
 type Env = Record<string, unknown> & {
   DB: D1DatabaseLike;
@@ -254,11 +255,11 @@ export const onRequestOptions = async () =>
     headers: CORS_HEADERS,
   });
 
-const assertAssetOwnership = async (env: Env, userId: string, assetId: string) => {
+const assertAssetOwnership = async (env: Env, userId: string, projectId: string, assetId: string) => {
   const row = await env.DB.prepare(
-    "SELECT asset_id FROM user_seedance_assets WHERE user_id = ?1 AND asset_id = ?2"
+    "SELECT asset_id FROM user_seedance_assets WHERE user_id = ?1 AND project_id = ?2 AND asset_id = ?3"
   )
-    .bind(userId, assetId)
+    .bind(userId, projectId, assetId)
     .first();
   if (!row) throw new Response("Seedance asset not found", { status: 404 });
 };
@@ -266,15 +267,16 @@ const assertAssetOwnership = async (env: Env, userId: string, assetId: string) =
 const resolveAuthorizedGroupId = async (
   env: Env,
   userId: string,
+  projectId: string,
   requestedGroupId: string
 ) => {
   if (!requestedGroupId) return undefined;
   const { defaultGroupId } = resolveAccess(env);
   if (requestedGroupId === defaultGroupId) return requestedGroupId;
   const row = await env.DB.prepare(
-    "SELECT group_id FROM user_seedance_assets WHERE user_id = ?1 AND group_id = ?2 LIMIT 1"
+    "SELECT group_id FROM user_seedance_assets WHERE user_id = ?1 AND project_id = ?2 AND group_id = ?3 LIMIT 1"
   )
-    .bind(userId, requestedGroupId)
+    .bind(userId, projectId, requestedGroupId)
     .first();
   if (!row) throw new Response("Seedance asset group is not owned by this user", { status: 403 });
   return requestedGroupId;
@@ -283,15 +285,16 @@ const resolveAuthorizedGroupId = async (
 const recordAssetOwnership = async (
   env: Env,
   userId: string,
+  projectId: string,
   asset: { assetId: string; groupId?: string }
 ) => {
   await env.DB.prepare(
-    `INSERT INTO user_seedance_assets (user_id, asset_id, group_id, created_at)
-     VALUES (?1, ?2, ?3, ?4)
-     ON CONFLICT(user_id, asset_id)
+    `INSERT INTO user_seedance_assets (user_id, project_id, asset_id, group_id, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT(user_id, project_id, asset_id)
      DO UPDATE SET group_id = excluded.group_id`
   )
-    .bind(userId, asset.assetId, asset.groupId || null, Date.now())
+    .bind(userId, projectId, asset.assetId, asset.groupId || null, Date.now())
     .run();
 };
 
@@ -317,16 +320,18 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     });
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const action = normalizeText(payload?.action);
+    const projectId = normalizeProjectId(payload?.projectId);
+    if (!projectId) return new Response("projectId required", { status: 400, headers: CORS_HEADERS });
     if (action === "create") {
       const requestedGroupId = normalizeText(payload.groupId);
-      const authorizedGroupId = await resolveAuthorizedGroupId(env, userId, requestedGroupId);
+      const authorizedGroupId = await resolveAuthorizedGroupId(env, userId, projectId, requestedGroupId);
       const asset = await createAsset(payload, env, authorizedGroupId);
-      await recordAssetOwnership(env, userId, asset);
+      await recordAssetOwnership(env, userId, projectId, asset);
       return Response.json(asset, { headers: { ...CORS_HEADERS, "Cache-Control": "no-store" } });
     }
     if (action === "get") {
       const assetId = normalizeText(payload.assetId);
-      await assertAssetOwnership(env, userId, assetId);
+      await assertAssetOwnership(env, userId, projectId, assetId);
       return Response.json(await getAsset(payload, env), {
         headers: { ...CORS_HEADERS, "Cache-Control": "no-store" },
       });

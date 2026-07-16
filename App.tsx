@@ -4,13 +4,14 @@ import { useUser, useClerk, useAuth } from './lib/auth';
 import { FlowState, ProjectData, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA } from './constants';
 import { normalizeProjectData } from './utils/projectData';
-import { FORCE_CLOUD_CLEAR_KEY } from './utils/persistence';
+import { backupData, FORCE_CLOUD_CLEAR_KEY, isProjectEmpty } from './utils/persistence';
 import { getDeviceId } from './utils/device';
 import { hashToBucket, isInRollout, normalizeRolloutPercent } from './utils/rollout';
 import { buildApiUrl } from './utils/api';
 import { setApiAuthTokenProvider } from './utils/authToken';
 import { usePersistedState } from './hooks/usePersistedState';
 import { useCloudSync } from './hooks/useCloudSync';
+import { useProjectEditLease } from './hooks/useProjectEditLease';
 import { useConfig } from './hooks/useConfig';
 import { useTheme } from './hooks/useTheme';
 import { useSecretsSync } from './hooks/useSecretsSync';
@@ -18,6 +19,7 @@ import { AppShell } from './components/layout/AppShell';
 import { ConflictModal } from './components/ConflictModal';
 import { SecretsConflictModal } from './components/SecretsConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
+import { ProjectEditLeaseModal } from './components/ProjectEditLeaseModal';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
 import { resetNodeFlowAccountState, resetNodeFlowProjectState } from './node-workspace/store/nodeFlowStore';
 import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
@@ -30,6 +32,7 @@ import {
   STYLO_ACTIVITY_STORAGE_PREFIX,
   STYLO_CONVERSATION_STORAGE_PREFIX,
   resolveStyloProjectId,
+  resetStyloScopedProjectData,
 } from './agents/runtime/projectScope';
 import { resetStyloProjectAgentStorage } from './agents/runtime/projectReset';
 import {
@@ -37,7 +40,9 @@ import {
   migrateLegacyProductStorage,
 } from './utils/styloMigration';
 import type { SecretsPayload } from './sync/secretsSyncAdapter';
+import { projectSyncCodec } from './sync/projectSyncAdapter';
 import { AccountApiSession, requireOkResponse } from './sync/authenticatedFetch';
+import { deleteCloudProject, loadCloudProject, loadCloudProjectCatalog, mergeMissingCloudProjects } from './sync/projectCatalog';
 
 const AgentLab = React.lazy(() =>
   import('./node-workspace/components/AgentLab').then((module) => ({ default: module.AgentLab }))
@@ -57,8 +62,16 @@ const THEME_STORAGE_KEY = 'stylo_theme_v1';
 const LOCAL_BACKUP_KEY = 'stylo_local_backup';
 const REMOTE_BACKUP_KEY = 'stylo_remote_backup';
 const AVATAR_STORAGE_KEY = 'stylo_avatar_url';
+const LOCAL_ONLY_PROJECT_KEY = 'stylo_local_only_project_v1';
 
 type AccountScope = "guest" | `user:${string}`;
+
+type ProjectConflictRequest = {
+  signature: string;
+  remote: ProjectData;
+  local: ProjectData;
+  resolves: Array<(useRemote: boolean) => void>;
+};
 
 const buildAccountStorageKey = (baseKey: string, accountScope: AccountScope) =>
   `${baseKey}:${encodeURIComponent(accountScope)}`;
@@ -216,6 +229,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   const remoteBackupKey = buildAccountStorageKey(REMOTE_BACKUP_KEY, accountScope);
   const forceCloudClearKey = buildAccountStorageKey(FORCE_CLOUD_CLEAR_KEY, accountScope);
   const avatarStorageKey = buildAccountStorageKey(AVATAR_STORAGE_KEY, accountScope);
+  const localOnlyProjectKey = buildAccountStorageKey(LOCAL_ONLY_PROJECT_KEY, accountScope);
   React.useLayoutEffect(() => {
     resetNodeFlowAccountState();
     return resetNodeFlowAccountState;
@@ -253,6 +267,12 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     deserialize: (value) => normalizeProjectData(JSON.parse(value)),
     serialize: (value) => JSON.stringify(value),
   });
+  const [isLocalOnlyProject, setIsLocalOnlyProject] = usePersistedState<boolean>({
+    key: localOnlyProjectKey,
+    initialValue: false,
+    deserialize: (value) => value === "true",
+    serialize: (value) => String(value),
+  });
   const setProjectData = useCallback(
     (value: React.SetStateAction<ProjectData>) => {
       setProjectDataRaw((prev) =>
@@ -261,6 +281,10 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     },
     [setProjectDataRaw]
   );
+  // Catalog hydration runs before the later synchronization effects on the
+  // first mounted frame. Keep the ref current during render so it never merges
+  // cloud projects into the static initial value and overwrites local state.
+  projectDataRef.current = projectData;
 
   const { config, setConfig } = useConfig(configStorageKey);
 
@@ -294,10 +318,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     () => typeof navigator === "undefined" || navigator.onLine !== false,
   );
   const [syncRefreshKey, setSyncRefreshKey] = useState(0);
+  const [isCloudProjectCatalogReady, setIsCloudProjectCatalogReady] = useState(false);
   const [projectResetToken, setProjectResetToken] = useState(0);
-  const conflictQueueRef = useRef<Array<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void }>>([]);
-  const activeConflictRef = useRef<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void } | null>(null);
-  const [activeConflict, setActiveConflict] = useState<{ remote: ProjectData; local: ProjectData; resolve: (useRemote: boolean) => void } | null>(null);
+  const conflictQueueRef = useRef<ProjectConflictRequest[]>([]);
+  const activeConflictRef = useRef<ProjectConflictRequest | null>(null);
+  const [activeConflict, setActiveConflict] = useState<ProjectConflictRequest | null>(null);
   const secretConflictRef = useRef<{
     remote: SecretsPayload;
     local: SecretsPayload;
@@ -335,6 +360,57 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     return { enabled, percent, bucket, allowlisted };
   }, [user?.id, userSignedIn]);
   const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
+  const cloudProjectId = resolveStyloProjectId(projectData);
+
+  useEffect(() => {
+    let active = true;
+    if (!isSyncFeatureEnabled || isLocalOnlyProject) {
+      setIsCloudProjectCatalogReady(true);
+      return () => { active = false; };
+    }
+    setIsCloudProjectCatalogReady(false);
+    void (async () => {
+      try {
+        const catalog = await loadCloudProjectCatalog(accountSession);
+        if (!active || catalog.length === 0) return;
+        const current = projectDataRef.current;
+        const localIds = new Set((current.flowProjects || []).map((project) => project.id));
+        const missing = catalog.filter((entry) => !localIds.has(entry.projectId)).slice(0, 3);
+        const loaded = (await Promise.all(missing.map(async (entry) => ({
+          projectId: entry.projectId,
+          data: await loadCloudProject(accountSession, entry.projectId),
+        })))).filter((item): item is { projectId: string; data: ProjectData } => Boolean(item.data));
+        if (!active || loaded.length === 0) return;
+        let merged = mergeMissingCloudProjects(current, loaded);
+        if (isProjectEmpty(current) && !catalog.some((entry) => entry.projectId === cloudProjectId)) {
+          const preferred = loaded.find((item) => item.projectId === catalog[0]?.projectId) || loaded[0];
+          const preferredProject = preferred.data.flowProjects?.find((project) => project.id === preferred.projectId);
+          if (preferredProject) {
+            merged = {
+              ...preferred.data,
+              activeFlowProjectId: preferred.projectId,
+              flow: preferredProject.flow || preferred.data.flow,
+              flowProjects: merged.flowProjects,
+            };
+          }
+        }
+        projectDataRef.current = merged;
+        setProjectData(merged);
+      } catch (error) {
+        console.warn("Cloud project catalog hydration failed", error);
+      } finally {
+        if (active) setIsCloudProjectCatalogReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, [accountScope, accountSession, isLocalOnlyProject, isSyncFeatureEnabled, setProjectData]);
+
+  const projectEditLease = useProjectEditLease({
+    accountScope,
+    projectId: cloudProjectId,
+    accountSession,
+    enabled: isSyncFeatureEnabled && !isLocalOnlyProject && isCloudProjectCatalogReady,
+  });
 
   const openProjectSettings = useCallback((panel: ProjectSettingsPanelKey = "provider") => {
     setProjectSettingsRequest({ panel, nonce: Date.now() });
@@ -366,8 +442,8 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, [activeConflict]);
 
   useEffect(() => () => {
-    activeConflictRef.current?.resolve?.(true);
-    conflictQueueRef.current.forEach((item) => item.resolve?.(true));
+    activeConflictRef.current?.resolves.forEach((resolve) => resolve(true));
+    conflictQueueRef.current.forEach((item) => item.resolves.forEach((resolve) => resolve(true)));
     conflictQueueRef.current = [];
     activeConflictRef.current = null;
     secretConflictRef.current?.resolve(true);
@@ -386,15 +462,16 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, []);
 
   useEffect(() => {
-    const projectEnabled = authSignedIn && isSyncFeatureEnabled;
-    const secretsEnabled = authSignedIn && isSyncFeatureEnabled && config.syncApiKeys;
+    const projectEnabled = authSignedIn && isSyncFeatureEnabled && !isLocalOnlyProject;
+    const secretsEnabled = authSignedIn && isSyncFeatureEnabled && config.syncApiKeys &&
+      (isLocalOnlyProject || projectEditLease.state.status === "owned");
     setSyncState(prev => ({
       project: projectEnabled ? (prev.project.status === 'disabled' ? { status: 'loading' } : prev.project) : { status: 'disabled' },
       secrets: secretsEnabled
         ? (prev.secrets.status === 'disabled' ? { status: 'loading' } : prev.secrets)
         : { status: 'disabled' }
     }));
-  }, [authSignedIn, config.syncApiKeys, isSyncFeatureEnabled]);
+  }, [authSignedIn, config.syncApiKeys, isLocalOnlyProject, isSyncFeatureEnabled, projectEditLease.state.status]);
 
   const updateProjectSyncStatus = useCallback((status: SyncStatus, detail?: { lastSyncAt?: number; error?: string; pendingOps?: number; retryCount?: number; lastAttemptAt?: number }) => {
     setSyncState(prev => ({
@@ -434,21 +511,42 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
   const requestConflictResolution = useCallback(({ remote, local }: { remote: ProjectData; local: ProjectData }) => {
     return new Promise<boolean>((resolve) => {
-      conflictQueueRef.current.push({ remote, local, resolve });
-      if (!activeConflictRef.current) {
-        const next = conflictQueueRef.current.shift();
-        if (next) setActiveConflict(next);
+      const signature = `${projectSyncCodec.fingerprint(remote)}>${projectSyncCodec.fingerprint(local)}`;
+      const active = activeConflictRef.current;
+      if (active?.signature === signature) {
+        active.resolves.push(resolve);
+        return;
+      }
+      const queued = conflictQueueRef.current.find((item) => item.signature === signature);
+      if (queued) {
+        queued.resolves.push(resolve);
+        return;
+      }
+      const request: ProjectConflictRequest = { signature, remote, local, resolves: [resolve] };
+      if (!active) {
+        activeConflictRef.current = request;
+        setActiveConflict(request);
+      } else {
+        conflictQueueRef.current.push(request);
       }
     });
   }, []);
 
   const handleConflictChoice = useCallback((useRemote: boolean) => {
     if (!activeConflict) return;
-    activeConflict.resolve(useRemote);
-    setActiveConflict(null);
+    activeConflict.resolves.forEach((resolve) => resolve(useRemote));
     const next = conflictQueueRef.current.shift();
-    if (next) setActiveConflict(next);
+    activeConflictRef.current = next || null;
+    setActiveConflict(next || null);
   }, [activeConflict]);
+
+  const clearProjectConflictQueue = useCallback(() => {
+    activeConflictRef.current?.resolves.forEach((resolve) => resolve(true));
+    conflictQueueRef.current.forEach((item) => item.resolves.forEach((resolve) => resolve(true)));
+    conflictQueueRef.current = [];
+    activeConflictRef.current = null;
+    setActiveConflict(null);
+  }, []);
 
   const requestSecretsConflictResolution = useCallback(({
     remote,
@@ -474,9 +572,12 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
   const { flushProjectSync, suspendProjectSync } = useCloudSync({
     accountScope,
-    isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
+    projectId: cloudProjectId,
+    isSignedIn: !!authSignedIn && isSyncFeatureEnabled && !isLocalOnlyProject && projectEditLease.state.status === "owned",
     isLoaded: isAuthLoaded,
     accountSession,
+    projectEditLeaseId: projectEditLease.leaseId,
+    onProjectEditLeaseLost: projectEditLease.markLost,
     projectData,
     setProjectData,
     refreshKey: syncRefreshKey,
@@ -489,9 +590,53 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     saveDebounceMs: 1200
   });
 
+  const handleCreateLocalProject = useCallback(() => {
+    clearProjectConflictQueue();
+    backupData(localBackupKey, projectDataRef.current);
+    void projectEditLease.release();
+    setIsLocalOnlyProject(true);
+    resetNodeFlowProjectState();
+    const emptyProject = normalizeProjectData({
+      ...structuredClone(INITIAL_PROJECT_DATA),
+      fileName: "本地项目",
+    });
+    projectDataRef.current = emptyProject;
+    setProjectData(emptyProject);
+    setProjectResetToken((token) => token + 1);
+  }, [clearProjectConflictQueue, localBackupKey, projectEditLease, setIsLocalOnlyProject, setProjectData]);
+
+  const handleExitProject = useCallback(async () => {
+    clearProjectConflictQueue();
+    await projectEditLease.release().catch(() => undefined);
+    await signOut();
+  }, [clearProjectConflictQueue, projectEditLease, signOut]);
+
+  const handleDeleteFlowProject = useCallback(async (projectId: string) => {
+    if (!isSyncFeatureEnabled || isLocalOnlyProject) return true;
+    const activeLeaseId = projectId === cloudProjectId ? projectEditLease.leaseId : undefined;
+    const resumeProjectSync = activeLeaseId ? suspendProjectSync() : null;
+    let deleted = false;
+    try {
+      await deleteCloudProject(accountSession, projectId, activeLeaseId);
+      resetStyloProjectAgentStorage(accountScope, projectId);
+      localStorage.removeItem(`${localBackupKey}_last_synced:${encodeURIComponent(projectId)}`);
+      deleted = true;
+      return true;
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "删除云端项目失败。");
+      return false;
+    } finally {
+      if (resumeProjectSync) {
+        if (deleted) window.setTimeout(resumeProjectSync, 0);
+        else resumeProjectSync();
+      }
+    }
+  }, [accountScope, accountSession, cloudProjectId, isLocalOnlyProject, isSyncFeatureEnabled, localBackupKey, projectEditLease.leaseId, suspendProjectSync]);
+
   useSecretsSync({
     accountScope,
-    isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
+    isSignedIn: !!authSignedIn && isSyncFeatureEnabled &&
+      (isLocalOnlyProject || projectEditLease.state.status === "owned"),
     isLoaded: isAuthLoaded,
     accountSession,
     config,
@@ -522,26 +667,53 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   // --- Handlers ---
 
   const handleResetProject = async () => {
-    if (window.confirm("确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。")) {
+    const resetTarget = isLocalOnlyProject ? "本地项目" : "本地与云端的项目数据";
+    if (window.confirm(`确认清空整个项目吗？\n\n这会清空${resetTarget}（脚本、镜头、生成内容等），且不可恢复。`)) {
+      if (isLocalOnlyProject) {
+        resetNodeFlowProjectState();
+        const localProjectId = resolveStyloProjectId(projectDataRef.current);
+        const emptyProject = normalizeProjectData(
+          resetStyloScopedProjectData(
+            projectDataRef.current,
+            normalizeProjectData(structuredClone(INITIAL_PROJECT_DATA)),
+            localProjectId,
+          ),
+        );
+        projectDataRef.current = emptyProject;
+        setProjectData(emptyProject);
+        setProjectResetToken((token) => token + 1);
+        return;
+      }
       const resumeProjectSync = suspendProjectSync();
       const resetProjectId = resolveStyloProjectId(projectDataRef.current);
+      const emptyProject = normalizeProjectData(
+        resetStyloScopedProjectData(
+          projectDataRef.current,
+          normalizeProjectData(structuredClone(INITIAL_PROJECT_DATA)),
+          resetProjectId,
+        ),
+      );
       try {
+        if (!projectEditLease.leaseId) throw new Error("当前客户端未持有项目编辑权，不能重置云端项目。");
+        const response = await accountSession.request(`/api/account-data-reset?projectId=${encodeURIComponent(resetProjectId)}`, {
+          method: 'DELETE',
+          headers: { "x-project-edit-lease": projectEditLease.leaseId },
+        });
+        await requireOkResponse(response, '清空云端项目失败');
+
         resetNodeFlowProjectState();
         resetStyloProjectAgentStorage(accountScope, resetProjectId);
         setProjectResetToken((token) => token + 1);
         localStorage.setItem(forceCloudClearKey, "1");
-        const emptyProject = normalizeProjectData(INITIAL_PROJECT_DATA);
         projectDataRef.current = emptyProject;
         setProjectData(emptyProject);
-        localStorage.removeItem(projectStorageKey);
         localStorage.removeItem(localBackupKey);
         localStorage.removeItem(remoteBackupKey);
-        localStorage.removeItem(`${localBackupKey}_last_synced`);
+        localStorage.removeItem(`${localBackupKey}_last_synced:${encodeURIComponent(resetProjectId)}`);
 
-        const response = await accountSession.request('/api/account-data-reset', { method: 'DELETE' });
-        await requireOkResponse(response, '清空云端项目失败');
       } catch (error) {
         console.warn('Cloud project reset failed', error);
+        window.alert(error instanceof Error ? error.message : '清空云端项目失败。');
       } finally {
         // A new engine must handshake from version zero. The force-clear marker
         // remains until that handshake confirms the empty project remotely.
@@ -731,6 +903,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         isSignedIn={!!authSignedIn}
         getAuthToken={getAuthToken}
         accountSession={accountSession}
+        projectEditLeaseId={projectEditLease.leaseId}
         syncState={syncState}
         ensureProjectSynced={flushProjectSync}
         syncRollout={syncRollout}
@@ -739,8 +912,9 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
         onResetProject={handleResetProject}
+        onDeleteFlowProject={handleDeleteFlowProject}
         projectResetToken={projectResetToken}
-        onSignOut={() => signOut()}
+        onSignOut={handleExitProject}
         accountInfo={{
           isLoaded: isUserLoaded,
           isSignedIn: !!userSignedIn,
@@ -748,7 +922,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
           email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || undefined,
           avatarUrl: avatarUrl || user?.imageUrl || undefined,
           onSignIn: () => openSignIn(),
-          onSignOut: () => signOut(),
+          onSignOut: handleExitProject,
           onUploadAvatar: handleAvatarUploadClick,
         }}
       />
@@ -774,6 +948,14 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
           )
         }
       >
+        {isSyncFeatureEnabled && !isLocalOnlyProject && projectEditLease.state.status !== "owned" && projectEditLease.state.status !== "disabled" ? (
+          <ProjectEditLeaseModal
+            state={projectEditLease.state}
+            onCreateLocal={handleCreateLocalProject}
+            onExit={handleExitProject}
+            onRetry={projectEditLease.retry}
+          />
+        ) : null}
         {activeConflict && (
           <ConflictModal
             isOpen={!!activeConflict}

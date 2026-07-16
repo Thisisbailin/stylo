@@ -310,21 +310,24 @@ const postAssetApi = async (payload: Record<string, unknown>) => {
 };
 
 export const createSeedanceAsset = async (params: {
+  projectId: string;
   url: string;
   name?: string;
   groupId?: string | null;
 }): Promise<SeedanceAssetCreateResult> => {
   return postAssetApi({
     action: "create",
+    projectId: params.projectId,
     url: params.url,
     name: params.name,
     groupId: params.groupId || undefined,
   });
 };
 
-export const getSeedanceAsset = async (assetId: string): Promise<SeedanceAssetStatusResult> => {
+export const getSeedanceAsset = async (projectId: string, assetId: string): Promise<SeedanceAssetStatusResult> => {
   return postAssetApi({
     action: "get",
+    projectId,
     assetId,
   });
 };

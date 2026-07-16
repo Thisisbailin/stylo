@@ -243,7 +243,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
             enabledSkills: enabledSkills.map((skill) => skill.id),
           })
         );
-        const underlyingSession = new D1EdgeSession(context.env || {}, body.run.sessionId, sessionKey, sessionOwner);
+        const underlyingSession = new D1EdgeSession(context.env || {}, body.run.projectId, body.run.sessionId, sessionKey, sessionOwner);
         let chatCompactionSession: StyloChatCompactionSession | null = null;
         const session =
           apiMode === "responses"
@@ -260,7 +260,12 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
                 baseUrl: resolvedBaseUrl,
                 maxItems: EDGE_CHAT_SESSION_MAX_ITEMS,
               }));
-        const sessionMessages = await readD1SessionMessages(context.env || {}, sessionKey);
+        const sessionMessages = await readD1SessionMessages(
+          context.env || {},
+          body.run.projectId,
+          sessionKey,
+          sessionOwner,
+        );
         emitWrapperTrace("session", "info", "Session snapshot loaded", `items=${sessionMessages.length}`);
         emitWrapperTrace("runtime", "running", "Delegating to agent core");
         const runResult = await runStyloAgentCore({
@@ -354,6 +359,7 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
             await forceFlushAgentTracing();
             await persistBufferedTrace(context.env || {}, {
               traceId,
+              projectId: body.run.projectId,
               sessionId: body.run.sessionId,
               sessionKey,
               userId: sessionOwner,

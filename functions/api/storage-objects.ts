@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getUserId, JSON_HEADERS } from "./_auth";
 import { readJsonRequest } from "./_request";
 import type { PagesContext } from "./_types";
+import { normalizeProjectId } from "./_projectScope";
 
 type Env = {
   CLERK_SECRET_KEY: string;
@@ -38,7 +39,7 @@ const sanitizePath = (value: unknown) => {
   return cleaned.slice(0, 240);
 };
 
-export const normalizeStorageDeleteObjects = (payload: unknown, userId: string): StorageDeleteObject[] => {
+export const normalizeStorageDeleteObjects = (payload: unknown, userId: string, projectId: string): StorageDeleteObject[] => {
   const requested = Array.isArray((payload as { objects?: unknown })?.objects)
     ? (payload as { objects: unknown[] }).objects
     : [];
@@ -46,7 +47,7 @@ export const normalizeStorageDeleteObjects = (payload: unknown, userId: string):
     throw new Response(`objects must contain 1-${MAX_OBJECTS} entries`, { status: 400 });
   }
 
-  const userPrefix = `users/${userId}/`;
+  const projectPrefix = `users/${userId}/projects/${projectId}/`;
   const unique = new Map<string, StorageDeleteObject>();
   requested.forEach((entry) => {
     const bucket = typeof (entry as { bucket?: unknown })?.bucket === "string"
@@ -57,7 +58,7 @@ export const normalizeStorageDeleteObjects = (payload: unknown, userId: string):
       throw new Response("bucket not allowed", { status: 400 });
     }
     if (!path) throw new Response("path required", { status: 400 });
-    if (!path.startsWith(userPrefix)) throw new Response("path forbidden", { status: 403 });
+    if (!path.startsWith(projectPrefix)) throw new Response("path forbidden", { status: 403 });
     const object = { bucket: bucket as StorageDeleteObject["bucket"], path };
     unique.set(`${object.bucket}:${object.path}`, object);
   });
@@ -86,7 +87,9 @@ export const onRequestDelete = async ({ request, env }: PagesContext<Env>) => {
   try {
     const userId = await getUserId(request, env);
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
-    const objects = normalizeStorageDeleteObjects(payload, userId);
+    const projectId = normalizeProjectId(payload?.projectId);
+    if (!projectId) return new Response("projectId required", { status: 400 });
+    const objects = normalizeStorageDeleteObjects(payload, userId, projectId);
     const supabaseUrl = env.SUPABASE_URL;
     const serviceRole = env.SUPABASE_SERVICE_ROLE || env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
     if (!supabaseUrl || !serviceRole) {

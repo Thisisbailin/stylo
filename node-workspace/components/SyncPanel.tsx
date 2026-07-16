@@ -4,10 +4,12 @@ import type { AppConfig, SyncState } from "../../types";
 import type { AccountApiSession } from "../../sync/authenticatedFetch";
 
 type Props = {
+  projectId: string;
   config: AppConfig;
   onConfigChange: (c: AppConfig) => void;
   isSignedIn?: boolean;
   accountSession?: AccountApiSession;
+  projectEditLeaseId?: string;
   onForceSync?: () => void;
   syncState?: SyncState;
   syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
@@ -21,10 +23,12 @@ type Props = {
 export type SyncSectionKey = "status" | "history";
 
 export const SyncPanel: React.FC<Props> = ({
+  projectId,
   config,
   onConfigChange,
   isSignedIn,
   accountSession,
+  projectEditLeaseId,
   onForceSync,
   syncState,
   syncRollout,
@@ -116,7 +120,7 @@ export const SyncPanel: React.FC<Props> = ({
     setIsLoadingSnapshots(true);
     setSnapshotMessage(null);
     try {
-      const res = await accountSession.request("/api/project-snapshots");
+      const res = await accountSession.request(`/api/project-snapshots?projectId=${encodeURIComponent(projectId)}`);
       if (!res.ok) {
         throw new Error(`Failed to load snapshots (${res.status})`);
       }
@@ -135,7 +139,7 @@ export const SyncPanel: React.FC<Props> = ({
       setSnapshotMessage({ type: "error", text: "Cloud sync is not enabled yet." });
       return;
     }
-    if (!accountSession || !isSignedIn) {
+    if (!accountSession || !isSignedIn || !projectEditLeaseId) {
       setSnapshotMessage({ type: "error", text: "Sign in to restore snapshots." });
       return;
     }
@@ -143,7 +147,7 @@ export const SyncPanel: React.FC<Props> = ({
     if (!confirmRestore) return;
     setIsRestoringSnapshot(true);
     try {
-      const indexRes = await accountSession.request("/api/project-snapshots");
+      const indexRes = await accountSession.request(`/api/project-snapshots?projectId=${encodeURIComponent(projectId)}`);
       if (!indexRes.ok) {
         throw new Error(`Failed to read the current project version (${indexRes.status})`);
       }
@@ -157,13 +161,14 @@ export const SyncPanel: React.FC<Props> = ({
       }
       const opId = globalThis.crypto?.randomUUID?.() ||
         `restore-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const res = await accountSession.request("/api/project-restore", {
+      const res = await accountSession.request(`/api/project-restore?projectId=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           "if-match": String(expectedUpdatedAt),
+          "x-project-edit-lease": projectEditLeaseId,
         },
-        body: JSON.stringify({ version, expectedUpdatedAt, opId }),
+        body: JSON.stringify({ projectId, version, expectedUpdatedAt, opId }),
       });
       if (!res.ok) {
         if (res.status === 409) {

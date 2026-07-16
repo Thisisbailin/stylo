@@ -348,6 +348,35 @@ test("keeping local after a CAS conflict retries from the returned remote versio
   engine.dispose();
 });
 
+test("an identical remote snapshot after a stale CAS converges without asking the user", async () => {
+  let conflicts = 0;
+  let saves = 0;
+  const engine = createEngine({
+    load: async () => ({ value: { revision: 1, text: "base" }, version: 4 }),
+    save: async () => {
+      saves += 1;
+      return {
+        kind: "conflict" as const,
+        remote: { value: { revision: 2, text: "same change" }, version: 5, revision: 2 },
+      };
+    },
+  }, {
+    onConflict: async () => {
+      conflicts += 1;
+      return "local";
+    },
+  });
+  await engine.start({ revision: 1, text: "base" });
+
+  const lease = await engine.acquire({ revision: 2, text: "same change" }, 2);
+
+  assert.equal(saves, 1);
+  assert.equal(conflicts, 0);
+  assert.equal(lease.remoteVersion, 5);
+  lease.release();
+  engine.dispose();
+});
+
 test("choosing remote during an explicit push cancels the Agent request and applies remote", async () => {
   let applied: TestDocument | null = null;
   const engine = createEngine({

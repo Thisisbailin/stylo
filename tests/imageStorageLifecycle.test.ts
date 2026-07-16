@@ -15,23 +15,23 @@ test("image nodes expose every owned Supabase object exactly once", () => {
     {
       data: {
         storageBucket: "assets",
-        storagePath: "users/user-1/image-inputs/source.png",
+        storagePath: "users/user-1/projects/project-a/image-inputs/source.png",
         assetSourceBucket: "public-assets",
-        assetSourcePath: "users/user-1/seedance-assets/review.png",
+        assetSourcePath: "users/user-1/projects/project-a/seedance-assets/review.png",
       },
     },
     {
       data: {
         storageBucket: "assets",
-        storagePath: "users/user-1/image-inputs/source.png",
+        storagePath: "users/user-1/projects/project-a/image-inputs/source.png",
       },
     },
     { data: { image: "data:image/png;base64,legacy" } },
   ]);
 
   assert.deepEqual(objects, [
-    { bucket: "assets", path: "users/user-1/image-inputs/source.png" },
-    { bucket: "public-assets", path: "users/user-1/seedance-assets/review.png" },
+    { bucket: "assets", path: "users/user-1/projects/project-a/image-inputs/source.png" },
+    { bucket: "public-assets", path: "users/user-1/projects/project-a/seedance-assets/review.png" },
   ]);
 });
 
@@ -39,19 +39,19 @@ test("storage deletion accepts only allow-listed objects owned by the authentica
   assert.deepEqual(
     normalizeStorageDeleteObjects({
       objects: [
-        { bucket: "assets", path: "/users/user-1/image-inputs/source.png" },
-        { bucket: "assets", path: "users/user-1/image-inputs/source.png" },
+        { bucket: "assets", path: "/users/user-1/projects/project-a/image-inputs/source.png" },
+        { bucket: "assets", path: "users/user-1/projects/project-a/image-inputs/source.png" },
       ],
-    }, "user-1"),
-    [{ bucket: "assets", path: "users/user-1/image-inputs/source.png" }]
+    }, "user-1", "project-a"),
+    [{ bucket: "assets", path: "users/user-1/projects/project-a/image-inputs/source.png" }]
   );
 
   assert.throws(
-    () => normalizeStorageDeleteObjects({ objects: [{ bucket: "private", path: "users/user-1/file.png" }] }, "user-1"),
+    () => normalizeStorageDeleteObjects({ objects: [{ bucket: "private", path: "users/user-1/projects/project-a/file.png" }] }, "user-1", "project-a"),
     (error: unknown) => error instanceof Response && error.status === 400
   );
   assert.throws(
-    () => normalizeStorageDeleteObjects({ objects: [{ bucket: "assets", path: "users/user-10/file.png" }] }, "user-1"),
+    () => normalizeStorageDeleteObjects({ objects: [{ bucket: "assets", path: "users/user-1/projects/project-b/file.png" }] }, "user-1", "project-a"),
     (error: unknown) => error instanceof Response && error.status === 403
   );
 });

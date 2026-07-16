@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getUserId, JSON_HEADERS } from './_auth';
 import { readJsonRequest } from './_request';
 import type { PagesContext } from './_types';
+import { normalizeProjectId } from './_projectScope';
 
 type Env = {
   CLERK_SECRET_KEY: string;
@@ -50,9 +51,10 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     const userId = await getUserId(request, env);
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const requestedFileName = sanitizePath(payload?.fileName);
+    const projectId = normalizeProjectId(payload?.projectId);
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
     const contentType = normalizeContentType(payload?.contentType);
-    if (!requestedFileName) {
+    if (!requestedFileName || !projectId) {
       return new Response('fileName required', { status: 400 });
     }
     if (!bucket) {
@@ -69,10 +71,10 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRole);
-    const userPrefix = `users/${userId}/`;
-    const fileName = requestedFileName.startsWith(userPrefix)
+    const projectPrefix = `users/${userId}/projects/${projectId}/`;
+    const fileName = requestedFileName.startsWith(projectPrefix)
       ? requestedFileName
-      : `${userPrefix}${requestedFileName}`;
+      : `${projectPrefix}${requestedFileName}`;
     const { data, error } = await supabase.storage
       .from(bucket)
       .createSignedUploadUrl(fileName, { upsert: false });

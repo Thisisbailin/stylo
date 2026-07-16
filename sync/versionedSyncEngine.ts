@@ -438,6 +438,23 @@ export class VersionedSyncEngine<T> {
         }
 
         const remoteValue = this.capture(result.remote.value);
+        const remoteRevision = result.remote.revision ?? this.options.codec.revision?.(remoteValue) ?? null;
+        if (this.isEqual(value, remoteValue)) {
+          if (expectedRevision !== undefined && remoteRevision !== expectedRevision) {
+            throw new SyncProtocolError(
+              `云端已确认修订 ${remoteRevision ?? "missing"}，并非 Agent 请求的 ${expectedRevision}。`
+            );
+          }
+          // Another writer may have committed the exact same snapshot between
+          // our load and CAS save. This is convergence, not a user conflict.
+          this.acceptConfirmed(remoteValue, result.remote.version);
+          this.options.onEmptyOverwriteCommitted?.();
+          this.emit("synced");
+          return {
+            version: result.remote.version,
+            revision: remoteRevision,
+          };
+        }
         this.emit("conflict");
         const choice = await this.resolveConflict({ local: value, remote: remoteValue, reason: "push" });
         this.controller.signal.throwIfAborted();

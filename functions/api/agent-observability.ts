@@ -1,5 +1,6 @@
 import { getUserId, jsonResponse } from "./_auth";
-import { buildStyloSessionPrefix, isStyloSessionInProject } from "../../agents/runtime/projectScope";
+import { isStyloSessionInProject } from "../../agents/runtime/projectScope";
+import { normalizeProjectId } from "./_projectScope";
 
 type Env = {
   DB: any;
@@ -93,7 +94,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
     const url = new URL(context.request.url);
-    const projectId = (url.searchParams.get("projectId") || "").trim();
+    const projectId = normalizeProjectId(url.searchParams.get("projectId"));
     const sessionId = (url.searchParams.get("sessionId") || "").trim();
     const traceId = (url.searchParams.get("traceId") || "").trim();
     if (!projectId) {
@@ -102,12 +103,10 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     if (sessionId && !isStyloSessionInProject(sessionId, projectId)) {
       return jsonResponse({ error: "Session does not belong to this project" }, { status: 409 });
     }
-    const sessionPrefix = buildStyloSessionPrefix(projectId);
-
     const sessionRows = await context.env.DB.prepare(
-      "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND instr(session_id, ?2) = 1 ORDER BY updated_at DESC LIMIT 30"
+      "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND project_id = ?2 ORDER BY updated_at DESC LIMIT 30"
     )
-      .bind(userId, sessionPrefix)
+      .bind(userId, projectId)
       .all();
     const sessions = ((sessionRows.results || []) as any[]).map(toSessionSummary);
 
@@ -133,20 +132,20 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         FROM agent_spans
         GROUP BY trace_id
       ) s ON s.trace_id = t.trace_id
-      WHERE t.user_id = ?1 AND instr(t.session_id, ?2) = 1
+      WHERE t.user_id = ?1 AND t.project_id = ?2
       ORDER BY t.updated_at DESC
       LIMIT 40`
     )
-      .bind(userId, sessionPrefix)
+      .bind(userId, projectId)
       .all();
     const traces = ((traceRows.results || []) as any[]).map(toTraceSummary);
 
     let selectedSession: any = null;
     if (sessionId) {
       const row = await context.env.DB.prepare(
-        "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND session_id = ?2 LIMIT 1"
+        "SELECT session_key, session_id, items, messages, updated_at FROM agent_sessions WHERE user_id = ?1 AND project_id = ?2 AND session_id = ?3 LIMIT 1"
       )
-        .bind(userId, sessionId)
+        .bind(userId, projectId, sessionId)
         .first();
       if (row) {
         const messages = safeParseJson<any[]>(row.messages, []);
@@ -191,24 +190,24 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
           FROM agent_spans
           GROUP BY trace_id
         ) s ON s.trace_id = t.trace_id
-        WHERE t.user_id = ?1 AND t.trace_id = ?2 AND instr(t.session_id, ?3) = 1
+        WHERE t.user_id = ?1 AND t.project_id = ?2 AND t.trace_id = ?3
         LIMIT 1`
       )
-        .bind(userId, resolvedTraceId, sessionPrefix)
+        .bind(userId, projectId, resolvedTraceId)
         .first();
       if (traceRow) {
         const spanRows = await context.env.DB.prepare(
-          "SELECT span_id, parent_id, span_type, span_name, started_at, ended_at, error, span_json, created_at FROM agent_spans WHERE trace_id = ?1 ORDER BY started_at ASC, created_at ASC LIMIT 400"
+          "SELECT span_id, parent_id, span_type, span_name, started_at, ended_at, error, span_json, created_at FROM agent_spans WHERE user_id = ?1 AND project_id = ?2 AND trace_id = ?3 ORDER BY started_at ASC, created_at ASC LIMIT 400"
         )
-          .bind(resolvedTraceId)
+          .bind(userId, projectId, resolvedTraceId)
           .all();
         const traceSessionId = String(traceRow.session_id || "");
         let traceMessages: any[] = [];
         if (traceSessionId) {
           const sessionRow = await context.env.DB.prepare(
-            "SELECT messages FROM agent_sessions WHERE user_id = ?1 AND session_id = ?2 LIMIT 1"
+            "SELECT messages FROM agent_sessions WHERE user_id = ?1 AND project_id = ?2 AND session_id = ?3 LIMIT 1"
           )
-            .bind(userId, traceSessionId)
+            .bind(userId, projectId, traceSessionId)
             .first();
           traceMessages = safeParseJson<any[]>(sessionRow?.messages, []);
         }

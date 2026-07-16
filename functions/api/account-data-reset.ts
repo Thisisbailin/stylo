@@ -1,6 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { getUserId, jsonResponse } from "./_auth";
 import { readJsonRequest } from "./_request";
+import {
+  buildProjectEditLeaseGuardStatement,
+  type ProjectEditLeaseRow,
+  requireProjectEditLease,
+} from "./_projectEditLease";
+import {
+  buildProjectWriteGuardCleanupStatement,
+  createProjectWriteGuardId,
+  isProjectWriteGuardError,
+} from "./_projectWriteGuard";
 
 type Env = {
   DB: any;
@@ -21,28 +31,24 @@ const getSupabaseAdmin = (env: Env) => {
   return createClient(supabaseUrl, serviceRole);
 };
 
-type ResetPlan = { table: string; sql: string; requires?: string };
+type ResetPlan = { table: string; sql: string; requires?: string; projectScoped?: boolean };
 
 const PROJECT_RESET_PLANS: ResetPlan[] = [
-  {
-    table: "agent_spans",
-    sql: "DELETE FROM agent_spans WHERE trace_id IN (SELECT trace_id FROM agent_traces WHERE user_id = ?1)",
-    requires: "agent_traces",
-  },
-  { table: "agent_traces", sql: "DELETE FROM agent_traces WHERE user_id = ?1" },
-  { table: "agent_sessions", sql: "DELETE FROM agent_sessions WHERE user_id = ?1" },
-  { table: "user_project_flow_nodes", sql: "DELETE FROM user_project_flow_nodes WHERE user_id = ?1" },
-  { table: "user_seedance_assets", sql: "DELETE FROM user_seedance_assets WHERE user_id = ?1" },
-  { table: "user_project_scenes", sql: "DELETE FROM user_project_scenes WHERE user_id = ?1" },
-  { table: "user_project_episodes", sql: "DELETE FROM user_project_episodes WHERE user_id = ?1" },
-  { table: "user_project_snapshots", sql: "DELETE FROM user_project_snapshots WHERE user_id = ?1" },
-  { table: "user_project_characters", sql: "DELETE FROM user_project_characters WHERE user_id = ?1" },
-  { table: "user_project_locations", sql: "DELETE FROM user_project_locations WHERE user_id = ?1" },
-  { table: "user_project_flow_projects", sql: "DELETE FROM user_project_flow_projects WHERE user_id = ?1" },
-  { table: "user_project_write_guards", sql: "DELETE FROM user_project_write_guards WHERE user_id = ?1" },
+  { table: "agent_spans", sql: "DELETE FROM agent_spans WHERE user_id = ?1", projectScoped: true },
+  { table: "agent_traces", sql: "DELETE FROM agent_traces WHERE user_id = ?1", projectScoped: true },
+  { table: "agent_sessions", sql: "DELETE FROM agent_sessions WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_flow_nodes", sql: "DELETE FROM user_project_flow_nodes WHERE user_id = ?1", projectScoped: true },
+  { table: "user_seedance_assets", sql: "DELETE FROM user_seedance_assets WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_scenes", sql: "DELETE FROM user_project_scenes WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_episodes", sql: "DELETE FROM user_project_episodes WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_snapshots", sql: "DELETE FROM user_project_snapshots WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_characters", sql: "DELETE FROM user_project_characters WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_locations", sql: "DELETE FROM user_project_locations WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_flow_projects", sql: "DELETE FROM user_project_flow_projects WHERE user_id = ?1", projectScoped: true },
   { table: "user_projects", sql: "DELETE FROM user_projects WHERE user_id = ?1" },
   { table: "user_project_changes", sql: "DELETE FROM user_project_changes WHERE user_id = ?1" },
-  { table: "user_project_meta", sql: "DELETE FROM user_project_meta WHERE user_id = ?1" },
+  { table: "user_project_edit_leases", sql: "DELETE FROM user_project_edit_leases WHERE user_id = ?1" },
+  { table: "user_project_meta", sql: "DELETE FROM user_project_meta WHERE user_id = ?1", projectScoped: true },
   { table: "user_sync_audit", sql: "DELETE FROM user_sync_audit WHERE user_id = ?1" },
 ];
 
@@ -51,7 +57,12 @@ const ACCOUNT_RESET_PLANS: ResetPlan[] = [
   { table: "user_secrets", sql: "DELETE FROM user_secrets WHERE user_id = ?1" },
 ];
 
-export const resetD1UserData = async (env: Env, userId: string, includeAccountSettings: boolean) => {
+export const resetD1UserData = async (
+  env: Env,
+  userId: string,
+  includeAccountSettings: boolean,
+  editLease: ProjectEditLeaseRow,
+) => {
   const tableRows = await env.DB.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table'"
   ).all();
@@ -63,14 +74,34 @@ export const resetD1UserData = async (env: Env, userId: string, includeAccountSe
   const plans = [
     ...PROJECT_RESET_PLANS,
     ...(includeAccountSettings ? ACCOUNT_RESET_PLANS : []),
-  ].filter((plan) => existingTables.has(plan.table) && (!plan.requires || existingTables.has(plan.requires)));
+  ].filter((plan) =>
+    existingTables.has(plan.table) &&
+    (!plan.requires || existingTables.has(plan.requires)) &&
+    (includeAccountSettings || plan.projectScoped)
+  );
   if (!plans.length) return {};
 
-  const results = await env.DB.batch(
-    plans.map((plan) => env.DB.prepare(plan.sql).bind(userId))
-  );
+  const guardId = createProjectWriteGuardId(userId, `reset-${crypto.randomUUID()}`);
+  let results: any[];
+  try {
+    results = await env.DB.batch([
+      buildProjectEditLeaseGuardStatement(env.DB, editLease, guardId),
+      ...plans.map((plan) => plan.projectScoped && !includeAccountSettings
+        ? env.DB.prepare(`${plan.sql} AND project_id = ?2`).bind(userId, editLease.project_id)
+        : env.DB.prepare(plan.sql).bind(userId)),
+      buildProjectWriteGuardCleanupStatement(env.DB, guardId),
+    ]);
+  } catch (error) {
+    if (isProjectWriteGuardError(error)) {
+      throw jsonResponse(
+        { error: "Project edit lease expired before reset", code: "PROJECT_EDIT_LEASE_REQUIRED" },
+        { status: 423 },
+      );
+    }
+    throw error;
+  }
   return Object.fromEntries(
-    plans.map((plan, index) => [plan.table, Number(results?.[index]?.meta?.changes || 0)])
+    plans.map((plan, index) => [plan.table, Number(results?.[index + 1]?.meta?.changes || 0)])
   );
 };
 
@@ -117,7 +148,7 @@ const removeStoragePaths = async (supabase: any, bucket: string, paths: string[]
   return removed;
 };
 
-const deleteStorageUserData = async (env: Env, userId: string) => {
+const deleteStorageUserData = async (env: Env, userId: string, projectId?: string) => {
   const supabase = getSupabaseAdmin(env);
   if (!supabase) {
     return {
@@ -127,7 +158,9 @@ const deleteStorageUserData = async (env: Env, userId: string) => {
     };
   }
 
-  const prefix = `users/${userId}`;
+  const prefix = projectId
+    ? `users/${userId}/projects/${projectId}`
+    : `users/${userId}`;
   const buckets: Record<string, { prefixes: Record<string, { listed: number; removed: number }> }> = {};
   for (const bucket of STORAGE_BUCKETS) {
     const bucketResult: Record<string, { listed: number; removed: number }> = {};
@@ -154,9 +187,10 @@ const parseResetOptions = async (request: Request) => {
 const handleReset = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
+    const editLease = await requireProjectEditLease(context.env, context.request, userId);
     const { scope } = await parseResetOptions(context.request);
     const includeAccountSettings = scope === "all";
-    const d1 = await resetD1UserData(context.env, userId, includeAccountSettings);
+    const d1 = await resetD1UserData(context.env, userId, includeAccountSettings, editLease);
     let storage: Awaited<ReturnType<typeof deleteStorageUserData>> | {
       skipped: true;
       reason: string;
@@ -164,7 +198,11 @@ const handleReset = async (context: { request: Request; env: Env }) => {
     };
     const warnings: string[] = [];
     try {
-      storage = await deleteStorageUserData(context.env, userId);
+      storage = await deleteStorageUserData(
+        context.env,
+        userId,
+        includeAccountSettings ? undefined : editLease.project_id,
+      );
     } catch (error) {
       // D1 is the source of truth for project and Agent state. Object cleanup is
       // best-effort and must not turn an already committed reset into a false

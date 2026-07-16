@@ -3,6 +3,7 @@ import { computeProjectDelta, isDeltaEmpty } from "../utils/delta";
 import { dropFileReplacer, isProjectEmpty } from "../utils/persistence";
 import { normalizeProjectData } from "../utils/projectData";
 import { toCloudProjectData } from "../utils/cloudProjectData";
+import { buildStyloScopedProjectData } from "../agents/runtime/projectScope";
 import { validateProjectData } from "../utils/validation";
 import {
   AccountApiSession,
@@ -69,11 +70,21 @@ export const projectSyncCodec: VersionedSyncCodec<ProjectData> = {
   revision: readActiveFlowRevision,
 };
 
+export const createProjectSyncCodec = (projectId: string): VersionedSyncCodec<ProjectData> => ({
+  ...projectSyncCodec,
+  snapshot(value) {
+    return projectSyncCodec.snapshot(buildStyloScopedProjectData(value, projectId));
+  },
+});
+
 export const createProjectSyncTransport = (
-  session: AccountApiSession
+  session: AccountApiSession,
+  projectId: string,
+  leaseId: string,
+  onLeaseLost?: () => void,
 ): VersionedSyncTransport<ProjectData> => ({
   async load(signal) {
-    const response = await session.request("/api/project", {}, signal);
+    const response = await session.request(`/api/project?projectId=${encodeURIComponent(projectId)}`, {}, signal);
     if (response.status === 404) return null;
     await requireOkResponse(response, "加载云端项目失败");
     const payload = await parseJsonResponse<ProjectResponse>(response, "加载云端项目失败");
@@ -116,11 +127,12 @@ export const createProjectSyncTransport = (
           opId: request.operationId,
           projectRevision,
         };
-    const response = await session.request("/api/project", {
+    const response = await session.request(`/api/project?projectId=${encodeURIComponent(projectId)}`, {
       method: "PUT",
       headers: {
         "content-type": "application/json",
         "if-match": String(request.baseVersion),
+        "x-project-edit-lease": leaseId,
       },
       body: JSON.stringify(body, dropFileReplacer),
     }, signal);
@@ -143,6 +155,8 @@ export const createProjectSyncTransport = (
         },
       };
     }
+
+    if (response.status === 423) onLeaseLost?.();
 
     await requireOkResponse(response, "保存云端项目失败");
     const payload = await parseJsonResponse<ProjectResponse & { ok?: boolean }>(response, "保存云端项目失败");

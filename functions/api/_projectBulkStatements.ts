@@ -38,6 +38,7 @@ const chunkRows = <T>(rows: T[]): string[] => {
 export const buildBulkProjectInsertStatements = (
   db: D1DatabaseLike,
   userId: string,
+  projectId: string,
   updatedAt: number,
   rows: {
     episodes: EpisodeRow[];
@@ -51,46 +52,45 @@ export const buildBulkProjectInsertStatements = (
 
   chunkRows(rows.episodes).forEach((jsonRows) => {
     const upsert = options.upsertEpisodesAndScenes
-      ? " WHERE true ON CONFLICT(user_id, episode_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at"
+      ? " WHERE true ON CONFLICT(user_id, project_id, episode_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at"
       : "";
     statements.push(db.prepare(
-      `INSERT INTO user_project_episodes (user_id, episode_id, data, updated_at)
-       SELECT ?1, CAST(json_extract(value, '$.id') AS INTEGER), json_extract(value, '$.data'), ?3
-       FROM json_each(?2)${upsert}`
-    ).bind(userId, jsonRows, updatedAt));
+      `INSERT INTO user_project_episodes (user_id, project_id, episode_id, data, updated_at)
+       SELECT ?1, ?2, CAST(json_extract(value, '$.id') AS INTEGER), json_extract(value, '$.data'), ?4
+       FROM json_each(?3)${upsert}`
+    ).bind(userId, projectId, jsonRows, updatedAt));
   });
   chunkRows(rows.scenes).forEach((jsonRows) => {
     const upsert = options.upsertEpisodesAndScenes
-      ? " WHERE true ON CONFLICT(user_id, episode_id, scene_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at"
+      ? " WHERE true ON CONFLICT(user_id, project_id, episode_id, scene_id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at"
       : "";
     statements.push(db.prepare(
-      `INSERT INTO user_project_scenes (user_id, episode_id, scene_id, data, updated_at)
-       SELECT ?1,
+      `INSERT INTO user_project_scenes (user_id, project_id, episode_id, scene_id, data, updated_at)
+       SELECT ?1, ?2,
               CAST(json_extract(value, '$.episodeId') AS INTEGER),
               json_extract(value, '$.sceneId'),
               json_extract(value, '$.data'),
-              ?3
-       FROM json_each(?2)${upsert}`
-    ).bind(userId, jsonRows, updatedAt));
+              ?4
+       FROM json_each(?3)${upsert}`
+    ).bind(userId, projectId, jsonRows, updatedAt));
   });
   chunkRows(rows.flowProjects).forEach((jsonRows) => {
     statements.push(db.prepare(
       `INSERT INTO user_project_flow_projects (user_id, project_id, data, updated_at)
-       SELECT ?1, json_extract(value, '$.projectId'), json_extract(value, '$.data'), ?3
-       FROM json_each(?2)`
-    ).bind(userId, jsonRows, updatedAt));
+       SELECT ?1, ?2, json_extract(value, '$.data'), ?4
+       FROM json_each(?3)`
+    ).bind(userId, projectId, jsonRows, updatedAt));
   });
   chunkRows(rows.flowNodes).forEach((jsonRows) => {
     statements.push(db.prepare(
       `INSERT INTO user_project_flow_nodes (user_id, project_id, node_id, node_index, data, updated_at)
-       SELECT ?1,
-              json_extract(value, '$.projectId'),
+       SELECT ?1, ?2,
               json_extract(value, '$.nodeId'),
               CAST(json_extract(value, '$.nodeIndex') AS INTEGER),
               json_extract(value, '$.data'),
-              ?3
-       FROM json_each(?2)`
-    ).bind(userId, jsonRows, updatedAt));
+              ?4
+       FROM json_each(?3)`
+    ).bind(userId, projectId, jsonRows, updatedAt));
   });
 
   return statements;

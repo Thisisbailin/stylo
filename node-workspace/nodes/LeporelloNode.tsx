@@ -20,6 +20,7 @@ export const LeporelloNode: React.FC<Props> = ({ data, selected }) => {
   ), [nodes]);
   const isCollapsed = data.wrapperCollapsed === true;
   const visiblePages = book.pages.slice(0, isCollapsed ? 2 : 3);
+  const foldDepthLayers = isCollapsed ? 6 : 0;
 
   return (
     <BaseNode
@@ -36,6 +37,20 @@ export const LeporelloNode: React.FC<Props> = ({ data, selected }) => {
         data-wrapper-members={typeof data.wrapperMemberCount === "number" ? data.wrapperMemberCount : 0}
         aria-label={`${data.title || "Leporello"}，${isCollapsed ? "已折叠" : "已展开"}，双击打开故事板`}
       >
+        {foldDepthLayers ? (
+          <div className="leporello-node__depth" aria-hidden="true">
+            {Array.from({ length: foldDepthLayers }, (_, index) => (
+              <span
+                key={`fold-depth-${index}`}
+                className="leporello-node__underfold"
+                style={{
+                  "--fold-depth": index + 1,
+                  "--fold-jog": `${index % 2 === 0 ? -2 : 3}px`,
+                } as React.CSSProperties}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="leporello-node__strip" aria-hidden="true">
           {visiblePages.map((page, index) => {
             const image = page.imageNodeId ? imageById.get(page.imageNodeId) : "";
@@ -51,10 +66,6 @@ export const LeporelloNode: React.FC<Props> = ({ data, selected }) => {
               </span>
             );
           })}
-        </div>
-        <div className="leporello-node__meta">
-          <span>LEPORELLO / 21:9</span>
-          <strong>{book.pages.length} FOLDS</strong>
         </div>
       </div>
     </BaseNode>

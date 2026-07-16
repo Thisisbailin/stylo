@@ -14,6 +14,8 @@ import { bindOperationId, normalizeOperationId } from "./_idempotency";
 import { normalizeFlowProjectsForStorage } from "./_projectFlowMigration";
 import { buildBulkProjectInsertStatements } from "./_projectBulkStatements";
 import { hasInlineProjectMedia } from "../../utils/cloudProjectData";
+import { buildProjectEditLeaseGuardStatement, requireProjectEditLease } from "./_projectEditLease";
+import { requireRequestProjectId } from "./_projectScope";
 
 type Env = {
   DB: any; // D1 binding injected by Cloudflare Pages
@@ -202,7 +204,7 @@ const serializeWithSizeGuard = (value: unknown, label: string) => {
   return { serialized, bytes };
 };
 
-const tryInsertSnapshot = async (env: Env, userId: string, version: number, projectData: unknown) => {
+const tryInsertSnapshot = async (env: Env, userId: string, projectId: string, version: number, projectData: unknown) => {
   const serialized = JSON.stringify({ projectData });
   const bytes = new TextEncoder().encode(serialized).length;
   if (bytes > MAX_PROJECT_BYTES) {
@@ -210,9 +212,9 @@ const tryInsertSnapshot = async (env: Env, userId: string, version: number, proj
     return false;
   }
   await env.DB.prepare(
-    "INSERT OR IGNORE INTO user_project_snapshots (user_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4)"
+    "INSERT OR IGNORE INTO user_project_snapshots (user_id, project_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)"
   )
-    .bind(userId, version, serialized, Date.now())
+    .bind(userId, projectId, version, serialized, Date.now())
     .run();
   return true;
 };
@@ -220,6 +222,7 @@ const tryInsertSnapshot = async (env: Env, userId: string, version: number, proj
 const buildSnapshotStatements = (
   env: Env,
   userId: string,
+  projectId: string,
   version: number,
   projectData: unknown
 ) => {
@@ -231,11 +234,11 @@ const buildSnapshotStatements = (
   }
   return [
     env.DB.prepare(
-      "INSERT OR IGNORE INTO user_project_snapshots (user_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4)"
-    ).bind(userId, version, serialized, Date.now()),
+      "INSERT OR IGNORE INTO user_project_snapshots (user_id, project_id, version, data, created_at) VALUES (?1, ?2, ?3, ?4, ?5)"
+    ).bind(userId, projectId, version, serialized, Date.now()),
     env.DB.prepare(
-      "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 ORDER BY version DESC LIMIT ?2)"
-    ).bind(userId, SNAPSHOT_LIMIT),
+      "DELETE FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 AND version NOT IN (SELECT version FROM user_project_snapshots WHERE user_id = ?1 AND project_id = ?2 ORDER BY version DESC LIMIT ?3)"
+    ).bind(userId, projectId, SNAPSHOT_LIMIT),
   ];
 };
 
@@ -283,11 +286,11 @@ const collectProjectParts = (projectData: any) => {
   };
 };
 
-const loadProjectData = async (env: Env, userId: string) => {
+const loadProjectData = async (env: Env, userId: string, projectId: string) => {
   const metaRow = await env.DB.prepare(
-    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1"
+    "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .first();
 
   if (!metaRow) return null;
@@ -295,27 +298,27 @@ const loadProjectData = async (env: Env, userId: string) => {
   const meta = safeJsonParse<ProjectMeta>(metaRow.data as string, DEFAULT_META);
 
   const episodesResult = await env.DB.prepare(
-    "SELECT episode_id, data FROM user_project_episodes WHERE user_id = ?1 ORDER BY episode_id ASC"
+    "SELECT episode_id, data FROM user_project_episodes WHERE user_id = ?1 AND project_id = ?2 ORDER BY episode_id ASC"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const scenesResult = await env.DB.prepare(
-    "SELECT episode_id, scene_id, data FROM user_project_scenes WHERE user_id = ?1 ORDER BY episode_id ASC, scene_id ASC"
+    "SELECT episode_id, scene_id, data FROM user_project_scenes WHERE user_id = ?1 AND project_id = ?2 ORDER BY episode_id ASC, scene_id ASC"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const flowProjectsResult = await env.DB.prepare(
-    "SELECT project_id, data FROM user_project_flow_projects WHERE user_id = ?1 ORDER BY updated_at ASC, project_id ASC"
+    "SELECT project_id, data FROM user_project_flow_projects WHERE user_id = ?1 AND project_id = ?2"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const flowNodesResult = await env.DB.prepare(
-    "SELECT project_id, node_id, node_index, data FROM user_project_flow_nodes WHERE user_id = ?1 ORDER BY project_id ASC, node_index ASC"
+    "SELECT project_id, node_id, node_index, data FROM user_project_flow_nodes WHERE user_id = ?1 AND project_id = ?2 ORDER BY node_index ASC"
   )
-    .bind(userId)
+    .bind(userId, projectId)
     .all();
 
   const episodesMap = new Map<number, any>();
@@ -377,12 +380,7 @@ const loadProjectData = async (env: Env, userId: string) => {
   const flowProjects = flowProjectsFromRows.length > 0
     ? flowProjectsFromRows
     : toFlowProjects(meta.flowProjects);
-  const activeFlowProjectId =
-    typeof meta.activeFlowProjectId === "string"
-      ? meta.activeFlowProjectId
-      : typeof flowProjects[0]?.id === "string"
-        ? flowProjects[0].id as string
-        : undefined;
+  const activeFlowProjectId = projectId;
   const activeFlowProject = activeFlowProjectId
     ? flowProjects.find((project: any) => project.id === activeFlowProjectId)
     : flowProjects[0];
@@ -426,7 +424,8 @@ export const onRequestGet = async (context: {
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
 
-    const data = await loadProjectData(context.env, userId);
+    const projectId = requireRequestProjectId(context.request);
+    const data = await loadProjectData(context.env, userId, projectId);
     if (!data) {
       return new Response("Not Found", { status: 404 });
     }
@@ -467,6 +466,9 @@ export const onRequestPut = async (context: {
       return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
     }
 
+    const editLease = await requireProjectEditLease(context.env, context.request, userId);
+    const projectId = editLease.project_id;
+
     const body = await readJsonRequest<Record<string, unknown>>(
       context.request,
       MAX_PROJECT_REQUEST_BYTES
@@ -483,6 +485,23 @@ export const onRequestPut = async (context: {
     const hasFull = Object.prototype.hasOwnProperty.call(body, "projectData");
     const projectData = hasFull ? (body as any).projectData : delta ? undefined : body;
     const mode = delta ? "delta" : "full";
+
+    const scopedPayload = (delta?.meta || projectData) as Record<string, unknown> | undefined;
+    const payloadProjectId = typeof scopedPayload?.activeFlowProjectId === "string"
+      ? scopedPayload.activeFlowProjectId.trim()
+      : "";
+    const payloadProjects = Array.isArray(scopedPayload?.flowProjects)
+      ? scopedPayload.flowProjects.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      : [];
+    if (
+      (payloadProjectId && payloadProjectId !== projectId) ||
+      payloadProjects.some((item) => item.id !== projectId)
+    ) {
+      return jsonResponse(
+        { error: "Project payload does not match requested projectId", code: "PROJECT_SCOPE_MISMATCH" },
+        { status: 400 },
+      );
+    }
 
     if (delta) {
       const deltaValidation = validateProjectDelta(delta);
@@ -562,9 +581,9 @@ export const onRequestPut = async (context: {
       : "";
 
     const existingMeta = await context.env.DB.prepare(
-      "SELECT data, updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
+      "SELECT data, updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
     )
-      .bind(userId)
+      .bind(userId, projectId)
       .first();
 
     if (existingMeta && boundOpId && existingMeta.last_op_id === boundOpId) {
@@ -581,7 +600,7 @@ export const onRequestPut = async (context: {
     if (existingMeta) {
       if (typeof clientUpdatedAt !== "number") {
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "missing_version", updatedAt: existingMeta.updated_at, mode, ...auditDevice });
-        const remoteData = await loadProjectData(context.env, userId);
+        const remoteData = await loadProjectData(context.env, userId, projectId);
         return jsonResponse(
           {
             error: "Conflict",
@@ -594,7 +613,7 @@ export const onRequestPut = async (context: {
       }
       if (clientUpdatedAt !== existingMeta.updated_at) {
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "version_mismatch", updatedAt: existingMeta.updated_at, mode, ...auditDevice });
-        const remoteData = await loadProjectData(context.env, userId);
+        const remoteData = await loadProjectData(context.env, userId, projectId);
         return jsonResponse(
           {
             error: "Conflict",
@@ -607,7 +626,7 @@ export const onRequestPut = async (context: {
       }
     }
 
-    const snapshotData = existingMeta ? await loadProjectData(context.env, userId) : null;
+    const snapshotData = existingMeta ? await loadProjectData(context.env, userId, projectId) : null;
 
     let meta = existingMeta
       ? safeJsonParse<ProjectMeta>(existingMeta.data as string, DEFAULT_META)
@@ -748,15 +767,18 @@ export const onRequestPut = async (context: {
     }
 
     const guardId = createProjectWriteGuardId(userId, boundOpId || undefined);
+    const leaseGuardId = `${guardId}:lease`;
     const statements = [
+      buildProjectEditLeaseGuardStatement(context.env.DB, editLease, leaseGuardId),
       buildProjectWriteGuardStatement(
         context.env.DB,
         userId,
+        projectId,
         guardId,
         Boolean(existingMeta),
         clientUpdatedAt
       ),
-      ...(snapshotData ? buildSnapshotStatements(context.env, userId, snapshotData.updatedAt, snapshotData.projectData) : []),
+      ...(snapshotData ? buildSnapshotStatements(context.env, userId, projectId, snapshotData.updatedAt, snapshotData.projectData) : []),
     ];
 
     if (delta) {
@@ -764,13 +786,14 @@ export const onRequestPut = async (context: {
       const scenes = delta.scenes || [];
       const flowRows = toFlowStorageRows(flowProjectsToStore || []);
       if (flowProjectsToStore) {
-        statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
-        statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
+        statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+        statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
       }
 
       statements.push(...buildBulkProjectInsertStatements(
         context.env.DB,
         userId,
+        projectId,
         updatedAt,
         {
           episodes: episodes.map((episode) => ({
@@ -801,35 +824,37 @@ export const onRequestPut = async (context: {
       if (deleted.episodes && deleted.episodes.length > 0) {
         const ids = JSON.stringify(deleted.episodes);
         statements.push(context.env.DB.prepare(
-          "DELETE FROM user_project_episodes WHERE user_id = ?1 AND episode_id IN (SELECT value FROM json_each(?2))"
-        ).bind(userId, ids));
+          "DELETE FROM user_project_episodes WHERE user_id = ?1 AND project_id = ?2 AND episode_id IN (SELECT value FROM json_each(?3))"
+        ).bind(userId, projectId, ids));
         statements.push(context.env.DB.prepare(
-          "DELETE FROM user_project_scenes WHERE user_id = ?1 AND episode_id IN (SELECT value FROM json_each(?2))"
-        ).bind(userId, ids));
+          "DELETE FROM user_project_scenes WHERE user_id = ?1 AND project_id = ?2 AND episode_id IN (SELECT value FROM json_each(?3))"
+        ).bind(userId, projectId, ids));
       }
       if (deleted.scenes && deleted.scenes.length > 0) {
         statements.push(context.env.DB.prepare(
           `DELETE FROM user_project_scenes
            WHERE user_id = ?1
+             AND project_id = ?2
              AND EXISTS (
-               SELECT 1 FROM json_each(?2)
+               SELECT 1 FROM json_each(?3)
                WHERE CAST(json_extract(value, '$.episodeId') AS INTEGER) = user_project_scenes.episode_id
                  AND json_extract(value, '$.sceneId') = user_project_scenes.scene_id
              )`
-        ).bind(userId, JSON.stringify(deleted.scenes)));
+        ).bind(userId, projectId, JSON.stringify(deleted.scenes)));
       }
     } else {
       const parts = collectProjectParts(projectData);
 
-      statements.push(context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1").bind(userId));
-      statements.push(context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1").bind(userId));
-      statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1").bind(userId));
-      statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1").bind(userId));
+      statements.push(context.env.DB.prepare("DELETE FROM user_project_episodes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+      statements.push(context.env.DB.prepare("DELETE FROM user_project_scenes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+      statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_projects WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
+      statements.push(context.env.DB.prepare("DELETE FROM user_project_flow_nodes WHERE user_id = ?1 AND project_id = ?2").bind(userId, projectId));
 
       const flowRows = toFlowStorageRows(flowProjectsToStore || []);
       statements.push(...buildBulkProjectInsertStatements(
         context.env.DB,
         userId,
+        projectId,
         updatedAt,
         {
           episodes: parts.episodes.map((episode: any) => ({ id: episode.id, data: episode })),
@@ -847,21 +872,28 @@ export const onRequestPut = async (context: {
 
     if (hasChanges) {
       statements.push(context.env.DB.prepare(
-        "INSERT INTO user_project_meta (user_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id) DO UPDATE SET data=?2, updated_at=?3, last_op_id=?4"
+        "INSERT INTO user_project_meta (user_id, project_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, project_id) DO UPDATE SET data=?3, updated_at=?4, last_op_id=?5"
       )
-        .bind(userId, metaSerialized, updatedAt, boundOpId || null)
+        .bind(userId, projectId, metaSerialized, updatedAt, boundOpId || null)
       );
     }
 
     statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
+    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, leaseGuardId));
 
     try {
       await context.env.DB.batch(statements);
     } catch (batchError) {
       if (isProjectWriteGuardError(batchError)) {
+        try {
+          await requireProjectEditLease(context.env, context.request, userId);
+        } catch (leaseError) {
+          if (leaseError instanceof Response) return leaseError;
+          throw leaseError;
+        }
         const latestMeta = await context.env.DB.prepare(
-          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1"
-        ).bind(userId).first();
+          "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
+        ).bind(userId, projectId).first();
         const latestUpdatedAt = latestMeta ? Number(latestMeta.updated_at) || 0 : 0;
         if (boundOpId && latestMeta?.last_op_id === boundOpId) {
           return jsonResponse(
@@ -874,7 +906,7 @@ export const onRequestPut = async (context: {
           );
         }
         if (userId) await logAudit(context.env, userId, "project.put", "conflict", { reason: "cas_guard_failed", updatedAt: existingMeta?.updated_at, mode, ...auditDevice });
-        const remoteData = await loadProjectData(context.env, userId);
+        const remoteData = await loadProjectData(context.env, userId, projectId);
         return jsonResponse(
           {
             error: "Conflict",

@@ -7,7 +7,7 @@ import {
 
 export { collectOwnedStorageObjects, type OwnedStorageObject } from "./storageReferences";
 
-export const deleteOwnedStorageObjects = async (objects: OwnedStorageObject[]) => {
+export const deleteOwnedStorageObjects = async (objects: OwnedStorageObject[], projectId: string) => {
   const uniqueObjects = collectOwnedStorageObjects(objects.map((object) => ({
     data: { storageBucket: object.bucket, storagePath: object.path },
   })));
@@ -16,7 +16,7 @@ export const deleteOwnedStorageObjects = async (objects: OwnedStorageObject[]) =
   const response = await fetch(buildApiUrl("/api/storage-objects"), {
     method: "DELETE",
     headers: await buildAuthorizedJsonHeaders(),
-    body: JSON.stringify({ objects: uniqueObjects }),
+    body: JSON.stringify({ projectId, objects: uniqueObjects }),
   });
   if (!response.ok) {
     const message = await response.text();
@@ -25,11 +25,11 @@ export const deleteOwnedStorageObjects = async (objects: OwnedStorageObject[]) =
   return response.json() as Promise<{ removed: number }>;
 };
 
-export const resolvePrivateStorageUrl = async (object: OwnedStorageObject) => {
+export const resolvePrivateStorageUrl = async (object: OwnedStorageObject, projectId: string) => {
   const response = await fetch(buildApiUrl("/api/download-url"), {
     method: "POST",
     headers: await buildAuthorizedJsonHeaders(),
-    body: JSON.stringify({ bucket: object.bucket, path: object.path, expiresIn: 24 * 60 * 60 }),
+    body: JSON.stringify({ projectId, bucket: object.bucket, path: object.path, expiresIn: 24 * 60 * 60 }),
   });
   if (!response.ok) {
     const message = await response.text();
@@ -46,6 +46,7 @@ export const uploadStorageFile = async (
     fileName: string;
     bucket: OwnedStorageObject["bucket"];
     contentType: string;
+    projectId: string;
   }
 ) => {
   const signedResponse = await fetch(buildApiUrl("/api/upload-url"), {
@@ -78,6 +79,6 @@ export const uploadStorageFile = async (
   };
   const url = typeof signedPayload.publicUrl === "string" && signedPayload.publicUrl
     ? signedPayload.publicUrl
-    : await resolvePrivateStorageUrl(object);
+    : await resolvePrivateStorageUrl(object, options.projectId);
   return { object, url };
 };
