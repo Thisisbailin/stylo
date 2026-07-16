@@ -85,7 +85,6 @@ type Props = {
   accountSession?: AccountApiSession;
   projectEditLeaseId?: string;
   syncState?: SyncState;
-  syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onResetProject?: () => void;
   onOpenLanding?: () => void;
@@ -465,7 +464,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   accountSession,
   projectEditLeaseId,
   syncState,
-  syncRollout,
   onForceSync,
   onResetProject,
   onOpenLanding,
@@ -2967,7 +2965,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                         projectEditLeaseId={projectEditLeaseId}
                         onForceSync={onForceSync}
                         syncState={syncState}
-                        syncRollout={syncRollout}
                         onResetProject={onResetProject}
                         activeSection={section}
                         showSidebar={false}

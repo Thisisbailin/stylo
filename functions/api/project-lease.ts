@@ -3,6 +3,7 @@ import { readJsonRequest } from "./_request";
 import { logAudit } from "./audit";
 import {
   PROJECT_EDIT_LEASE_TTL_MS,
+  buildProjectEditLeaseTakeoverStatement,
   readProjectEditLease,
   readRequestDeviceId,
   toPublicLeaseOwner,
@@ -21,6 +22,7 @@ type LeaseRequest = {
   clientLabel?: unknown;
   leaseId?: unknown;
   projectId?: unknown;
+  takeoverToken?: unknown;
 };
 
 const normalizeId = (value: unknown, max = 160) =>
@@ -51,6 +53,7 @@ const blockedResponse = (row: Awaited<ReturnType<typeof readProjectEditLease>>) 
       status: "blocked",
       code: "PROJECT_EDIT_LEASE_HELD",
       owner: toPublicLeaseOwner(row),
+      takeoverToken: row?.lease_id || null,
     },
     { status: 423 },
   );
@@ -65,7 +68,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     const projectId = normalizeProjectId(body?.projectId);
     const deviceId = readRequestDeviceId(context.request);
     const clientLabel = normalizeClientLabel(body?.clientLabel);
-    if (!deviceId || !sessionId || !projectId || !["acquire", "renew", "release"].includes(String(action))) {
+    if (!deviceId || !sessionId || !projectId || !["acquire", "renew", "release", "takeover"].includes(String(action))) {
       return jsonResponse({ error: "Invalid project lease request" }, { status: 400 });
     }
 
@@ -105,6 +108,44 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
         return ownedResponse(row);
       }
       await logAudit(context.env, userId, "project.lease.acquire", "blocked", {
+        deviceId,
+        projectId,
+        sessionId,
+        owner: toPublicLeaseOwner(row),
+      });
+      return blockedResponse(row);
+    }
+
+    if (action === "takeover") {
+      const takeoverToken = normalizeId(body?.takeoverToken);
+      if (!takeoverToken) {
+        return jsonResponse({ error: "Missing or stale project takeover token" }, { status: 409 });
+      }
+      const candidateLeaseId = createLeaseId();
+      const expiresAt = now + PROJECT_EDIT_LEASE_TTL_MS;
+      await buildProjectEditLeaseTakeoverStatement(context.env.DB, {
+        userId,
+        projectId,
+        candidateLeaseId,
+        deviceId,
+        sessionId,
+        clientLabel,
+        now,
+        expiresAt,
+        takeoverToken,
+      }).run();
+
+      const row = await readProjectEditLease(context.env, userId, projectId);
+      if (row?.lease_id === candidateLeaseId && row.device_id === deviceId && row.session_id === sessionId) {
+        await logAudit(context.env, userId, "project.lease.takeover", "owned", {
+          deviceId,
+          projectId,
+          sessionId,
+          expiresAt: row.expires_at,
+        });
+        return ownedResponse(row);
+      }
+      await logAudit(context.env, userId, "project.lease.takeover", "stale", {
         deviceId,
         projectId,
         sessionId,

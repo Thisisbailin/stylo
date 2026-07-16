@@ -131,9 +131,9 @@ npm run build
 
 ## Minimal Local Config
 
-The app can run in a reduced local mode without full cloud services.
-
-If `VITE_CLERK_PUBLISHABLE_KEY` is not set, the app falls back to guest mode and cloud sync is disabled.
+Projects are always tied to an authenticated cloud account. If
+`VITE_CLERK_PUBLISHABLE_KEY` is missing, the app shows a configuration gate;
+it does not create a separate guest or local-only project.
 
 Frontend environment variables must never contain provider secrets. The supported local frontend variables are:
 
@@ -151,16 +151,13 @@ Notes:
 
 ## Cloud Sync And Backend
 
-Stylo includes optional authenticated cloud sync backed by Cloudflare Pages Functions and D1.
+Stylo projects use authenticated cloud sync backed by Cloudflare Pages Functions and D1.
 
 ### Frontend env
 
 ```bash
 VITE_CLERK_PUBLISHABLE_KEY=
 VITE_API_BASE=
-VITE_SYNC_ROLLOUT_PERCENT=100
-VITE_SYNC_ROLLOUT_SALT=
-VITE_SYNC_ROLLOUT_ALLOWLIST=
 ```
 
 ### Pages Functions env
@@ -177,10 +174,6 @@ OPENROUTER_API_KEY=
 
 OPENAI_TRACING_API_KEY=
 AGENT_TRACE_INCLUDE_SENSITIVE_DATA=false
-
-SYNC_ROLLOUT_PERCENT=100
-SYNC_ROLLOUT_SALT=
-SYNC_ROLLOUT_ALLOWLIST=
 
 SUPABASE_SECRET_KEY=
 ```

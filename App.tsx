@@ -1,12 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useUser, useClerk, useAuth } from './lib/auth';
+import { isClerkConfigured, useUser, useClerk, useAuth } from './lib/auth';
 import { FlowState, ProjectData, SyncState, SyncStatus } from './types';
 import { INITIAL_PROJECT_DATA } from './constants';
 import { normalizeProjectData } from './utils/projectData';
 import { backupData, FORCE_CLOUD_CLEAR_KEY, isProjectEmpty } from './utils/persistence';
 import { getDeviceId } from './utils/device';
-import { hashToBucket, isInRollout, normalizeRolloutPercent } from './utils/rollout';
 import { buildApiUrl } from './utils/api';
 import { setApiAuthTokenProvider } from './utils/authToken';
 import { usePersistedState } from './hooks/usePersistedState';
@@ -20,6 +19,7 @@ import { ConflictModal } from './components/ConflictModal';
 import { SecretsConflictModal } from './components/SecretsConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { ProjectEditLeaseModal } from './components/ProjectEditLeaseModal';
+import { CloudAccountGate } from './components/CloudAccountGate';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
 import { resetNodeFlowAccountState, resetNodeFlowProjectState } from './node-workspace/store/nodeFlowStore';
 import type { ProjectSettingsPanelKey } from './node-workspace/components/ProjectSettingsPanel';
@@ -27,18 +27,10 @@ import { GlassEffectLab } from './node-workspace/components/GlassEffectLab';
 import { FilmRollLab } from './node-workspace/components/FilmRollLab';
 import type { ModuleKey } from './node-workspace/components/ModuleBar';
 import {
-  buildStyloAccountStorageKeys,
-  DEFAULT_STYLO_PROJECT_ID,
-  STYLO_ACTIVITY_STORAGE_PREFIX,
-  STYLO_CONVERSATION_STORAGE_PREFIX,
   resolveStyloProjectId,
   resetStyloScopedProjectData,
 } from './agents/runtime/projectScope';
 import { resetStyloProjectAgentStorage } from './agents/runtime/projectReset';
-import {
-  LEGACY_PRODUCT_STORAGE,
-  migrateLegacyProductStorage,
-} from './utils/styloMigration';
 import type { SecretsPayload } from './sync/secretsSyncAdapter';
 import { projectSyncCodec } from './sync/projectSyncAdapter';
 import { AccountApiSession, requireOkResponse } from './sync/authenticatedFetch';
@@ -62,9 +54,8 @@ const THEME_STORAGE_KEY = 'stylo_theme_v1';
 const LOCAL_BACKUP_KEY = 'stylo_local_backup';
 const REMOTE_BACKUP_KEY = 'stylo_remote_backup';
 const AVATAR_STORAGE_KEY = 'stylo_avatar_url';
-const LOCAL_ONLY_PROJECT_KEY = 'stylo_local_only_project_v1';
 
-type AccountScope = "guest" | `user:${string}`;
+type AccountScope = `user:${string}`;
 
 type ProjectConflictRequest = {
   signature: string;
@@ -75,114 +66,6 @@ type ProjectConflictRequest = {
 
 const buildAccountStorageKey = (baseKey: string, accountScope: AccountScope) =>
   `${baseKey}:${encodeURIComponent(accountScope)}`;
-
-const LEGACY_MIGRATION_MARKER_PREFIX = "stylo_legacy_migration_v1";
-
-const isUnscopedLegacyStyloKey = (key: string | null) => {
-  if (!key) return false;
-  const prefix = key.startsWith(`${STYLO_CONVERSATION_STORAGE_PREFIX}:`)
-    ? STYLO_CONVERSATION_STORAGE_PREFIX
-    : key.startsWith(`${STYLO_ACTIVITY_STORAGE_PREFIX}:`)
-      ? STYLO_ACTIVITY_STORAGE_PREFIX
-      : key.startsWith(`${LEGACY_PRODUCT_STORAGE.conversationsV2Prefix}:`)
-        ? LEGACY_PRODUCT_STORAGE.conversationsV2Prefix
-        : key.startsWith(`${LEGACY_PRODUCT_STORAGE.activityV2Prefix}:`)
-          ? LEGACY_PRODUCT_STORAGE.activityV2Prefix
-      : null;
-  if (!prefix) return false;
-  try {
-    const scope = decodeURIComponent(key.slice(prefix.length + 1));
-    return !scope.startsWith("user:") && !scope.startsWith("guest:");
-  } catch {
-    return false;
-  }
-};
-
-const getLegacyProjectId = (rawProject: string | null) => {
-  if (!rawProject) return DEFAULT_STYLO_PROJECT_ID;
-  try {
-    const project = JSON.parse(rawProject) as Record<string, unknown>;
-    if (typeof project.activeFlowProjectId === "string" && project.activeFlowProjectId.trim()) {
-      return project.activeFlowProjectId.trim();
-    }
-    const firstProject = Array.isArray(project.flowProjects) ? project.flowProjects[0] : null;
-    if (firstProject && typeof firstProject === "object" && typeof firstProject.id === "string") {
-      return firstProject.id;
-    }
-  } catch {
-    // Invalid legacy state remains quarantined and is never loaded implicitly.
-  }
-  return DEFAULT_STYLO_PROJECT_ID;
-};
-
-const migrateLegacyLocalState = (accountScope: AccountScope) => {
-  const legacyProject = localStorage.getItem(PROJECT_STORAGE_KEY);
-  const projectId = getLegacyProjectId(legacyProject);
-  const fixedKeys = [
-    PROJECT_STORAGE_KEY,
-    CONFIG_STORAGE_KEY,
-    LOCAL_BACKUP_KEY,
-    REMOTE_BACKUP_KEY,
-    AVATAR_STORAGE_KEY,
-  ];
-  fixedKeys.forEach((legacyKey) => {
-    const value = localStorage.getItem(legacyKey);
-    if (value === null) return;
-    const scopedKey = buildAccountStorageKey(legacyKey, accountScope);
-    if (localStorage.getItem(scopedKey) === null) localStorage.setItem(scopedKey, value);
-    localStorage.removeItem(legacyKey);
-  });
-
-  const allKeys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
-    .filter((key): key is string => Boolean(key));
-  for (const key of allKeys) {
-    const prefix = key.startsWith(`${STYLO_CONVERSATION_STORAGE_PREFIX}:`)
-      ? STYLO_CONVERSATION_STORAGE_PREFIX
-      : key.startsWith(`${STYLO_ACTIVITY_STORAGE_PREFIX}:`)
-        ? STYLO_ACTIVITY_STORAGE_PREFIX
-        : null;
-    if (!prefix || !isUnscopedLegacyStyloKey(key)) continue;
-    const encodedScope = key.slice(prefix.length + 1);
-    let legacyProjectScope = "";
-    try {
-      legacyProjectScope = decodeURIComponent(encodedScope);
-    } catch {
-      continue;
-    }
-    const targetKeys = buildStyloAccountStorageKeys(accountScope, legacyProjectScope);
-    const targetKey = prefix === STYLO_CONVERSATION_STORAGE_PREFIX
-      ? targetKeys.conversationStorageKey
-      : targetKeys.activityStorageKey;
-    const value = localStorage.getItem(key);
-    if (value !== null && localStorage.getItem(targetKey) === null) localStorage.setItem(targetKey, value);
-    localStorage.removeItem(key);
-  }
-
-  const targetConversationKey = buildStyloAccountStorageKeys(accountScope, projectId).conversationStorageKey;
-  if (localStorage.getItem(targetConversationKey) === null) {
-    const legacyConversation = localStorage.getItem("stylo_conversations_v1");
-    const legacyMessages = localStorage.getItem("stylo_messages_v1");
-    if (legacyConversation) {
-      localStorage.setItem(targetConversationKey, legacyConversation);
-    } else if (legacyMessages) {
-      try {
-        const messages = JSON.parse(legacyMessages);
-        if (Array.isArray(messages) && messages.length > 0) {
-          const now = Date.now();
-          const id = `legacy-${now.toString(36)}`;
-          localStorage.setItem(targetConversationKey, JSON.stringify({
-            activeId: id,
-            items: [{ id, title: "迁移的对话", createdAt: now, updatedAt: now, messages }],
-          }));
-        }
-      } catch {
-        // Leave malformed legacy messages quarantined.
-      }
-    }
-  }
-  localStorage.removeItem("stylo_conversations_v1");
-  localStorage.removeItem("stylo_messages_v1");
-};
 
 const decodeJwtExpiry = (token: string) => {
   try {
@@ -229,7 +112,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   const remoteBackupKey = buildAccountStorageKey(REMOTE_BACKUP_KEY, accountScope);
   const forceCloudClearKey = buildAccountStorageKey(FORCE_CLOUD_CLEAR_KEY, accountScope);
   const avatarStorageKey = buildAccountStorageKey(AVATAR_STORAGE_KEY, accountScope);
-  const localOnlyProjectKey = buildAccountStorageKey(LOCAL_ONLY_PROJECT_KEY, accountScope);
   React.useLayoutEffect(() => {
     resetNodeFlowAccountState();
     return resetNodeFlowAccountState;
@@ -266,12 +148,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     initialValue: INITIAL_PROJECT_DATA,
     deserialize: (value) => normalizeProjectData(JSON.parse(value)),
     serialize: (value) => JSON.stringify(value),
-  });
-  const [isLocalOnlyProject, setIsLocalOnlyProject] = usePersistedState<boolean>({
-    key: localOnlyProjectKey,
-    initialValue: false,
-    deserialize: (value) => value === "true",
-    serialize: (value) => String(value),
   });
   const setProjectData = useCallback(
     (value: React.SetStateAction<ProjectData>) => {
@@ -345,26 +221,13 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     serialize: (v) => JSON.stringify(v)
   });
   const hasFetchedProfileAvatar = useRef(false);
-  const syncRollout = useMemo(() => {
-    const percent = normalizeRolloutPercent(import.meta.env.VITE_SYNC_ROLLOUT_PERCENT);
-    const salt = import.meta.env.VITE_SYNC_ROLLOUT_SALT || "";
-    const allowlistRaw = import.meta.env.VITE_SYNC_ROLLOUT_ALLOWLIST || "";
-    const allowlist = allowlistRaw.split(",").map((value: string) => value.trim()).filter(Boolean);
-    const userId = user?.id || (userSignedIn ? "" : getDeviceId());
-    const allowlisted = !!user?.id && allowlist.includes(user.id);
-    if (!userId) {
-      return { enabled: percent >= 100, percent, bucket: null, allowlisted };
-    }
-    const bucket = hashToBucket(userId, salt);
-    const enabled = allowlisted || isInRollout(userId, percent, salt);
-    return { enabled, percent, bucket, allowlisted };
-  }, [user?.id, userSignedIn]);
-  const isSyncFeatureEnabled = !!authSignedIn && syncRollout.enabled;
+  // A signed-in project is always cloud-backed.
+  const isSyncFeatureEnabled = !!authSignedIn;
   const cloudProjectId = resolveStyloProjectId(projectData);
 
   useEffect(() => {
     let active = true;
-    if (!isSyncFeatureEnabled || isLocalOnlyProject) {
+    if (!isSyncFeatureEnabled) {
       setIsCloudProjectCatalogReady(true);
       return () => { active = false; };
     }
@@ -403,14 +266,22 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       }
     })();
     return () => { active = false; };
-  }, [accountScope, accountSession, isLocalOnlyProject, isSyncFeatureEnabled, setProjectData]);
+  }, [accountScope, accountSession, isSyncFeatureEnabled, setProjectData]);
 
   const projectEditLease = useProjectEditLease({
     accountScope,
     projectId: cloudProjectId,
     accountSession,
-    enabled: isSyncFeatureEnabled && !isLocalOnlyProject && isCloudProjectCatalogReady,
+    enabled: isSyncFeatureEnabled && isCloudProjectCatalogReady,
   });
+  const previousLeaseStatusRef = useRef(projectEditLease.state.status);
+  useEffect(() => {
+    const previousStatus = previousLeaseStatusRef.current;
+    previousLeaseStatusRef.current = projectEditLease.state.status;
+    if (previousStatus === "owned" && projectEditLease.state.status !== "owned") {
+      backupData(localBackupKey, projectDataRef.current);
+    }
+  }, [localBackupKey, projectEditLease.state.status]);
 
   const openProjectSettings = useCallback((panel: ProjectSettingsPanelKey = "provider") => {
     setProjectSettingsRequest({ panel, nonce: Date.now() });
@@ -462,16 +333,15 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, []);
 
   useEffect(() => {
-    const projectEnabled = authSignedIn && isSyncFeatureEnabled && !isLocalOnlyProject;
-    const secretsEnabled = authSignedIn && isSyncFeatureEnabled && config.syncApiKeys &&
-      (isLocalOnlyProject || projectEditLease.state.status === "owned");
+    const projectEnabled = authSignedIn && isSyncFeatureEnabled;
+    const secretsEnabled = authSignedIn && isSyncFeatureEnabled && config.syncApiKeys;
     setSyncState(prev => ({
       project: projectEnabled ? (prev.project.status === 'disabled' ? { status: 'loading' } : prev.project) : { status: 'disabled' },
       secrets: secretsEnabled
         ? (prev.secrets.status === 'disabled' ? { status: 'loading' } : prev.secrets)
         : { status: 'disabled' }
     }));
-  }, [authSignedIn, config.syncApiKeys, isLocalOnlyProject, isSyncFeatureEnabled, projectEditLease.state.status]);
+  }, [authSignedIn, config.syncApiKeys, isSyncFeatureEnabled]);
 
   const updateProjectSyncStatus = useCallback((status: SyncStatus, detail?: { lastSyncAt?: number; error?: string; pendingOps?: number; retryCount?: number; lastAttemptAt?: number }) => {
     setSyncState(prev => ({
@@ -570,14 +440,21 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
 
 
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
+  const handleProjectEditLeaseLost = useCallback((detail?: Parameters<typeof projectEditLease.markLost>[0]) => {
+    // A takeover never destroys this device's working copy. Persist it before
+    // the editor is fenced; reacquiring later will reconcile it with cloud CAS.
+    backupData(localBackupKey, projectDataRef.current);
+    projectEditLease.markLost(detail);
+  }, [localBackupKey, projectEditLease.markLost]);
+
   const { flushProjectSync, suspendProjectSync } = useCloudSync({
     accountScope,
     projectId: cloudProjectId,
-    isSignedIn: !!authSignedIn && isSyncFeatureEnabled && !isLocalOnlyProject && projectEditLease.state.status === "owned",
+    isSignedIn: !!authSignedIn && isSyncFeatureEnabled && projectEditLease.state.status === "owned",
     isLoaded: isAuthLoaded,
     accountSession,
     projectEditLeaseId: projectEditLease.leaseId,
-    onProjectEditLeaseLost: projectEditLease.markLost,
+    onProjectEditLeaseLost: handleProjectEditLeaseLost,
     projectData,
     setProjectData,
     refreshKey: syncRefreshKey,
@@ -590,21 +467,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     saveDebounceMs: 1200
   });
 
-  const handleCreateLocalProject = useCallback(() => {
-    clearProjectConflictQueue();
-    backupData(localBackupKey, projectDataRef.current);
-    void projectEditLease.release();
-    setIsLocalOnlyProject(true);
-    resetNodeFlowProjectState();
-    const emptyProject = normalizeProjectData({
-      ...structuredClone(INITIAL_PROJECT_DATA),
-      fileName: "本地项目",
-    });
-    projectDataRef.current = emptyProject;
-    setProjectData(emptyProject);
-    setProjectResetToken((token) => token + 1);
-  }, [clearProjectConflictQueue, localBackupKey, projectEditLease, setIsLocalOnlyProject, setProjectData]);
-
   const handleExitProject = useCallback(async () => {
     clearProjectConflictQueue();
     await projectEditLease.release().catch(() => undefined);
@@ -612,7 +474,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, [clearProjectConflictQueue, projectEditLease, signOut]);
 
   const handleDeleteFlowProject = useCallback(async (projectId: string) => {
-    if (!isSyncFeatureEnabled || isLocalOnlyProject) return true;
+    if (!isSyncFeatureEnabled) return true;
     const activeLeaseId = projectId === cloudProjectId ? projectEditLease.leaseId : undefined;
     const resumeProjectSync = activeLeaseId ? suspendProjectSync() : null;
     let deleted = false;
@@ -631,12 +493,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         else resumeProjectSync();
       }
     }
-  }, [accountScope, accountSession, cloudProjectId, isLocalOnlyProject, isSyncFeatureEnabled, localBackupKey, projectEditLease.leaseId, suspendProjectSync]);
+  }, [accountScope, accountSession, cloudProjectId, isSyncFeatureEnabled, localBackupKey, projectEditLease.leaseId, suspendProjectSync]);
 
   useSecretsSync({
     accountScope,
-    isSignedIn: !!authSignedIn && isSyncFeatureEnabled &&
-      (isLocalOnlyProject || projectEditLease.state.status === "owned"),
+    isSignedIn: !!authSignedIn && isSyncFeatureEnabled,
     isLoaded: isAuthLoaded,
     accountSession,
     config,
@@ -667,23 +528,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   // --- Handlers ---
 
   const handleResetProject = async () => {
-    const resetTarget = isLocalOnlyProject ? "本地项目" : "本地与云端的项目数据";
-    if (window.confirm(`确认清空整个项目吗？\n\n这会清空${resetTarget}（脚本、镜头、生成内容等），且不可恢复。`)) {
-      if (isLocalOnlyProject) {
-        resetNodeFlowProjectState();
-        const localProjectId = resolveStyloProjectId(projectDataRef.current);
-        const emptyProject = normalizeProjectData(
-          resetStyloScopedProjectData(
-            projectDataRef.current,
-            normalizeProjectData(structuredClone(INITIAL_PROJECT_DATA)),
-            localProjectId,
-          ),
-        );
-        projectDataRef.current = emptyProject;
-        setProjectData(emptyProject);
-        setProjectResetToken((token) => token + 1);
-        return;
-      }
+    if (window.confirm(`确认清空整个项目吗？\n\n这会清空本地与云端的项目数据（脚本、镜头、生成内容等），且不可恢复。`)) {
       const resumeProjectSync = suspendProjectSync();
       const resetProjectId = resolveStyloProjectId(projectDataRef.current);
       const emptyProject = normalizeProjectData(
@@ -803,7 +648,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       case "offline":
         return "离线";
       case "disabled":
-        return "仅本地";
+        return "未连接云端";
       case "idle":
       default:
         return "就绪";
@@ -839,7 +684,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       [
         isOnline ? "online" : "offline",
         !!authSignedIn ? "signed-in" : "signed-out",
-        syncRollout.enabled ? `rollout-${syncRollout.percent}` : "rollout-disabled",
         syncState.project.status,
         syncState.project.pendingOps ?? 0,
         syncState.project.retryCount ?? 0,
@@ -849,7 +693,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         syncState.secrets.retryCount ?? 0,
         syncState.secrets.lastAttemptAt ?? 0,
       ].join("|"),
-    [authSignedIn, isOnline, syncRollout.enabled, syncRollout.percent, syncState]
+    [authSignedIn, isOnline, syncState]
   );
 
   useEffect(() => {
@@ -906,7 +750,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         projectEditLeaseId={projectEditLease.leaseId}
         syncState={syncState}
         ensureProjectSynced={flushProjectSync}
-        syncRollout={syncRollout}
         onForceSync={forceCloudPull}
         externalProjectSettingsRequest={projectSettingsRequest}
         onOpenModule={handleOpenLabModule}
@@ -940,7 +783,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
               syncState={syncState}
               isOnline={isOnline}
               isSignedIn={!!authSignedIn}
-              syncRollout={syncRollout}
               onOpenDetails={() => openProjectSettings("sync")}
               onForceSync={forceCloudPull}
               onClose={() => setIsSyncBannerDismissed(true)}
@@ -948,10 +790,10 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
           )
         }
       >
-        {isSyncFeatureEnabled && !isLocalOnlyProject && projectEditLease.state.status !== "owned" && projectEditLease.state.status !== "disabled" ? (
+        {isSyncFeatureEnabled && projectEditLease.state.status !== "owned" && projectEditLease.state.status !== "disabled" ? (
           <ProjectEditLeaseModal
             state={projectEditLease.state}
-            onCreateLocal={handleCreateLocalProject}
+            onTakeover={projectEditLease.takeover}
             onExit={handleExitProject}
             onRetry={projectEditLease.retry}
           />
@@ -1008,71 +850,22 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   );
 };
 
-const AccountMigrationGate: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) => {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    try {
-      migrateLegacyProductStorage(localStorage, accountScope);
-      const markerKey = `${LEGACY_MIGRATION_MARKER_PREFIX}:${encodeURIComponent(accountScope)}`;
-      if (localStorage.getItem(markerKey)) {
-        setReady(true);
-        return;
-      }
-      const hasLegacyState = [
-        PROJECT_STORAGE_KEY,
-        CONFIG_STORAGE_KEY,
-        LOCAL_BACKUP_KEY,
-        REMOTE_BACKUP_KEY,
-        AVATAR_STORAGE_KEY,
-        "stylo_conversations_v1",
-        "stylo_messages_v1",
-        LEGACY_PRODUCT_STORAGE.project,
-        LEGACY_PRODUCT_STORAGE.config,
-        LEGACY_PRODUCT_STORAGE.localBackup,
-        LEGACY_PRODUCT_STORAGE.remoteBackup,
-        LEGACY_PRODUCT_STORAGE.avatar,
-        LEGACY_PRODUCT_STORAGE.conversationsV1,
-        LEGACY_PRODUCT_STORAGE.messagesV1,
-      ].some((key) => localStorage.getItem(key) !== null) ||
-        Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
-          .some(isUnscopedLegacyStyloKey);
-      if (!hasLegacyState) {
-        localStorage.setItem(markerKey, "none");
-        setReady(true);
-        return;
-      }
-
-      const destination = accountScope === "guest" ? "访客空间" : "当前登录账号";
-      const shouldImport = window.confirm(
-        `检测到升级前的本地项目或对话。是否将它们导入${destination}？\n\n` +
-        "选择取消会将旧数据保持隔离，不会在访客或其他账号中自动显示。"
-      );
-      if (shouldImport) {
-        migrateLegacyProductStorage(localStorage, accountScope, { includeUnscoped: true });
-        migrateLegacyLocalState(accountScope);
-      }
-      localStorage.setItem(markerKey, shouldImport ? "imported" : "quarantined");
-    } catch (error) {
-      console.warn("Legacy local data migration was unavailable", error);
-    } finally {
-      setReady(true);
-    }
-  }, [accountScope]);
-
-  return ready ? <ScopedApp key={accountScope} accountScope={accountScope} /> : null;
-};
-
 const App: React.FC = () => {
   const { isSignedIn: userSignedIn, user, isLoaded: isUserLoaded } = useUser();
   const { isLoaded: isAuthLoaded, isSignedIn: authSignedIn, userId: authUserId } = useAuth();
+  const { openSignIn } = useClerk();
 
   if (!isUserLoaded || !isAuthLoaded) return null;
 
   const userStateId = user?.id || null;
   const fullySignedOut = !userSignedIn && !authSignedIn && !userStateId && !authUserId;
   if (fullySignedOut) {
-    return <AccountMigrationGate key="guest" accountScope="guest" />;
+    return (
+      <CloudAccountGate
+        isConfigured={isClerkConfigured()}
+        onSignIn={() => openSignIn()}
+      />
+    );
   }
 
   const identityIsConsistent = Boolean(
@@ -1085,7 +878,7 @@ const App: React.FC = () => {
   if (!identityIsConsistent) return null;
 
   const accountScope: AccountScope = `user:${userStateId}`;
-  return <AccountMigrationGate key={accountScope} accountScope={accountScope} />;
+  return <ScopedApp key={accountScope} accountScope={accountScope} />;
 };
 
 export default App;

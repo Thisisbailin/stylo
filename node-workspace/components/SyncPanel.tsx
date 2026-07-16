@@ -12,7 +12,6 @@ type Props = {
   projectEditLeaseId?: string;
   onForceSync?: () => void;
   syncState?: SyncState;
-  syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onResetProject?: () => void;
   initialSection?: SyncSectionKey;
   activeSection?: SyncSectionKey;
@@ -31,7 +30,6 @@ export const SyncPanel: React.FC<Props> = ({
   projectEditLeaseId,
   onForceSync,
   syncState,
-  syncRollout,
   onResetProject,
   initialSection = "status",
   activeSection,
@@ -52,9 +50,6 @@ export const SyncPanel: React.FC<Props> = ({
 
   const projectSync = syncState?.project;
   const secretsSync = syncState?.secrets;
-  const syncAllowed = syncRollout?.enabled ?? true;
-  const syncPercent = syncRollout?.percent ?? 100;
-  const syncIsRollout = syncPercent < 100;
 
   useEffect(() => {
     if (active === "history") {
@@ -101,7 +96,7 @@ export const SyncPanel: React.FC<Props> = ({
       case "offline":
         return "Offline";
       case "disabled":
-        return "Local";
+        return "Not connected";
       case "idle":
       default:
         return "Ready";
@@ -109,10 +104,6 @@ export const SyncPanel: React.FC<Props> = ({
   };
 
   const fetchSnapshots = async () => {
-    if (!syncAllowed) {
-      setSnapshotMessage({ type: "error", text: "Cloud sync is not enabled yet." });
-      return;
-    }
     if (!accountSession || !isSignedIn) {
       setSnapshotMessage({ type: "error", text: "Sign in to view cloud snapshots." });
       return;
@@ -135,10 +126,6 @@ export const SyncPanel: React.FC<Props> = ({
   };
 
   const restoreSnapshot = async (version: number) => {
-    if (!syncAllowed) {
-      setSnapshotMessage({ type: "error", text: "Cloud sync is not enabled yet." });
-      return;
-    }
     if (!accountSession || !isSignedIn || !projectEditLeaseId) {
       setSnapshotMessage({ type: "error", text: "Sign in to restore snapshots." });
       return;
@@ -187,10 +174,6 @@ export const SyncPanel: React.FC<Props> = ({
   };
 
   const fetchAuditLogs = async () => {
-    if (!syncAllowed) {
-      setAuditMessage({ type: "error", text: "Cloud sync is not enabled yet." });
-      return;
-    }
     if (!accountSession || !isSignedIn) {
       setAuditMessage({ type: "error", text: "Sign in to view audit logs." });
       return;
@@ -255,11 +238,6 @@ export const SyncPanel: React.FC<Props> = ({
         <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-4 space-y-5">
           {active === "status" ? (
             <>
-              {syncIsRollout && (
-                <div className="text-xs px-3 py-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-soft)] text-[var(--app-text-secondary)]">
-                  Cloud sync rollout: {syncPercent}%. {syncAllowed ? "Enabled for this account." : "Not enabled yet."}
-                </div>
-              )}
               <div className="space-y-3">
                 {[
                   {
@@ -361,7 +339,6 @@ export const SyncPanel: React.FC<Props> = ({
                       fetchSnapshots();
                     }}
                     className="px-3 py-1.5 rounded-full text-[11px] border border-[var(--app-border)] hover:border-[var(--app-border-strong)] transition"
-                    disabled={!syncAllowed}
                   >
                     Sync now
                   </button>
@@ -369,7 +346,7 @@ export const SyncPanel: React.FC<Props> = ({
                     type="button"
                     onClick={fetchSnapshots}
                     className="px-3 py-1.5 rounded-full text-[11px] bg-[var(--accent-blue)] text-white hover:bg-sky-500 transition"
-                    disabled={isLoadingSnapshots || !syncAllowed}
+                    disabled={isLoadingSnapshots}
                   >
                     {isLoadingSnapshots ? "Loading..." : "Refresh"}
                   </button>
@@ -405,7 +382,7 @@ export const SyncPanel: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => restoreSnapshot(snap.version)}
-                        disabled={isRestoringSnapshot || !syncAllowed}
+                        disabled={isRestoringSnapshot}
                         className="px-3 py-1.5 rounded-full text-[11px] border border-[var(--app-border)] hover:border-[var(--app-border-strong)] transition"
                       >
                         {isRestoringSnapshot ? "Restoring..." : "Restore"}
@@ -421,7 +398,7 @@ export const SyncPanel: React.FC<Props> = ({
                   type="button"
                   onClick={fetchAuditLogs}
                   className="px-3 py-1.5 rounded-full text-[11px] bg-[var(--accent-blue)] text-white hover:bg-sky-500 transition"
-                  disabled={isLoadingAudit || !syncAllowed}
+                  disabled={isLoadingAudit}
                 >
                   {isLoadingAudit ? "Loading..." : "Refresh"}
                 </button>

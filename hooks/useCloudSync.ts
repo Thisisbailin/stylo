@@ -7,6 +7,7 @@ import { createLocalStorageBaselineStore } from "../sync/localBaselineStore";
 import {
   createProjectSyncTransport,
   createProjectSyncCodec,
+  type ProjectLeaseBlockedDetail,
 } from "../sync/projectSyncAdapter";
 import { mergeStyloScopedProjectData } from "../agents/runtime/projectScope";
 import {
@@ -22,7 +23,7 @@ type UseCloudSyncOptions = {
   isLoaded: boolean;
   accountSession: AccountApiSession;
   projectEditLeaseId?: string;
-  onProjectEditLeaseLost?: () => void;
+  onProjectEditLeaseLost?: (detail?: ProjectLeaseBlockedDetail) => void;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   refreshKey?: number;

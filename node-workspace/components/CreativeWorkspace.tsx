@@ -61,7 +61,6 @@ interface CreativeWorkspaceProps {
   projectEditLeaseId?: string;
   syncState?: SyncState;
   ensureProjectSynced?: EnsureProjectSynced;
-  syncRollout?: { enabled: boolean; percent: number; bucket?: number | null; allowlisted?: boolean };
   onForceSync?: () => void;
   onOpenLanding?: () => void;
   externalProjectSettingsRequest?: { panel: ProjectSettingsPanelKey; nonce: number } | null;
@@ -340,7 +339,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   projectEditLeaseId,
   syncState,
   ensureProjectSynced,
-  syncRollout,
   onForceSync,
   onOpenLanding,
   externalProjectSettingsRequest,
@@ -1443,7 +1441,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         accountSession={accountSession}
         projectEditLeaseId={projectEditLeaseId}
         syncState={syncState}
-        syncRollout={syncRollout}
         onForceSync={onForceSync}
         onOpenLanding={onOpenLanding}
         onResetProject={onResetProject}

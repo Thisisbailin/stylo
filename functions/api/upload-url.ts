@@ -52,10 +52,11 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     const payload = await readJsonRequest<Record<string, unknown>>(request, MAX_REQUEST_BYTES);
     const requestedFileName = sanitizePath(payload?.fileName);
     const projectId = normalizeProjectId(payload?.projectId);
+    const isAccountAvatar = !projectId && requestedFileName.startsWith('avatars/');
     const bucket = normalizeBucket(payload?.bucket ?? 'assets');
     const contentType = normalizeContentType(payload?.contentType);
-    if (!requestedFileName || !projectId) {
-      return new Response('fileName required', { status: 400 });
+    if (!requestedFileName || (!projectId && !isAccountAvatar)) {
+      return new Response('fileName and projectId required', { status: 400 });
     }
     if (!bucket) {
       return new Response('bucket not allowed', { status: 400 });
@@ -71,7 +72,9 @@ export const onRequestPost = async ({ request, env }: PagesContext<Env>) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRole);
-    const projectPrefix = `users/${userId}/projects/${projectId}/`;
+    const projectPrefix = projectId
+      ? `users/${userId}/projects/${projectId}/`
+      : `users/${userId}/account/`;
     const fileName = requestedFileName.startsWith(projectPrefix)
       ? requestedFileName
       : `${projectPrefix}${requestedFileName}`;

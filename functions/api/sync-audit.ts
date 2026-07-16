@@ -1,19 +1,14 @@
 import { getUserId, jsonResponse } from "./_auth";
-import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 
 type Env = {
   DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-} & RolloutEnv;
+};
 
 export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
     const rows = await context.env.DB.prepare(
       "SELECT id, action, status, detail, created_at FROM user_sync_audit WHERE user_id = ?1 ORDER BY id DESC LIMIT 50"
     )

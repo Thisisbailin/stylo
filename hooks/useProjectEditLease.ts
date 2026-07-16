@@ -12,8 +12,13 @@ export type ProjectEditLeaseState =
   | { status: "disabled" }
   | { status: "acquiring" }
   | { status: "owned"; leaseId: string; acquiredAt: number; renewedAt: number; expiresAt: number }
-  | { status: "blocked"; owner: ProjectEditLeaseOwner | null }
+  | { status: "blocked"; owner: ProjectEditLeaseOwner | null; takeoverToken: string | null }
   | { status: "error"; message: string };
+
+export type ProjectLeaseBlockedDetail = {
+  owner?: ProjectEditLeaseOwner | null;
+  takeoverToken?: string | null;
+};
 
 type LeasePayload = {
   status?: "owned" | "blocked" | "released";
@@ -22,6 +27,7 @@ type LeasePayload = {
   renewedAt?: number;
   expiresAt?: number;
   owner?: ProjectEditLeaseOwner | null;
+  takeoverToken?: string | null;
   error?: string;
 };
 
@@ -82,7 +88,11 @@ export const useProjectEditLease = ({
     if (mountedRef.current) setState(next);
   }, []);
 
-  const send = useCallback(async (action: "acquire" | "renew" | "release", leaseId?: string) => {
+  const send = useCallback(async (
+    action: "acquire" | "renew" | "release" | "takeover",
+    leaseId?: string,
+    takeoverToken?: string,
+  ) => {
     const response = await accountSession.request("/api/project-lease", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -93,6 +103,7 @@ export const useProjectEditLease = ({
         projectId,
         clientLabel: clientLabelRef.current,
         ...(leaseId ? { leaseId } : {}),
+        ...(takeoverToken ? { takeoverToken } : {}),
       }),
     });
     return { response, payload: await parsePayload(response) };
@@ -114,7 +125,11 @@ export const useProjectEditLease = ({
           expiresAt: Number(payload.expiresAt) || Date.now(),
         });
       } else if (response.status === 423 || payload.status === "blocked") {
-        updateState({ status: "blocked", owner: payload.owner || null });
+        updateState({
+          status: "blocked",
+          owner: payload.owner || null,
+          takeoverToken: payload.takeoverToken || null,
+        });
       } else {
         throw new Error(payload.error || `编辑权请求失败（${response.status}）`);
       }
@@ -139,8 +154,49 @@ export const useProjectEditLease = ({
     void acquireOrRenew(true);
   }, [acquireOrRenew, updateState]);
 
-  const markLost = useCallback(() => {
-    updateState({ status: "blocked", owner: null });
+  const takeover = useCallback(async () => {
+    const current = stateRef.current;
+    if (!enabled || current.status !== "blocked" || !current.takeoverToken || inFlightRef.current) {
+      retry();
+      return;
+    }
+    inFlightRef.current = true;
+    updateState({ status: "acquiring" });
+    try {
+      const { response, payload } = await send("takeover", undefined, current.takeoverToken);
+      if (response.ok && payload.status === "owned" && payload.leaseId) {
+        updateState({
+          status: "owned",
+          leaseId: payload.leaseId,
+          acquiredAt: Number(payload.acquiredAt) || Date.now(),
+          renewedAt: Number(payload.renewedAt) || Date.now(),
+          expiresAt: Number(payload.expiresAt) || Date.now(),
+        });
+      } else if (response.status === 423 || payload.status === "blocked") {
+        updateState({
+          status: "blocked",
+          owner: payload.owner || null,
+          takeoverToken: payload.takeoverToken || null,
+        });
+      } else {
+        throw new Error(payload.error || `接管项目失败（${response.status}）`);
+      }
+    } catch (error) {
+      updateState({
+        status: "error",
+        message: error instanceof Error ? error.message : "无法在此设备继续编辑。",
+      });
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [enabled, retry, send, updateState]);
+
+  const markLost = useCallback((detail?: ProjectLeaseBlockedDetail) => {
+    updateState({
+      status: "blocked",
+      owner: detail?.owner || null,
+      takeoverToken: detail?.takeoverToken || null,
+    });
   }, [updateState]);
 
   const release = useCallback(async () => {
@@ -187,10 +243,10 @@ export const useProjectEditLease = ({
           void send("release", previousLease.leaseId).catch(() => undefined);
         }
       });
-      // Do not release from an effect cleanup: React StrictMode performs a
+      // Do not release unconditionally from an effect cleanup: React StrictMode performs a
       // synthetic unmount/remount and a late release could delete the newly
       // renewed session. The short TTL is the crash/unload fallback; explicit
-      // sign-out and local-mode transitions call release().
+      // sign-out calls release explicitly.
     };
   }, [accountScope, acquireOrRenew, enabled, projectId, release, send, updateState]);
 
@@ -198,6 +254,7 @@ export const useProjectEditLease = ({
     state,
     leaseId: state.status === "owned" ? state.leaseId : undefined,
     retry,
+    takeover,
     markLost,
     release,
   };

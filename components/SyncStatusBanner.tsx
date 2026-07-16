@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from "react";
-import { AlertCircle, CheckCircle2, CloudOff, Loader2, ShieldAlert, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, CloudOff, Loader2, X } from "lucide-react";
 import { SyncState, SyncStatus } from "../types";
 import { TopRightHint } from "./TopRightHint";
 
@@ -7,7 +7,6 @@ type Props = {
   syncState: SyncState;
   isOnline: boolean;
   isSignedIn: boolean;
-  syncRollout?: { enabled: boolean; percent: number; allowlisted?: boolean };
   onOpenDetails?: () => void;
   onForceSync?: () => void;
   onClose?: () => void;
@@ -30,7 +29,7 @@ const statusLabel = (status: SyncStatus) => {
     case "offline":
       return "离线";
     case "disabled":
-      return "仅本地";
+      return "未连接云端";
     case "idle":
     default:
       return "就绪";
@@ -49,7 +48,7 @@ const statusMeta = (status: SyncStatus) => {
     case "offline":
       return { label: "离线", icon: CloudOff, accent: "var(--app-text-muted)" };
     case "disabled":
-      return { label: "仅本地", icon: ShieldAlert, accent: "var(--app-text-muted)" };
+      return { label: "未连接云端", icon: CloudOff, accent: "var(--app-text-muted)" };
     case "synced":
       return { label: "已同步", icon: CheckCircle2, accent: "#57c38c" };
     case "idle":
@@ -62,7 +61,6 @@ export const SyncStatusBanner: React.FC<Props> = ({
   syncState,
   isOnline,
   isSignedIn,
-  syncRollout,
   onOpenDetails,
   onForceSync,
   onClose,
@@ -73,8 +71,7 @@ export const SyncStatusBanner: React.FC<Props> = ({
   const retryCount = (project.retryCount ?? 0) + (secrets.retryCount ?? 0);
   const lastAttemptAt = Math.max(project.lastAttemptAt ?? 0, secrets.lastAttemptAt ?? 0) || undefined;
   const lastSyncAt = Math.max(project.lastSyncAt ?? 0, secrets.lastSyncAt ?? 0) || undefined;
-  const rolloutDisabled = !!syncRollout && !syncRollout.enabled;
-  const canForceSync = isOnline && !rolloutDisabled;
+  const canForceSync = isOnline;
 
   const aggregateStatus = useMemo<SyncStatus>(() => {
     if (!isOnline) return "offline";
@@ -90,26 +87,23 @@ export const SyncStatusBanner: React.FC<Props> = ({
 
   const shouldShow = useMemo(() => {
     if (!isSignedIn) return false;
-    if (rolloutDisabled) return true;
     if (!isOnline) return true;
     if (["syncing", "loading", "conflict", "error"].includes(aggregateStatus)) return true;
     if (pendingOps > 0 || retryCount > 0) return true;
     return false;
-  }, [aggregateStatus, isOnline, isSignedIn, pendingOps, retryCount, rolloutDisabled]);
+  }, [aggregateStatus, isOnline, isSignedIn, pendingOps, retryCount]);
 
-  const effectiveStatus: SyncStatus = rolloutDisabled ? "disabled" : aggregateStatus;
+  const effectiveStatus: SyncStatus = aggregateStatus;
   const meta = statusMeta(effectiveStatus);
   const Icon = meta.icon;
 
-  const summary = rolloutDisabled
-    ? `灰度 ${syncRollout?.percent ?? 0}% · 当前账号未启用`
-    : [
-        `项目 ${statusLabel(project.status)}`,
-        pendingOps > 0 ? `待同步 ${pendingOps}` : `密钥 ${statusLabel(secrets.status)}`,
-        retryCount > 0 ? `重试 ${retryCount}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+  const summary = [
+    `项目 ${statusLabel(project.status)}`,
+    pendingOps > 0 ? `待同步 ${pendingOps}` : `密钥 ${statusLabel(secrets.status)}`,
+    retryCount > 0 ? `重试 ${retryCount}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const metaLine = lastSyncAt
     ? `上次 ${formatTime(lastSyncAt)}`

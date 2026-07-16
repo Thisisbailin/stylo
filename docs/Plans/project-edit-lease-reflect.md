@@ -19,8 +19,14 @@ The transaction-time fence is essential. A request-start check alone has a time-
 
 - Cloud sync engines start only while the lease is owned.
 - A `423 Locked` write immediately drops client ownership and blocks editing.
-- A blocked client can retry, exit, or create an explicitly local-only project.
-- Local-only mode is persisted and never silently rejoins the cloud workspace.
+- A blocked client can retry, exit, or explicitly continue editing on this device.
+- Explicit takeover is compare-and-swap against the lease the client observed. A stale takeover cannot evict a newer third editor.
+- The previous device is fenced server-side, saves a recovery draft, and reconciles through CAS if it later takes ownership again.
+- All projects remain cloud-backed; there is no local-only escape path.
+- Signed-out users now stop at the cloud-account gate instead of entering a
+  guest workspace.
+- The old client and server sync-rollout gates were removed completely, so
+  stale deployment variables cannot return a 403 to only part of the user base.
 - Identical-content CAS conflicts converge automatically.
 - Equivalent conflict requests are coalesced into one decision.
 

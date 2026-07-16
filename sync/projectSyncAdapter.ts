@@ -23,6 +23,16 @@ type ProjectResponse = {
   error?: string;
 };
 
+export type ProjectLeaseBlockedDetail = {
+  owner?: {
+    clientLabel: string;
+    acquiredAt: number;
+    renewedAt: number;
+    expiresAt: number;
+  } | null;
+  takeoverToken?: string | null;
+};
+
 const hashString = (value: string) => {
   let left = 2166136261;
   let right = 0x9e3779b9;
@@ -81,7 +91,7 @@ export const createProjectSyncTransport = (
   session: AccountApiSession,
   projectId: string,
   leaseId: string,
-  onLeaseLost?: () => void,
+  onLeaseLost?: (detail?: ProjectLeaseBlockedDetail) => void,
 ): VersionedSyncTransport<ProjectData> => ({
   async load(signal) {
     const response = await session.request(`/api/project?projectId=${encodeURIComponent(projectId)}`, {}, signal);
@@ -156,7 +166,10 @@ export const createProjectSyncTransport = (
       };
     }
 
-    if (response.status === 423) onLeaseLost?.();
+    if (response.status === 423) {
+      const detail = await response.clone().json().catch(() => ({})) as ProjectLeaseBlockedDetail;
+      onLeaseLost?.(detail);
+    }
 
     await requireOkResponse(response, "保存云端项目失败");
     const payload = await parseJsonResponse<ProjectResponse & { ok?: boolean }>(response, "保存云端项目失败");

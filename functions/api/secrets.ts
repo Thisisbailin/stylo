@@ -9,7 +9,6 @@ import {
   withSecretResponseHeaders,
 } from "./_userSecrets";
 import { logAudit } from "./audit";
-import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { readJsonRequest } from "./_request";
 import { bindOperationId } from "./_idempotency";
 
@@ -18,7 +17,7 @@ type Env = {
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
   SECRETS_ENCRYPTION_KEY?: string;
-} & RolloutEnv;
+};
 
 const MAX_SECRETS_REQUEST_BYTES = 64 * 1024;
 
@@ -39,14 +38,6 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      const deviceId = getDeviceId(context.request);
-      if (userId) {
-        await logAudit(context.env, userId, "secrets.get", "disabled", { rolloutPercent: rollout.percent, ...(deviceId ? { deviceId } : {}) });
-      }
-      return secretJsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
     const record = await readStoredUserSecrets(context.env, userId);
     return secretJsonResponse(
       { secrets: record.secrets, updatedAt: record.updatedAt },
@@ -67,15 +58,6 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      const deviceId = getDeviceId(context.request);
-      if (userId) {
-        await logAudit(context.env, userId, "secrets.put", "disabled", { rolloutPercent: rollout.percent, ...(deviceId ? { deviceId } : {}) });
-      }
-      return secretJsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
-
     const body = await readJsonRequest<SecretsPutRequest>(
       context.request,
       MAX_SECRETS_REQUEST_BYTES

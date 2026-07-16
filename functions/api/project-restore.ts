@@ -1,6 +1,5 @@
 import { validateProjectPayload } from "./validation";
 import { logAudit } from "./audit";
-import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
 import { readJsonRequest } from "./_request";
 import { buildProjectEditLeaseGuardStatement, requireProjectEditLease } from "./_projectEditLease";
@@ -18,7 +17,7 @@ type Env = {
   DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-} & RolloutEnv;
+};
 
 const MAX_PROJECT_BYTES = 1_800_000;
 const MAX_FLOW_PROJECTS = 3;
@@ -326,15 +325,6 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      const deviceId = getDeviceId(context.request);
-      if (userId) {
-        await logAudit(context.env, userId, "project.restore", "disabled", { rolloutPercent: rollout.percent, ...(deviceId ? { deviceId } : {}) });
-      }
-      return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
-
     const editLease = await requireProjectEditLease(context.env, context.request, userId);
     const projectId = editLease.project_id;
 

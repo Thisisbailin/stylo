@@ -72,6 +72,41 @@ export const buildProjectEditLeaseGuardStatement = (
    ))`,
 ).bind(guardId, row.user_id, row.project_id, row.lease_id, row.device_id, row.session_id);
 
+export const buildProjectEditLeaseTakeoverStatement = (
+  db: D1DatabaseLike,
+  input: {
+    userId: string;
+    projectId: string;
+    candidateLeaseId: string;
+    deviceId: string;
+    sessionId: string;
+    clientLabel: string;
+    now: number;
+    expiresAt: number;
+    takeoverToken: string;
+  },
+): D1PreparedStatementLike => db.prepare(
+  `UPDATE user_project_edit_leases
+   SET lease_id = ?3,
+       device_id = ?4,
+       session_id = ?5,
+       client_label = ?6,
+       acquired_at = ?7,
+       renewed_at = ?7,
+       expires_at = ?8
+   WHERE user_id = ?1 AND project_id = ?2 AND lease_id = ?9`,
+).bind(
+  input.userId,
+  input.projectId,
+  input.candidateLeaseId,
+  input.deviceId,
+  input.sessionId,
+  input.clientLabel,
+  input.now,
+  input.expiresAt,
+  input.takeoverToken,
+);
+
 /**
  * Server-side write fence. UI state is never sufficient: every project
  * mutation must present the live token and originate from its owning device.
@@ -101,6 +136,7 @@ export const requireProjectEditLease = async (
       error: "Project edit lease required",
       code: "PROJECT_EDIT_LEASE_REQUIRED",
       owner: row && Number(row.expires_at) > now ? toPublicLeaseOwner(row) : null,
+      takeoverToken: row && Number(row.expires_at) > now ? row.lease_id : null,
     },
     { status: 423 },
   );

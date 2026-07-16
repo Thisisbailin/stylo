@@ -1,11 +1,10 @@
 import { getUserId, jsonResponse } from "./_auth";
-import { getSyncRolloutInfo, type RolloutEnv } from "./rollout";
 
 type Env = {
   DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-} & RolloutEnv;
+};
 
 const readTitle = (data: unknown, projectId: string) => {
   if (typeof data !== "string") return projectId;
@@ -22,13 +21,6 @@ const readTitle = (data: unknown, projectId: string) => {
 export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      return jsonResponse(
-        { error: "Sync disabled for this account", rollout: { percent: rollout.percent } },
-        { status: 403 },
-      );
-    }
     const rows = await context.env.DB.prepare(
       `SELECT project_id, data, updated_at
        FROM user_project_meta

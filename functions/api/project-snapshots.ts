@@ -1,12 +1,11 @@
 import { getUserId, jsonResponse } from "./_auth";
-import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { requireRequestProjectId } from "./_projectScope";
 
 type Env = {
   DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-} & RolloutEnv;
+};
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" } as const;
 
@@ -31,13 +30,6 @@ const withNoStore = (response: Response) => {
 export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      return snapshotsJsonResponse(
-        { error: "Sync disabled for this account", rollout: { percent: rollout.percent } },
-        { status: 403 }
-      );
-    }
     const projectId = requireRequestProjectId(context.request);
     const [rows, currentMeta] = await Promise.all([
       context.env.DB.prepare(

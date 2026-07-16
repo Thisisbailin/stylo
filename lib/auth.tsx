@@ -47,7 +47,7 @@ let hasWarnedMissingClerkKey = false;
 const warnMissingClerkKey = () => {
   if (hasWarnedMissingClerkKey) return;
   hasWarnedMissingClerkKey = true;
-  console.warn('VITE_CLERK_PUBLISHABLE_KEY is not set. Running in guest mode with sync disabled.');
+  console.warn('VITE_CLERK_PUBLISHABLE_KEY is not set. Project access is blocked until cloud auth is configured.');
 };
 
 const fallbackContextValue: AuthContextValue = {

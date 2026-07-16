@@ -1,7 +1,6 @@
 import { validateProjectDelta, validateProjectPayload } from "./validation";
 import type { ProjectData } from "../../types";
 import { logAudit } from "./audit";
-import { getSyncRolloutInfo, RolloutEnv } from "./rollout";
 import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
 import { readJsonRequest } from "./_request";
 import {
@@ -21,7 +20,7 @@ type Env = {
   DB: any; // D1 binding injected by Cloudflare Pages
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
-} & RolloutEnv;
+};
 
 const SNAPSHOT_LIMIT = 10;
 const MAX_PROJECT_BYTES = 1_800_000;
@@ -415,15 +414,6 @@ export const onRequestGet = async (context: {
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      const deviceId = getDeviceId(context.request);
-      if (userId) {
-        await logAudit(context.env, userId, "project.get", "disabled", { rolloutPercent: rollout.percent, ...(deviceId ? { deviceId } : {}) });
-      }
-      return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
-
     const projectId = requireRequestProjectId(context.request);
     const data = await loadProjectData(context.env, userId, projectId);
     if (!data) {
@@ -457,15 +447,6 @@ export const onRequestPut = async (context: {
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const rollout = getSyncRolloutInfo(userId, context.env);
-    if (!rollout.enabled) {
-      const deviceId = getDeviceId(context.request);
-      if (userId) {
-        await logAudit(context.env, userId, "project.put", "disabled", { rolloutPercent: rollout.percent, ...(deviceId ? { deviceId } : {}) });
-      }
-      return jsonResponse({ error: "Sync disabled for this account", rollout: { percent: rollout.percent } }, { status: 403 });
-    }
-
     const editLease = await requireProjectEditLease(context.env, context.request, userId);
     const projectId = editLease.project_id;
 

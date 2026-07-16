@@ -1,17 +1,17 @@
 import React from "react";
-import { CloudOff, DoorOpen, FilePlus2, LoaderCircle, RefreshCw } from "lucide-react";
+import { ArrowRightLeft, Cloud, DoorOpen, LoaderCircle, RefreshCw } from "lucide-react";
 import type { ProjectEditLeaseState } from "../hooks/useProjectEditLease";
 
 type Props = {
   state: Exclude<ProjectEditLeaseState, { status: "disabled" } | { status: "owned" }>;
-  onCreateLocal: () => void;
+  onTakeover: () => void;
   onExit: () => void;
   onRetry: () => void;
 };
 
 export const ProjectEditLeaseModal: React.FC<Props> = ({
   state,
-  onCreateLocal,
+  onTakeover,
   onExit,
   onRetry,
 }) => {
@@ -32,44 +32,46 @@ export const ProjectEditLeaseModal: React.FC<Props> = ({
             {isAcquiring ? (
               <LoaderCircle className="animate-spin" size={21} strokeWidth={1.7} />
             ) : (
-              <CloudOff size={21} strokeWidth={1.7} />
+              <Cloud size={21} strokeWidth={1.7} />
             )}
           </div>
 
           <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.24em] opacity-45">
-            Single editor session
+            Cloud editing session
           </p>
           <h2 id="project-edit-lease-title" className="text-[27px] font-medium leading-tight tracking-[-0.035em]">
             {isAcquiring
               ? "正在确认项目编辑权"
               : state.status === "error"
                 ? "暂时无法确认编辑权"
-                : "这个云端项目正在别处编辑"}
+                : "这个项目正在另一台设备上编辑"}
           </h2>
           <p className="mt-4 max-w-[43ch] text-[14px] leading-6 opacity-60">
             {isAcquiring
               ? "Stylo 正在建立一个有时限的独占编辑会话，完成后会自动进入项目。"
               : state.status === "error"
                 ? state.message
-                : `${ownerLabel || "另一台客户端"} 持有当前工作区的编辑权。为避免两个版本互相覆盖，本窗口不会载入可编辑的云端副本。`}
+                : `${ownerLabel || "另一台设备"} 当前拥有编辑权。你可以在这里接着编辑；完成接管后，原设备会自动转为只读，不会把项目永久锁住。`}
           </p>
 
           {expiresAt && state.status === "blocked" ? (
             <p className="mt-3 text-[12px] opacity-40">
-              若另一端已经关闭，编辑权会在 {new Date(expiresAt).toLocaleTimeString()} 后自动释放。
+              如果另一端已经离线，编辑权会在 {new Date(expiresAt).toLocaleTimeString()} 后自动释放；也可以立即接管。
             </p>
           ) : null}
 
           {!isAcquiring ? (
             <div className="mt-8 grid gap-2.5">
-              <button
-                type="button"
-                onClick={onCreateLocal}
-                className="flex min-h-12 items-center justify-between rounded-2xl bg-[#171816] px-4 text-left text-[13px] font-medium text-white transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 dark:bg-[#f3f3ef] dark:text-[#171816]"
-              >
-                <span className="flex items-center gap-3"><FilePlus2 size={17} />新建本地项目</span>
-                <span className="text-[10px] font-normal uppercase tracking-[0.16em] opacity-55">不参与云同步</span>
-              </button>
+              {state.status === "blocked" ? (
+                <button
+                  type="button"
+                  onClick={state.takeoverToken ? onTakeover : onRetry}
+                  className="flex min-h-12 items-center justify-between rounded-2xl bg-[#171816] px-4 text-left text-[13px] font-medium text-white transition-transform duration-200 hover:-translate-y-0.5 active:translate-y-0 dark:bg-[#f3f3ef] dark:text-[#171816]"
+                >
+                  <span className="flex items-center gap-3"><ArrowRightLeft size={17} />在此设备继续编辑</span>
+                  <span className="text-[10px] font-normal uppercase tracking-[0.16em] opacity-55">接管云端会话</span>
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onRetry}
@@ -82,7 +84,7 @@ export const ProjectEditLeaseModal: React.FC<Props> = ({
                 onClick={onExit}
                 className="flex min-h-11 items-center gap-3 rounded-2xl px-4 text-left text-[13px] opacity-55 transition-opacity hover:opacity-90"
               >
-                <DoorOpen size={16} />退出当前项目
+                <DoorOpen size={16} />退出账户
               </button>
             </div>
           ) : null}
