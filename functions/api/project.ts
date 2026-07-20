@@ -13,7 +13,6 @@ import { bindOperationId, normalizeOperationId } from "./_idempotency";
 import { normalizeFlowProjectsForStorage } from "./_projectFlowMigration";
 import { buildBulkProjectInsertStatements } from "./_projectBulkStatements";
 import { hasInlineProjectMedia } from "../../utils/cloudProjectData";
-import { buildProjectEditLeaseGuardStatement, requireProjectEditLease } from "./_projectEditLease";
 import { requireRequestProjectId } from "./_projectScope";
 
 type Env = {
@@ -286,6 +285,28 @@ const collectProjectParts = (projectData: any) => {
 };
 
 const loadProjectData = async (env: Env, userId: string, projectId: string) => {
+  const realtimeRow = await env.DB.prepare(
+    `SELECT project_data, updated_at
+     FROM user_project_documents
+     WHERE user_id = ?1 AND project_id = ?2`,
+  )
+    .bind(userId, projectId)
+    .first();
+
+  if (realtimeRow) {
+    const projectData = safeJsonParse<Record<string, unknown>>(
+      realtimeRow.project_data as string,
+      {},
+    );
+    if (Object.keys(projectData).length === 0) return null;
+    return {
+      projectData,
+      updatedAt: typeof realtimeRow.updated_at === "number"
+        ? realtimeRow.updated_at
+        : Number(realtimeRow.updated_at) || 0,
+    };
+  }
+
   const metaRow = await env.DB.prepare(
     "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
   )
@@ -447,8 +468,17 @@ export const onRequestPut = async (context: {
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const editLease = await requireProjectEditLease(context.env, context.request, userId);
-    const projectId = editLease.project_id;
+    const projectId = requireRequestProjectId(context.request);
+    if (context.request.method.toUpperCase() === "PUT") {
+      return jsonResponse(
+        {
+          error: "Snapshot project writes have been retired; connect through project realtime sync.",
+          code: "REALTIME_PROJECT_SYNC_REQUIRED",
+          projectId,
+        },
+        { status: 410 },
+      );
+    }
 
     const body = await readJsonRequest<Record<string, unknown>>(
       context.request,
@@ -748,9 +778,7 @@ export const onRequestPut = async (context: {
     }
 
     const guardId = createProjectWriteGuardId(userId, boundOpId || undefined);
-    const leaseGuardId = `${guardId}:lease`;
     const statements = [
-      buildProjectEditLeaseGuardStatement(context.env.DB, editLease, leaseGuardId),
       buildProjectWriteGuardStatement(
         context.env.DB,
         userId,
@@ -860,18 +888,11 @@ export const onRequestPut = async (context: {
     }
 
     statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
-    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, leaseGuardId));
 
     try {
       await context.env.DB.batch(statements);
     } catch (batchError) {
       if (isProjectWriteGuardError(batchError)) {
-        try {
-          await requireProjectEditLease(context.env, context.request, userId);
-        } catch (leaseError) {
-          if (leaseError instanceof Response) return leaseError;
-          throw leaseError;
-        }
         const latestMeta = await context.env.DB.prepare(
           "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
         ).bind(userId, projectId).first();

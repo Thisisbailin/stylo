@@ -1,0 +1,229 @@
+import * as Y from "yjs";
+
+const KIND_KEY = "__stylo_kind";
+const ID_ARRAY_KIND = "id-array";
+const ITEMS_KEY = "items";
+const ORDER_KEY = "order";
+const ID_ARRAY_KEYS = new Set([
+  "designAssets",
+  "episodes",
+  "flowNodes",
+  "flowProjects",
+  "graphLinks",
+  "links",
+  "roles",
+  "scenes",
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const stableJson = (value: unknown) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+};
+
+const isIdArray = (value: unknown[]): value is Array<Record<string, unknown> & { id: string }> =>
+  value.length > 0 && value.every((item) => isRecord(item) && typeof item.id === "string" && item.id.length > 0);
+
+const isIdArrayValue = (
+  key: string | undefined,
+  value: unknown[],
+): value is Array<Record<string, unknown> & { id: string }> =>
+  isIdArray(value) || (value.length === 0 && Boolean(key && ID_ARRAY_KEYS.has(key)));
+
+const readSharedValue = (value: unknown): unknown => {
+  if (value instanceof Y.Text) return value.toString();
+  if (value instanceof Y.Array) return value.toArray().map(readSharedValue);
+  if (value instanceof Y.Map) {
+    if (value.get(KIND_KEY) === ID_ARRAY_KIND) {
+      const items = value.get(ITEMS_KEY);
+      const order = value.get(ORDER_KEY);
+      if (!(items instanceof Y.Map) || !(order instanceof Y.Array)) return [];
+      const emitted = new Set<string>();
+      const result: unknown[] = [];
+      const append = (id: string) => {
+        if (emitted.has(id)) return;
+        const item = items.get(id);
+        if (item === undefined) return;
+        emitted.add(id);
+        result.push(readSharedValue(item));
+      };
+      order.toArray().forEach((id) => {
+        if (typeof id === "string") append(id);
+      });
+      Array.from(items.keys()).sort().forEach(append);
+      return result;
+    }
+    const object: Record<string, unknown> = {};
+    value.forEach((entry, key) => {
+      if (key === KIND_KEY || key === ITEMS_KEY || key === ORDER_KEY) return;
+      object[key] = readSharedValue(entry);
+    });
+    return object;
+  }
+  return value;
+};
+
+const syncText = (text: Y.Text, next: string) => {
+  const previous = text.toString();
+  if (previous === next) return;
+  let prefix = 0;
+  const maxPrefix = Math.min(previous.length, next.length);
+  while (prefix < maxPrefix && previous[prefix] === next[prefix]) prefix += 1;
+  let suffix = 0;
+  const maxSuffix = Math.min(previous.length - prefix, next.length - prefix);
+  while (
+    suffix < maxSuffix &&
+    previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
+  ) suffix += 1;
+  const deleteLength = previous.length - prefix - suffix;
+  if (deleteLength > 0) text.delete(prefix, deleteLength);
+  const inserted = next.slice(prefix, next.length - suffix);
+  if (inserted) text.insert(prefix, inserted);
+};
+
+const createSharedObject = (value: Record<string, unknown>) => {
+  const map = new Y.Map<unknown>();
+  Object.entries(value).forEach(([key, entry]) => {
+    map.set(key, createSharedValue(entry, key));
+  });
+  return map;
+};
+
+const createIdArray = (value: Array<Record<string, unknown> & { id: string }>) => {
+  const wrapper = new Y.Map<unknown>();
+  const items = new Y.Map<unknown>();
+  const order = new Y.Array<string>();
+  wrapper.set(KIND_KEY, ID_ARRAY_KIND);
+  wrapper.set(ITEMS_KEY, items);
+  wrapper.set(ORDER_KEY, order);
+  value.forEach((item) => items.set(item.id, createSharedObject(item)));
+  order.insert(0, value.map((item) => item.id));
+  return wrapper;
+};
+
+const createSharedArray = (value: unknown[], key?: string) => {
+  if (isIdArrayValue(key, value)) return createIdArray(value);
+  const array = new Y.Array<unknown>();
+  if (value.length) array.insert(0, value.map((entry) => createSharedValue(entry)));
+  return array;
+};
+
+const createSharedValue = (value: unknown, key?: string): unknown => {
+  if (typeof value === "string") {
+    const text = new Y.Text();
+    if (value) text.insert(0, value);
+    return text;
+  }
+  if (Array.isArray(value)) return createSharedArray(value, key);
+  if (isRecord(value)) return createSharedObject(value);
+  return value ?? null;
+};
+
+const syncIdArray = (
+  wrapper: Y.Map<unknown>,
+  value: Array<Record<string, unknown> & { id: string }>,
+) => {
+  let items = wrapper.get(ITEMS_KEY);
+  let order = wrapper.get(ORDER_KEY);
+  if (!(items instanceof Y.Map)) {
+    items = new Y.Map<unknown>();
+    wrapper.set(ITEMS_KEY, items);
+  }
+  if (!(order instanceof Y.Array)) {
+    order = new Y.Array<string>();
+    wrapper.set(ORDER_KEY, order);
+  }
+  const itemMap = items as Y.Map<unknown>;
+  const orderArray = order as Y.Array<string>;
+  wrapper.set(KIND_KEY, ID_ARRAY_KIND);
+  const nextIds = new Set(value.map((item) => item.id));
+  Array.from(itemMap.keys()).forEach((id) => {
+    if (!nextIds.has(id)) itemMap.delete(id);
+  });
+  value.forEach((item) => {
+    const existing = itemMap.get(item.id);
+    if (existing instanceof Y.Map && existing.get(KIND_KEY) !== ID_ARRAY_KIND) {
+      syncMap(existing, item);
+    } else {
+      itemMap.set(item.id, createSharedObject(item));
+    }
+  });
+  const nextOrder = value.map((item) => item.id);
+  const currentOrder = orderArray.toArray().filter((id): id is string => typeof id === "string");
+  if (stableJson(currentOrder) !== stableJson(nextOrder)) {
+    if (orderArray.length) orderArray.delete(0, orderArray.length);
+    if (nextOrder.length) orderArray.insert(0, nextOrder);
+  }
+};
+
+const syncArray = (array: Y.Array<unknown>, value: unknown[]) => {
+  const current = readSharedValue(array);
+  if (stableJson(current) === stableJson(value)) return;
+  if (array.length) array.delete(0, array.length);
+  if (value.length) array.insert(0, value.map((entry) => createSharedValue(entry)));
+};
+
+const syncMapValue = (map: Y.Map<unknown>, key: string, value: unknown) => {
+  const existing = map.get(key);
+  if (typeof value === "string") {
+    if (existing instanceof Y.Text) syncText(existing, value);
+    else map.set(key, createSharedValue(value));
+    return;
+  }
+  if (Array.isArray(value)) {
+    if (isIdArrayValue(key, value)) {
+      if (existing instanceof Y.Map && existing.get(KIND_KEY) === ID_ARRAY_KIND) {
+        syncIdArray(existing, value);
+      } else {
+        map.set(key, createIdArray(value));
+      }
+      return;
+    }
+    if (existing instanceof Y.Array) syncArray(existing, value);
+    else map.set(key, createSharedArray(value, key));
+    return;
+  }
+  if (isRecord(value)) {
+    if (existing instanceof Y.Map && existing.get(KIND_KEY) !== ID_ARRAY_KIND) syncMap(existing, value);
+    else map.set(key, createSharedObject(value));
+    return;
+  }
+  if (!Object.is(existing, value ?? null)) map.set(key, value ?? null);
+};
+
+const syncMap = (map: Y.Map<unknown>, value: Record<string, unknown>) => {
+  const nextKeys = new Set(Object.keys(value));
+  Array.from(map.keys()).forEach((key) => {
+    if (!nextKeys.has(key)) map.delete(key);
+  });
+  Object.entries(value).forEach(([key, entry]) => syncMapValue(map, key, entry));
+};
+
+export const applyProjectSnapshot = (
+  doc: Y.Doc,
+  project: Record<string, unknown>,
+  origin: unknown,
+) => {
+  doc.transact(() => syncMap(doc.getMap("project"), project), origin);
+};
+
+export const readProjectSnapshot = <T extends Record<string, unknown>>(doc: Y.Doc): T =>
+  readSharedValue(doc.getMap("project")) as T;
+
+export const isProjectDocumentEmpty = (doc: Y.Doc) => doc.getMap("project").size === 0;
+
+export const encodeUpdateBase64 = (update: Uint8Array) => {
+  let binary = "";
+  update.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+};
+
+export const decodeUpdateBase64 = (value: string) => {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+};

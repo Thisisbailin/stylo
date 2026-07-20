@@ -1,0 +1,17 @@
+name = "stylo-project-realtime"
+main = "src/index.ts"
+compatibility_date = "2026-07-17"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "PROJECT_REALTIME"
+class_name = "ProjectRealtimeRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ProjectRealtimeRoom"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stylo"
+database_id = "b7898b3b-2b6a-4173-a3f0-af4a84eefe7c"

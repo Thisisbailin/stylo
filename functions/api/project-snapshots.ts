@@ -38,7 +38,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         .bind(userId, projectId)
         .all(),
       context.env.DB.prepare(
-        "SELECT updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
+        "SELECT updated_at FROM user_project_documents WHERE user_id = ?1 AND project_id = ?2"
       )
         .bind(userId, projectId)
         .first(),

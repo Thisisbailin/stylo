@@ -83,7 +83,6 @@ type Props = {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   accountSession?: AccountApiSession;
-  projectEditLeaseId?: string;
   syncState?: SyncState;
   onForceSync?: () => void;
   onResetProject?: () => void;
@@ -462,7 +461,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   isSignedIn = false,
   getAuthToken,
   accountSession,
-  projectEditLeaseId,
   syncState,
   onForceSync,
   onResetProject,
@@ -2962,7 +2960,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                         onConfigChange={setConfig}
                         isSignedIn={isSignedIn}
                         accountSession={accountSession}
-                        projectEditLeaseId={projectEditLeaseId}
                         onForceSync={onForceSync}
                         syncState={syncState}
                         onResetProject={onResetProject}

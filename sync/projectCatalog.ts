@@ -42,52 +42,12 @@ export const mergeMissingCloudProjects = (
   local,
 );
 
-const createDeleteSessionId = () => globalThis.crypto?.randomUUID?.() ||
-  `delete-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-
 export const deleteCloudProject = async (
   session: AccountApiSession,
   projectId: string,
-  activeLeaseId?: string,
 ) => {
-  const sessionId = createDeleteSessionId();
-  let leaseId = activeLeaseId || "";
-  const ownsTemporaryLease = !leaseId;
-  if (ownsTemporaryLease) {
-    const acquireResponse = await session.request("/api/project-lease", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "acquire",
-        projectId,
-        sessionId,
-        clientLabel: "Stylo · 删除项目",
-      }),
-    });
-    const payload = await parseJsonResponse<{ leaseId?: string; owner?: { clientLabel?: string } }>(
-      acquireResponse,
-      "取得项目删除权失败",
-    );
-    if (!acquireResponse.ok || !payload.leaseId) {
-      const owner = payload.owner?.clientLabel;
-      throw new Error(owner ? `该项目正在由 ${owner} 编辑，暂时不能删除。` : "该项目当前不能删除。");
-    }
-    leaseId = payload.leaseId;
-  }
-
-  try {
-    const response = await session.request(`/api/account-data-reset?projectId=${encodeURIComponent(projectId)}`, {
-      method: "DELETE",
-      headers: { "x-project-edit-lease": leaseId },
-    });
-    await requireOkResponse(response, "删除云端项目失败");
-  } finally {
-    if (ownsTemporaryLease && leaseId) {
-      await session.request("/api/project-lease", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "release", projectId, sessionId, leaseId }),
-      }).catch(() => undefined);
-    }
-  }
+  const response = await session.request(`/api/account-data-reset?projectId=${encodeURIComponent(projectId)}&intent=delete`, {
+    method: "DELETE",
+  });
+  await requireOkResponse(response, "删除云端项目失败");
 };

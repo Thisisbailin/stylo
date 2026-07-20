@@ -2,7 +2,7 @@ import { validateProjectPayload } from "./validation";
 import { logAudit } from "./audit";
 import { getUserId, jsonResponse, JSON_HEADERS } from "./_auth";
 import { readJsonRequest } from "./_request";
-import { buildProjectEditLeaseGuardStatement, requireProjectEditLease } from "./_projectEditLease";
+import { requireRequestProjectId } from "./_projectScope";
 import {
   buildProjectWriteGuardCleanupStatement,
   buildProjectWriteGuardStatement,
@@ -325,8 +325,17 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
   let userId: string | null = null;
   try {
     userId = await getUserId(context.request, context.env);
-    const editLease = await requireProjectEditLease(context.env, context.request, userId);
-    const projectId = editLease.project_id;
+    const projectId = requireRequestProjectId(context.request);
+    if (context.request.method.toUpperCase() === "POST") {
+      return jsonResponse(
+        {
+          error: "Snapshot restore is unavailable while the realtime project protocol is active.",
+          code: "REALTIME_RESTORE_REQUIRED",
+          projectId,
+        },
+        { status: 410 },
+      );
+    }
 
     const body = await readJsonRequest<RestoreRequest>(context.request, MAX_RESTORE_REQUEST_BYTES);
     const deviceId = getDeviceId(context.request, body);
@@ -469,9 +478,7 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     });
 
     const guardId = createProjectWriteGuardId(userId, boundOpId);
-    const leaseGuardId = `${guardId}:lease`;
     const statements = [
-      buildProjectEditLeaseGuardStatement(context.env.DB, editLease, leaseGuardId),
       buildProjectWriteGuardStatement(
         context.env.DB,
         userId,
@@ -551,18 +558,11 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       "INSERT INTO user_project_meta (user_id, project_id, data, updated_at, last_op_id) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(user_id, project_id) DO UPDATE SET data=?3, updated_at=?4, last_op_id=?5"
     ).bind(userId, projectId, metaSerialized, updatedAt, boundOpId));
     statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, guardId));
-    statements.push(buildProjectWriteGuardCleanupStatement(context.env.DB, leaseGuardId));
 
     try {
       await context.env.DB.batch(statements);
     } catch (batchError) {
       if (isProjectWriteGuardError(batchError)) {
-        try {
-          await requireProjectEditLease(context.env, context.request, userId);
-        } catch (leaseError) {
-          if (leaseError instanceof Response) return leaseError;
-          throw leaseError;
-        }
         const latestMeta = await context.env.DB.prepare(
           "SELECT updated_at, last_op_id FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
         ).bind(userId, projectId).first();

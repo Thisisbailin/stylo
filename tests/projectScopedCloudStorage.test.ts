@@ -63,24 +63,28 @@ test("resetting one project keeps every sibling project intact", () => {
   assert.equal(reset.flowProjects?.find((item) => item.id === "project-b")?.flow.revision, 7);
 });
 
-test("D1 authorities, leases, Agent history, and assets have explicit project columns", () => {
-  const migration = read("migrations/0003_project_scoped_cloud.sql");
+test("D1 authorities, realtime documents, Agent history, and assets have explicit project columns", () => {
+  const migration = [
+    read("migrations/0003_project_scoped_cloud.sql"),
+    read("migrations/0004_realtime_collaboration.sql"),
+  ].join("\n");
   const compositePrimaryKeys = migration.match(/PRIMARY KEY \(user_id, project_id[^)]*\)/g) || [];
   assert.ok(compositePrimaryKeys.length >= 10);
   assert.match(migration, /CREATE TABLE agent_sessions[\s\S]*project_id TEXT NOT NULL/);
   assert.match(migration, /CREATE TABLE agent_traces[\s\S]*project_id TEXT NOT NULL/);
   assert.match(migration, /CREATE TABLE agent_spans[\s\S]*project_id TEXT NOT NULL/);
   assert.match(migration, /CREATE TABLE user_seedance_assets[\s\S]*PRIMARY KEY \(user_id, project_id, asset_id\)/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS user_project_documents[\s\S]*PRIMARY KEY \(user_id, project_id\)/);
 });
 
 test("network and object storage operations carry and enforce projectId", () => {
-  const adapter = read("sync/projectSyncAdapter.ts");
+  const realtime = read("sync/realtimeProjectSyncEngine.ts");
   const storageClient = read("node-workspace/nodeflow/storageObjects.ts");
   const upload = read("functions/api/upload-url.ts");
   const download = read("functions/api/download-url.ts");
   const deletion = read("functions/api/storage-objects.ts");
 
-  assert.match(adapter, /projectId=\$\{encodeURIComponent\(projectId\)\}/);
+  assert.match(realtime, /projectId=\$\{encodeURIComponent\(this\.options\.projectId\)\}/);
   assert.match(storageClient, /JSON\.stringify\(\{ projectId, objects: uniqueObjects \}\)/);
   assert.match(upload, /users\/\$\{userId\}\/projects\/\$\{projectId\}\//);
   assert.match(download, /path\.startsWith\(projectPrefix\)/);

@@ -1,20 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectData, SyncStatus } from "../types";
-import { backupData } from "../utils/persistence";
-import { restoreLocalProjectMedia } from "../utils/cloudProjectData";
 import type { AccountApiSession } from "../sync/authenticatedFetch";
-import { createLocalStorageBaselineStore } from "../sync/localBaselineStore";
-import {
-  createProjectSyncTransport,
-  createProjectSyncCodec,
-  type ProjectLeaseBlockedDetail,
-} from "../sync/projectSyncAdapter";
+import { createProjectSyncCodec } from "../sync/projectSyncAdapter";
 import { mergeStyloScopedProjectData } from "../agents/runtime/projectScope";
-import {
-  VersionedSyncEngine,
-  type SyncStatusDetail,
-  type VersionedSyncLease,
-} from "../sync/versionedSyncEngine";
+import type { SyncStatusDetail, VersionedSyncLease } from "../sync/versionedSyncEngine";
+import { RealtimeProjectSyncEngine } from "../sync/realtimeProjectSyncEngine";
 
 type UseCloudSyncOptions = {
   accountScope: string;
@@ -22,24 +12,19 @@ type UseCloudSyncOptions = {
   isSignedIn: boolean;
   isLoaded: boolean;
   accountSession: AccountApiSession;
-  projectEditLeaseId?: string;
-  onProjectEditLeaseLost?: (detail?: ProjectLeaseBlockedDetail) => void;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
   refreshKey?: number;
-  localBackupKey: string;
-  remoteBackupKey: string;
-  forceClearKey: string;
   onError?: (error: unknown) => void;
-  onConflictConfirm: (options: { remote: ProjectData; local: ProjectData }) => Promise<boolean> | boolean;
   saveDebounceMs?: number;
   onStatusChange?: (status: SyncStatus, detail?: SyncStatusDetail) => void;
+  onRemoteReset?: (mode: "reset" | "delete") => void;
 };
 
 export type ProjectSyncLease = VersionedSyncLease;
 export type EnsureProjectSynced = (
   snapshot: ProjectData,
-  expectedRevision: number
+  expectedRevision: number,
 ) => Promise<ProjectSyncLease>;
 export type ResumeProjectSync = () => void;
 
@@ -52,42 +37,35 @@ export const useCloudSync = ({
   isSignedIn,
   isLoaded,
   accountSession,
-  projectEditLeaseId,
-  onProjectEditLeaseLost,
   projectData,
   setProjectData,
   refreshKey,
-  localBackupKey,
-  remoteBackupKey,
-  forceClearKey,
   onError,
-  onConflictConfirm,
-  saveDebounceMs = 1200,
+  saveDebounceMs = 180,
   onStatusChange,
+  onRemoteReset,
 }: UseCloudSyncOptions) => {
-  const engineRef = useRef<VersionedSyncEngine<ProjectData> | null>(null);
+  const engineRef = useRef<RealtimeProjectSyncEngine | null>(null);
   const suspendedRef = useRef(false);
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const projectDataRef = useRef(projectData);
-  const callbacksRef = useRef({ onError, onConflictConfirm, onStatusChange, setProjectData });
+  const callbacksRef = useRef({ onError, onStatusChange, onRemoteReset, setProjectData });
   const lastRefreshKeyRef = useRef(refreshKey);
 
   projectDataRef.current = projectData;
-  callbacksRef.current = { onError, onConflictConfirm, onStatusChange, setProjectData };
+  callbacksRef.current = { onError, onStatusChange, onRemoteReset, setProjectData };
 
   useEffect(() => {
-    if (!isSignedIn || !isLoaded || !projectEditLeaseId || suspendedRef.current) {
+    if (!isSignedIn || !isLoaded || suspendedRef.current) {
       callbacksRef.current.onStatusChange?.("disabled", { pendingOps: 0, retryCount: 0 });
       return undefined;
     }
 
-    const baselineStore = createLocalStorageBaselineStore(
-      `${localBackupKey}_last_synced:${encodeURIComponent(projectId)}`,
-    );
-    const engine = new VersionedSyncEngine<ProjectData>({
-      transport: createProjectSyncTransport(accountSession, projectId, projectEditLeaseId, onProjectEditLeaseLost),
+    const engine = new RealtimeProjectSyncEngine({
+      accountScope,
+      projectId,
+      session: accountSession,
       codec: createProjectSyncCodec(projectId),
-      baselineStore,
       debounceMs: saveDebounceMs,
       onStatusChange: (status, detail) => callbacksRef.current.onStatusChange?.(status, detail),
       onApplyRemote: (remote) => {
@@ -97,72 +75,38 @@ export const useCloudSync = ({
           return merged;
         });
       },
-      restoreRemote: restoreLocalProjectMedia,
-      onConflict: async ({ remote, local }) => {
-        const useRemote = await callbacksRef.current.onConflictConfirm({ remote, local });
-        return useRemote ? "remote" : "local";
-      },
-      onBackupLocal: (local) => backupData(localBackupKey, local),
-      onBackupRemote: (remote) => backupData(remoteBackupKey, remote),
-      allowEmptyOverwrite: () => {
-        try {
-          return localStorage.getItem(forceClearKey) === "1";
-        } catch {
-          return false;
-        }
-      },
-      onEmptyOverwriteCommitted: () => {
-        try {
-          localStorage.removeItem(forceClearKey);
-        } catch {
-          // Best-effort reset marker cleanup.
-        }
-      },
+      onError: (error) => callbacksRef.current.onError?.(error),
+      onReset: (mode) => callbacksRef.current.onRemoteReset?.(mode),
     });
     engineRef.current = engine;
-    const handleOnline = () => engine.setOnline(true);
-    const handleOffline = () => engine.setOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     void engine.start(projectDataRef.current).catch((error) => {
       if (!isAbortError(error)) callbacksRef.current.onError?.(error);
     });
 
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       if (engineRef.current === engine) engineRef.current = null;
       engine.dispose();
     };
-  }, [accountScope, accountSession, forceClearKey, isLoaded, isSignedIn, localBackupKey, onProjectEditLeaseLost, projectEditLeaseId, projectId, remoteBackupKey, saveDebounceMs, sessionGeneration]);
+  }, [accountScope, accountSession, isLoaded, isSignedIn, projectId, saveDebounceMs, sessionGeneration]);
 
   useEffect(() => {
-    if (suspendedRef.current) return;
-    engineRef.current?.stage(projectData);
+    if (!suspendedRef.current) engineRef.current?.stage(projectData);
   }, [projectData]);
 
   useEffect(() => {
     if (refreshKey === lastRefreshKeyRef.current) return;
     lastRefreshKeyRef.current = refreshKey;
-    const engine = engineRef.current;
-    if (!engine) return;
-    void engine.refresh(projectDataRef.current).catch((error) => {
-      if (!isAbortError(error)) callbacksRef.current.onError?.(error);
-    });
+    engineRef.current?.refresh();
   }, [refreshKey]);
 
   const flushProjectSync = useCallback<EnsureProjectSynced>(async (snapshot, expectedRevision) => {
     const engine = engineRef.current;
-    if (!engine) {
-      throw new Error("当前账户的项目同步会话尚未就绪，Agent 请求未发送。");
-    }
+    if (!engine) throw new Error("当前账户的实时项目会话尚未就绪，Agent 请求未发送。");
     return engine.acquire(snapshot, expectedRevision);
   }, []);
 
   const suspendProjectSync = useCallback((): ResumeProjectSync => {
-    if (suspendedRef.current) {
-      throw new Error("项目同步会话已处于重置状态。");
-    }
+    if (suspendedRef.current) throw new Error("项目同步会话已处于重置状态。");
     suspendedRef.current = true;
     const engine = engineRef.current;
     engineRef.current = null;

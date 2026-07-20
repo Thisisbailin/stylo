@@ -1,3 +1,5 @@
+import { encodeWebSocketCredential } from "../utils/websocketAuth";
+
 export type AccountTokenProvider = (options?: { skipCache?: boolean }) => Promise<string | null>;
 
 export class SyncTransportError extends Error {
@@ -84,7 +86,7 @@ export class AccountApiSession {
   constructor(
     readonly accountScope: string,
     private readonly getToken: AccountTokenProvider,
-    private readonly deviceId: string,
+    readonly deviceId: string,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly resolveUrl: (path: string) => string = (path) => path,
     private readonly requestTimeoutMs = 10_000,
@@ -189,6 +191,17 @@ export class AccountApiSession {
       if (timeout) clearTimeout(timeout);
       combined.cleanup();
     }
+  }
+
+  async openWebSocket(path: string, applicationProtocol: string) {
+    this.signal.throwIfAborted();
+    const token = await this.getToken();
+    if (!token) throw new SyncTransportError("无法取得当前账户的实时认证令牌。", { status: 401 });
+    const resolved = this.resolveUrl(path);
+    const base = typeof window !== "undefined" ? window.location.href : "http://localhost/";
+    const url = new URL(resolved, base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return new WebSocket(url, [applicationProtocol, encodeWebSocketCredential(token)]);
   }
 }
 

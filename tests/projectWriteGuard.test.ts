@@ -6,7 +6,6 @@ import {
   createProjectWriteGuardId,
   isProjectWriteGuardError,
 } from "../functions/api/_projectWriteGuard";
-import { buildProjectEditLeaseTakeoverStatement } from "../functions/api/_projectEditLease";
 
 type CapturedStatement = {
   sql: string;
@@ -66,32 +65,4 @@ test("guard cleanup is scoped to one operation and known constraint errors are r
   );
   assert.equal(isProjectWriteGuardError(new Error("NOT NULL constraint failed: other_table.value")), false);
   assert.equal(createProjectWriteGuardId("user-3", "op-3"), "user-3:op-3");
-});
-
-test("device takeover is compare-and-swap fenced by user, project, and observed lease", () => {
-  const { db, statements } = createDatabaseRecorder();
-  buildProjectEditLeaseTakeoverStatement(db as never, {
-    userId: "user-1",
-    projectId: "project-a",
-    candidateLeaseId: "lease-new",
-    deviceId: "device-phone",
-    sessionId: "session-phone",
-    clientLabel: "Stylo 手机端",
-    now: 100,
-    expiresAt: 145,
-    takeoverToken: "lease-observed",
-  });
-
-  assert.match(statements[0].sql, /WHERE user_id = \?1 AND project_id = \?2 AND lease_id = \?9/);
-  assert.deepEqual(statements[0].params, [
-    "user-1",
-    "project-a",
-    "lease-new",
-    "device-phone",
-    "session-phone",
-    "Stylo 手机端",
-    100,
-    145,
-    "lease-observed",
-  ]);
 });

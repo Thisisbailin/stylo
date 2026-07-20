@@ -210,9 +210,10 @@ For local D1 development, use the same command with `--local`. The migration fil
 ## Main Backend Surfaces
 
 - `functions/api/agent.ts`: edge agent runtime over `@openai/agents`
-- `functions/api/project.ts`: authenticated project persistence and delta sync
+- `functions/api/project-realtime.ts`: authenticated multi-device realtime project channel
+- `realtime-worker/`: project-scoped Yjs Durable Object coordinator
+- `functions/api/project.ts`: authenticated project snapshot reader and legacy migration boundary
 - `functions/api/projects.ts`: authenticated cloud-project catalog
-- `functions/api/project-lease.ts`: exclusive per-project edit lease and heartbeat
 - `functions/api/project-snapshots.ts`: snapshot history
 - `functions/api/project-restore.ts`: restore from snapshots
 - `functions/api/upload-url.ts`: Supabase signed upload URL helper

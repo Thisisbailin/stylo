@@ -77,10 +77,12 @@
     "react-konva": "^18.2.10",
     "recharts": "^3.5.1",
     "three": "^0.165.0",
+    "yjs": "^13.6.31",
     "zod": "^4.3.6",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260719.1",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22.14.0",
     "@types/three": "^0.165.0",
@@ -92,6 +94,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "~5.8.2",
     "vite": "^7.3.6",
-    "wait-on": "^9.0.10"
+    "wait-on": "^9.0.10",
+    "wrangler": "^4.112.0"
   }
 }

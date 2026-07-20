@@ -37,6 +37,48 @@ const asNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(number) ? number : fallback;
 };
 
+export const buildAgentProjectStateFromRealtimeDocument = (
+  projectId: string,
+  value: unknown,
+  updatedAt: number,
+): { projectData: ProjectData; nodeFlow: NodeFlowFile; updatedAt: number } => {
+  const projectRecord = parseRecord(value);
+  if (!Object.keys(projectRecord).length) {
+    throw new Error("云端实时项目文档为空，请等待项目同步完成后重试。");
+  }
+  const projectData = projectRecord as unknown as ProjectData;
+  const flowProjects = Array.isArray(projectData.flowProjects) ? projectData.flowProjects : [];
+  const activeProject = flowProjects.find((project) => project.id === projectId) || flowProjects[0];
+  const flow = activeProject?.flow || projectData.flow || {};
+  const canvas = isRecord(projectData.canvas) ? projectData.canvas : {};
+  const viewport = isRecord(canvas.viewport) ? canvas.viewport : undefined;
+  const projectTitle = activeProject?.title?.trim() || projectData.fileName?.trim() || "Stylo Flow Workspace";
+  const roles = Array.isArray(projectData.roles) ? projectData.roles : [];
+  const designAssets = Array.isArray(projectData.designAssets) ? projectData.designAssets : [];
+  const nodes = Array.isArray(flow.flowNodes) ? flow.flowNodes : [];
+
+  const nodeFlow = parseNodeFlowFile({
+    version: 2,
+    revision: Math.max(0, Math.trunc(asNumber(flow.revision))),
+    name: projectTitle.slice(0, 256),
+    nodes,
+    links: Array.isArray(flow.links) ? flow.links : [],
+    graphLinks: Array.isArray(flow.graphLinks) ? flow.graphLinks : [],
+    linkStyle: flow.linkStyle,
+    globalAssetHistory: Array.isArray(flow.globalAssetHistory) ? flow.globalAssetHistory : [],
+    nodeFlowContext: {
+      rawScript: typeof projectData.rawScript === "string" ? projectData.rawScript : "",
+      episodes: Array.isArray(projectData.episodes) ? projectData.episodes : [],
+      roles,
+      designAssets,
+    },
+    viewport,
+    activeView: typeof flow.activeView === "string" ? flow.activeView : null,
+  });
+
+  return { projectData, nodeFlow, updatedAt };
+};
+
 export const buildAgentProjectStateFromRows = (
   projectId: string,
   rows: AgentProjectRows
@@ -114,6 +156,19 @@ export const loadAgentProjectState = async (
   userId: string,
   projectId: string
 ) => {
+  const realtimeRow = await db.prepare(
+    `SELECT project_data, updated_at
+     FROM user_project_documents
+     WHERE user_id = ?1 AND project_id = ?2`,
+  ).bind(userId, projectId).first<Record<string, unknown>>();
+  if (realtimeRow) {
+    return buildAgentProjectStateFromRealtimeDocument(
+      projectId,
+      realtimeRow.project_data,
+      asNumber(realtimeRow.updated_at),
+    );
+  }
+
   const metaRow = await db.prepare(
     "SELECT data, updated_at FROM user_project_meta WHERE user_id = ?1 AND project_id = ?2"
   ).bind(userId, projectId).first<Record<string, unknown>>();

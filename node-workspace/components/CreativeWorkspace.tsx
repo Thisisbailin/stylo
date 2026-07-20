@@ -58,7 +58,6 @@ interface CreativeWorkspaceProps {
   isSignedIn?: boolean;
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   accountSession?: AccountApiSession;
-  projectEditLeaseId?: string;
   syncState?: SyncState;
   ensureProjectSynced?: EnsureProjectSynced;
   onForceSync?: () => void;
@@ -336,7 +335,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   isSignedIn,
   getAuthToken,
   accountSession,
-  projectEditLeaseId,
   syncState,
   ensureProjectSynced,
   onForceSync,
@@ -1439,7 +1437,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         isSignedIn={isSignedIn}
         getAuthToken={getAuthToken}
         accountSession={accountSession}
-        projectEditLeaseId={projectEditLeaseId}
         syncState={syncState}
         onForceSync={onForceSync}
         onOpenLanding={onOpenLanding}

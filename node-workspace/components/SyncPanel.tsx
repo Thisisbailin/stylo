@@ -9,7 +9,6 @@ type Props = {
   onConfigChange: (c: AppConfig) => void;
   isSignedIn?: boolean;
   accountSession?: AccountApiSession;
-  projectEditLeaseId?: string;
   onForceSync?: () => void;
   syncState?: SyncState;
   onResetProject?: () => void;
@@ -27,7 +26,6 @@ export const SyncPanel: React.FC<Props> = ({
   onConfigChange,
   isSignedIn,
   accountSession,
-  projectEditLeaseId,
   onForceSync,
   syncState,
   onResetProject,
@@ -126,7 +124,7 @@ export const SyncPanel: React.FC<Props> = ({
   };
 
   const restoreSnapshot = async (version: number) => {
-    if (!accountSession || !isSignedIn || !projectEditLeaseId) {
+    if (!accountSession || !isSignedIn) {
       setSnapshotMessage({ type: "error", text: "Sign in to restore snapshots." });
       return;
     }
@@ -153,7 +151,6 @@ export const SyncPanel: React.FC<Props> = ({
         headers: {
           "content-type": "application/json",
           "if-match": String(expectedUpdatedAt),
-          "x-project-edit-lease": projectEditLeaseId,
         },
         body: JSON.stringify({ projectId, version, expectedUpdatedAt, opId }),
       });

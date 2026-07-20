@@ -22,8 +22,8 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
     const rows = await context.env.DB.prepare(
-      `SELECT project_id, data, updated_at
-       FROM user_project_meta
+      `SELECT project_id, project_data AS data, updated_at
+       FROM user_project_documents
        WHERE user_id = ?1
        ORDER BY updated_at DESC, project_id ASC
        LIMIT 100`,

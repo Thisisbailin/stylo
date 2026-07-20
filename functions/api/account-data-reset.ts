@@ -1,16 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { getUserId, jsonResponse } from "./_auth";
 import { readJsonRequest } from "./_request";
-import {
-  buildProjectEditLeaseGuardStatement,
-  type ProjectEditLeaseRow,
-  requireProjectEditLease,
-} from "./_projectEditLease";
-import {
-  buildProjectWriteGuardCleanupStatement,
-  createProjectWriteGuardId,
-  isProjectWriteGuardError,
-} from "./_projectWriteGuard";
+import { requireRequestProjectId } from "./_projectScope";
 
 type Env = {
   DB: any;
@@ -20,6 +11,10 @@ type Env = {
   SUPABASE_SERVICE_ROLE?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   SUPABASE_SECRET_KEY?: string;
+  PROJECT_REALTIME?: {
+    idFromName(name: string): unknown;
+    get(id: unknown): { fetch(request: Request): Promise<Response> };
+  };
 };
 
 const STORAGE_BUCKETS = ["assets", "public-assets"] as const;
@@ -45,9 +40,11 @@ const PROJECT_RESET_PLANS: ResetPlan[] = [
   { table: "user_project_characters", sql: "DELETE FROM user_project_characters WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_locations", sql: "DELETE FROM user_project_locations WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_flow_projects", sql: "DELETE FROM user_project_flow_projects WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_write_guards", sql: "DELETE FROM user_project_write_guards WHERE user_id = ?1", projectScoped: true },
   { table: "user_projects", sql: "DELETE FROM user_projects WHERE user_id = ?1" },
   { table: "user_project_changes", sql: "DELETE FROM user_project_changes WHERE user_id = ?1" },
-  { table: "user_project_edit_leases", sql: "DELETE FROM user_project_edit_leases WHERE user_id = ?1" },
+  { table: "user_project_updates", sql: "DELETE FROM user_project_updates WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_documents", sql: "DELETE FROM user_project_documents WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_meta", sql: "DELETE FROM user_project_meta WHERE user_id = ?1", projectScoped: true },
   { table: "user_sync_audit", sql: "DELETE FROM user_sync_audit WHERE user_id = ?1" },
 ];
@@ -61,7 +58,7 @@ export const resetD1UserData = async (
   env: Env,
   userId: string,
   includeAccountSettings: boolean,
-  editLease: ProjectEditLeaseRow,
+  projectId?: string,
 ) => {
   const tableRows = await env.DB.prepare(
     "SELECT name FROM sqlite_master WHERE type = 'table'"
@@ -81,27 +78,13 @@ export const resetD1UserData = async (
   );
   if (!plans.length) return {};
 
-  const guardId = createProjectWriteGuardId(userId, `reset-${crypto.randomUUID()}`);
-  let results: any[];
-  try {
-    results = await env.DB.batch([
-      buildProjectEditLeaseGuardStatement(env.DB, editLease, guardId),
-      ...plans.map((plan) => plan.projectScoped && !includeAccountSettings
-        ? env.DB.prepare(`${plan.sql} AND project_id = ?2`).bind(userId, editLease.project_id)
-        : env.DB.prepare(plan.sql).bind(userId)),
-      buildProjectWriteGuardCleanupStatement(env.DB, guardId),
-    ]);
-  } catch (error) {
-    if (isProjectWriteGuardError(error)) {
-      throw jsonResponse(
-        { error: "Project edit lease expired before reset", code: "PROJECT_EDIT_LEASE_REQUIRED" },
-        { status: 423 },
-      );
-    }
-    throw error;
-  }
+  const results = await env.DB.batch(
+    plans.map((plan) => plan.projectScoped && !includeAccountSettings
+      ? env.DB.prepare(`${plan.sql} AND project_id = ?2`).bind(userId, projectId)
+      : env.DB.prepare(plan.sql).bind(userId)),
+  );
   return Object.fromEntries(
-    plans.map((plan, index) => [plan.table, Number(results?.[index + 1]?.meta?.changes || 0)])
+    plans.map((plan, index) => [plan.table, Number(results?.[index]?.meta?.changes || 0)])
   );
 };
 
@@ -177,20 +160,71 @@ const deleteStorageUserData = async (env: Env, userId: string, projectId?: strin
 };
 
 const parseResetOptions = async (request: Request) => {
-  if (request.method === "DELETE") return { scope: "project" as const };
+  const url = new URL(request.url);
+  const mode = url.searchParams.get("intent") === "delete" ? "delete" as const : "reset" as const;
+  if (request.method === "DELETE") return { scope: "project" as const, mode };
   const body = await readJsonRequest<{ scope?: unknown }>(request, 4 * 1024);
   return {
     scope: body?.scope === "all" ? ("all" as const) : ("project" as const),
+    mode,
   };
+};
+
+const listResetProjectIds = async (
+  env: Env,
+  userId: string,
+  requestedProjectId?: string,
+) => {
+  if (requestedProjectId) return [requestedProjectId];
+  const rows = await env.DB.prepare(
+    `SELECT project_id FROM user_project_documents WHERE user_id = ?1
+     UNION
+     SELECT project_id FROM user_project_meta WHERE user_id = ?1`,
+  ).bind(userId).all();
+  return (rows?.results || [])
+    .map((row: { project_id?: unknown }) => typeof row.project_id === "string" ? row.project_id : "")
+    .filter(Boolean);
+};
+
+const resetRealtimeRooms = async (
+  env: Env,
+  userId: string,
+  projectIds: string[],
+  mode: "reset" | "delete",
+) => {
+  if (!env.PROJECT_REALTIME) return;
+  for (const projectId of projectIds) {
+    const roomId = env.PROJECT_REALTIME.idFromName(`${userId}:${projectId}`);
+    const response = await env.PROJECT_REALTIME.get(roomId).fetch(
+      new Request("https://stylo.internal/reset", {
+        method: "POST",
+        headers: {
+          "x-stylo-user-id": userId,
+          "x-stylo-project-id": projectId,
+          "x-stylo-reset-mode": mode,
+        },
+      }),
+    );
+    if (!response.ok) {
+      throw new Error(`Realtime room reset failed for project ${projectId}`);
+    }
+  }
 };
 
 const handleReset = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
-    const editLease = await requireProjectEditLease(context.env, context.request, userId);
-    const { scope } = await parseResetOptions(context.request);
+    const { scope, mode } = await parseResetOptions(context.request);
     const includeAccountSettings = scope === "all";
-    const d1 = await resetD1UserData(context.env, userId, includeAccountSettings, editLease);
+    const projectId = includeAccountSettings ? undefined : requireRequestProjectId(context.request);
+    const projectIds = await listResetProjectIds(context.env, userId, projectId);
+    await resetRealtimeRooms(
+      context.env,
+      userId,
+      projectIds,
+      includeAccountSettings ? "delete" : mode,
+    );
+    const d1 = await resetD1UserData(context.env, userId, includeAccountSettings, projectId);
     let storage: Awaited<ReturnType<typeof deleteStorageUserData>> | {
       skipped: true;
       reason: string;
@@ -201,7 +235,7 @@ const handleReset = async (context: { request: Request; env: Env }) => {
       storage = await deleteStorageUserData(
         context.env,
         userId,
-        includeAccountSettings ? undefined : editLease.project_id,
+        projectId,
       );
     } catch (error) {
       // D1 is the source of truth for project and Agent state. Object cleanup is

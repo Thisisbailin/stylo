@@ -1,37 +1,10 @@
 import type { ProjectData } from "../types";
-import { computeProjectDelta, isDeltaEmpty } from "../utils/delta";
 import { dropFileReplacer, isProjectEmpty } from "../utils/persistence";
 import { normalizeProjectData } from "../utils/projectData";
 import { toCloudProjectData } from "../utils/cloudProjectData";
 import { buildStyloScopedProjectData } from "../agents/runtime/projectScope";
 import { validateProjectData } from "../utils/validation";
-import {
-  AccountApiSession,
-  parseJsonResponse,
-  requireOkResponse,
-} from "./authenticatedFetch";
-import type {
-  VersionedSaveResult,
-  VersionedSyncCodec,
-  VersionedSyncTransport,
-} from "./versionedSyncEngine";
-
-type ProjectResponse = {
-  projectData?: ProjectData | { projectData?: ProjectData };
-  updatedAt?: number;
-  projectRevision?: number | null;
-  error?: string;
-};
-
-export type ProjectLeaseBlockedDetail = {
-  owner?: {
-    clientLabel: string;
-    acquiredAt: number;
-    renewedAt: number;
-    expiresAt: number;
-  } | null;
-  takeoverToken?: string | null;
-};
+import type { VersionedSyncCodec } from "./versionedSyncEngine";
 
 const hashString = (value: string) => {
   let left = 2166136261;
@@ -46,13 +19,6 @@ const hashString = (value: string) => {
 
 const serializeCloudProject = (value: ProjectData) =>
   JSON.stringify(toCloudProjectData(value), dropFileReplacer) || "{}";
-
-const unwrapProjectData = (value: ProjectResponse["projectData"]) => {
-  if (!value || typeof value !== "object") return null;
-  return "projectData" in value && value.projectData
-    ? value.projectData
-    : value as ProjectData;
-};
 
 export const readActiveFlowRevision = (data: ProjectData | null | undefined) => {
   if (!data) return null;
@@ -84,102 +50,5 @@ export const createProjectSyncCodec = (projectId: string): VersionedSyncCodec<Pr
   ...projectSyncCodec,
   snapshot(value) {
     return projectSyncCodec.snapshot(buildStyloScopedProjectData(value, projectId));
-  },
-});
-
-export const createProjectSyncTransport = (
-  session: AccountApiSession,
-  projectId: string,
-  leaseId: string,
-  onLeaseLost?: (detail?: ProjectLeaseBlockedDetail) => void,
-): VersionedSyncTransport<ProjectData> => ({
-  async load(signal) {
-    const response = await session.request(`/api/project?projectId=${encodeURIComponent(projectId)}`, {}, signal);
-    if (response.status === 404) return null;
-    await requireOkResponse(response, "加载云端项目失败");
-    const payload = await parseJsonResponse<ProjectResponse>(response, "加载云端项目失败");
-    const project = unwrapProjectData(payload.projectData);
-    if (!project || typeof payload.updatedAt !== "number") {
-      throw new Error("云端项目响应缺少 projectData 或 updatedAt。");
-    }
-    const normalized = normalizeProjectData(project);
-    return {
-      value: normalized,
-      version: payload.updatedAt,
-      revision: typeof payload.projectRevision === "number"
-        ? payload.projectRevision
-        : readActiveFlowRevision(normalized),
-    };
-  },
-
-  async save(request, signal): Promise<VersionedSaveResult<ProjectData>> {
-    const delta = request.forceFull
-      ? undefined
-      : computeProjectDelta(request.value, request.baseValue);
-    if (delta && isDeltaEmpty(delta)) {
-      return {
-        kind: "saved",
-        version: request.baseVersion,
-        revision: readActiveFlowRevision(request.value),
-      };
-    }
-    const projectRevision = readActiveFlowRevision(request.value);
-    const body = delta
-      ? {
-          delta,
-          updatedAt: request.baseVersion,
-          opId: request.operationId,
-          projectRevision,
-        }
-      : {
-          projectData: request.value,
-          updatedAt: request.baseVersion,
-          opId: request.operationId,
-          projectRevision,
-        };
-    const response = await session.request(`/api/project?projectId=${encodeURIComponent(projectId)}`, {
-      method: "PUT",
-      headers: {
-        "content-type": "application/json",
-        "if-match": String(request.baseVersion),
-        "x-project-edit-lease": leaseId,
-      },
-      body: JSON.stringify(body, dropFileReplacer),
-    }, signal);
-
-    if (response.status === 409) {
-      const payload = await parseJsonResponse<ProjectResponse>(response, "读取项目冲突失败");
-      const remote = unwrapProjectData(payload.projectData);
-      if (!remote || typeof payload.updatedAt !== "number") {
-        throw new Error("项目冲突响应缺少远端快照或版本号。");
-      }
-      const normalized = normalizeProjectData(remote);
-      return {
-        kind: "conflict",
-        remote: {
-          value: normalized,
-          version: payload.updatedAt,
-          revision: typeof payload.projectRevision === "number"
-            ? payload.projectRevision
-            : readActiveFlowRevision(normalized),
-        },
-      };
-    }
-
-    if (response.status === 423) {
-      const detail = await response.clone().json().catch(() => ({})) as ProjectLeaseBlockedDetail;
-      onLeaseLost?.(detail);
-    }
-
-    await requireOkResponse(response, "保存云端项目失败");
-    const payload = await parseJsonResponse<ProjectResponse & { ok?: boolean }>(response, "保存云端项目失败");
-    if (payload.ok !== true || typeof payload.updatedAt !== "number") {
-      throw new Error("云端项目保存响应缺少确认版本号。");
-    }
-    return {
-      kind: "saved",
-      version: payload.updatedAt,
-      revision: typeof payload.projectRevision === "number" ? payload.projectRevision : null,
-    };
   },
 });
