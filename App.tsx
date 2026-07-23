@@ -456,13 +456,23 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         if (res.ok) {
           const data = await res.json();
           if (data.avatarUrl) setAvatarUrl(data.avatarUrl);
+          if (!data.username && user?.username) {
+            await accountSession.request('/api/profile', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                username: user.username,
+                displayName: user.fullName || user.username,
+              }),
+            });
+          }
         }
       } catch (e) {
         console.warn('Fetch profile avatar failed', e);
       }
     };
     fetchProfile();
-  }, [accountSession, authSignedIn, isAuthLoaded, setAvatarUrl]);
+  }, [accountSession, authSignedIn, isAuthLoaded, setAvatarUrl, user?.fullName, user?.username]);
 
   // --- Handlers ---
 
@@ -693,6 +703,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
           isLoaded: isUserLoaded,
           isSignedIn: !!userSignedIn,
           name: user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "Stylo User",
+          username: user?.username || undefined,
           email: user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || undefined,
           avatarUrl: avatarUrl || user?.imageUrl || undefined,
           onSignIn: () => openSignIn(),

@@ -26,6 +26,7 @@ import { ViewportControls } from "./ViewportControls";
 import { ManusPanel } from "./ManusPanel";
 import { LookbookStudioPanel } from "./lookbook/LookbookStudioPanel";
 import { LeporelloStudioPanel } from "./leporello/LeporelloStudioPanel";
+import { AccountWorkspace, type AccountWorkspaceView } from "./AccountWorkspace";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
 import { AppConfig, ProjectData, SyncState } from "../../types";
@@ -79,6 +80,7 @@ interface CreativeWorkspaceProps {
     onSignIn?: () => void;
     onSignOut?: () => void;
     onUploadAvatar?: () => void;
+    username?: string;
   };
 }
 
@@ -358,6 +360,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [activeLeporelloNodeId, setActiveLeporelloNodeId] = useState<string | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [accountWorkspaceView, setAccountWorkspaceView] = useState<AccountWorkspaceView | null>(null);
   const [projectSettingsPanel, setProjectSettingsPanel] = useState<ProjectSettingsPanelKey>("provider");
   const [projectSettingsAssetsSection, setProjectSettingsAssetsSection] = useState<MaterialsSectionKey | undefined>();
   const [agentDockWidth, setAgentDockWidth] = useState(0);
@@ -863,7 +866,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     onOpenProjectSettingsPanel: (panel, assetsSection) => openProjectSettingsPanel(panel, assetsSection),
     onOpenVisualLab: (key = "filmRollLab") => onOpenModule?.(key),
     pendingScriptReviewNodeIds,
-    onDeleteFlowProject,
   });
 
   const effectiveAgentDockWidth = isStyloCollapsed ? 0 : agentDockWidth;
@@ -1395,7 +1397,11 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onResetProject={onResetProject}
         onSignOut={onSignOut}
         onAssetLoad={onAssetLoad}
-        accountInfo={accountInfo}
+        accountInfo={accountInfo ? {
+          ...accountInfo,
+          onOpenAccountWorkspace: () => setAccountWorkspaceView("projects"),
+          onOpenUserSquare: () => setAccountWorkspaceView("square"),
+        } : undefined}
         onOpenSettings={() => openProjectSettingsPanel("provider")}
         accountThemeControls={accountThemeControls}
         showGlobalAccountTrigger
@@ -1448,6 +1454,22 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         foundationNodeView={flowSurface.actions?.foundationNodeView}
         onOpenVisualLab={(key = "glassLab") => onOpenModule?.(key)}
       />
+      {accountWorkspaceView && accountSession && accountInfo ? (
+        <AccountWorkspace
+          isOpen
+          initialView={accountWorkspaceView}
+          onClose={() => setAccountWorkspaceView(null)}
+          accountSession={accountSession}
+          projectData={projectData}
+          setProjectData={setProjectData}
+          onDeleteCloudProject={onDeleteFlowProject}
+          accountInfo={{
+            name: accountInfo.name || accountInfo.email || "Stylo User",
+            username: accountInfo.username,
+            avatarUrl: accountInfo.avatarUrl,
+          }}
+        />
+      ) : null}
       {editingScriptNodeId !== null ? (
         <ManusPanel
           projectData={projectData}

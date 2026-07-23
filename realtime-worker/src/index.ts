@@ -7,6 +7,8 @@ import {
 
 type RoomEnv = { DB: any };
 type RoomIdentity = { userId: string; projectId: string };
+type RoomAccess = "edit" | "view";
+type RoomClientIdentity = RoomIdentity & { access: RoomAccess; viewerUserId: string };
 type ClientMessage = {
   type?: unknown;
   actorId?: unknown;
@@ -69,13 +71,17 @@ export class ProjectRealtimeRoom {
     return this.loadPromise;
   }
 
-  private readSocketIdentity(socket: WebSocket) {
+  private readSocketIdentity(socket: WebSocket): RoomClientIdentity | null {
     const attachment = (socket as HibernatingWebSocket).deserializeAttachment?.();
     if (!attachment || typeof attachment !== "object") return null;
-    const candidate = attachment as Partial<RoomIdentity>;
+    const candidate = attachment as Partial<RoomClientIdentity>;
     const userId = normalizeId(candidate.userId);
     const projectId = normalizeId(candidate.projectId);
-    return userId && projectId ? { userId, projectId } : null;
+    const viewerUserId = normalizeId(candidate.viewerUserId);
+    const access = candidate.access === "view" ? "view" : candidate.access === "edit" ? "edit" : null;
+    return userId && projectId && viewerUserId && access
+      ? { userId, projectId, viewerUserId, access }
+      : null;
   }
 
   private async resetProject(identity: RoomIdentity, mode: ResetMode) {
@@ -101,6 +107,14 @@ export class ProjectRealtimeRoom {
   async fetch(request: Request) {
     const userId = normalizeId(request.headers.get("x-stylo-user-id"));
     const projectId = normalizeId(request.headers.get("x-stylo-project-id"));
+    const accessHeader = request.headers.get("x-stylo-access-mode");
+    const access: RoomAccess = accessHeader === "view" ? "view" : "edit";
+    // During a rolling deploy, the previous Pages gateway does not send the
+    // viewer headers. Those legacy requests are owner-only edit routes, so
+    // treating the room owner as the viewer keeps the upgrade non-breaking.
+    // New gateways always send both headers and public routes use view access.
+    const viewerUserId = normalizeId(request.headers.get("x-stylo-viewer-id"))
+      || (!accessHeader ? userId : "");
     if (!userId || !projectId) return new Response("Missing trusted room identity", { status: 401 });
 
     if (request.method === "POST" && new URL(request.url).pathname === "/reset") {
@@ -108,6 +122,15 @@ export class ProjectRealtimeRoom {
       await this.resetProject({ userId, projectId }, mode);
       return new Response(null, { status: 204 });
     }
+    if (request.method === "POST" && new URL(request.url).pathname === "/revoke-viewers") {
+      for (const peer of this.state.getWebSockets()) {
+        if (this.readSocketIdentity(peer)?.access === "view") {
+          peer.close(4003, "Project visibility changed");
+        }
+      }
+      return new Response(null, { status: 204 });
+    }
+    if (!viewerUserId) return new Response("Missing trusted viewer identity", { status: 401 });
     if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
       return new Response("WebSocket upgrade required", { status: 426 });
     }
@@ -117,7 +140,7 @@ export class ProjectRealtimeRoom {
     const client = pair[0];
     const server = pair[1] as HibernatingWebSocket;
     this.state.acceptWebSocket(server);
-    server.serializeAttachment({ userId, projectId });
+    server.serializeAttachment({ userId, projectId, access, viewerUserId });
     server.send(JSON.stringify({
       type: "sync",
       serverSeq: this.serverSeq,
@@ -146,6 +169,10 @@ export class ProjectRealtimeRoom {
       return;
     }
     if (message.type !== "update") return;
+    if (attachedIdentity.access !== "edit" || attachedIdentity.viewerUserId !== attachedIdentity.userId) {
+      socket.send(JSON.stringify({ type: "error", error: "Public project connections are read-only" }));
+      return;
+    }
     const actorId = normalizeId(message.actorId);
     const opId = normalizeId(message.opId);
     if (!actorId || !opId || typeof message.update !== "string") {

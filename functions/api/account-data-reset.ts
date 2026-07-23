@@ -26,7 +26,13 @@ const getSupabaseAdmin = (env: Env) => {
   return createClient(supabaseUrl, serviceRole);
 };
 
-type ResetPlan = { table: string; sql: string; requires?: string; projectScoped?: boolean };
+type ResetPlan = {
+  table: string;
+  resultKey?: string;
+  sql: string;
+  requires?: string;
+  projectScoped?: boolean;
+};
 
 const PROJECT_RESET_PLANS: ResetPlan[] = [
   { table: "agent_spans", sql: "DELETE FROM agent_spans WHERE user_id = ?1", projectScoped: true },
@@ -46,10 +52,13 @@ const PROJECT_RESET_PLANS: ResetPlan[] = [
   { table: "user_project_updates", sql: "DELETE FROM user_project_updates WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_documents", sql: "DELETE FROM user_project_documents WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_meta", sql: "DELETE FROM user_project_meta WHERE user_id = ?1", projectScoped: true },
+  { table: "user_project_visibility", sql: "DELETE FROM user_project_visibility WHERE user_id = ?1", projectScoped: true },
+  { table: "user_profile_visits", resultKey: "user_profile_visits_inbound", sql: "DELETE FROM user_profile_visits WHERE owner_user_id = ?1", projectScoped: true },
   { table: "user_sync_audit", sql: "DELETE FROM user_sync_audit WHERE user_id = ?1" },
 ];
 
 const ACCOUNT_RESET_PLANS: ResetPlan[] = [
+  { table: "user_profile_visits", resultKey: "user_profile_visits_outbound", sql: "DELETE FROM user_profile_visits WHERE viewer_user_id = ?1" },
   { table: "user_profile", sql: "DELETE FROM user_profile WHERE user_id = ?1" },
   { table: "user_secrets", sql: "DELETE FROM user_secrets WHERE user_id = ?1" },
 ];
@@ -84,7 +93,7 @@ export const resetD1UserData = async (
       : env.DB.prepare(plan.sql).bind(userId)),
   );
   return Object.fromEntries(
-    plans.map((plan, index) => [plan.table, Number(results?.[index]?.meta?.changes || 0)])
+    plans.map((plan, index) => [plan.resultKey || plan.table, Number(results?.[index]?.meta?.changes || 0)])
   );
 };
 

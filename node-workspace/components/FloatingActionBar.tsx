@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, GearSix } from "@phosphor-icons/react";
+import { BookOpen, GearSix, SquaresFour, UsersThree } from "@phosphor-icons/react";
 import {
   Plus,
   User,
@@ -27,6 +27,8 @@ type AccountInfo = {
   onSignIn?: () => void;
   onSignOut?: () => void;
   onUploadAvatar?: () => void;
+  onOpenAccountWorkspace?: () => void;
+  onOpenUserSquare?: () => void;
 };
 
 type Props = {
@@ -693,6 +695,30 @@ export const FloatingActionBar: React.FC<Props> = ({
                               </div>
                             </div>
                       </div>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-[var(--app-border)] border-y border-[var(--app-border)]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          accountInfo?.onOpenAccountWorkspace?.();
+                          closeMenus();
+                        }}
+                        className="flex items-center gap-2 px-2 py-3 text-left text-[11px] text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+                      >
+                        <SquaresFour size={15} weight="thin" />
+                        <span>账户与项目</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          accountInfo?.onOpenUserSquare?.();
+                          closeMenus();
+                        }}
+                        className="flex items-center gap-2 px-3 py-3 text-left text-[11px] text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-muted)] hover:text-[var(--app-text-primary)] active:translate-y-px"
+                      >
+                        <UsersThree size={15} weight="thin" />
+                        <span>用户广场</span>
+                      </button>
                     </div>
                     {accountThemeControls ? (
                       <div className="rounded-[18px] border border-[var(--app-border)] bg-[var(--app-panel-muted)] p-2">

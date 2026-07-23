@@ -31,6 +31,8 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     const headers = new Headers(context.request.headers);
     headers.set("x-stylo-user-id", userId);
     headers.set("x-stylo-project-id", projectId);
+    headers.set("x-stylo-access-mode", "edit");
+    headers.set("x-stylo-viewer-id", userId);
     headers.set("sec-websocket-protocol", REALTIME_PROTOCOL);
     headers.delete("authorization");
     return context.env.PROJECT_REALTIME.get(roomId).fetch(new Request(context.request, { headers }));

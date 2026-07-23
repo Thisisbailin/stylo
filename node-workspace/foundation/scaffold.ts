@@ -60,7 +60,7 @@ export type FoundationScaffold = {
   blocks: FoundationTimeBlock[];
 };
 
-const FLOW_PROJECT_LIMIT = 3;
+const FLOW_PROJECT_LIMIT = 24;
 const FLOW_PROJECT_COLOR_STYLES = [
   { color: "amber" },
   { color: "moss" },
