@@ -37,6 +37,7 @@ import {
 import {
   ACCOUNT_PROJECT_LIMIT,
   createAccountProject,
+  createAccountProjectId,
   removeAccountProject,
   switchAccountProject,
   updateAccountProject,
@@ -52,8 +53,8 @@ type Props = {
   accountSession: AccountApiSession;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
-  onDeleteCloudProject?: (projectId: string) => Promise<boolean>;
-  accountInfo: { name: string; username?: string; avatarUrl?: string };
+  onDeleteCloudProject?: (projectId: string) => Promise<void>;
+  accountInfo: { name: string; username?: string; email?: string; avatarUrl?: string };
 };
 
 type PublicationProject = {
@@ -225,7 +226,10 @@ export const AccountWorkspace: React.FC<Props> = ({
   const [selectedProjectId, setSelectedProjectId] = useState(projectData.activeFlowProjectId || "");
   const [draft, setDraft] = useState<ProjectDraft | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [profileDraft, setProfileDraft] = useState({ username: "", displayName: accountInfo.name, bio: "" });
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ username: "", bio: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -275,7 +279,6 @@ export const AccountWorkspace: React.FC<Props> = ({
       setPublication(payload);
       setProfileDraft({
         username: payload.profile.username || accountInfo.username || "",
-        displayName: payload.profile.displayName || accountInfo.name,
         bio: payload.profile.bio || "",
       });
     } catch (error) {
@@ -283,7 +286,7 @@ export const AccountWorkspace: React.FC<Props> = ({
     } finally {
       setPublicationLoading(false);
     }
-  }, [accountInfo.name, accountInfo.username, accountSession]);
+  }, [accountInfo.username, accountSession]);
 
   const loadTraces = useCallback(async () => {
     setTracesLoading(true);
@@ -443,11 +446,15 @@ export const AccountWorkspace: React.FC<Props> = ({
       const response = await accountSession.request("/api/profile", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(profileDraft),
+        body: JSON.stringify({
+          username: profileDraft.username,
+          bio: profileDraft.bio,
+        }),
       });
       await requireOkResponse(response, "保存账户资料失败");
       setProfileMessage("资料已保存");
       await loadPublication();
+      setIsProfileEditorOpen(false);
     } catch (error) {
       setProfileMessage(error instanceof Error ? error.message : "保存账户资料失败");
     } finally {
@@ -523,15 +530,22 @@ export const AccountWorkspace: React.FC<Props> = ({
   };
 
   const confirmDelete = async () => {
-    if (!pendingDeleteId) return;
-    const allowed = await onDeleteCloudProject?.(pendingDeleteId);
-    if (allowed === false) return;
-    setProjectData((current) => removeAccountProject(current, pendingDeleteId));
-    if (selectedProjectId === pendingDeleteId) selectActiveAfterMutationRef.current = true;
-    setPendingDeleteId(null);
+    if (!pendingDeleteId || deletePending) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    try {
+      if (!onDeleteCloudProject) throw new Error("项目删除服务暂不可用");
+      await onDeleteCloudProject(pendingDeleteId);
+      setProjectData((current) => removeAccountProject(current, pendingDeleteId));
+      if (selectedProjectId === pendingDeleteId) selectActiveAfterMutationRef.current = true;
+      setPendingDeleteId(null);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "永久删除项目失败");
+    } finally {
+      setDeletePending(false);
+    }
   };
 
-  const ownProjectVisibility = selectedProject ? publicationByProject.get(selectedProject.id)?.visibility || "inherit" : "inherit";
   const remoteProject = useMemo(() => {
     if (!publicProjectData) return null;
     return getFlowProjectsForState(publicProjectData).find((item) => item.id === selectedPublicProjectId)
@@ -557,14 +571,41 @@ export const AccountWorkspace: React.FC<Props> = ({
       aria-modal="true"
       aria-label="账户工作台"
     >
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[210px_minmax(0,1fr)] md:grid-rows-1">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[250px_minmax(0,1fr)] md:grid-rows-1">
         <aside className="flex items-center justify-between gap-4 border-b border-[var(--app-border)] px-4 py-3 md:flex-col md:items-stretch md:border-b-0 md:border-r md:px-5 md:py-6">
           <div className="flex min-w-0 items-center gap-3 md:block">
-            <Avatar src={publication?.profile.avatarUrl || accountInfo.avatarUrl} name={accountInfo.name} />
+            <Avatar src={publication?.profile.avatarUrl || accountInfo.avatarUrl} name={publication?.profile.username || accountInfo.name} />
             <div className="min-w-0 md:mt-4">
-              <div className="truncate text-[14px] font-semibold tracking-[-0.025em]">{publication?.profile.displayName || accountInfo.name}</div>
-              <div className="mt-1 truncate font-mono text-[10px] text-[var(--app-text-muted)]">@{publication?.profile.username || "set-username"}</div>
+              <div className="truncate text-[14px] font-semibold tracking-[-0.025em]">{publication?.profile.username || accountInfo.username || "设置用户名"}</div>
+              <div className="mt-1 flex items-center gap-1.5 truncate font-mono text-[9px] text-[var(--app-text-muted)]">
+                <Lock size={10} weight="fill" />
+                <span className="truncate">{accountInfo.email || "登录邮箱仅自己可见"}</span>
+              </div>
             </div>
+          </div>
+          <div className="hidden border-y border-[var(--app-border)] py-4 md:block">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold">公开账户</div>
+                <div className="mt-1 text-[9px] leading-4 text-[var(--app-text-muted)]">项目默认跟随此设置</div>
+              </div>
+              {publicationLoading ? (
+                <span className="h-7 w-12 animate-pulse rounded-full bg-[var(--app-panel-muted)]" />
+              ) : publication ? (
+                <Toggle
+                  checked={publication.profile.accountVisibility === "public"}
+                  onChange={() => void updateAccountVisibility()}
+                  disabled={!publication.profile.username}
+                  label="公开账户"
+                />
+              ) : <span className="h-7 w-12 animate-pulse rounded-full bg-[var(--app-panel-muted)]" />}
+            </div>
+            {!publication?.profile.username ? <div className="mt-3 text-[9px] leading-4 text-amber-700">设置用户名后才能公开。</div> : null}
+            {publicationError ? <div className="mt-3 border-l-2 border-rose-500 pl-2 text-[9px] leading-4 text-rose-600">{publicationError}</div> : null}
+            <button type="button" onClick={() => { setProfileMessage(null); setIsProfileEditorOpen(true); }} className="mt-4 inline-flex items-center gap-2 text-[10px] font-semibold text-[var(--app-text-secondary)] transition hover:text-[var(--app-text-primary)]">
+              <PencilSimple size={13} />
+              编辑账户资料
+            </button>
           </div>
           <nav className="flex gap-1 md:mt-8 md:flex-col" aria-label="账户工作台导航">
             {nav.map(({ key, label, Icon }) => (
@@ -575,7 +616,7 @@ export const AccountWorkspace: React.FC<Props> = ({
             ))}
           </nav>
           <div className="hidden md:block md:mt-auto">
-            <div className="border-t border-[var(--app-border)] pt-4 text-[10px] leading-5 text-[var(--app-text-muted)]">公开访问必须登录，并会显示在双方踪迹中。</div>
+            <div className="border-t border-[var(--app-border)] pt-4 text-[10px] leading-5 text-[var(--app-text-muted)]">邮箱只用于登录且不会公开。公开访问必须登录，并会显示在双方踪迹中。</div>
           </div>
           <button type="button" onClick={onClose} aria-label="关闭账户工作台" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] text-[var(--app-text-secondary)] transition hover:bg-[var(--app-panel-muted)] active:scale-[0.96] md:absolute md:right-5 md:top-5"><X size={15} /></button>
         </aside>
@@ -583,12 +624,19 @@ export const AccountWorkspace: React.FC<Props> = ({
         <main className="min-h-0 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             {view === "projects" ? (
-              <motion.div key="projects" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={panelTransition} className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+              <motion.div key="projects" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={panelTransition} className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
                 <section className="min-h-0 overflow-y-auto border-b border-[var(--app-border)] lg:border-b-0 lg:border-r">
                   <div className="sticky top-0 border-b border-[var(--app-border)] bg-[var(--app-bg)] px-5 py-5">
                     <div className="flex items-center justify-between gap-3">
                       <div><div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--app-text-muted)]">Account projects</div><div className="mt-1 font-mono text-[10px] text-[var(--app-text-secondary)]">{projects.length}/{ACCOUNT_PROJECT_LIMIT}</div></div>
-                      <button type="button" onClick={() => setDraft({ mode: "create", title: `项目 ${projects.length + 1}`, durationMin: DEFAULT_FLOW_PROJECT_DURATION })} disabled={projects.length >= ACCOUNT_PROJECT_LIMIT} aria-label="新建项目" className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--app-border)] transition hover:bg-[var(--app-panel-muted)] active:scale-[0.96] disabled:opacity-40"><Plus size={15} /></button>
+                      <button type="button" onClick={() => setDraft({ mode: "create", projectId: createAccountProjectId(), title: `项目 ${projects.length + 1}`, durationMin: DEFAULT_FLOW_PROJECT_DURATION })} disabled={projects.length >= ACCOUNT_PROJECT_LIMIT} aria-label="新建项目" className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--app-border)] transition hover:bg-[var(--app-panel-muted)] active:scale-[0.96] disabled:opacity-40"><Plus size={15} /></button>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-[var(--app-border)] pt-4 md:hidden">
+                      <button type="button" onClick={() => { setProfileMessage(null); setIsProfileEditorOpen(true); }} className="min-w-0 text-left">
+                        <div className="truncate text-[11px] font-semibold">{publication?.profile.username || accountInfo.username || "设置用户名"}</div>
+                        <div className="mt-1 flex items-center gap-1 truncate font-mono text-[8px] text-[var(--app-text-muted)]"><Lock size={9} weight="fill" />{accountInfo.email || "登录邮箱仅自己可见"}</div>
+                      </button>
+                      {publication ? <Toggle checked={publication.profile.accountVisibility === "public"} onChange={() => void updateAccountVisibility()} disabled={!publication.profile.username} label="公开账户" /> : <span className="h-7 w-12 animate-pulse rounded-full bg-[var(--app-panel-muted)]" />}
                     </div>
                   </div>
                   <div className="divide-y divide-[var(--app-border)]">
@@ -597,9 +645,32 @@ export const AccountWorkspace: React.FC<Props> = ({
                       const live = project.id === projectData.activeFlowProjectId;
                       const visibility = publicationByProject.get(project.id)?.visibility || "inherit";
                       return (
-                        <button key={project.id} type="button" onClick={() => setSelectedProjectId(project.id)} className={`group w-full px-5 py-4 text-left transition ${active ? "bg-[var(--app-panel-soft)]" : "hover:bg-[var(--app-panel-muted)]"}`}>
-                          <div className="flex items-start gap-3"><span className="pt-0.5 font-mono text-[9px] text-[var(--app-text-muted)]">{String(index + 1).padStart(2, "0")}</span><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><strong className="truncate text-[12px] font-semibold">{project.title}</strong>{live ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" title="当前编辑" /> : null}</div><div className="mt-2 flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--app-text-muted)]"><span>{project.durationMin} min</span><span>{visibility === "public" ? "public" : visibility === "private" ? "private" : "inherit"}</span></div></div><ArrowRight size={13} className={`mt-1 transition-transform ${active ? "translate-x-1" : "group-hover:translate-x-0.5"}`} /></div>
-                        </button>
+                        <div key={project.id} className={`group px-5 py-4 transition ${active ? "bg-[var(--app-panel-soft)]" : "hover:bg-[var(--app-panel-muted)]"}`}>
+                          <button type="button" onClick={() => setSelectedProjectId(project.id)} className="w-full text-left">
+                            <div className="flex items-start gap-3">
+                              <span className="pt-0.5 font-mono text-[9px] text-[var(--app-text-muted)]">{String(index + 1).padStart(2, "0")}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2"><strong className="truncate text-[12px] font-semibold">{project.title}</strong>{live ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" title="当前编辑" /> : null}</div>
+                                <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--app-text-muted)]">{project.durationMin} min</div>
+                              </div>
+                              <ArrowRight size={13} className={`mt-1 transition-transform ${active ? "translate-x-1" : "group-hover:translate-x-0.5"}`} />
+                            </div>
+                          </button>
+                          <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--app-border)] pt-3">
+                            <span className="text-[9px] text-[var(--app-text-muted)]">项目公开范围</span>
+                            <select
+                              aria-label={`${project.title}公开范围`}
+                              value={visibility}
+                              onChange={(event) => void updateProjectVisibility(project.id, event.target.value as PublicationProject["visibility"])}
+                              disabled={!publication}
+                              className="max-w-[150px] bg-transparent text-right text-[10px] font-semibold outline-none disabled:opacity-45"
+                            >
+                              <option value="inherit">跟随账户</option>
+                              <option value="public" disabled={!publication?.profile.username}>公开</option>
+                              <option value="private">私密</option>
+                            </select>
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -612,22 +683,11 @@ export const AccountWorkspace: React.FC<Props> = ({
                       <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-[var(--app-border)] pt-5">
                         <button type="button" onClick={() => setProjectData((current) => switchAccountProject(current, selectedProject.id))} disabled={selectedProject.id === projectData.activeFlowProjectId} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--app-border)] px-4 text-[11px] font-semibold transition hover:bg-[var(--app-panel-muted)] active:scale-[0.98] disabled:opacity-45"><Check size={14} />{selectedProject.id === projectData.activeFlowProjectId ? "正在编辑" : "切换并编辑"}</button>
                         <button type="button" onClick={() => setDraft({ mode: "edit", projectId: selectedProject.id, title: selectedProject.title, durationMin: selectedProject.durationMin })} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--app-border)] px-4 text-[11px] transition hover:bg-[var(--app-panel-muted)] active:scale-[0.98]"><PencilSimple size={14} />编辑资料</button>
-                        <button type="button" onClick={() => setPendingDeleteId(selectedProject.id)} disabled={projects.length <= 1} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--app-border)] px-4 text-[11px] text-rose-600 transition hover:bg-rose-500/5 active:scale-[0.98] disabled:opacity-40"><Trash size={14} />删除</button>
+                        <button type="button" onClick={() => { setDeleteError(null); setPendingDeleteId(selectedProject.id); }} disabled={projects.length <= 1} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--app-border)] px-4 text-[11px] text-rose-600 transition hover:bg-rose-500/5 active:scale-[0.98] disabled:opacity-40"><Trash size={14} />删除</button>
                       </div>
                     </>
                   ) : <div className="flex min-h-64 items-center justify-center text-[12px] text-[var(--app-text-muted)]">尚无项目</div>}
                 </section>
-
-                <aside className="min-h-0 overflow-y-auto border-t border-[var(--app-border)] px-5 py-6 lg:border-l lg:border-t-0">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--app-text-muted)]">Publication</div>
-                  {publicationLoading ? <div className="mt-5 space-y-3 animate-pulse"><div className="h-10 rounded-xl bg-[var(--app-panel-muted)]" /><div className="h-28 rounded-xl bg-[var(--app-panel-muted)]" /></div> : publicationError ? <div className="mt-4 border-l-2 border-rose-500 pl-3 text-[11px] leading-5 text-rose-600">{publicationError}</div> : publication ? (
-                    <div className="mt-5 divide-y divide-[var(--app-border)]">
-                      <div className="flex items-start justify-between gap-4 pb-5"><div><strong className="text-[12px]">公开整个账户</strong><p className="mt-1 text-[10px] leading-5 text-[var(--app-text-secondary)]">默认公开所有项目，单个项目仍可设为私密。{publication.profile.username ? "" : " 请先保存用户名。"}</p></div><Toggle checked={publication.profile.accountVisibility === "public"} onChange={() => void updateAccountVisibility()} disabled={!publication.profile.username} label="公开整个账户" /></div>
-                      {selectedProject ? <div className="py-5"><label className="block text-[11px] font-semibold">当前项目</label><select value={ownProjectVisibility} onChange={(event) => void updateProjectVisibility(selectedProject.id, event.target.value as PublicationProject["visibility"])} className="mt-3 h-10 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] outline-none focus:border-[var(--app-border-strong)]"><option value="inherit">继承账户设置</option><option value="public" disabled={!publication.profile.username}>始终公开</option><option value="private">始终私密</option></select><p className="mt-2 text-[10px] leading-5 text-[var(--app-text-muted)]">公开访问为实时只读，所有查看者都会留下踪迹。</p></div> : null}
-                      <div className="pt-5"><div className="text-[11px] font-semibold">账户主页</div><div className="mt-3 space-y-3"><label className="block"><span className="text-[10px] text-[var(--app-text-secondary)]">用户名</span><input value={profileDraft.username} onChange={(event) => setProfileDraft((current) => ({ ...current, username: event.target.value.toLowerCase() }))} placeholder="username" className="mt-1.5 h-10 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 font-mono text-[11px] outline-none focus:border-[var(--app-border-strong)]" /></label><label className="block"><span className="text-[10px] text-[var(--app-text-secondary)]">显示名称</span><input value={profileDraft.displayName} onChange={(event) => setProfileDraft((current) => ({ ...current, displayName: event.target.value }))} className="mt-1.5 h-10 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[11px] outline-none focus:border-[var(--app-border-strong)]" /></label><label className="block"><span className="text-[10px] text-[var(--app-text-secondary)]">简介</span><textarea value={profileDraft.bio} onChange={(event) => setProfileDraft((current) => ({ ...current, bio: event.target.value.slice(0, 320) }))} rows={4} className="mt-1.5 w-full resize-none rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-[11px] leading-5 outline-none focus:border-[var(--app-border-strong)]" /></label><button type="button" onClick={() => void saveProfile()} disabled={profileSaving || !profileDraft.username.trim()} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--app-text-primary)] text-[11px] font-semibold text-[var(--app-bg)] transition active:scale-[0.98] disabled:opacity-40">{profileSaving ? <CircleNotch size={14} className="animate-spin" /> : <Check size={14} />}保存主页</button>{profileMessage ? <div className="text-[10px] leading-5 text-[var(--app-text-secondary)]">{profileMessage}</div> : null}</div></div>
-                    </div>
-                  ) : null}
-                </aside>
               </motion.div>
             ) : view === "square" ? (
               <motion.div key="square" initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={panelTransition} className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -635,12 +695,12 @@ export const AccountWorkspace: React.FC<Props> = ({
                   <div className="sticky top-0 bg-[var(--app-bg)] px-5 py-5"><div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--app-text-muted)]">User square</div><label className="mt-4 flex h-11 items-center gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 focus-within:border-[var(--app-border-strong)]"><MagnifyingGlass size={15} className="text-[var(--app-text-muted)]" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户名" className="min-w-0 flex-1 bg-transparent text-[12px] outline-none" /></label></div>
                   {directoryError ? <div className="mx-5 mb-4 border-l-2 border-rose-500 pl-3 text-[11px] text-rose-600">{directoryError}</div> : null}
                   <div className="divide-y divide-[var(--app-border)] border-t border-[var(--app-border)]">
-                    {directoryLoading ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="flex animate-pulse gap-3 px-5 py-4"><div className="h-10 w-10 rounded-xl bg-[var(--app-panel-muted)]" /><div className="flex-1 space-y-2"><div className="h-3 w-24 rounded bg-[var(--app-panel-muted)]" /><div className="h-2 w-16 rounded bg-[var(--app-panel-soft)]" /></div></div>) : directory.length ? directory.map((user) => <button key={user.username} type="button" onClick={() => void openUser(user)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-[var(--app-panel-muted)] active:bg-[var(--app-panel-soft)]"><Avatar src={user.avatarUrl} name={user.displayName} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-semibold">{user.displayName}</div><div className="mt-1 font-mono text-[9px] text-[var(--app-text-muted)]">@{user.username}</div></div>{user.accountPublic ? <GlobeHemisphereWest size={14} className="text-emerald-600" /> : <Lock size={14} className="text-[var(--app-text-muted)]" />}</button>) : <div className="px-5 py-12 text-center text-[11px] leading-6 text-[var(--app-text-muted)]">{query ? "没有匹配的用户名" : "尚无公开账户"}</div>}
+                    {directoryLoading ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="flex animate-pulse gap-3 px-5 py-4"><div className="h-10 w-10 rounded-xl bg-[var(--app-panel-muted)]" /><div className="flex-1 space-y-2"><div className="h-3 w-24 rounded bg-[var(--app-panel-muted)]" /><div className="h-2 w-16 rounded bg-[var(--app-panel-soft)]" /></div></div>) : directory.length ? directory.map((user) => <button key={user.username} type="button" onClick={() => void openUser(user)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-[var(--app-panel-muted)] active:bg-[var(--app-panel-soft)]"><Avatar src={user.avatarUrl} name={user.username} size="sm" /><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-semibold">{user.username}</div><div className="mt-1 font-mono text-[9px] text-[var(--app-text-muted)]">@{user.username}</div></div>{user.accountPublic ? <GlobeHemisphereWest size={14} className="text-emerald-600" /> : <Lock size={14} className="text-[var(--app-text-muted)]" />}</button>) : <div className="px-5 py-12 text-center text-[11px] leading-6 text-[var(--app-text-muted)]">{query ? "没有匹配的用户名" : "尚无公开账户"}</div>}
                   </div>
                 </section>
                 <section className="min-h-0 overflow-y-auto px-5 py-6 md:px-8 md:py-8">
                   {selectedUserLoading ? <div className="space-y-5 animate-pulse"><div className="h-20 w-72 rounded-2xl bg-[var(--app-panel-muted)]" /><div className="h-52 rounded-2xl bg-[var(--app-panel-muted)]" /></div> : selectedUser ? (
-                    <div className="mx-auto max-w-[1120px]"><header className="flex flex-wrap items-start gap-5 border-b border-[var(--app-border)] pb-6"><Avatar src={selectedUser.profile.avatarUrl} name={selectedUser.profile.displayName} size="lg" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-3"><h2 className="text-[26px] font-semibold tracking-[-0.04em]">{selectedUser.profile.displayName}</h2>{selectedUser.profile.accountPublic ? <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/25 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-emerald-700"><GlobeHemisphereWest size={12} />public</span> : <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--app-border)] px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--app-text-muted)]"><Lock size={12} />normal</span>}</div><div className="mt-1 font-mono text-[10px] text-[var(--app-text-muted)]">@{selectedUser.profile.username}</div>{selectedUser.profile.bio ? <p className="mt-3 max-w-[60ch] text-[12px] leading-6 text-[var(--app-text-secondary)]">{selectedUser.profile.bio}</p> : null}</div></header>
+                    <div className="mx-auto max-w-[1120px]"><header className="flex flex-wrap items-start gap-5 border-b border-[var(--app-border)] pb-6"><Avatar src={selectedUser.profile.avatarUrl} name={selectedUser.profile.username} size="lg" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-3"><h2 className="text-[26px] font-semibold tracking-[-0.04em]">{selectedUser.profile.username}</h2>{selectedUser.profile.accountPublic ? <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/25 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-emerald-700"><GlobeHemisphereWest size={12} />public</span> : <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--app-border)] px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--app-text-muted)]"><Lock size={12} />normal</span>}</div><div className="mt-1 font-mono text-[10px] text-[var(--app-text-muted)]">@{selectedUser.profile.username}</div>{selectedUser.profile.bio ? <p className="mt-3 max-w-[60ch] text-[12px] leading-6 text-[var(--app-text-secondary)]">{selectedUser.profile.bio}</p> : null}</div></header>
                       <div className="grid gap-6 pt-6 xl:grid-cols-[230px_minmax(0,1fr)]"><aside><div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Public projects</div><div className="mt-3 divide-y divide-[var(--app-border)] border-y border-[var(--app-border)]">{selectedUser.projects.length ? selectedUser.projects.map((project) => <button key={project.projectId} type="button" onClick={() => setSelectedPublicProjectId(project.projectId)} className={`w-full py-3 text-left transition ${selectedPublicProjectId === project.projectId ? "text-[var(--app-text-primary)]" : "text-[var(--app-text-secondary)] hover:text-[var(--app-text-primary)]"}`}><div className="flex items-center justify-between gap-2"><span className="truncate text-[11px] font-semibold">{project.title}</span><Eye size={13} /></div><div className="mt-1 font-mono text-[8px] uppercase tracking-[0.12em] text-[var(--app-text-muted)]">{project.visibility} · {formatRelative(project.updatedAt)}</div></button>) : <div className="py-8 text-[11px] leading-5 text-[var(--app-text-muted)]">该用户没有公开项目。</div>}</div></aside><div>{remoteProject ? <ProjectOutline project={remoteProject} liveLabel={publicProjectStatus === "live" ? "LIVE / READ ONLY" : publicProjectStatus === "reconnecting" ? "RECONNECTING" : "READ ONLY"} /> : selectedPublicProjectId && publicProjectStatus === "error" ? <div className="flex min-h-64 items-center justify-center border border-dashed border-[var(--app-border)] text-[11px] text-rose-600">公开项目暂时无法读取</div> : <div className="flex min-h-64 flex-col items-center justify-center border border-dashed border-[var(--app-border)] text-center"><Eye size={24} weight="thin" className="text-[var(--app-text-muted)]" /><div className="mt-3 text-[11px] text-[var(--app-text-secondary)]">选择一个公开项目查看实时结构</div><div className="mt-1 text-[10px] text-[var(--app-text-muted)]">只读访问会记录在双方踪迹中</div></div>}</div></div>
                     </div>
                   ) : <div className="flex h-full min-h-72 flex-col items-center justify-center text-center"><UsersThree size={30} weight="thin" className="text-[var(--app-text-muted)]" /><div className="mt-4 text-[13px] font-semibold">从用户名进入一个人的主页</div><div className="mt-2 max-w-[36ch] text-[11px] leading-6 text-[var(--app-text-muted)]">普通账户只显示最小身份；公开账户或单独公开的项目会显示实时只读内容。</div></div>}
@@ -658,14 +718,48 @@ export const AccountWorkspace: React.FC<Props> = ({
       </div>
 
       <AnimatePresence>
+        {isProfileEditorOpen ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[96] flex items-center justify-center bg-zinc-950/30 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !profileSaving) setIsProfileEditorOpen(false); }}>
+            <motion.form initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 8, opacity: 0 }} transition={panelTransition} onSubmit={(event) => { event.preventDefault(); void saveProfile(); }} className="w-full max-w-md rounded-[24px] border border-[var(--app-border)] bg-[var(--app-panel)] p-5 shadow-[0_28px_70px_rgba(20,24,22,0.18)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Account profile</div>
+                  <h3 className="mt-1 text-[18px] font-semibold">账户资料</h3>
+                </div>
+                <button type="button" disabled={profileSaving} onClick={() => setIsProfileEditorOpen(false)} aria-label="关闭" className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)] disabled:opacity-40"><X size={13} /></button>
+              </div>
+              <div className="mt-5 border-y border-[var(--app-border)] py-4">
+                <div className="text-[10px] text-[var(--app-text-secondary)]">登录邮箱</div>
+                <div className="mt-1 flex items-center gap-2 font-mono text-[11px] text-[var(--app-text-primary)]"><Lock size={12} weight="fill" />{accountInfo.email || "未提供"}</div>
+                <p className="mt-2 text-[9px] leading-5 text-[var(--app-text-muted)]">邮箱由登录账户管理，仅用于认证，不会显示给其他用户。</p>
+              </div>
+              <div className="mt-5 space-y-4">
+                <label className="block">
+                  <span className="text-[10px] text-[var(--app-text-secondary)]">用户名</span>
+                  <input autoFocus value={profileDraft.username} onChange={(event) => setProfileDraft((current) => ({ ...current, username: event.target.value.toLowerCase() }))} placeholder="username" maxLength={30} className="mt-1.5 h-11 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 font-mono text-[11px] outline-none focus:border-[var(--app-border-strong)]" />
+                  <span className="mt-1.5 block text-[9px] leading-4 text-[var(--app-text-muted)]">这是对外显示和搜索的唯一名称。</span>
+                </label>
+                <label className="block">
+                  <span className="text-[10px] text-[var(--app-text-secondary)]">简介</span>
+                  <textarea value={profileDraft.bio} onChange={(event) => setProfileDraft((current) => ({ ...current, bio: event.target.value.slice(0, 320) }))} rows={4} className="mt-1.5 w-full resize-none rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 py-2 text-[11px] leading-5 outline-none focus:border-[var(--app-border-strong)]" />
+                </label>
+              </div>
+              {profileMessage ? <div className="mt-4 border-l-2 border-[var(--app-border-strong)] pl-3 text-[10px] leading-5 text-[var(--app-text-secondary)]">{profileMessage}</div> : null}
+              <div className="mt-6 flex justify-end gap-2">
+                <button type="button" disabled={profileSaving} onClick={() => setIsProfileEditorOpen(false)} className="h-10 rounded-xl border border-[var(--app-border)] px-4 text-[11px] disabled:opacity-40">取消</button>
+                <button type="submit" disabled={profileSaving || !profileDraft.username.trim()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--app-text-primary)] px-4 text-[11px] font-semibold text-[var(--app-bg)] disabled:opacity-40">{profileSaving ? <CircleNotch size={14} className="animate-spin" /> : <Check size={14} />}保存</button>
+              </div>
+            </motion.form>
+          </motion.div>
+        ) : null}
         {draft ? <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[96] flex items-center justify-center bg-zinc-950/30 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setDraft(null); }}><motion.form initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }} transition={panelTransition} onSubmit={(event) => { event.preventDefault(); submitDraft(); }} className="w-full max-w-md rounded-[24px] border border-[var(--app-border)] bg-[var(--app-panel)] p-5 shadow-[0_28px_70px_rgba(20,24,22,0.18)]"><div className="flex items-center justify-between"><div><div className="text-[10px] uppercase tracking-[0.2em] text-[var(--app-text-muted)]">{draft.mode === "create" ? "New project" : "Project profile"}</div><h3 className="mt-1 text-[18px] font-semibold">{draft.mode === "create" ? "新建项目" : "编辑项目"}</h3></div><button type="button" onClick={() => setDraft(null)} aria-label="关闭" className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--app-border)]"><X size={13} /></button></div><div className="mt-5 space-y-4"><label className="block"><span className="text-[10px] text-[var(--app-text-secondary)]">项目名称</span><input autoFocus value={draft.title} onChange={(event) => setDraft((current) => current ? { ...current, title: event.target.value } : current)} maxLength={80} className="mt-1.5 h-11 w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-3 text-[12px] outline-none focus:border-[var(--app-border-strong)]" /></label><label className="block"><span className="text-[10px] text-[var(--app-text-secondary)]">预估时长</span><div className="mt-1.5 flex items-center gap-3"><input type="range" min={1} max={450} value={draft.durationMin} onChange={(event) => setDraft((current) => current ? { ...current, durationMin: Number(event.target.value) } : current)} className="min-w-0 flex-1" /><input type="number" min={1} max={450} value={draft.durationMin} onChange={(event) => setDraft((current) => current ? { ...current, durationMin: Number(event.target.value) } : current)} className="h-10 w-20 rounded-xl border border-[var(--app-border)] bg-[var(--app-panel-muted)] px-2 font-mono text-[11px]" /></div></label></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setDraft(null)} className="h-10 rounded-xl border border-[var(--app-border)] px-4 text-[11px]">取消</button><button type="submit" disabled={!draft.title.trim()} className="h-10 rounded-xl bg-[var(--app-text-primary)] px-4 text-[11px] font-semibold text-[var(--app-bg)] disabled:opacity-40">{draft.mode === "create" ? "创建并打开" : "保存"}</button></div></motion.form></motion.div> : null}
-        {pendingDeleteId ? <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[96] flex items-center justify-center bg-zinc-950/30 p-4"><motion.div initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={panelTransition} className="w-full max-w-sm rounded-[24px] border border-[var(--app-border)] bg-[var(--app-panel)] p-5"><div className="text-[10px] uppercase tracking-[0.2em] text-rose-600">Delete project</div><h3 className="mt-2 text-[18px] font-semibold">删除“{projects.find((item) => item.id === pendingDeleteId)?.title}”？</h3><p className="mt-2 text-[11px] leading-6 text-[var(--app-text-secondary)]">云端实时文档、节点与 Foundation 结构会一并删除，此操作不可撤销。</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setPendingDeleteId(null)} className="h-10 rounded-xl border border-[var(--app-border)] px-4 text-[11px]">取消</button><button type="button" onClick={() => void confirmDelete()} className="h-10 rounded-xl bg-rose-700 px-4 text-[11px] font-semibold text-white">确认删除</button></div></motion.div></motion.div> : null}
+        {pendingDeleteId ? <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[96] flex items-center justify-center bg-zinc-950/30 p-4"><motion.div initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={panelTransition} className="w-full max-w-sm rounded-[24px] border border-[var(--app-border)] bg-[var(--app-panel)] p-5"><div className="text-[10px] uppercase tracking-[0.2em] text-rose-600">Delete project</div><h3 className="mt-2 text-[18px] font-semibold">永久删除“{projects.find((item) => item.id === pendingDeleteId)?.title}”？</h3><p className="mt-2 text-[11px] leading-6 text-[var(--app-text-secondary)]">将删除此项目在本机、云端实时文档、Agent 记录和媒体存储中的全部数据，不会影响账户或其他项目。此操作不可撤销。</p>{deleteError ? <div className="mt-4 border-l-2 border-rose-500 pl-3 text-[10px] leading-5 text-rose-600">{deleteError}</div> : null}<div className="mt-6 flex justify-end gap-2"><button type="button" disabled={deletePending} onClick={() => { setPendingDeleteId(null); setDeleteError(null); }} className="h-10 rounded-xl border border-[var(--app-border)] px-4 text-[11px] disabled:opacity-40">取消</button><button type="button" disabled={deletePending} onClick={() => void confirmDelete()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-700 px-4 text-[11px] font-semibold text-white disabled:opacity-55">{deletePending ? <CircleNotch size={14} className="animate-spin" /> : <Trash size={14} />}永久删除</button></div></motion.div></motion.div> : null}
       </AnimatePresence>
     </motion.section>
   );
 };
 
 const TraceRow: React.FC<{ item: TraceItem; current?: boolean }> = ({ item, current }) => {
-  const name = item.displayName || item.username || "未知用户";
+  const name = item.username || item.displayName || "未知用户";
   return <div className="flex items-center gap-3 py-3"><Avatar src={item.avatarUrl} name={name} size="sm" /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><strong className="truncate text-[11px]">{name}</strong>{current ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> : null}</div><div className="mt-1 truncate font-mono text-[9px] text-[var(--app-text-muted)]">@{item.username || "unknown"}{item.projectId ? ` / ${item.projectId}` : " / profile"}</div></div><div className="text-right"><div className="font-mono text-[9px] text-[var(--app-text-secondary)]">{current ? "NOW" : formatRelative(item.lastSeenAt)}</div><div className="mt-1 font-mono text-[8px] text-[var(--app-text-muted)]">{item.viewCount} views</div></div></div>;
 };

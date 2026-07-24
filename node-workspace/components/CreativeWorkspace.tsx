@@ -26,6 +26,7 @@ import { ViewportControls } from "./ViewportControls";
 import { ManusPanel } from "./ManusPanel";
 import { LookbookStudioPanel } from "./lookbook/LookbookStudioPanel";
 import { LeporelloStudioPanel } from "./leporello/LeporelloStudioPanel";
+import { PinoardPanel } from "./PinoardPanel";
 import { AccountWorkspace, type AccountWorkspaceView } from "./AccountWorkspace";
 import { Toast } from "./Toast";
 import { AnnotationModal } from "./AnnotationModal";
@@ -43,6 +44,7 @@ import type {
 } from "./stylo/interactionTypes";
 import { saveActiveFlowIntoProjects } from "../foundation/scaffold";
 import { resolveStyloProjectId } from "../../agents/runtime/projectScope";
+import { ensurePinoardForText } from "../../utils/pinoardWorkspace";
 import { readNodeFlowImportFile } from "../nodeflow/package";
 import { removeLookbookIdentity, syncLookbookIdentitiesFromFountain } from "../../utils/lookbookIdentities";
 import { analyzeScreenplay, createScreenplayPreview } from "../screenplay/fountainEngine";
@@ -61,14 +63,13 @@ interface CreativeWorkspaceProps {
   accountSession?: AccountApiSession;
   syncState?: SyncState;
   ensureProjectSynced?: EnsureProjectSynced;
-  onForceSync?: () => void;
   onOpenLanding?: () => void;
   externalProjectSettingsRequest?: { panel: ProjectSettingsPanelKey; nonce: number } | null;
   onAssetLoad?: (type: "script", content: string, fileName?: string) => void;
   onOpenModule?: (key: ModuleKey) => void;
   syncIndicator?: { label: string; color: string } | null;
   onResetProject?: () => void;
-  onDeleteFlowProject?: (projectId: string) => Promise<boolean>;
+  onDeleteFlowProject?: (projectId: string) => Promise<void>;
   projectResetToken?: number;
   onSignOut?: () => void;
   accountInfo?: {
@@ -339,7 +340,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   accountSession,
   syncState,
   ensureProjectSynced,
-  onForceSync,
   onOpenLanding,
   externalProjectSettingsRequest,
   onAssetLoad,
@@ -358,6 +358,10 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [editingScriptNodeId, setEditingScriptNodeId] = useState<string | null>(null);
   const [activeLookbookNodeId, setActiveLookbookNodeId] = useState<string | null>(null);
   const [activeLeporelloNodeId, setActiveLeporelloNodeId] = useState<string | null>(null);
+  const [activePinoard, setActivePinoard] = useState<{
+    pinoardId: string;
+    textNodeId: string | null;
+  } | null>(null);
   const [themeAnchor, setThemeAnchor] = useState<DOMRect | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [accountWorkspaceView, setAccountWorkspaceView] = useState<AccountWorkspaceView | null>(null);
@@ -375,10 +379,30 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
   const [composerInput, setComposerInput] = useState("");
   const isStyloFirstMode = isStyloFirstManual;
   const handleOpenScriptDocument = useCallback((nodeId: string) => {
+    setActivePinoard(null);
     setEditingScriptNodeId(nodeId);
     setIsStyloCollapsed(true);
     setStyloCloseRequest((count) => count + 1);
   }, []);
+  const handleOpenPinoard = useCallback(
+    (pinoardId: string | null, textNodeId?: string) => {
+      let resolvedPinoardId = pinoardId;
+      if (!resolvedPinoardId && textNodeId) {
+        const result = ensurePinoardForText(projectData, textNodeId);
+        resolvedPinoardId = result.pinoardId;
+        if (result.projectData !== projectData) setProjectData(result.projectData);
+      }
+      if (!resolvedPinoardId) return;
+      setEditingScriptNodeId(null);
+      setActiveLookbookNodeId(null);
+      setActiveLeporelloNodeId(null);
+      setActivePinoard({
+        pinoardId: resolvedPinoardId,
+        textNodeId: textNodeId || null,
+      });
+    },
+    [projectData, setProjectData]
+  );
   useEffect(() => {
     setStyloSubmitRequest(null);
     setAgentScriptEditProposals(null);
@@ -848,12 +872,19 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
     projectData,
     setProjectData,
     onOpenScriptDocument: handleOpenScriptDocument,
-    onOpenLookbook: (nodeId) => setActiveLookbookNodeId(nodeId),
-    onOpenLeporello: (nodeId) => setActiveLeporelloNodeId(nodeId),
+    onOpenLookbook: (nodeId) => {
+      setActivePinoard(null);
+      setActiveLookbookNodeId(nodeId);
+    },
+    onOpenLeporello: (nodeId) => {
+      setActivePinoard(null);
+      setActiveLeporelloNodeId(nodeId);
+    },
+    onOpenPinoard: handleOpenPinoard,
     canvasControls: sharedCanvasControls,
     screenToFlowPosition,
     isActive: true,
-    isWritingEditorOpen: editingScriptNodeId !== null,
+    isWritingEditorOpen: editingScriptNodeId !== null || activePinoard !== null,
     onCollapseCanvasCards: handleCollapseCanvasCards,
     onRestoreCanvasCards: handleRestoreCanvasCards,
     onOpenAgent: () => setStyloOpenRequest((count) => count + 1),
@@ -1260,6 +1291,17 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
       showUsageBadge={false}
       allowLegacyConversationMigration={false}
       conversationResetToken={projectResetToken}
+      panelStyleOverride={
+        activePinoard && !isStyloCollapsed
+          ? {
+              top: 68,
+              left: "50%",
+              width: "min(700px, calc(100vw - 460px))",
+              maxWidth: "calc(100vw - 460px)",
+              transform: "translateX(-50%)",
+            }
+          : undefined
+      }
     />
   );
 
@@ -1355,9 +1397,9 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           <div className="canvas-empty-state" style={{ left: effectiveAgentDockWidth }} role="status">
             <span>Flow 从节点开始</span>
             <strong>创建第一个节点</strong>
-            <button type="button" onClick={() => handleFlowAddNode("scriptPage", { x: 100, y: 100 })}>
+            <button type="button" onClick={() => handleFlowAddNode("pinoard", { x: 100, y: 100 })}>
               <Plus size={15} strokeWidth={1.8} aria-hidden="true" />
-              <span>创建 Manus</span>
+              <span>创建 Pinoard</span>
             </button>
           </div>
         ) : null}
@@ -1384,6 +1426,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         onAddImage={() => handleFlowAddNode("imageInput", { x: 200, y: 100 })}
         onAddAudio={() => handleFlowAddNode("audioInput", { x: 220, y: 120 })}
         onAddVideo={() => handleFlowAddNode("videoInput", { x: 240, y: 140 })}
+        onAddPdf={() => handleFlowAddNode("pdfInput", { x: 260, y: 160 })}
         onAddNanoBananaImageGen={() => handleFlowAddNode("nanoBananaImageGen", { x: 410, y: 110 })}
         onAddWanImageGen={() => handleFlowAddNode("wanImageGen", { x: 420, y: 120 })}
         onAddViduVideoGen={() => handleFlowAddNode("viduVideoGen", { x: 510, y: 110 })}
@@ -1444,7 +1487,6 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
         getAuthToken={getAuthToken}
         accountSession={accountSession}
         syncState={syncState}
-        onForceSync={onForceSync}
         onOpenLanding={onOpenLanding}
         onResetProject={onResetProject}
         requestedPanel={projectSettingsPanel}
@@ -1466,6 +1508,7 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           accountInfo={{
             name: accountInfo.name || accountInfo.email || "Stylo User",
             username: accountInfo.username,
+            email: accountInfo.email,
             avatarUrl: accountInfo.avatarUrl,
           }}
         />
@@ -1491,6 +1534,17 @@ const CreativeWorkspaceInner: React.FC<CreativeWorkspaceProps> = ({
           onClose={() => {
             setEditingScriptNodeId(null);
           }}
+        />
+      ) : null}
+      {activePinoard !== null ? (
+        <PinoardPanel
+          projectData={projectData}
+          setProjectData={setProjectData}
+          pinoardNodeId={activePinoard.pinoardId}
+          initialTextNodeId={activePinoard.textNodeId}
+          isAgentOpen={!isStyloCollapsed}
+          onOpenAgent={() => setStyloOpenRequest((count) => count + 1)}
+          onClose={() => setActivePinoard(null)}
         />
       ) : null}
       {activeLookbookNodeId !== null ? (

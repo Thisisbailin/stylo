@@ -3,6 +3,7 @@ import { requireRequestProjectId } from "./_projectScope";
 import { readWebSocketCredential } from "../../utils/websocketAuth";
 
 type Env = {
+  DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
   PROJECT_REALTIME: {
@@ -27,6 +28,13 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     });
     const userId = await getUserId(authenticated, context.env);
     const projectId = requireRequestProjectId(context.request);
+    const deleted = await context.env.DB.prepare(
+      `SELECT 1 FROM user_project_deletions
+       WHERE user_id = ?1 AND project_id = ?2`,
+    ).bind(userId, projectId).first();
+    if (deleted) {
+      return new Response("Project was permanently deleted", { status: 410 });
+    }
     const roomId = context.env.PROJECT_REALTIME.idFromName(`${userId}:${projectId}`);
     const headers = new Headers(context.request.headers);
     headers.set("x-stylo-user-id", userId);

@@ -84,6 +84,11 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
   const data = getNodeData(node);
 
   switch (node.type) {
+    case "pinoard":
+      return {
+        wrapperCollapsed: data.wrapperCollapsed === true,
+        memberCount: nonNegativeInteger(data.wrapperMemberCount),
+      };
     case "scriptPage":
       return {
         documentId: trimString(data.documentId) || node.id,
@@ -147,6 +152,13 @@ const summarizeNodeBody = (node: NodeFlowNode): Record<string, unknown> => {
         aspectRatio: data.aspectRatio ?? null,
         resolution: data.resolution ?? null,
         model: data.model ?? null,
+      };
+    case "pdfInput":
+      return {
+        filename: data.filename ?? null,
+        pdf: data.pdf ?? null,
+        fileSize: data.fileSize ?? null,
+        highlightCount: Array.isArray(data.highlights) ? data.highlights.length : 0,
       };
     case "annotation":
       return {

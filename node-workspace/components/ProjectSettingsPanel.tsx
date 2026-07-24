@@ -84,7 +84,6 @@ type Props = {
   getAuthToken?: (options?: { skipCache?: boolean }) => Promise<string | null>;
   accountSession?: AccountApiSession;
   syncState?: SyncState;
-  onForceSync?: () => void;
   onResetProject?: () => void;
   onOpenLanding?: () => void;
   requestedPanel?: ProjectSettingsPanelKey;
@@ -462,7 +461,6 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
   getAuthToken,
   accountSession,
   syncState,
-  onForceSync,
   onResetProject,
   onOpenLanding,
   projectData,
@@ -2955,12 +2953,10 @@ export const ProjectSettingsPanel: React.FC<Props> = ({
                         {section === "status" ? "Status & Keys" : "Cloud History"}
                       </div>
                       <SyncPanel
-                        projectId={projectId}
                         config={config}
                         onConfigChange={setConfig}
                         isSignedIn={isSignedIn}
                         accountSession={accountSession}
-                        onForceSync={onForceSync}
                         syncState={syncState}
                         onResetProject={onResetProject}
                         activeSection={section}

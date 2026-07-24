@@ -61,7 +61,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     return jsonResponse({
       profile: {
         username: profile?.username || null,
-        displayName: profile?.display_name || null,
+        displayName: profile?.username || null,
         bio: profile?.bio || "",
         avatarUrl: profile?.avatar_url || null,
         accountVisibility: profile?.account_visibility === "public" ? "public" : "private",

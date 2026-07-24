@@ -1,0 +1,348 @@
+.pinoard-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 64;
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr);
+  color: var(--app-text-primary);
+  background:
+    linear-gradient(color-mix(in srgb, var(--app-border) 34%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--app-border) 34%, transparent) 1px, transparent 1px),
+    var(--app-bg);
+  background-size: 28px 28px;
+}
+
+.pinoard-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-panel) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.pinoard-toolbar__identity,
+.pinoard-toolbar__actions,
+.pinoard-toolbar__actions button,
+.pinoard-current-note__meta span {
+  display: flex;
+  align-items: center;
+}
+
+.pinoard-toolbar__identity {
+  gap: 10px;
+}
+
+.pinoard-toolbar__identity > svg {
+  color: var(--app-accent, #cf5f57);
+  transform: rotate(8deg);
+}
+
+.pinoard-toolbar__identity div {
+  display: grid;
+  gap: 1px;
+}
+
+.pinoard-toolbar__identity strong {
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+
+.pinoard-toolbar__identity span {
+  color: var(--app-text-muted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pinoard-toolbar__actions {
+  gap: 4px;
+}
+
+.pinoard-toolbar__actions button {
+  min-height: 34px;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--app-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pinoard-toolbar__actions button:hover,
+.pinoard-toolbar__actions button:focus-visible,
+.pinoard-toolbar__actions button.is-active {
+  border-color: var(--app-border);
+  color: var(--app-text-primary);
+  background: var(--app-panel);
+}
+
+.pinoard-stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns:
+    minmax(176px, 0.72fr)
+    minmax(420px, 1.7fr)
+    minmax(176px, 0.72fr);
+  gap: clamp(14px, 2.2vw, 34px);
+  padding: clamp(18px, 3vw, 44px);
+  overflow: hidden;
+}
+
+.pinoard-rail {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 4px 6px 36px;
+  scrollbar-width: none;
+}
+
+.pinoard-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.pinoard-rail-note {
+  position: relative;
+  min-height: 136px;
+  display: grid;
+  grid-template-rows: auto minmax(72px, 1fr);
+  gap: 7px;
+  padding: 14px 12px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 82%, transparent);
+  border-radius: 7px 11px 8px 6px;
+  background: color-mix(in srgb, var(--app-panel) 94%, var(--app-accent, #cf5f57) 6%);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--app-text-primary) 5%, transparent);
+  transform: rotate(-0.45deg);
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.pinoard-rail.is-right .pinoard-rail-note {
+  transform: rotate(0.5deg);
+}
+
+.pinoard-rail-note:focus-within,
+.pinoard-rail-note:hover,
+.pinoard-rail-note.is-current {
+  z-index: 1;
+  transform: translateY(-2px) rotate(0);
+}
+
+.pinoard-rail-note.is-current {
+  border-color: color-mix(in srgb, var(--app-accent, #cf5f57) 58%, var(--app-border));
+}
+
+.pinoard-rail-note__select {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pinoard-rail-note input,
+.pinoard-rail-note textarea {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.pinoard-rail-note input {
+  padding-right: 22px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.pinoard-rail-note textarea {
+  min-height: 72px;
+  resize: none;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pinoard-rail-note__delete {
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  z-index: 2;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.pinoard-rail-note:hover .pinoard-rail-note__delete,
+.pinoard-rail-note:focus-within .pinoard-rail-note__delete {
+  opacity: 1;
+}
+
+.pinoard-current-note {
+  min-width: 0;
+  min-height: 0;
+  width: min(100%, 760px);
+  justify-self: center;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  padding: clamp(24px, 4vw, 54px);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--app-panel) 97%, var(--app-accent, #cf5f57) 3%);
+  box-shadow: 0 30px 80px color-mix(in srgb, var(--app-text-primary) 10%, transparent);
+}
+
+.pinoard-current-note__meta {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.pinoard-current-note__meta span {
+  gap: 7px;
+}
+
+.pinoard-current-note__meta button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--app-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pinoard-current-note__meta button:hover,
+.pinoard-current-note__meta button:focus-visible {
+  color: var(--app-danger, #b64d48);
+  background: color-mix(in srgb, var(--app-danger, #b64d48) 9%, transparent);
+}
+
+.pinoard-current-note__title,
+.pinoard-current-note__editor {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.pinoard-current-note__title {
+  padding: 24px 0 18px;
+  font-size: clamp(24px, 3vw, 42px);
+  font-weight: 680;
+  letter-spacing: -0.05em;
+}
+
+.pinoard-current-note__editor {
+  min-height: 0;
+  resize: none;
+  color: var(--app-text-secondary);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.pinoard-current-note.is-loading {
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.pinoard-agent-stage {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  border-inline: 1px solid color-mix(in srgb, var(--app-border) 58%, transparent);
+  pointer-events: none;
+}
+
+.pinoard-agent-stage > div {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--app-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  transform: translateX(-50%);
+  opacity: 0.62;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .pinoard-stage {
+    grid-template-columns: minmax(136px, 0.56fr) minmax(360px, 1.6fr) minmax(136px, 0.56fr);
+    gap: 12px;
+    padding: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .pinoard-stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .pinoard-current-note,
+  .pinoard-agent-stage {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .pinoard-rail {
+    grid-row: 2;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(156px, 42vw);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+  }
+
+  .pinoard-rail.is-right {
+    display: none;
+  }
+
+  .pinoard-toolbar__actions button span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pinoard-rail-note {
+    transition: none;
+  }
+}

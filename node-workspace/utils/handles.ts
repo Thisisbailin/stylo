@@ -7,6 +7,7 @@ const IMAGE_SOURCE_NODE_TYPES = new Set([
 ]);
 
 const TEXT_SOURCE_NODE_TYPES = new Set([
+  "pinoard",
   "scriptPage",
   "mdText",
   "folder",
@@ -56,12 +57,16 @@ export const nodeSupportsHandle = (handles: string[], handle: string) => {
 
 export const getNodeHandles = (nodeType: string): { inputs: string[]; outputs: string[] } => {
   switch (nodeType) {
+    case "pinoard":
+      return { inputs: ["multi", "text"], outputs: ["text"] };
     case "imageInput":
       return { inputs: [], outputs: ["image"] };
     case "audioInput":
       return { inputs: [], outputs: ["audio"] };
     case "videoInput":
       return { inputs: ["multi", "image", "text", "audio", "video"], outputs: ["video"] };
+    case "pdfInput":
+      return { inputs: ["text"], outputs: [] };
     case "annotation":
       return { inputs: ["image"], outputs: ["image"] };
     case "prompt":

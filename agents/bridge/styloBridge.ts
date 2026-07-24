@@ -21,7 +21,7 @@ export type CreateTextNodeResult = {
 
 export type CreateNodeFlowNodeInput = {
   expectedRevision?: number;
-  type: Extract<NodeType, "scriptPage" | "mdText" | "folder" | "text" | "imageInput" | "audioInput" | "videoInput">;
+  type: Extract<NodeType, "scriptPage" | "mdText" | "folder" | "text" | "imageInput" | "audioInput" | "videoInput" | "pdfInput">;
   nodeRef?: string;
   title?: string;
   text?: string;
@@ -30,6 +30,7 @@ export type CreateNodeFlowNodeInput = {
   imageUrl?: string;
   audioUrl?: string;
   videoUrl?: string;
+  pdfUrl?: string;
   filename?: string;
   mimeType?: string;
   x?: number;
@@ -134,7 +135,7 @@ export type CreateNodeFlowMapNodeInput = {
   key: string;
   type: Extract<
     NodeType,
-    "scriptPage" | "mdText" | "folder" | "text" | "imageInput" | "audioInput" | "videoInput"
+    "scriptPage" | "mdText" | "folder" | "text" | "imageInput" | "audioInput" | "videoInput" | "pdfInput"
   >;
   title?: string;
   text?: string;

@@ -4,12 +4,14 @@ import { DesignAssetItem, Episode, ProjectRoleIdentity, SeedanceModel, ViduRefer
 export type HandleType = "image" | "text" | "audio" | "video" | "multi";
 
 export const NODE_TYPES = [
+  "pinoard",
   "scriptPage",
   "mdText",
   "folder",
   "imageInput",
   "audioInput",
   "videoInput",
+  "pdfInput",
   "annotation",
   "text",
   "scriptBoard",
@@ -131,6 +133,30 @@ export interface VideoInputNodeData extends BaseNodeData {
   aspectRatio?: string | null;
   resolution?: string | null;
   model?: string | null;
+  label?: string;
+}
+
+export type PdfHighlightColor = "yellow" | "green" | "blue";
+
+export interface PdfHighlightAnnotation {
+  id: string;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: PdfHighlightColor;
+  createdAt: number;
+}
+
+export interface PdfInputNodeData extends BaseNodeData {
+  pdf: string | null;
+  filename: string | null;
+  storageBucket?: "assets" | "public-assets" | null;
+  storagePath?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  highlights: PdfHighlightAnnotation[];
   label?: string;
 }
 
@@ -292,6 +318,10 @@ export interface LeporelloNodeData extends BaseNodeData {
   leporelloBook: LeporelloBookState;
 }
 
+export interface PinoardNodeData extends BaseNodeData {
+  title: string;
+}
+
 export interface ImageGenNodeData extends BaseNodeData {
   inputImages: string[];
   outputImage: string | null;
@@ -419,6 +449,7 @@ export type NodeFlowNodeData =
   | ImageInputNodeData
   | AudioInputNodeData
   | VideoInputNodeData
+  | PdfInputNodeData
   | AnnotationNodeData
   | TextNodeData
   | ScriptPageNodeData
@@ -427,6 +458,7 @@ export type NodeFlowNodeData =
   | ScriptBoardNodeData
   | IdentityCardNodeData
   | LeporelloNodeData
+  | PinoardNodeData
   | ImageGenNodeData
   | VideoGenNodeData
   | ViduVideoGenNodeData
@@ -461,7 +493,7 @@ export interface NodeFlowNode {
 
 export interface NodeFlowLinkData extends Record<string, unknown> {
   hasPause?: boolean;
-  relation?: "foundation-membership" | "lookbook-membership" | "leporello-membership" | "screenplay-page";
+  relation?: "foundation-membership" | "lookbook-membership" | "leporello-membership" | "pinoard-membership" | "screenplay-page";
 }
 
 export interface NodeFlowLink {

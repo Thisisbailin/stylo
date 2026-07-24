@@ -6,19 +6,11 @@ const TABLES = [
   "agent_spans",
   "agent_traces",
   "agent_sessions",
-  "user_project_flow_nodes",
   "user_seedance_assets",
-  "user_project_scenes",
-  "user_project_episodes",
-  "user_project_snapshots",
-  "user_project_characters",
-  "user_project_locations",
-  "user_project_flow_projects",
-  "user_project_write_guards",
   "user_project_updates",
   "user_project_documents",
-  "user_project_meta",
   "user_project_visibility",
+  "user_project_deletions",
   "user_profile_visits",
   "user_sync_audit",
   "user_profile",
@@ -64,10 +56,12 @@ test("project reset deletes all project authority rows in one D1 batch", async (
   assert.equal(database.getDirectRuns(), 0);
   const sql = database.batches[0].map((statement) => statement.sql).join("\n");
   assert.doesNotMatch(sql, /INSERT INTO user_project_write_guards/);
+  assert.doesNotMatch(sql, /DELETE FROM user_project_write_guards/);
   assert.match(sql, /DELETE FROM user_seedance_assets/);
   assert.match(sql, /DELETE FROM user_project_updates/);
   assert.match(sql, /DELETE FROM user_project_documents/);
   assert.match(sql, /DELETE FROM user_project_visibility/);
+  assert.doesNotMatch(sql, /DELETE FROM user_project_deletions/);
   assert.match(sql, /DELETE FROM user_profile_visits WHERE owner_user_id/);
   assert.match(sql, /DELETE FROM agent_sessions/);
   assert.doesNotMatch(sql, /DELETE FROM user_profile WHERE/);
@@ -76,7 +70,7 @@ test("project reset deletes all project authority rows in one D1 batch", async (
   assert.ok(projectDeletes.every((statement) => statement.bindings[0] === "user-1"));
   assert.ok(projectDeletes.every((statement) => statement.bindings[1] === "project-a"));
   assert.ok(projectDeletes.every((statement) => /project_id = \?2/.test(statement.sql)));
-  assert.equal(result.user_project_meta, 1);
+  assert.equal(result.user_project_documents, 1);
   assert.equal(result.user_profile_visits_inbound, 1);
 });
 
@@ -90,6 +84,7 @@ test("account reset extends the same transaction to profile, traces, and secrets
   assert.match(sql, /DELETE FROM user_secrets/);
   assert.match(sql, /DELETE FROM user_project_documents/);
   assert.match(sql, /DELETE FROM user_project_visibility/);
+  assert.match(sql, /DELETE FROM user_project_deletions/);
   assert.match(sql, /DELETE FROM user_profile_visits WHERE viewer_user_id/);
   assert.doesNotMatch(sql, /user_project_edit_leases/);
   assert.equal(result.user_profile_visits_inbound, 1);

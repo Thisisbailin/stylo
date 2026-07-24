@@ -39,7 +39,7 @@ import {
   UserRound,
   Clapperboard,
 } from "lucide-react";
-import { ArrowUp, BookOpen, CircleNotch, Rows } from "@phosphor-icons/react";
+import { ArrowUp, BookOpen, CircleNotch, FilePdf, PushPinSimple, Rows } from "@phosphor-icons/react";
 import type {
   ProjectData,
   FlowState,
@@ -49,6 +49,7 @@ import type { NodeFlowContextSnapshot, NodeFlowLink, NodeFlowNode, NodeFlowNodeD
 import {
   AudioInputNode,
   VideoInputNode,
+  PdfInputNode,
   ImageInputNode,
   AnnotationNode,
   FolderNode,
@@ -56,6 +57,7 @@ import {
   ScriptBoardNode,
   IdentityCardNode,
   LeporelloNode,
+  PinoardNode,
   ImageGenNode,
   NanoBananaImageGenNode,
   WanImageGenNode,
@@ -63,6 +65,7 @@ import {
   ViduVideoGenNode,
   SeedanceVideoGenNode,
 } from "../nodes";
+import { PdfReaderOverlay } from "./PdfReaderOverlay";
 import { createDefaultNodeFlowNodeData } from "../nodeflow/defaults";
 import { createEmptyNodeFlowApprovalState } from "../nodeflow/approvals";
 import { createIdleNodeFlowExecutionState } from "../nodeflow/sessionState";
@@ -134,6 +137,11 @@ import { LOOKBOOK_MEMBERSHIP_RELATION, isLookbookNodeType } from "../../utils/lo
 import { LOOKBOOK_WRAPPER_DIMENSIONS } from "../lookbook/constants";
 import { createInitialLeporelloData, resolveLeporelloProjectName } from "../../utils/leporelloWorkspace";
 import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
+import {
+  createPinoardMembershipLink,
+  PINOARD_MEMBERSHIP_RELATION,
+} from "../../utils/pinoardWorkspace";
+import { DisconnectableEdge, EdgeDisconnectControl } from "../edges/DisconnectableEdge";
 
 type ScriptPageData = NodeFlowNodeData & {
   title?: string;
@@ -220,6 +228,7 @@ type Props = {
   onOpenScriptDocument: (nodeId: string) => void;
   onOpenLookbook?: (nodeId: string) => void;
   onOpenLeporello?: (nodeId: string) => void;
+  onOpenPinoard?: (pinoardId: string | null, textNodeId?: string) => void;
   canvasControls: SharedCanvasControls;
   screenToFlowPosition: (position: { x: number; y: number }) => XYPosition;
   isActive?: boolean;
@@ -268,6 +277,7 @@ const scriptCreateGroups: { key: ScriptCreateGroup; label: string }[] = [
 ];
 
 const scriptCreateOptions: ScriptCreateOption[] = [
+  { label: "Pinoard", hint: "灵感构思包装器 · 统合文本贴纸", type: "pinoard", Icon: PushPinSimple, group: "wrapper", meta: "Ideation", tone: "is-rose", surface: "paper" },
   { label: "Manus", hint: "剧本包装器 · 创建第一张稿纸", type: "scriptPage", Icon: FileText, group: "wrapper", meta: "Fountain", tone: "is-slate", surface: "paper" },
   { label: "Lookbook", hint: "角色与场景视觉册", type: "lookbook", Icon: BookOpen, group: "wrapper", meta: "Identity", tone: "is-moss", surface: "card", disabled: true, disabledHint: "由剧本身份生成" },
   { label: "Leporello", hint: "21:9 手风琴分镜故事板", type: "leporello", Icon: Rows, group: "wrapper", meta: "Storyboard", tone: "is-amber", surface: "paper" },
@@ -277,6 +287,7 @@ const scriptCreateOptions: ScriptCreateOption[] = [
   { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input", tone: "is-moss", surface: "media" },
   { label: "声音", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input", tone: "is-blue", surface: "media" },
   { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input", tone: "is-rose", surface: "media" },
+  { label: "PDF", hint: "阅读资料与关联笔记", type: "pdfInput", Icon: FilePdf, group: "input", meta: "Document", tone: "is-amber", surface: "media" },
   { label: "图像生成", hint: "生成概念图", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
   { label: "Nano Banana", hint: "图像生成", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-amber", surface: "gen" },
   { label: "WAN 图像", hint: "图像工作流", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image", tone: "is-moss", surface: "gen" },
@@ -402,6 +413,7 @@ const getSafeScriptNodePosition = (
   });
 
 const createScriptNodeFlowContext = (projectData: ProjectData): NodeFlowContextSnapshot => ({
+  projectId: projectData.activeFlowProjectId || projectData.flowProjects?.[0]?.id,
   rawScript: "",
   episodes: [],
   designAssets: projectData.designAssets || [],
@@ -489,6 +501,8 @@ const FoundationBoundaryEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
   markerEnd,
   style,
   data,
+  selected,
+  deletable,
 }) => {
   const transform = useStore((state) => state.transform);
   const [viewportX, viewportY, zoom] = transform;
@@ -514,7 +528,7 @@ const FoundationBoundaryEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
   const projectedSourceY = hasProjectionSource
     ? ((data.foundationSourceScreenY as number) - viewportY) / safeZoom
     : sourceY;
-  const [path] = getBezierPath({
+  const [path, labelX, labelY] = getBezierPath({
     sourceX: projectedSourceX,
     sourceY: projectedSourceY,
     targetX,
@@ -523,7 +537,18 @@ const FoundationBoundaryEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
     targetPosition: targetPosition || Position.Top,
   });
 
-  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
+      <EdgeDisconnectControl
+        edgeId={id}
+        labelX={labelX}
+        labelY={labelY}
+        selected={selected}
+        deletable={deletable}
+      />
+    </>
+  );
 };
 
 const WrapperMembershipEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
@@ -534,16 +559,35 @@ const WrapperMembershipEdge: React.FC<EdgeProps<FlowRenderEdge>> = ({
   targetY,
   markerEnd,
   style,
+  selected,
+  deletable,
 }) => {
   const deltaX = targetX - sourceX;
   const deltaY = targetY - sourceY;
+  const firstControlX = sourceX + deltaX * 0.36;
+  const firstControlY = sourceY + deltaY * 0.08;
+  const secondControlX = sourceX + deltaX * 0.64;
+  const secondControlY = sourceY + deltaY * 0.92;
   const path = [
     `M ${sourceX} ${sourceY}`,
-    `C ${sourceX + deltaX * 0.36} ${sourceY + deltaY * 0.08}`,
-    `${sourceX + deltaX * 0.64} ${sourceY + deltaY * 0.92}`,
+    `C ${firstControlX} ${firstControlY}`,
+    `${secondControlX} ${secondControlY}`,
     `${targetX} ${targetY}`,
   ].join(" ");
-  return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
+  const labelX = (sourceX + 3 * firstControlX + 3 * secondControlX + targetX) / 8;
+  const labelY = (sourceY + 3 * firstControlY + 3 * secondControlY + targetY) / 8;
+  return (
+    <>
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
+      <EdgeDisconnectControl
+        edgeId={id}
+        labelX={labelX}
+        labelY={labelY}
+        selected={selected}
+        deletable={deletable}
+      />
+    </>
+  );
 };
 
 const nodeTypes: NodeTypes = {
@@ -555,10 +599,12 @@ const nodeTypes: NodeTypes = {
   imageInput: withFoundationBoundaryHandle(ImageInputNode),
   audioInput: withFoundationBoundaryHandle(AudioInputNode),
   videoInput: withFoundationBoundaryHandle(VideoInputNode),
+  pdfInput: withFoundationBoundaryHandle(PdfInputNode),
   annotation: withFoundationBoundaryHandle(AnnotationNode),
   scriptBoard: withFoundationBoundaryHandle(ScriptBoardNode),
   lookbook: withFoundationBoundaryHandle(IdentityCardNode),
   leporello: withFoundationBoundaryHandle(LeporelloNode),
+  pinoard: withFoundationBoundaryHandle(PinoardNode),
   identityCard: withFoundationBoundaryHandle(IdentityCardNode),
   imageGen: withFoundationBoundaryHandle(ImageGenNode),
   nanoBananaImageGen: withFoundationBoundaryHandle(NanoBananaImageGenNode),
@@ -569,6 +615,7 @@ const nodeTypes: NodeTypes = {
 };
 
 const edgeTypes: EdgeTypes = {
+  disconnectable: DisconnectableEdge,
   foundationBoundary: FoundationBoundaryEdge,
   wrapperMembership: WrapperMembershipEdge,
 };
@@ -596,6 +643,7 @@ type ScriptFoundationProps = {
   onCreateFlowNode: (type: NodeType) => void;
   hasScriptPage: boolean;
   hasLeporello: boolean;
+  hasPinoard: boolean;
   onOpenAgent?: () => void;
   onSubmitAgentMessage?: (text: string) => void;
   agentComposerValue?: string;
@@ -665,7 +713,9 @@ const getFlowNodeVirtualSize = (node: Pick<NodeFlowNode, "type" | "style" | "mea
   const styleWidth = typeof style.width === "number" ? style.width : undefined;
   const styleHeight = typeof style.height === "number" ? style.height : undefined;
   const fallbackHeight =
-    node.type === "scriptPage"
+    node.type === "pinoard"
+      ? 156
+      : node.type === "scriptPage"
       ? 249
       : node.type === "folder"
         ? 128
@@ -744,6 +794,7 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   onCreateFlowNode,
   hasScriptPage,
   hasLeporello,
+  hasPinoard,
   onOpenAgent,
   onSubmitAgentMessage,
   agentComposerValue = "",
@@ -772,10 +823,11 @@ const ScriptFoundation: React.FC<ScriptFoundationProps> = ({
   const [nodeCreateMenu, setNodeCreateMenu] = useState<ScriptFoundationCreateMenuState>(null);
   const availableScriptCreateOptions = useMemo(
     () => scriptCreateOptions.filter((option) =>
+      (option.type !== "pinoard" || !hasPinoard) &&
       (option.type !== "scriptPage" || !hasScriptPage) &&
       (option.type !== "leporello" || !hasLeporello)
     ),
-    [hasLeporello, hasScriptPage]
+    [hasLeporello, hasPinoard, hasScriptPage]
   );
   const head = timeline.head || DEFAULT_TIMELINE_HEAD;
   const weightedBlocksByAxis = useMemo(
@@ -1602,6 +1654,7 @@ export const useFlowSurface = ({
   onOpenScriptDocument,
   onOpenLookbook,
   onOpenLeporello,
+  onOpenPinoard,
   canvasControls,
   screenToFlowPosition,
   isActive = false,
@@ -1635,6 +1688,7 @@ export const useFlowSurface = ({
   });
   const [viewportWindowSize, setViewportWindowSize] = useState(getViewportWindowSize);
   const [showFoundationNodes, setShowFoundationNodes] = useState(false);
+  const [activePdfNodeId, setActivePdfNodeId] = useState<string | null>(null);
   const axisRevealTriggeredRef = useRef(false);
   const applyingFlowRuntimeRef = useRef(false);
   const wrapperClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1866,6 +1920,8 @@ export const useFlowSurface = ({
           ? { ...node.style, ...LOOKBOOK_WRAPPER_DIMENSIONS }
           : node.type === "leporello"
             ? { ...node.style, width: 356, height: 180 }
+          : node.type === "pinoard"
+            ? { ...node.style, width: 244, height: 156 }
           : node.type === "scriptPage"
             ? { ...node.style, ...SCRIPT_PAGE_NODE_SIZE }
             : node.style;
@@ -1891,7 +1947,7 @@ export const useFlowSurface = ({
             ...createDefaultNodeFlowNodeData(node.type),
             ...(node.data || {}),
             wrapperMemberCount: wrapperProjection.memberIdsByWrapper.get(node.id)?.length || 0,
-            wrapperRoot: isLookbookNodeType(node.type) || node.type === "leporello" || wrapperProjection.screenplayRootIds.has(node.id),
+            wrapperRoot: isLookbookNodeType(node.type) || node.type === "leporello" || node.type === "pinoard" || wrapperProjection.screenplayRootIds.has(node.id),
             agentReviewPending: node.type === "scriptPage" && !!pendingScriptReviewNodeIds?.has(node.id),
           } as NodeFlowNodeData,
         };
@@ -1959,6 +2015,7 @@ export const useFlowSurface = ({
       .filter((link) => nodeIdSet.has(link.source) && nodeIdSet.has(link.target))
       .map((link) => {
         const isWrapperMembership = link.data?.relation === LOOKBOOK_MEMBERSHIP_RELATION ||
+          link.data?.relation === PINOARD_MEMBERSHIP_RELATION ||
           link.data?.relation === SCREENPLAY_PAGE_RELATION;
         const sourceIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.source]);
         const targetIsMotionMember = Boolean(wrapperMemberMotion?.offsets[link.target]);
@@ -1988,7 +2045,7 @@ export const useFlowSurface = ({
           target: link.target,
           sourceHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.sourceHandle || "text",
           targetHandle: isFoundationBoundary ? FOUNDATION_BOUNDARY_HANDLE_ID : link.targetHandle || "text",
-          type: isFoundationBoundary ? "foundationBoundary" : isWrapperMembership ? "wrapperMembership" : "default",
+          type: isFoundationBoundary ? "foundationBoundary" : isWrapperMembership ? "wrapperMembership" : "disconnectable",
           animated: false,
           hidden: isProjectedHiddenEdge && !isWrapperMotionEdge,
           className: [
@@ -2617,6 +2674,31 @@ export const useFlowSurface = ({
 
       const sourceNodeType = source === createdNodeId ? createdNodeType : existingNodeType;
       const targetNodeType = target === createdNodeId ? createdNodeType : existingNodeType;
+      const pinoardId =
+        sourceNodeType === "pinoard" && targetNodeType === "text"
+          ? source
+          : targetNodeType === "pinoard" && sourceNodeType === "text"
+            ? target
+            : null;
+      const pinoardTextId =
+        sourceNodeType === "text" && targetNodeType === "pinoard"
+          ? source
+          : targetNodeType === "text" && sourceNodeType === "pinoard"
+            ? target
+            : null;
+      if (pinoardId && pinoardTextId) {
+        const membership = createPinoardMembershipLink(pinoardId, pinoardTextId);
+        return [
+          ...currentLinks.filter(
+            (link) =>
+              !(
+                link.data?.relation === PINOARD_MEMBERSHIP_RELATION &&
+                (link.source === pinoardTextId || link.target === pinoardTextId)
+              )
+          ),
+          membership,
+        ];
+      }
       const sourceIsScriptNode = sourceNodeType === "scriptPage" || sourceNodeType === "mdText";
       const targetIsScriptNode = targetNodeType === "scriptPage" || targetNodeType === "mdText";
       if (!sourceIsScriptNode && !targetIsScriptNode && !isValidConnection({ sourceHandle, targetHandle })) {
@@ -2731,6 +2813,7 @@ export const useFlowSurface = ({
       fixedNodeId?: string
     ) => {
       if (type === "folder" || isLookbookNodeType(type)) return null;
+      if (type === "pinoard" && (flow.flowNodes || []).some((node) => node.type === "pinoard")) return null;
       if (type === "leporello" && (flow.flowNodes || []).some((node) => node.type === "leporello")) return null;
       const resolvedExtraData = type === "leporello"
         ? { ...createInitialLeporelloData(resolveLeporelloProjectName(projectData)), ...(extraData || {}) }
@@ -3097,6 +3180,36 @@ export const useFlowSurface = ({
       const sourceType = nodeTypeById.get(connection.source);
       const targetType = nodeTypeById.get(connection.target);
       if (!sourceType || !targetType) return false;
+      const pinoardId =
+        sourceType === "pinoard" && targetType === "text"
+          ? connection.source
+          : targetType === "pinoard" && sourceType === "text"
+            ? connection.target
+            : null;
+      const pinoardTextId =
+        sourceType === "text" && targetType === "pinoard"
+          ? connection.source
+          : targetType === "text" && sourceType === "pinoard"
+            ? connection.target
+            : null;
+      if (pinoardId && pinoardTextId) {
+        const membership = createPinoardMembershipLink(pinoardId, pinoardTextId);
+        persistFlow((currentFlow) => ({
+          ...currentFlow,
+          revision: (currentFlow.revision || 0) + 1,
+          links: [
+            ...currentFlow.links.filter(
+              (link) =>
+                !(
+                  link.data?.relation === PINOARD_MEMBERSHIP_RELATION &&
+                  (link.source === pinoardTextId || link.target === pinoardTextId)
+                )
+            ),
+            membership,
+          ],
+        }));
+        return true;
+      }
 
       const sourceHandles = getScriptNodeHandlesForType(sourceType);
       const targetHandles = getScriptNodeHandlesForType(targetType);
@@ -3399,8 +3512,9 @@ export const useFlowSurface = ({
       const memberCount = typeof node.data.wrapperMemberCount === "number" ? node.data.wrapperMemberCount : 0;
       const isCollapsibleLookbook = isLookbookNodeType(node.type) && memberCount > 0;
       const isCollapsibleLeporello = node.type === "leporello" && memberCount > 0;
+      const isCollapsiblePinoard = node.type === "pinoard" && memberCount > 0;
       const isCollapsibleScreenplay = node.type === "scriptPage" && node.data.wrapperRoot === true && memberCount > 0;
-      if (!isCollapsibleLookbook && !isCollapsibleLeporello && !isCollapsibleScreenplay) return;
+      if (!isCollapsibleLookbook && !isCollapsibleLeporello && !isCollapsiblePinoard && !isCollapsibleScreenplay) return;
       if (wrapperClickTimerRef.current) clearTimeout(wrapperClickTimerRef.current);
       wrapperClickTimerRef.current = setTimeout(() => {
         wrapperClickTimerRef.current = null;
@@ -3418,9 +3532,12 @@ export const useFlowSurface = ({
       }
       if (isLookbookNodeType(node.type)) onOpenLookbook?.(node.id);
       else if (node.type === "leporello") onOpenLeporello?.(node.id);
+      else if (node.type === "pinoard") onOpenPinoard?.(node.id);
+      else if (node.type === "text") onOpenPinoard?.(null, node.id);
       else if (node.type === "scriptPage") onOpenScriptDocument(node.id);
+      else if (node.type === "pdfInput") setActivePdfNodeId(node.id);
     },
-    [onOpenLeporello, onOpenLookbook, onOpenScriptDocument]
+    [onOpenLeporello, onOpenLookbook, onOpenPinoard, onOpenScriptDocument]
   );
 
   const overlays = (
@@ -3429,6 +3546,7 @@ export const useFlowSurface = ({
         <ConnectionDropMenu
           position={connectionDrop.position}
           options={scriptCreateOptions.filter((option) =>
+            (option.type !== "pinoard" || !nodes.some((node) => node.type === "pinoard")) &&
             (option.type !== "scriptPage" || !nodes.some((node) => node.type === "scriptPage")) &&
             (option.type !== "leporello" || !nodes.some((node) => node.type === "leporello"))
           )}
@@ -3438,15 +3556,19 @@ export const useFlowSurface = ({
         />
       ) : null}
 
+      {activePdfNodeId ? (
+        <PdfReaderOverlay nodeId={activePdfNodeId} onClose={() => setActivePdfNodeId(null)} />
+      ) : null}
+
       {nodes.length === 0 && foundationScaffoldNodeIds.size === 0 ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <button
             type="button"
-            onClick={() => handleAddScriptPage()}
+            onClick={() => handleAddFlowNode("pinoard")}
             className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-[var(--app-border)] bg-[var(--app-panel)] px-4 text-[13px] font-semibold text-[var(--app-text-primary)] shadow-[var(--app-shadow)] transition hover:border-[var(--app-border-strong)]"
           >
             <Plus size={16} />
-            Manus
+            Pinoard
           </button>
         </div>
       ) : null}
@@ -3474,6 +3596,7 @@ export const useFlowSurface = ({
           onCreateScriptNode={handleAddScriptPageFromTail}
           hasScriptPage={nodes.some((node) => node.type === "scriptPage")}
           hasLeporello={nodes.some((node) => node.type === "leporello")}
+          hasPinoard={nodes.some((node) => node.type === "pinoard")}
           onCreateFlowNode={(type) => {
             const position =
               typeof window === "undefined"

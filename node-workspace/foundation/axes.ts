@@ -27,7 +27,7 @@ export const FOUNDATION_WEIGHTED_AXES = FOUNDATION_AXES.filter(
 const FOUNDATION_AXIS_BY_ID = new Map(FOUNDATION_AXIS_DEFINITIONS.map((definition) => [definition.id, definition]));
 
 const DOCUMENT_NODE_TYPES = new Set<NodeType>(["scriptPage", "mdText", "text"]);
-const MEDIA_NODE_TYPES = new Set<NodeType>(["imageInput", "audioInput", "videoInput"]);
+const MEDIA_NODE_TYPES = new Set<NodeType>(["imageInput", "audioInput", "videoInput", "pdfInput"]);
 
 export const isFoundationAxis = (value: unknown): value is FoundationAxis =>
   typeof value === "string" && FOUNDATION_AXIS_BY_ID.has(value as FoundationAxis);

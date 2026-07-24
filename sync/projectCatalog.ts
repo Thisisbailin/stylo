@@ -46,8 +46,8 @@ export const deleteCloudProject = async (
   session: AccountApiSession,
   projectId: string,
 ) => {
-  const response = await session.request(`/api/account-data-reset?projectId=${encodeURIComponent(projectId)}&intent=delete`, {
+  const response = await session.request(`/api/project-delete?projectId=${encodeURIComponent(projectId)}`, {
     method: "DELETE",
   });
-  await requireOkResponse(response, "删除云端项目失败");
+  await requireOkResponse(response, "永久删除项目失败");
 };

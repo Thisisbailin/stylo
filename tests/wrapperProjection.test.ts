@@ -59,3 +59,26 @@ test("only the screenplay chain root wraps later pages and cyclic dirty links te
   assert.equal(projection.memberIdsByWrapper.has("page-b"), false);
   assert.deepEqual(projection.hiddenNodeIds, new Set(["page-b", "page-c"]));
 });
+
+test("collapsed Pinoard accepts only explicit text memberships in either direction", () => {
+  const nodes = [
+    makeNode("pinoard-1", "pinoard", true),
+    makeNode("idea-a", "text"),
+    makeNode("idea-b", "text"),
+    makeNode("image-1", "imageInput"),
+    makeNode("ordinary", "text"),
+  ];
+  const links: NodeFlowLink[] = [
+    { id: "a", source: "pinoard-1", target: "idea-a", data: { relation: "pinoard-membership" } },
+    { id: "b", source: "idea-b", target: "pinoard-1", data: { relation: "pinoard-membership" } },
+    { id: "image", source: "pinoard-1", target: "image-1", data: { relation: "pinoard-membership" } },
+    { id: "ordinary", source: "pinoard-1", target: "ordinary" },
+  ];
+
+  const projection = buildWrapperProjection(nodes, links);
+  assert.deepEqual(
+    new Set(projection.memberIdsByWrapper.get("pinoard-1")),
+    new Set(["idea-a", "idea-b"])
+  );
+  assert.deepEqual(projection.hiddenNodeIds, new Set(["idea-a", "idea-b"]));
+});

@@ -5,6 +5,7 @@ import { INITIAL_PROJECT_DATA } from "../constants";
 import { readProjectVisibility, normalizeUsername } from "../functions/api/_publicAccess";
 import {
   createAccountProject,
+  createAccountProjectId,
   removeAccountProject,
   switchAccountProject,
   updateAccountProject,
@@ -67,6 +68,10 @@ test("account workspace owns project hierarchy and the user square entry", () =>
   assert.match(workspace, /用户广场/);
   assert.match(workspace, /正在看我/);
   assert.match(workspace, /我看过的/);
+  assert.match(workspace, /登录邮箱/);
+  assert.match(workspace, /项目公开范围/);
+  assert.match(workspace, /项目默认跟随此设置/);
+  assert.doesNotMatch(workspace, /显示名称/);
   assert.match(actionBar, /onOpenAccountWorkspace/);
   assert.match(actionBar, /onOpenUserSquare/);
   assert.doesNotMatch(foundation, /script-foundation-gateway__section--projects/);
@@ -93,10 +98,24 @@ test("username and project visibility rules are deterministic", async () => {
 
 test("account project operations preserve a single active project boundary", () => {
   const initial = structuredClone(INITIAL_PROJECT_DATA);
-  const created = createAccountProject(initial, { title: "夜航", durationMin: 87 });
+  const stableProjectId = createAccountProjectId();
+  const created = createAccountProject(initial, {
+    projectId: stableProjectId,
+    title: "夜航",
+    durationMin: 87,
+  });
   const createdId = created.activeFlowProjectId!;
+  assert.equal(createdId, stableProjectId);
   assert.equal(created.flowProjects?.length, 2);
   assert.equal(created.flowProjects?.find((item) => item.id === createdId)?.title, "夜航");
+
+  const repeatedSubmission = createAccountProject(created, {
+    projectId: stableProjectId,
+    title: "夜航",
+    durationMin: 87,
+  });
+  assert.equal(repeatedSubmission.flowProjects?.length, 2);
+  assert.equal(repeatedSubmission.flowProjects?.filter((item) => item.id === stableProjectId).length, 1);
 
   const renamed = updateAccountProject(created, createdId, { title: "夜航修订", durationMin: 91 });
   assert.equal(renamed.flowProjects?.find((item) => item.id === createdId)?.durationMin, 91);

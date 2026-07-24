@@ -74,6 +74,7 @@ const SUPPORTED_NODE_TYPES = new Set<CreateNodeFlowNodeInput["type"]>([
   "imageInput",
   "audioInput",
   "videoInput",
+  "pdfInput",
 ]);
 
 const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string) =>
@@ -88,13 +89,15 @@ const resolveNodeTitle = (type: CreateNodeFlowNodeInput["type"], title?: string)
           ? "图片节点"
           : type === "audioInput"
             ? "音频节点"
-            : "视频节点");
+            : type === "videoInput"
+              ? "视频节点"
+              : "PDF 节点");
 
 const buildNodeExtraData = (
   input: CreateNodeFlowNodeInput,
   resolvedTitle: string
 ): Partial<NodeFlowNodeData> => {
-  const { type, text, content, documentId, imageUrl, audioUrl, videoUrl, filename, mimeType } = input;
+  const { type, text, content, documentId, imageUrl, audioUrl, videoUrl, pdfUrl, filename, mimeType } = input;
   const bodyText = (text ?? content ?? "").trim();
   const preview = bodyText.replace(/\s+/g, " ").slice(0, 180);
   if (type === "scriptPage") {
@@ -149,6 +152,17 @@ const buildNodeExtraData = (
       filename: (filename || "").trim() || null,
       mimeType: (mimeType || "").trim() || null,
       durationMs: null,
+    } as Partial<NodeFlowNodeData>;
+  }
+  if (type === "pdfInput") {
+    return {
+      title: resolvedTitle,
+      label: resolvedTitle,
+      pdf: (pdfUrl || "").trim() || null,
+      filename: (filename || "").trim() || null,
+      mimeType: (mimeType || "").trim() || "application/pdf",
+      fileSize: null,
+      highlights: [],
     } as Partial<NodeFlowNodeData>;
   }
   return {
@@ -263,7 +277,7 @@ const createNodeFlowNode = (
   assertExpectedRevision(snapshot.revision, input.expectedRevision);
   assertBridgeCreateParentAllowed(snapshot, input.parentId);
   if (!SUPPORTED_NODE_TYPES.has(input.type)) {
-    throw new Error("createNodeFlowNode currently supports scriptPage, mdText, folder, text, imageInput, audioInput, and videoInput.");
+    throw new Error("createNodeFlowNode currently supports scriptPage, mdText, folder, text, imageInput, audioInput, videoInput, and pdfInput.");
   }
   const position = findSafeNodeFlowPosition({
     nodes: snapshot.nodes,

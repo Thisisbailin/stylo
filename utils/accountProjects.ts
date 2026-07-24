@@ -13,6 +13,12 @@ import { normalizeFlowProjectDuration } from "./flowProject";
 export const ACCOUNT_PROJECT_LIMIT = 24;
 const PROJECT_COLORS = ["amber", "moss", "blue", "rose", "violet", "slate"];
 
+export const createAccountProjectId = () => {
+  const randomId = globalThis.crypto?.randomUUID?.()
+    || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return `flow-project-${randomId}`;
+};
+
 const ensureFlow = (flow?: FlowState): FlowState => ({
   revision: typeof flow?.revision === "number" ? flow.revision : 0,
   flowNodes: Array.isArray(flow?.flowNodes) ? flow.flowNodes : [],
@@ -40,12 +46,13 @@ export const switchAccountProject = (previous: ProjectData, projectId: string): 
 
 export const createAccountProject = (
   previous: ProjectData,
-  input: { title: string; durationMin: number },
+  input: { projectId?: string; title: string; durationMin: number },
 ): ProjectData => {
   const projects = saveActiveFlowIntoProjects(previous, Date.now());
   if (projects.length >= ACCOUNT_PROJECT_LIMIT) return previous;
   const now = Date.now();
-  const id = `flow-project-${now.toString(36)}`;
+  const id = input.projectId?.trim() || createAccountProjectId();
+  if (projects.some((project) => project.id === id)) return previous;
   const title = input.title.trim() || `项目 ${projects.length + 1}`;
   const durationMin = normalizeFlowProjectDuration(input.durationMin);
   const rootNodeId = `${FOUNDATION_ROOT_NODE_PREFIX}${id}`;
@@ -131,4 +138,3 @@ export const removeAccountProject = (previous: ProjectData, projectId: string): 
     flowProjects: remaining,
   };
 };
-

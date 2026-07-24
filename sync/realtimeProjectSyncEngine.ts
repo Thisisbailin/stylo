@@ -8,7 +8,7 @@ import {
   readProjectSnapshot,
 } from "../collaboration/yProjectDocument";
 import type { AccountApiSession } from "./authenticatedFetch";
-import type { SyncStatusDetail, VersionedSyncCodec, VersionedSyncLease } from "./versionedSyncEngine";
+import type { RealtimeSyncLease, SyncCodec, SyncStatusDetail } from "./realtimeSyncTypes";
 import {
   deleteRealtimeDocument,
   readRealtimeDocument,
@@ -26,6 +26,7 @@ type ServerMessage = {
   actorId?: string;
   serverSeq?: number;
   update?: string;
+  stateVector?: string;
   error?: string;
   mode?: "reset" | "delete";
 };
@@ -41,7 +42,7 @@ type Options = {
   accountScope: string;
   projectId: string;
   session: AccountApiSession;
-  codec: VersionedSyncCodec<ProjectData>;
+  codec: SyncCodec<ProjectData>;
   onApplyRemote: (project: ProjectData) => void;
   onStatusChange?: (status: SyncStatus, detail?: SyncStatusDetail) => void;
   onError?: (error: unknown) => void;
@@ -93,7 +94,7 @@ export class RealtimeProjectSyncEngine {
     );
   }
 
-  async acquire(local: ProjectData, expectedRevision: number): Promise<VersionedSyncLease> {
+  async acquire(local: ProjectData, expectedRevision: number): Promise<RealtimeSyncLease> {
     const snapshot = this.options.codec.snapshot(local);
     const revision = this.options.codec.revision?.(snapshot) ?? null;
     if (revision !== expectedRevision) {
@@ -101,10 +102,6 @@ export class RealtimeProjectSyncEngine {
     }
     const receipt = await this.applyAndWait(snapshot);
     return { expectedRevision, remoteVersion: receipt, release: () => undefined };
-  }
-
-  refresh() {
-    if (!this.disposed) this.reconnect(true);
   }
 
   dispose() {
@@ -157,9 +154,9 @@ export class RealtimeProjectSyncEngine {
     }
   }
 
-  private reconnect(immediate = false) {
+  private reconnect() {
     if (this.disposed || this.reconnectTimer) return;
-    const delay = immediate ? 0 : Math.min(1_000 * (2 ** this.reconnectAttempt), 15_000);
+    const delay = Math.min(1_000 * (2 ** this.reconnectAttempt), 15_000);
     this.reconnectAttempt += 1;
     this.options.onStatusChange?.("offline", {
       pendingOps: this.pendingOfflineUpdate ? 1 : 0,
@@ -181,7 +178,8 @@ export class RealtimeProjectSyncEngine {
       return;
     }
     if ((message.type === "sync" || message.type === "update") && typeof message.update === "string") {
-      Y.applyUpdate(this.doc, decodeUpdateBase64(message.update), REMOTE_ORIGIN);
+      const remoteUpdate = decodeUpdateBase64(message.update);
+      Y.applyUpdate(this.doc, remoteUpdate, REMOTE_ORIGIN);
       this.serverSeq = Math.max(this.serverSeq, Number(message.serverSeq) || 0);
       this.applyDocumentToApp();
       if (message.type === "sync") {
@@ -190,7 +188,14 @@ export class RealtimeProjectSyncEngine {
         if (isProjectDocumentEmpty(this.doc) && this.latestLocal) {
           applyProjectSnapshot(this.doc, this.latestLocal as unknown as Record<string, unknown>, LOCAL_ORIGIN);
         }
-        this.queueUpdate(Y.encodeStateAsUpdate(this.doc));
+        const serverStateVector = typeof message.stateVector === "string"
+          ? decodeUpdateBase64(message.stateVector)
+          : (() => {
+              const serverDoc = new Y.Doc();
+              Y.applyUpdate(serverDoc, remoteUpdate, REMOTE_ORIGIN);
+              return Y.encodeStateVector(serverDoc);
+            })();
+        this.queueUpdate(Y.encodeStateAsUpdate(this.doc, serverStateVector));
         const hadPendingUpdate = Boolean(this.pendingOfflineUpdate);
         void this.flushPendingUpdate().catch((error) => this.options.onError?.(error));
         if (!hadPendingUpdate) {
@@ -262,7 +267,9 @@ export class RealtimeProjectSyncEngine {
   };
 
   private queueUpdate(update: Uint8Array) {
-    if (!update.byteLength) return;
+    // Yjs encodes an empty update as two bytes. Do not turn a connection
+    // handshake or a semantically unchanged React render into a network write.
+    if (update.byteLength <= 2) return;
     this.pendingOfflineUpdate = this.pendingOfflineUpdate
       ? Y.mergeUpdates([this.pendingOfflineUpdate, update])
       : update;

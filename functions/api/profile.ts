@@ -22,7 +22,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     return jsonResponse({
       avatarUrl: row?.avatar_url || null,
       username: row?.username || null,
-      displayName: row?.display_name || null,
+      displayName: row?.username || null,
       bio: row?.bio || "",
       accountVisibility: row?.account_visibility === "public" ? "public" : "private",
       searchable: row ? row.searchable !== 0 : true,
@@ -42,7 +42,6 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
     const body = await readJsonRequest<{
       avatarUrl?: unknown;
       username?: unknown;
-      displayName?: unknown;
       bio?: unknown;
       searchable?: unknown;
     }>(context.request, 16 * 1024);
@@ -73,15 +72,7 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
       }
       username = normalizedUsername;
     }
-    if (
-      body.displayName !== undefined
-      && (typeof body.displayName !== "string" || body.displayName.trim().length > 80)
-    ) {
-      return jsonResponse({ error: "Invalid displayName" }, { status: 400 });
-    }
-    const displayName = body.displayName === undefined
-      ? current?.display_name || null
-      : body.displayName.trim() || null;
+    const displayName = username;
     const bio = body.bio === undefined
       ? String(current?.bio || "")
       : typeof body.bio === "string" && body.bio.length <= 320

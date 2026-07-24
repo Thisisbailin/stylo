@@ -1,6 +1,7 @@
 import type { NodeFlowLink, NodeFlowNode } from "../types";
 import { isLookbookNodeType } from "../../utils/lookbookIdentities";
 import { SCREENPLAY_PAGE_RELATION } from "../screenplay/manusPages";
+import { PINOARD_MEMBERSHIP_RELATION } from "../../utils/pinoardWorkspace";
 
 export type WrapperProjection = {
   hiddenNodeIds: Set<string>;
@@ -42,6 +43,8 @@ export const buildWrapperProjection = (
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const lookbookIds = new Set(nodes.filter((node) => isLookbookNodeType(node.type)).map((node) => node.id));
   const leporelloIds = new Set(nodes.filter((node) => node.type === "leporello").map((node) => node.id));
+  const pinoardIds = new Set(nodes.filter((node) => node.type === "pinoard").map((node) => node.id));
+  const textNodeIds = new Set(nodes.filter((node) => node.type === "text").map((node) => node.id));
   const scriptNodeIds = new Set(nodes.filter((node) => node.type === "scriptPage").map((node) => node.id));
   const memberSets = new Map<string, Set<string>>();
   const screenplayIncoming = new Set<string>();
@@ -56,6 +59,15 @@ export const buildWrapperProjection = (
     if (link.data?.relation === "leporello-membership") {
       if (leporelloIds.has(link.source) && nodeById.has(link.target)) addMember(memberSets, link.source, link.target);
       if (leporelloIds.has(link.target) && nodeById.has(link.source)) addMember(memberSets, link.target, link.source);
+      return;
+    }
+    if (link.data?.relation === PINOARD_MEMBERSHIP_RELATION) {
+      if (pinoardIds.has(link.source) && textNodeIds.has(link.target)) {
+        addMember(memberSets, link.source, link.target);
+      }
+      if (pinoardIds.has(link.target) && textNodeIds.has(link.source)) {
+        addMember(memberSets, link.target, link.source);
+      }
       return;
     }
     if (

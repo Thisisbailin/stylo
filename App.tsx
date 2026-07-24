@@ -14,7 +14,6 @@ import { useConfig } from './hooks/useConfig';
 import { useTheme } from './hooks/useTheme';
 import { useSecretsSync } from './hooks/useSecretsSync';
 import { AppShell } from './components/layout/AppShell';
-import { SecretsConflictModal } from './components/SecretsConflictModal';
 import { SyncStatusBanner } from './components/SyncStatusBanner';
 import { CloudAccountGate } from './components/CloudAccountGate';
 import { CreativeWorkspace } from './node-workspace/components/CreativeWorkspace';
@@ -28,7 +27,6 @@ import {
   resetStyloScopedProjectData,
 } from './agents/runtime/projectScope';
 import { resetStyloProjectAgentStorage } from './agents/runtime/projectReset';
-import type { SecretsPayload } from './sync/secretsSyncAdapter';
 import { AccountApiSession, requireOkResponse } from './sync/authenticatedFetch';
 import { deleteCloudProject, loadCloudProject, loadCloudProjectCatalog, mergeMissingCloudProjects } from './sync/projectCatalog';
 import { deleteRealtimeDocument, resetRealtimeDocuments } from './sync/realtimeDocumentStore';
@@ -187,23 +185,11 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   const [isOnline, setIsOnline] = useState(
     () => typeof navigator === "undefined" || navigator.onLine !== false,
   );
-  const [syncRefreshKey, setSyncRefreshKey] = useState(0);
   const [isCloudProjectCatalogReady, setIsCloudProjectCatalogReady] = useState(false);
   const [projectResetToken, setProjectResetToken] = useState(0);
-  const secretConflictRef = useRef<{
-    remote: SecretsPayload;
-    local: SecretsPayload;
-    resolve: (useRemote: boolean) => void;
-  } | null>(null);
-  const [secretConflict, setSecretConflict] = useState<{
-    remote: SecretsPayload;
-    local: SecretsPayload;
-    resolve: (useRemote: boolean) => void;
-  } | null>(null);
 
   const [openLabModal, setOpenLabModal] = useState<LabModalKey | null>(null);
   const [projectSettingsRequest, setProjectSettingsRequest] = useState<{ panel: ProjectSettingsPanelKey; nonce: number } | null>(null);
-  const [isSyncBannerDismissed, setIsSyncBannerDismissed] = useState(false);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl] = usePersistedState<string>({
     key: avatarStorageKey,
@@ -284,11 +270,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     projectDataRef.current = projectData;
   }, [projectData]);
 
-  useEffect(() => () => {
-    secretConflictRef.current?.resolve(true);
-    secretConflictRef.current = null;
-  }, []);
-
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -343,10 +324,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     console.warn("Cloud sync error", e);
   }, []);
 
-  const forceCloudPull = useCallback(() => {
-    setSyncRefreshKey((v) => v + 1);
-  }, []);
-
   const handleRemoteProjectReset = useCallback((mode: "reset" | "delete") => {
     setProjectData((local) => {
       if (mode === "reset") {
@@ -372,27 +349,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     });
   }, [cloudProjectId, setProjectData]);
 
-  const requestSecretsConflictResolution = useCallback(({
-    remote,
-    local,
-  }: {
-    remote: SecretsPayload;
-    local: SecretsPayload;
-  }) => new Promise<boolean>((resolve) => {
-    const request = { remote, local, resolve };
-    secretConflictRef.current = request;
-    setSecretConflict(request);
-  }), []);
-
-  const handleSecretsConflictChoice = useCallback((useRemote: boolean) => {
-    const conflict = secretConflictRef.current;
-    if (!conflict) return;
-    secretConflictRef.current = null;
-    setSecretConflict(null);
-    conflict.resolve(useRemote);
-  }, []);
-
-
   // --- Cloud Sync (Clerk + Cloudflare Pages) ---
   const { flushProjectSync, suspendProjectSync } = useCloudSync({
     accountScope,
@@ -402,7 +358,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     accountSession,
     projectData,
     setProjectData,
-    refreshKey: syncRefreshKey,
     onError: handleCloudSyncError,
     onStatusChange: updateProjectSyncStatus,
     onRemoteReset: handleRemoteProjectReset,
@@ -414,7 +369,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
   }, [signOut]);
 
   const handleDeleteFlowProject = useCallback(async (projectId: string) => {
-    if (!isSyncFeatureEnabled) return true;
+    if (!isSyncFeatureEnabled) return;
     const resumeProjectSync = projectId === cloudProjectId ? suspendProjectSync() : null;
     let deleted = false;
     try {
@@ -422,10 +377,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       resetStyloProjectAgentStorage(accountScope, projectId);
       await deleteRealtimeDocument(`${accountScope}:${projectId}`);
       deleted = true;
-      return true;
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "删除云端项目失败。");
-      return false;
     } finally {
       if (resumeProjectSync) {
         if (deleted) window.setTimeout(resumeProjectSync, 0);
@@ -443,7 +394,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     setConfig,
     debounceMs: 1200,
     onStatusChange: updateSecretsSyncStatus,
-    onConflictConfirm: requestSecretsConflictResolution,
   });
 
   // Fetch avatar from profile (account-scoped) once per session
@@ -462,7 +412,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 username: user.username,
-                displayName: user.fullName || user.username,
               }),
             });
           }
@@ -488,8 +437,10 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         ),
       );
       try {
-        const response = await accountSession.request(`/api/account-data-reset?projectId=${encodeURIComponent(resetProjectId)}&intent=reset`, {
-          method: 'DELETE',
+        const response = await accountSession.request(`/api/account-data-reset?projectId=${encodeURIComponent(resetProjectId)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: 'project' }),
         });
         await requireOkResponse(response, '清空云端项目失败');
 
@@ -584,7 +535,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       case "loading":
         return "加载中";
       case "conflict":
-        return "冲突";
+        return "更新中";
       case "error":
         return "错误";
       case "offline":
@@ -600,7 +551,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     if (!isOnline) return { state: "offline" as const, label: statusLabel("offline") };
     const statuses = [syncState.project.status, syncState.secrets.status].filter((s) => s !== "disabled");
     if (statuses.includes("error")) return { state: "error" as const, label: statusLabel("error") };
-    if (statuses.includes("conflict")) return { state: "conflict" as const, label: statusLabel("conflict") };
+    if (statuses.includes("conflict")) return { state: "syncing" as const, label: statusLabel("syncing") };
     if (statuses.includes("syncing") || statuses.includes("loading")) return { state: "syncing" as const, label: statusLabel("syncing") };
     if (statuses.length === 0) return { state: "disabled" as const, label: statusLabel("disabled") };
     if (statuses.includes("idle")) return { state: "idle" as const, label: statusLabel("idle") };
@@ -612,7 +563,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
       synced: "#34d399",
       syncing: "#38bdf8",
       loading: "#38bdf8",
-      conflict: "#fbbf24",
       error: "#f87171",
       offline: "#9ca3af",
       disabled: "#9ca3af",
@@ -620,27 +570,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     };
     return { label: agg.label, color: colorMap[agg.state] || "#a5b4fc" };
   })();
-
-  const syncBannerSignature = useMemo(
-    () =>
-      [
-        isOnline ? "online" : "offline",
-        !!authSignedIn ? "signed-in" : "signed-out",
-        syncState.project.status,
-        syncState.project.pendingOps ?? 0,
-        syncState.project.retryCount ?? 0,
-        syncState.project.lastAttemptAt ?? 0,
-        syncState.secrets.status,
-        syncState.secrets.pendingOps ?? 0,
-        syncState.secrets.retryCount ?? 0,
-        syncState.secrets.lastAttemptAt ?? 0,
-      ].join("|"),
-    [authSignedIn, isOnline, syncState]
-  );
-
-  useEffect(() => {
-    setIsSyncBannerDismissed(false);
-  }, [syncBannerSignature]);
 
   const handleLoadIdentityCard = useCallback((identityId: string) => {
     if (!identityId) return;
@@ -691,7 +620,6 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         accountSession={accountSession}
         syncState={syncState}
         ensureProjectSynced={flushProjectSync}
-        onForceSync={forceCloudPull}
         externalProjectSettingsRequest={projectSettingsRequest}
         onOpenModule={handleOpenLabModule}
         syncIndicator={syncIndicator}
@@ -720,26 +648,14 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         isDarkMode={isDarkMode}
         header={null}
         banner={
-          !isSyncBannerDismissed && (
-            <SyncStatusBanner
-              syncState={syncState}
-              isOnline={isOnline}
-              isSignedIn={!!authSignedIn}
-              onOpenDetails={() => openProjectSettings("sync")}
-              onForceSync={forceCloudPull}
-              onClose={() => setIsSyncBannerDismissed(true)}
-            />
-          )
+          <SyncStatusBanner
+            syncState={syncState}
+            isOnline={isOnline}
+            isSignedIn={!!authSignedIn}
+            onOpenDetails={() => openProjectSettings("sync")}
+          />
         }
       >
-        {secretConflict && (
-          <SecretsConflictModal
-            remote={secretConflict.remote}
-            local={secretConflict.local}
-            onUseRemote={() => handleSecretsConflictChoice(true)}
-            onKeepLocal={() => handleSecretsConflictChoice(false)}
-          />
-        )}
         <input
           type="file"
           accept="image/*"

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { AudioLines, Image as ImageIcon, Sparkles, Video, Plus } from "lucide-react";
-import { BookOpen, Rows } from "@phosphor-icons/react";
+import { BookOpen, FilePdf, Rows } from "@phosphor-icons/react";
 import { NodeType } from "../types";
 
 export type ConnectionDropMenuOption<T extends string = NodeType> = {
@@ -32,6 +32,7 @@ const defaultOptions: ConnectionDropMenuOption<NodeType>[] = [
     { label: "图片", hint: "参考图或分镜", type: "imageInput", Icon: ImageIcon, group: "input", meta: "Input" },
     { label: "音频", hint: "对白或声音参考", type: "audioInput", Icon: AudioLines, group: "input", meta: "Input" },
     { label: "视频", hint: "动态参考", type: "videoInput", Icon: Video, group: "input", meta: "Input" },
+    { label: "PDF", hint: "阅读资料与关联笔记", type: "pdfInput", Icon: FilePdf, group: "input", meta: "Document" },
     { label: "图像生成", hint: "生成概念图", type: "imageGen", Icon: Sparkles, group: "generation", meta: "Image" },
     { label: "Nano Banana", hint: "图像生成", type: "nanoBananaImageGen", Icon: Sparkles, group: "generation", meta: "Image" },
     { label: "WAN 图像", hint: "图像工作流", type: "wanImageGen", Icon: Sparkles, group: "generation", meta: "Image" },

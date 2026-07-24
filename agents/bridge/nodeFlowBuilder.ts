@@ -25,6 +25,7 @@ const NODE_DIMENSIONS: Record<CreateNodeFlowMapNodeInput["type"], { width: numbe
   imageInput: { width: 320, height: 240 },
   audioInput: { width: 320, height: 180 },
   videoInput: { width: 340, height: 260 },
+  pdfInput: { width: 340, height: 220 },
 };
 
 const GAP = { x: 72, y: 56 };
@@ -36,6 +37,7 @@ const NODE_HANDLES: Record<CreateNodeFlowMapNodeInput["type"], { inputs: string[
   imageInput: { inputs: [], outputs: ["image"] },
   audioInput: { inputs: [], outputs: ["audio"] },
   videoInput: { inputs: ["multi", "image", "text", "audio", "video"], outputs: ["video"] },
+  pdfInput: { inputs: ["text"], outputs: [] },
 };
 
 const buildNodeData = (node: CreateNodeFlowMapNodeInput): Partial<NodeFlowNodeData> => {

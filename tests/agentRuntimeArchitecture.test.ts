@@ -44,7 +44,7 @@ import {
   shouldRejectStaleAgentResult,
 } from "../node-workspace/components/stylo/agentResultReconciliation";
 import type { Message } from "../node-workspace/components/stylo/types";
-import { buildAgentProjectStateFromRows } from "../functions/api/_agentProjectState";
+import { buildAgentProjectStateFromRealtimeDocument } from "../functions/api/_agentProjectState";
 
 const emptyResult = (projectId = "project-1"): StyloRunResult => ({
   projectId,
@@ -756,10 +756,10 @@ test("Agent project sync barrier uses an immutable snapshot lease instead of UI 
   assert.doesNotMatch(syncSource, /while \(readActiveFlowRevision/);
   assert.doesNotMatch(syncSource, /isSavingRef|pendingOpRef|saveRetryTimeout/);
 
-  const engineSource = readFileSync("sync/versionedSyncEngine.ts", "utf8");
-  assert.match(engineSource, /private commandTail: Promise<void>/);
-  assert.match(engineSource, /this\.holdCount \+= 1/);
-  assert.match(engineSource, /const snapshot = this\.capture\(local\)/);
+  const engineSource = readFileSync("sync/realtimeProjectSyncEngine.ts", "utf8");
+  assert.match(engineSource, /private lastLocalSend: Promise<number> \| null/);
+  assert.match(engineSource, /private async applyAndWait\(snapshot: ProjectData\)/);
+  assert.match(engineSource, /return this\.lastLocalSend/);
 
   const agentSource = readFileSync("node-workspace/components/StyloAgent.tsx", "utf8");
   assert.match(agentSource, /const snapshot = mergeNodeFlowIntoProjectData/);
@@ -789,10 +789,14 @@ test("Agent instructions start without environment or operational-memory injecti
   assert.doesNotMatch(instructions, /Environment Snapshot|Operational Memory|must-not-leak/);
 });
 
-test("Edge Agent rebuilds tool state from D1 project rows", () => {
-  const state = buildAgentProjectStateFromRows("project-1", {
-    meta: { fileName: "Project", roles: [], designAssets: [], canvas: {}, stats: { context: { total: 0, success: 0, error: 0 } } },
-    project: {
+test("Edge Agent rebuilds tool state from the realtime D1 document", () => {
+  const state = buildAgentProjectStateFromRealtimeDocument("project-1", {
+    fileName: "Project",
+    roles: [],
+    designAssets: [],
+    canvas: {},
+    activeFlowProjectId: "project-1",
+    flowProjects: [{
       id: "project-1",
       title: "Project",
       color: "#000000",
@@ -800,11 +804,15 @@ test("Edge Agent rebuilds tool state from D1 project rows", () => {
       rootNodeId: "root",
       createdAt: 1,
       updatedAt: 2,
-      flow: { revision: 7, links: [], graphLinks: [], linkStyle: "angular" },
-    },
-    nodes: [{ id: "text-1", type: "text", position: { x: 0, y: 0 }, data: { title: "Note", text: "secret" } }],
-    updatedAt: 9,
-  });
+      flow: {
+        revision: 7,
+        links: [],
+        graphLinks: [],
+        linkStyle: "angular",
+        flowNodes: [{ id: "text-1", type: "text", position: { x: 0, y: 0 }, data: { title: "Note", text: "secret" } }],
+      },
+    }],
+  }, 9);
   assert.equal(state.projectData.activeFlowProjectId, "project-1");
   assert.equal(state.nodeFlow.revision, 7);
   assert.equal(state.nodeFlow.nodes[0].data.text, "secret");

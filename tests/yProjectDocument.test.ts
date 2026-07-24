@@ -33,6 +33,21 @@ const createPeers = () => {
   return { left, right, baseVector: Y.encodeStateVector(left) };
 };
 
+test("staging a semantically unchanged project emits no Yjs update", () => {
+  const doc = new Y.Doc();
+  const project = baseProject();
+  applyProjectSnapshot(doc, project, "seed");
+  let updates = 0;
+  doc.on("update", () => {
+    updates += 1;
+  });
+
+  applyProjectSnapshot(doc, structuredClone(project), "same-value-render");
+
+  assert.equal(updates, 0);
+  assert.equal(Y.encodeStateAsUpdate(doc, Y.encodeStateVector(doc)).byteLength, 2);
+});
+
 test("concurrent first nodes in an initially empty graph both survive", () => {
   const { left, right, baseVector } = createPeers();
   const leftProject = baseProject();

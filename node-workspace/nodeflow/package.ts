@@ -541,6 +541,7 @@ const MEDIA_FIELDS_BY_NODE_TYPE: Record<string, string[]> = {
   imageInput: ["image"],
   audioInput: ["audio"],
   videoInput: ["video"],
+  pdfInput: ["pdf"],
   annotation: ["sourceImage", "outputImage"],
 };
 
@@ -562,7 +563,7 @@ const packMediaFields = async (
     if (typeof value !== "string" || !value) continue;
     const fallbackName = getNodeTitle(node);
     const filename = sanitizePathSegment(
-      field === "video" || field === "audio" || field === "image"
+      field === "video" || field === "audio" || field === "image" || field === "pdf"
         ? ((node.data as { filename?: string | null }).filename || fallbackName)
         : `${fallbackName}-${field}`,
       `${node.id}-${field}`

@@ -158,6 +158,39 @@ const assertNodeTypeData = (nodeFlow: NodeFlowFile) => {
   nodeFlow.nodes.forEach((node) => {
     assertBoundedJsonValue(node.data, `节点 ${node.id}`);
     if (node.style) assertBoundedJsonValue(node.style, `节点 ${node.id} 样式`);
+    if (node.type === "pdfInput") {
+      const data = node.data as Record<string, unknown>;
+      if (data.pdf !== null && data.pdf !== undefined && typeof data.pdf !== "string") {
+        throw new Error(`节点 ${node.id} 的 PDF 资源无效。`);
+      }
+      const highlights = data.highlights;
+      if (!Array.isArray(highlights) || highlights.length > 2_000) {
+        throw new Error(`节点 ${node.id} 的 PDF 高亮列表无效。`);
+      }
+      highlights.forEach((highlight, index) => {
+        if (!isRecord(highlight)) {
+          throw new Error(`节点 ${node.id} 的 PDF 高亮 ${index + 1} 无效。`);
+        }
+        const page = highlight.page;
+        const bounds = [highlight.x, highlight.y, highlight.width, highlight.height];
+        const color = highlight.color;
+        if (
+          typeof highlight.id !== "string" ||
+          !highlight.id.trim() ||
+          typeof page !== "number" ||
+          !Number.isInteger(page) ||
+          page < 1 ||
+          bounds.some((value) => typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) ||
+          Number(highlight.x) + Number(highlight.width) > 1.000_001 ||
+          Number(highlight.y) + Number(highlight.height) > 1.000_001 ||
+          (color !== "yellow" && color !== "green" && color !== "blue") ||
+          typeof highlight.createdAt !== "number" ||
+          !Number.isFinite(highlight.createdAt)
+        ) {
+          throw new Error(`节点 ${node.id} 的 PDF 高亮 ${index + 1} 无效。`);
+        }
+      });
+    }
     if (node.type !== "viduVideoGen") return;
     const subjects = (node.data as Record<string, unknown>).subjects;
     if (subjects !== undefined && !Array.isArray(subjects)) {

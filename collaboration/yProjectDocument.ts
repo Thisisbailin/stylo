@@ -140,7 +140,7 @@ const syncIdArray = (
   }
   const itemMap = items as Y.Map<unknown>;
   const orderArray = order as Y.Array<string>;
-  wrapper.set(KIND_KEY, ID_ARRAY_KIND);
+  if (wrapper.get(KIND_KEY) !== ID_ARRAY_KIND) wrapper.set(KIND_KEY, ID_ARRAY_KIND);
   const nextIds = new Set(value.map((item) => item.id));
   Array.from(itemMap.keys()).forEach((id) => {
     if (!nextIds.has(id)) itemMap.delete(id);

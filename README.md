@@ -212,17 +212,16 @@ For local D1 development, use the same command with `--local`. The migration fil
 - `functions/api/agent.ts`: edge agent runtime over `@openai/agents`
 - `functions/api/project-realtime.ts`: authenticated multi-device realtime project channel
 - `realtime-worker/`: project-scoped Yjs Durable Object coordinator
-- `functions/api/project.ts`: authenticated project snapshot reader and legacy migration boundary
+- `functions/api/project.ts`: authenticated read-only projection of the realtime document
 - `functions/api/projects.ts`: authenticated cloud-project catalog
-- `functions/api/project-snapshots.ts`: snapshot history
-- `functions/api/project-restore.ts`: restore from snapshots
 - `functions/api/upload-url.ts`: Supabase signed upload URL helper
 
 Cloud project authorities are isolated by `(user_id, project_id)`. D1 project,
 Agent, trace, and generated-asset rows carry an explicit `project_id`; Supabase
 objects live below `users/{user_id}/projects/{project_id}/`. Migration `0003`
 intentionally clears pre-scope development project data while preserving account
-profiles and encrypted secrets.
+profiles and encrypted secrets. Migration `0007` removes the retired snapshot/CAS
+tables; project content is written only through the Yjs realtime room.
 - `functions/api/download-url.ts`: Supabase download URL helper
 
 ## Product Structure

@@ -101,7 +101,12 @@ export class ProjectRealtimeRoom {
       this.serverSeq = 0;
     });
     const message = JSON.stringify({ type: "reset", mode });
-    for (const peer of this.state.getWebSockets()) peer.send(message);
+    for (const peer of this.state.getWebSockets()) {
+      peer.send(message);
+      if (mode === "delete") {
+        peer.close(4004, "Project permanently deleted");
+      }
+    }
   }
 
   async fetch(request: Request) {
@@ -145,6 +150,7 @@ export class ProjectRealtimeRoom {
       type: "sync",
       serverSeq: this.serverSeq,
       update: encodeUpdateBase64(Y.encodeStateAsUpdate(this.doc)),
+      stateVector: encodeUpdateBase64(Y.encodeStateVector(this.doc)),
     }));
     return new Response(null, {
       status: 101,

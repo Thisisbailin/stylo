@@ -4,7 +4,7 @@ import { normalizeProjectData } from "../utils/projectData";
 import { toCloudProjectData } from "../utils/cloudProjectData";
 import { buildStyloScopedProjectData } from "../agents/runtime/projectScope";
 import { validateProjectData } from "../utils/validation";
-import type { VersionedSyncCodec } from "./versionedSyncEngine";
+import type { SyncCodec } from "./realtimeSyncTypes";
 
 const hashString = (value: string) => {
   let left = 2166136261;
@@ -31,7 +31,7 @@ export const readActiveFlowRevision = (data: ProjectData | null | undefined) => 
     : null;
 };
 
-export const projectSyncCodec: VersionedSyncCodec<ProjectData> = {
+export const projectSyncCodec: SyncCodec<ProjectData> = {
   snapshot(value) {
     return normalizeProjectData(JSON.parse(serializeCloudProject(value)) as ProjectData);
   },
@@ -46,7 +46,7 @@ export const projectSyncCodec: VersionedSyncCodec<ProjectData> = {
   revision: readActiveFlowRevision,
 };
 
-export const createProjectSyncCodec = (projectId: string): VersionedSyncCodec<ProjectData> => ({
+export const createProjectSyncCodec = (projectId: string): SyncCodec<ProjectData> => ({
   ...projectSyncCodec,
   snapshot(value) {
     return projectSyncCodec.snapshot(buildStyloScopedProjectData(value, projectId));

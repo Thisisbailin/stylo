@@ -137,12 +137,11 @@ test("account transport invokes browser fetch with the global receiver", async (
   session.dispose();
 });
 
-test("sync diagnostics share the account-scoped authenticated transport", () => {
+test("realtime activity diagnostics share the account-scoped authenticated transport", () => {
   const source = readFileSync("node-workspace/components/SyncPanel.tsx", "utf8");
 
-  assert.match(source, /accountSession\.request\(`\/api\/project-snapshots\?projectId=\$\{encodeURIComponent\(projectId\)\}`/);
-  assert.match(source, /accountSession\.request\(`\/api\/project-restore\?projectId=\$\{encodeURIComponent\(projectId\)\}`/);
   assert.match(source, /accountSession\.request\("\/api\/sync-audit"/);
+  assert.doesNotMatch(source, /project-snapshots|project-restore|Sync now|Restore/);
   assert.doesNotMatch(source, /getAuthToken/);
   assert.doesNotMatch(source, /fetch\(buildApiUrl\("\/api\//);
 });

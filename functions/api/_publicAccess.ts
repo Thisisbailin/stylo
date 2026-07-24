@@ -90,9 +90,8 @@ export const recordProfileVisit = async (
 
 export const publicProfileDto = (row: PublicProfileRow, includeDetails: boolean) => ({
   username: row.username,
-  displayName: row.display_name || row.username,
+  displayName: row.username,
   avatarUrl: row.avatar_url || null,
   accountPublic: row.account_visibility === "public",
   ...(includeDetails ? { bio: row.bio || "", updatedAt: Number(row.updated_at) || 0 } : {}),
 });
-

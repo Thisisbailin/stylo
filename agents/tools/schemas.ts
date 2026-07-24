@@ -221,6 +221,7 @@ export const createNodeWorkflowSchema = z.object({
           "imageInput",
           "audioInput",
           "videoInput",
+          "pdfInput",
         ]),
         title: z.string().optional(),
         text: z.string().optional(),

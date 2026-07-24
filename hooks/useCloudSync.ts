@@ -3,7 +3,7 @@ import type { ProjectData, SyncStatus } from "../types";
 import type { AccountApiSession } from "../sync/authenticatedFetch";
 import { createProjectSyncCodec } from "../sync/projectSyncAdapter";
 import { mergeStyloScopedProjectData } from "../agents/runtime/projectScope";
-import type { SyncStatusDetail, VersionedSyncLease } from "../sync/versionedSyncEngine";
+import type { RealtimeSyncLease, SyncStatusDetail } from "../sync/realtimeSyncTypes";
 import { RealtimeProjectSyncEngine } from "../sync/realtimeProjectSyncEngine";
 
 type UseCloudSyncOptions = {
@@ -14,14 +14,13 @@ type UseCloudSyncOptions = {
   accountSession: AccountApiSession;
   projectData: ProjectData;
   setProjectData: React.Dispatch<React.SetStateAction<ProjectData>>;
-  refreshKey?: number;
   onError?: (error: unknown) => void;
   saveDebounceMs?: number;
   onStatusChange?: (status: SyncStatus, detail?: SyncStatusDetail) => void;
   onRemoteReset?: (mode: "reset" | "delete") => void;
 };
 
-export type ProjectSyncLease = VersionedSyncLease;
+export type ProjectSyncLease = RealtimeSyncLease;
 export type EnsureProjectSynced = (
   snapshot: ProjectData,
   expectedRevision: number,
@@ -39,7 +38,6 @@ export const useCloudSync = ({
   accountSession,
   projectData,
   setProjectData,
-  refreshKey,
   onError,
   saveDebounceMs = 180,
   onStatusChange,
@@ -50,7 +48,6 @@ export const useCloudSync = ({
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const projectDataRef = useRef(projectData);
   const callbacksRef = useRef({ onError, onStatusChange, onRemoteReset, setProjectData });
-  const lastRefreshKeyRef = useRef(refreshKey);
 
   projectDataRef.current = projectData;
   callbacksRef.current = { onError, onStatusChange, onRemoteReset, setProjectData };
@@ -92,12 +89,6 @@ export const useCloudSync = ({
   useEffect(() => {
     if (!suspendedRef.current) engineRef.current?.stage(projectData);
   }, [projectData]);
-
-  useEffect(() => {
-    if (refreshKey === lastRefreshKeyRef.current) return;
-    lastRefreshKeyRef.current = refreshKey;
-    engineRef.current?.refresh();
-  }, [refreshKey]);
 
   const flushProjectSync = useCallback<EnsureProjectSynced>(async (snapshot, expectedRevision) => {
     const engine = engineRef.current;

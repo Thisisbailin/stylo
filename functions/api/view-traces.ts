@@ -12,7 +12,7 @@ type Env = { DB: any; CLERK_SECRET_KEY: string; CLERK_JWT_KEY?: string };
 const mapTrace = (row: any, direction: "inbound" | "outbound") => ({
   id: Number(row.id) || 0,
   username: direction === "inbound" ? row.viewer_username : row.owner_username,
-  displayName: direction === "inbound" ? row.viewer_display_name : row.owner_display_name,
+  displayName: direction === "inbound" ? row.viewer_username : row.owner_username,
   avatarUrl: direction === "inbound" ? row.viewer_avatar_url : row.owner_avatar_url,
   projectId: row.project_id || null,
   firstSeenAt: Number(row.first_seen_at) || 0,

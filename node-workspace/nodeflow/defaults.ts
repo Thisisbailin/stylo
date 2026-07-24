@@ -9,6 +9,8 @@
   MarkdownTextNodeData,
   NodeFlowNodeData,
   NodeType,
+  PdfInputNodeData,
+  PinoardNodeData,
   ScriptPageNodeData,
   ScriptBoardNodeData,
   SeedanceVideoGenNodeData,
@@ -20,6 +22,11 @@
 
 export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData => {
   switch (type) {
+    case "pinoard":
+      return {
+        title: "Pinoard",
+        wrapperCollapsed: false,
+      } as PinoardNodeData;
     case "folder":
       return {
         title: "文件夹",
@@ -83,6 +90,17 @@ export const createDefaultNodeFlowNodeData = (type: NodeType): NodeFlowNodeData 
         model: null,
         label: "",
       } as VideoInputNodeData;
+    case "pdfInput":
+      return {
+        pdf: null,
+        filename: null,
+        storageBucket: null,
+        storagePath: null,
+        mimeType: "application/pdf",
+        fileSize: null,
+        highlights: [],
+        label: "",
+      } as PdfInputNodeData;
     case "annotation":
       return {
         sourceImage: null,

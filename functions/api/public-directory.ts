@@ -15,8 +15,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
                   account_visibility, updated_at
            FROM user_profile
            WHERE searchable = 1 AND normalized_username IS NOT NULL
-             AND (normalized_username LIKE ?1 ESCAPE '\\'
-               OR lower(COALESCE(display_name, '')) LIKE ?1 ESCAPE '\\')
+             AND normalized_username LIKE ?1 ESCAPE '\\'
            ORDER BY CASE WHEN normalized_username = ?2 THEN 0 ELSE 1 END,
                     updated_at DESC
            LIMIT 30`,

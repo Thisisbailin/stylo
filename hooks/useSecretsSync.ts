@@ -1,16 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { AppConfig, SyncStatus } from "../types";
 import type { AccountApiSession } from "../sync/authenticatedFetch";
-import { createLocalStorageBaselineStore } from "../sync/localBaselineStore";
-import {
-  createSecretsSyncTransport,
-  secretsSyncCodec,
-  type SecretsPayload,
-} from "../sync/secretsSyncAdapter";
-import {
-  VersionedSyncEngine,
-  type SyncStatusDetail,
-} from "../sync/versionedSyncEngine";
+import { AccountSettingsSyncEngine } from "../sync/accountSettingsSyncEngine";
+import type { SyncStatusDetail } from "../sync/realtimeSyncTypes";
+import type { SecretsPayload } from "../sync/secretsSyncAdapter";
 
 type Options = {
   accountScope: string;
@@ -21,7 +14,6 @@ type Options = {
   setConfig: (config: AppConfig | ((config: AppConfig) => AppConfig)) => void;
   debounceMs?: number;
   onStatusChange?: (status: SyncStatus, detail?: SyncStatusDetail) => void;
-  onConflictConfirm: (options: { remote: SecretsPayload; local: SecretsPayload }) => Promise<boolean> | boolean;
 };
 
 const payloadFromConfig = (config: AppConfig): SecretsPayload => ({
@@ -42,13 +34,12 @@ export const useSecretsSync = ({
   setConfig,
   debounceMs = 1200,
   onStatusChange,
-  onConflictConfirm,
 }: Options) => {
-  const engineRef = useRef<VersionedSyncEngine<SecretsPayload> | null>(null);
+  const engineRef = useRef<AccountSettingsSyncEngine | null>(null);
   const payloadRef = useRef(payloadFromConfig(config));
-  const callbacksRef = useRef({ setConfig, onStatusChange, onConflictConfirm });
+  const callbacksRef = useRef({ setConfig, onStatusChange });
   payloadRef.current = payloadFromConfig(config);
-  callbacksRef.current = { setConfig, onStatusChange, onConflictConfirm };
+  callbacksRef.current = { setConfig, onStatusChange };
 
   useEffect(() => {
     const enabled = isSignedIn && isLoaded && config.syncApiKeys;
@@ -57,13 +48,8 @@ export const useSecretsSync = ({
       return undefined;
     }
 
-    const baselineStore = createLocalStorageBaselineStore(
-      `stylo_secrets_last_synced_v2:${encodeURIComponent(accountScope)}`
-    );
-    const engine = new VersionedSyncEngine<SecretsPayload>({
-      transport: createSecretsSyncTransport(accountSession),
-      codec: secretsSyncCodec,
-      baselineStore,
+    const engine = new AccountSettingsSyncEngine({
+      session: accountSession,
       debounceMs,
       onStatusChange: (status, detail) => callbacksRef.current.onStatusChange?.(status, detail),
       onApplyRemote: (remote) => {
@@ -75,10 +61,7 @@ export const useSecretsSync = ({
           videoConfig: { ...previous.videoConfig, apiKey: remote.videoApiKey },
         }));
       },
-      onConflict: async ({ remote, local }) => {
-        const useRemote = await callbacksRef.current.onConflictConfirm({ remote, local });
-        return useRemote ? "remote" : "local";
-      },
+      onError: (error) => console.warn("Account settings sync failed", error),
     });
     engineRef.current = engine;
     const handleOnline = () => engine.setOnline(true);

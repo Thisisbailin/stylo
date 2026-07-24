@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, GearSix, SquaresFour, UsersThree } from "@phosphor-icons/react";
+import { BookOpen, FilePdf, GearSix, SquaresFour, UsersThree } from "@phosphor-icons/react";
 import {
   Plus,
   User,
@@ -37,6 +37,7 @@ type Props = {
   onAddImage: () => void;
   onAddAudio: () => void;
   onAddVideo: () => void;
+  onAddPdf: () => void;
   onAddNanoBananaImageGen: () => void;
   onAddWanImageGen: () => void;
   onAddViduVideoGen: () => void;
@@ -66,6 +67,7 @@ export const FloatingActionBar: React.FC<Props> = ({
   onAddImage,
   onAddAudio,
   onAddVideo,
+  onAddPdf,
   onAddNanoBananaImageGen,
   onAddWanImageGen,
   onAddViduVideoGen,
@@ -265,6 +267,7 @@ export const FloatingActionBar: React.FC<Props> = ({
     { label: "图片", hint: "上传参考图或剧照", meta: "输入", onClick: onAddImage, Icon: ImageIcon, tone: "text-emerald-300", surface: "bg-emerald-500/12" },
     { label: "音频", hint: "上传声音参考", meta: "输入", onClick: onAddAudio, Icon: Upload, tone: "text-cyan-300", surface: "bg-cyan-500/12" },
     { label: "视频", hint: "上传视频参考", meta: "输入", onClick: onAddVideo, Icon: Video, tone: "text-rose-300", surface: "bg-rose-500/12" },
+    { label: "PDF", hint: "阅读、高亮与关联 Markdown 笔记", meta: "输入", onClick: onAddPdf, Icon: FilePdf, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "Nano Banana", hint: "图像生成", meta: "图像", onClick: onAddNanoBananaImageGen, Icon: Sparkles, tone: "text-amber-300", surface: "bg-amber-500/12" },
     { label: "WAN 图像", hint: "Wan 2.6 图像工作流", meta: "图像", onClick: onAddWanImageGen, Icon: Sparkles, tone: "text-teal-300", surface: "bg-teal-500/12" },
     { label: "Vidu", hint: "参考生成视频", meta: "视频", onClick: onAddViduVideoGen, Icon: Video, tone: "text-cyan-300", surface: "bg-cyan-500/12" },

@@ -88,7 +88,8 @@ test("Manus owns screenplay creation and offers continuous paper layouts", async
     "utf8"
   );
 
-  assert.match(workspace, /handleFlowAddNode\("scriptPage"[\s\S]*创建 Manus/);
+  assert.match(workspace, /handleFlowAddNode\("pinoard"[\s\S]*创建 Pinoard/);
+  assert.match(flowSurface, /label: "Pinoard"[\s\S]*label: "Manus"/);
   assert.match(flowSurface, /label: "Manus"[\s\S]*label: "Lookbook"[\s\S]*label: "Cinewor"[\s\S]*label: "文件夹"/);
   assert.match(flowSurface, /label: "文本"[\s\S]*label: "图片"[\s\S]*label: "声音"[\s\S]*label: "视频"/);
   assert.match(flowSurface, /option\.type !== "scriptPage" \|\| !hasScriptPage/);
