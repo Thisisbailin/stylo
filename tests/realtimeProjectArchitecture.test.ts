@@ -24,16 +24,24 @@ test("project editing is authenticated and multi-writer without a device lease",
   assert.match(migration, /UNIQUE \(user_id, project_id, op_id\)/);
 });
 
-test("the realtime room persists, deduplicates, survives hibernation, and broadcasts", () => {
+test("the realtime room durably appends only incremental edits before ACK", () => {
   const worker = read("realtime-worker/src/index.ts");
 
   assert.match(worker, /deserializeAttachment/);
   assert.match(worker, /await this\.ensureLoaded\(attachedIdentity\)/);
-  assert.match(worker, /SELECT server_seq FROM user_project_updates/);
-  assert.match(worker, /INSERT INTO user_project_updates/);
+  assert.match(worker, /CREATE TABLE IF NOT EXISTS room_updates/);
+  assert.match(worker, /CREATE TABLE IF NOT EXISTS room_operations/);
+  assert.match(worker, /SELECT server_seq FROM room_operations/);
+  assert.match(worker, /INSERT INTO room_updates/);
+  assert.match(worker, /INSERT INTO room_operations/);
+  assert.match(worker, /this\.state\.storage\.transactionSync/);
+  assert.match(worker, /this\.state\.waitUntil\(this\.scheduleProjection\(\)\)/);
+  assert.match(worker, /async alarm\(\)[\s\S]*this\.flushProjection\(\)/);
   assert.match(worker, /INSERT INTO user_project_documents/);
   assert.match(worker, /ON CONFLICT\(user_id, project_id\) DO UPDATE/);
-  assert.match(worker, /const candidate = new Y\.Doc\(\)/);
+  assert.doesNotMatch(worker, /SELECT server_seq FROM user_project_updates/);
+  assert.doesNotMatch(worker, /INSERT INTO user_project_updates/);
+  assert.doesNotMatch(worker, /const candidate = new Y\.Doc\(\)/);
   assert.match(worker, /for \(const peer of this\.state\.getWebSockets\(\)\)/);
   assert.match(worker, /stateVector: encodeUpdateBase64\(Y\.encodeStateVector\(this\.doc\)\)/);
 });
@@ -46,7 +54,8 @@ test("project reset clears the active room before durable rows can be replayed",
 
   assert.match(worker, /private async resetProject/);
   assert.match(worker, /this\.doc\.getMap\("project"\)\.clear\(\)/);
-  assert.match(worker, /DELETE FROM user_project_updates/);
+  assert.match(worker, /DELETE FROM room_updates/);
+  assert.match(worker, /DELETE FROM room_operations/);
   assert.match(worker, /DELETE FROM user_project_documents/);
   assert.match(worker, /JSON\.stringify\(\{ type: "reset", mode \}\)/);
   assert.match(reset, /await resetRealtimeRooms\(/);
@@ -83,11 +92,19 @@ test("catalog, project reads, and Agent context share the realtime document auth
   const catalog = read("functions/api/projects.ts");
   const project = read("functions/api/project.ts");
   const agentState = read("functions/api/_agentProjectState.ts");
+  const agent = read("functions/api/agent.ts");
+  const projection = read("functions/api/_realtimeProjection.ts");
+  const worker = read("realtime-worker/src/index.ts");
 
   assert.match(catalog, /FROM user_project_documents/);
   assert.match(project, /FROM user_project_documents/);
   assert.match(agentState, /FROM user_project_documents/);
   assert.match(agentState, /buildAgentProjectStateFromRealtimeDocument/);
+  assert.match(project, /flushRealtimeProjectProjection/);
+  assert.match(agent, /flushRealtimeProjectProjection/);
+  assert.match(projection, /https:\/\/stylo\.internal\/flush/);
+  assert.match(worker, /private async flushProjection\(requiredSeq = this\.serverSeq\)/);
+  assert.match(worker, /while \(\(Number\(this\.readRoomMeta\(\)\?\.projected_seq\) \|\| 0\) < requiredSeq\)/);
 });
 
 test("local project changes enter Yjs immediately while network writes are coalesced", () => {
@@ -96,6 +113,9 @@ test("local project changes enter Yjs immediately while network writes are coale
   assert.match(engine, /stage\(local: ProjectData\)[\s\S]*applyProjectSnapshot\(/);
   assert.match(engine, /this\.queueUpdate\(update\)/);
   assert.match(engine, /this\.stageTimer = setTimeout/);
+  assert.match(engine, /latestLocalFingerprint/);
+  assert.match(engine, /areProjectDocumentsSemanticallyEqual/);
+  assert.match(engine, /scheduleDocumentPersistence/);
   assert.match(engine, /requeuePendingAcks/);
   assert.match(engine, /Y\.mergeUpdates/);
   assert.match(engine, /if \(update\.byteLength <= 2\) return/);

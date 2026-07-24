@@ -6,8 +6,16 @@ import {
   recordProfileVisit,
 } from "./_publicAccess";
 import { readJsonRequest } from "./_request";
+import {
+  ensureRealtimeProjectProjectionExists,
+  type RealtimeProjectionEnv,
+} from "./_realtimeProjection";
 
-type Env = { DB: any; CLERK_SECRET_KEY: string; CLERK_JWT_KEY?: string };
+type Env = RealtimeProjectionEnv & {
+  DB: any;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+};
 
 const mapTrace = (row: any, direction: "inbound" | "outbound") => ({
   id: Number(row.id) || 0,
@@ -73,9 +81,11 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     if (projectId) {
       const access = await readProjectVisibility(context.env.DB, profile.user_id, projectId);
       if (!access.visible) return jsonResponse({ error: "Public project not found" }, { status: 404 });
-      const exists = await context.env.DB.prepare(
-        "SELECT 1 FROM user_project_documents WHERE user_id = ?1 AND project_id = ?2",
-      ).bind(profile.user_id, projectId).first();
+      const exists = await ensureRealtimeProjectProjectionExists(
+        context.env,
+        profile.user_id,
+        projectId,
+      );
       if (!exists) return jsonResponse({ error: "Public project not found" }, { status: 404 });
     }
     await recordProfileVisit(context.env.DB, {

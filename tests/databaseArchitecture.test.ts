@@ -23,4 +23,10 @@ test("D1 schema is migration-owned rather than created in request handlers", asy
   const cleanup = await readFile(path.join(process.cwd(), "migrations/0007_remove_snapshot_sync.sql"), "utf8");
   assert.match(cleanup, /DROP TABLE IF EXISTS user_project_snapshots/);
   assert.match(cleanup, /DROP TABLE IF EXISTS user_project_meta/);
+
+  const incrementalAuthority = await readFile(
+    path.join(process.cwd(), "migrations/0008_incremental_realtime_authority.sql"),
+    "utf8",
+  );
+  assert.match(incrementalAuthority, /DROP TABLE IF EXISTS user_project_updates/);
 });

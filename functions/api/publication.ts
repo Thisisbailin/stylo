@@ -1,6 +1,7 @@
 import { getUserId, jsonResponse } from "./_auth";
 import { normalizeProjectId } from "./_projectScope";
 import { readJsonRequest } from "./_request";
+import { ensureRealtimeProjectProjectionExists } from "./_realtimeProjection";
 
 type Env = {
   DB: any;
@@ -125,9 +126,11 @@ export const onRequestPut = async (context: { request: Request; env: Env }) => {
     if (!projectId || !["inherit", "public", "private"].includes(visibility)) {
       return jsonResponse({ error: "Invalid project publication setting" }, { status: 400 });
     }
-    const owned = await context.env.DB.prepare(
-      `SELECT 1 FROM user_project_documents WHERE user_id = ?1 AND project_id = ?2`,
-    ).bind(userId, projectId).first();
+    const owned = await ensureRealtimeProjectProjectionExists(
+      context.env,
+      userId,
+      projectId,
+    );
     if (!owned) return jsonResponse({ error: "Project not found" }, { status: 404 });
     if (visibility === "public") {
       const profile = await context.env.DB.prepare(

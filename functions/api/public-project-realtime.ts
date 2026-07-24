@@ -6,6 +6,7 @@ import {
   recordProfileVisit,
 } from "./_publicAccess";
 import { readWebSocketCredential } from "../../utils/websocketAuth";
+import { ensureRealtimeProjectProjectionExists } from "./_realtimeProjection";
 
 type Env = {
   DB: any;
@@ -38,9 +39,11 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     if (!profile || !projectId) return new Response("Public project not found", { status: 404 });
     const access = await readProjectVisibility(context.env.DB, profile.user_id, projectId);
     if (!access.visible) return new Response("Public project not found", { status: 404 });
-    const exists = await context.env.DB.prepare(
-      `SELECT 1 FROM user_project_documents WHERE user_id = ?1 AND project_id = ?2`,
-    ).bind(profile.user_id, projectId).first();
+    const exists = await ensureRealtimeProjectProjectionExists(
+      context.env,
+      profile.user_id,
+      projectId,
+    );
     if (!exists) return new Response("Public project not found", { status: 404 });
 
     await recordProfileVisit(context.env.DB, {
@@ -65,4 +68,3 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     return new Response("Public project realtime connection failed", { status: 500 });
   }
 };
-

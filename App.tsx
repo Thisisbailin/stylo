@@ -140,6 +140,10 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
     initialValue: INITIAL_PROJECT_DATA,
     deserialize: (value) => normalizeProjectData(JSON.parse(value)),
     serialize: (value) => JSON.stringify(value),
+    // React Flow publishes position changes at pointer-frame cadence. Keep the
+    // canvas responsive, but serialize the large project snapshot only after
+    // the gesture settles.
+    debounceMs: 240,
   });
   const setProjectData = useCallback(
     (value: React.SetStateAction<ProjectData>) => {
@@ -299,8 +303,8 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         status,
         lastSyncAt: detail?.lastSyncAt ?? prev.project.lastSyncAt,
         lastError: status === 'error' ? detail?.error ?? prev.project.lastError : status === 'synced' ? undefined : prev.project.lastError,
-        pendingOps: detail?.pendingOps ?? prev.project.pendingOps,
-        retryCount: detail?.retryCount ?? prev.project.retryCount,
+        pendingOps: detail?.pendingOps ?? (status === 'syncing' ? prev.project.pendingOps : 0),
+        retryCount: detail?.retryCount ?? (status === 'offline' ? prev.project.retryCount : 0),
         lastAttemptAt: detail?.lastAttemptAt ?? prev.project.lastAttemptAt
       }
     }));
@@ -650,9 +654,7 @@ const ScopedApp: React.FC<{ accountScope: AccountScope }> = ({ accountScope }) =
         banner={
           <SyncStatusBanner
             syncState={syncState}
-            isOnline={isOnline}
             isSignedIn={!!authSignedIn}
-            onOpenDetails={() => openProjectSettings("sync")}
           />
         }
       >

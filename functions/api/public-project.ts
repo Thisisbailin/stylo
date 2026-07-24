@@ -5,8 +5,16 @@ import {
   readPublicProfileByUsername,
   recordProfileVisit,
 } from "./_publicAccess";
+import {
+  flushRealtimeProjectProjection,
+  type RealtimeProjectionEnv,
+} from "./_realtimeProjection";
 
-type Env = { DB: any; CLERK_SECRET_KEY: string; CLERK_JWT_KEY?: string };
+type Env = RealtimeProjectionEnv & {
+  DB: any;
+  CLERK_SECRET_KEY: string;
+  CLERK_JWT_KEY?: string;
+};
 
 export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
@@ -18,6 +26,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     const access = await readProjectVisibility(context.env.DB, profile.user_id, projectId);
     if (!access.visible) return jsonResponse({ error: "Public project not found" }, { status: 404 });
 
+    await flushRealtimeProjectProjection(context.env, profile.user_id, projectId);
     const row = await context.env.DB.prepare(
       `SELECT project_data, server_seq, updated_at
        FROM user_project_documents
@@ -43,4 +52,3 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     return jsonResponse({ error: "Failed to load public project" }, { status: 500 });
   }
 };
-

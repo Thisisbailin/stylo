@@ -11,7 +11,6 @@ DELETE FROM user_project_snapshots;
 DELETE FROM user_project_characters;
 DELETE FROM user_project_locations;
 DELETE FROM user_project_flow_projects;
-DELETE FROM user_project_updates;
 DELETE FROM user_project_documents;
 DELETE FROM user_project_write_guards;
 DELETE FROM user_project_meta;

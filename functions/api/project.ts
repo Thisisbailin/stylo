@@ -1,7 +1,11 @@
 import { getUserId, jsonResponse } from "./_auth";
 import { requireRequestProjectId } from "./_projectScope";
+import {
+  flushRealtimeProjectProjection,
+  type RealtimeProjectionEnv,
+} from "./_realtimeProjection";
 
-type Env = {
+type Env = RealtimeProjectionEnv & {
   DB: any;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
@@ -10,6 +14,7 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
   try {
     const userId = await getUserId(context.request, context.env);
     const projectId = requireRequestProjectId(context.request);
+    await flushRealtimeProjectProjection(context.env, userId, projectId);
     const row = await context.env.DB.prepare(
       `SELECT project_data, updated_at, server_seq
        FROM user_project_documents

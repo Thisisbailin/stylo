@@ -48,10 +48,35 @@ type Options = {
   onError?: (error: unknown) => void;
   onReset?: (mode: "reset" | "delete") => void;
   debounceMs?: number;
+  persistenceDebounceMs?: number;
 };
 
 const createId = () => globalThis.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+
+export const areProjectDocumentsSemanticallyEqual = (
+  left: Y.Doc,
+  right: Y.Doc,
+  codec: SyncCodec<ProjectData>,
+) => {
+  const leftEmpty = isProjectDocumentEmpty(left);
+  const rightEmpty = isProjectDocumentEmpty(right);
+  if (leftEmpty && rightEmpty) return true;
+  if (leftEmpty !== rightEmpty) {
+    const populated = leftEmpty ? right : left;
+    const snapshot = codec.snapshot(
+      readProjectSnapshot<ProjectData & Record<string, unknown>>(populated),
+    );
+    return codec.isEmpty(snapshot);
+  }
+  const leftSnapshot = codec.snapshot(
+    readProjectSnapshot<ProjectData & Record<string, unknown>>(left),
+  );
+  const rightSnapshot = codec.snapshot(
+    readProjectSnapshot<ProjectData & Record<string, unknown>>(right),
+  );
+  return codec.fingerprint(leftSnapshot) === codec.fingerprint(rightSnapshot);
+};
 
 export class RealtimeProjectSyncEngine {
   private readonly doc = new Y.Doc();
@@ -64,10 +89,14 @@ export class RealtimeProjectSyncEngine {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stageTimer: ReturnType<typeof setTimeout> | null = null;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private latestLocal: ProjectData | null = null;
+  private latestLocalFingerprint: string | null = null;
+  private bootstrapLocalDirty = false;
   private pendingOfflineUpdate: Uint8Array | null = null;
   private pendingAcks = new Map<string, PendingAck>();
-  private persistTail: Promise<void> = Promise.resolve();
+  private persistDirty = false;
+  private persistInFlight: Promise<void> | null = null;
   private lastLocalSend: Promise<number> | null = null;
 
   constructor(private readonly options: Options) {
@@ -78,6 +107,7 @@ export class RealtimeProjectSyncEngine {
 
   async start(local: ProjectData) {
     this.latestLocal = this.options.codec.snapshot(local);
+    this.latestLocalFingerprint = this.options.codec.fingerprint(this.latestLocal);
     const persisted = await readRealtimeDocument(this.storageKey).catch(() => null);
     if (persisted?.byteLength) Y.applyUpdate(this.doc, persisted, PERSISTED_ORIGIN);
     if (!isProjectDocumentEmpty(this.doc)) this.applyDocumentToApp();
@@ -86,7 +116,23 @@ export class RealtimeProjectSyncEngine {
 
   stage(local: ProjectData) {
     if (this.disposed) return;
-    this.latestLocal = this.options.codec.snapshot(local);
+    const next = this.options.codec.snapshot(local);
+    const fingerprint = this.options.codec.fingerprint(next);
+    if (fingerprint === this.latestLocalFingerprint) return;
+    this.latestLocal = next;
+    this.latestLocalFingerprint = fingerprint;
+    if (!this.ready) {
+      this.bootstrapLocalDirty = true;
+      // A real edit made while the socket is connecting is still an offline
+      // edit: apply and checkpoint it immediately. The initial React effect is
+      // filtered above by fingerprint, so it no longer creates a false upload.
+      applyProjectSnapshot(
+        this.doc,
+        this.latestLocal as unknown as Record<string, unknown>,
+        LOCAL_ORIGIN,
+      );
+      return;
+    }
     applyProjectSnapshot(
       this.doc,
       this.latestLocal as unknown as Record<string, unknown>,
@@ -109,7 +155,11 @@ export class RealtimeProjectSyncEngine {
     this.disposed = true;
     this.ready = false;
     if (this.stageTimer) clearTimeout(this.stageTimer);
+    if (this.persistTimer) clearTimeout(this.persistTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stageTimer = null;
+    this.persistTimer = null;
+    if (this.persistDirty) void this.flushDocumentPersistence();
     this.socket?.close(1000, "Project sync disposed");
     this.socket = null;
     this.pendingAcks.forEach(({ reject, timeout }) => {
@@ -122,7 +172,7 @@ export class RealtimeProjectSyncEngine {
 
   private async connect() {
     if (this.disposed) return;
-    this.options.onStatusChange?.("loading", { pendingOps: this.pendingOfflineUpdate ? 1 : 0 });
+    this.options.onStatusChange?.("loading", { pendingOps: this.pendingOperationCount() });
     try {
       const socket = await this.options.session.openWebSocket(
         `/api/project-realtime?projectId=${encodeURIComponent(this.options.projectId)}`,
@@ -159,7 +209,7 @@ export class RealtimeProjectSyncEngine {
     const delay = Math.min(1_000 * (2 ** this.reconnectAttempt), 15_000);
     this.reconnectAttempt += 1;
     this.options.onStatusChange?.("offline", {
-      pendingOps: this.pendingOfflineUpdate ? 1 : 0,
+      pendingOps: this.pendingOperationCount(),
       retryCount: this.reconnectAttempt,
       lastAttemptAt: Date.now(),
     });
@@ -179,23 +229,40 @@ export class RealtimeProjectSyncEngine {
     }
     if ((message.type === "sync" || message.type === "update") && typeof message.update === "string") {
       const remoteUpdate = decodeUpdateBase64(message.update);
+      const serverDoc = message.type === "sync" ? new Y.Doc() : null;
+      if (serverDoc) Y.applyUpdate(serverDoc, remoteUpdate, REMOTE_ORIGIN);
+      const bootstrapSnapshot = this.bootstrapLocalDirty ? this.latestLocal : null;
       Y.applyUpdate(this.doc, remoteUpdate, REMOTE_ORIGIN);
       this.serverSeq = Math.max(this.serverSeq, Number(message.serverSeq) || 0);
-      this.applyDocumentToApp();
       if (message.type === "sync") {
         this.ready = true;
         this.reconnectAttempt = 0;
         if (isProjectDocumentEmpty(this.doc) && this.latestLocal) {
           applyProjectSnapshot(this.doc, this.latestLocal as unknown as Record<string, unknown>, LOCAL_ORIGIN);
+        } else if (bootstrapSnapshot) {
+          applyProjectSnapshot(this.doc, bootstrapSnapshot as unknown as Record<string, unknown>, LOCAL_ORIGIN);
         }
+        this.bootstrapLocalDirty = false;
+      }
+      this.applyDocumentToApp();
+      if (message.type === "sync" && serverDoc) {
         const serverStateVector = typeof message.stateVector === "string"
           ? decodeUpdateBase64(message.stateVector)
-          : (() => {
-              const serverDoc = new Y.Doc();
-              Y.applyUpdate(serverDoc, remoteUpdate, REMOTE_ORIGIN);
-              return Y.encodeStateVector(serverDoc);
-            })();
-        this.queueUpdate(Y.encodeStateAsUpdate(this.doc, serverStateVector));
+          : Y.encodeStateVector(serverDoc);
+        if (this.hasSemanticDifferenceFrom(serverDoc)) {
+          this.queueUpdate(Y.encodeStateAsUpdate(this.doc, serverStateVector));
+        } else if (this.pendingAcks.size === 0) {
+          // State vectors also contain CRDT client history. A persisted local
+          // document can therefore have a non-empty structural delta even when
+          // its materialized project is byte-for-byte equivalent to the server.
+          // Do not upload that history as an authored project change.
+          this.pendingOfflineUpdate = null;
+        }
+        serverDoc.destroy();
+        if (this.stageTimer) {
+          clearTimeout(this.stageTimer);
+          this.stageTimer = null;
+        }
         const hadPendingUpdate = Boolean(this.pendingOfflineUpdate);
         void this.flushPendingUpdate().catch((error) => this.options.onError?.(error));
         if (!hadPendingUpdate) {
@@ -234,7 +301,17 @@ export class RealtimeProjectSyncEngine {
       clearTimeout(pending.timeout);
       this.serverSeq = Math.max(this.serverSeq, Number(message.serverSeq) || 0);
       pending.resolve(this.serverSeq);
-      this.options.onStatusChange?.("synced", { lastSyncAt: Date.now(), pendingOps: this.pendingAcks.size });
+      if (this.pendingOfflineUpdate && !this.stageTimer) {
+        this.lastLocalSend = this.flushPendingUpdate();
+        void this.lastLocalSend.catch((error) => this.options.onError?.(error));
+      }
+      if (this.pendingOperationCount() === 0) {
+        this.options.onStatusChange?.("synced", {
+          lastSyncAt: Date.now(),
+          pendingOps: 0,
+          retryCount: 0,
+        });
+      }
       return;
     }
     if (message.type === "error") {
@@ -243,20 +320,26 @@ export class RealtimeProjectSyncEngine {
         const pending = this.pendingAcks.get(message.opId);
         if (pending) {
           clearTimeout(pending.timeout);
+          this.pendingAcks.delete(message.opId);
           this.queueUpdate(pending.update);
           pending.reject(error);
         }
-        this.pendingAcks.delete(message.opId);
       }
+      this.options.onStatusChange?.("error", {
+        error: error.message,
+        pendingOps: this.pendingOperationCount(),
+        retryCount: this.reconnectAttempt,
+      });
       this.options.onError?.(error);
+      this.ready = false;
+      this.socket?.close(1011, "Realtime update rejected");
     }
   }
 
   private readonly handleDocumentUpdate = (update: Uint8Array, origin: unknown) => {
-    this.persistTail = this.persistTail
-      .then(() => writeRealtimeDocument(this.storageKey, Y.encodeStateAsUpdate(this.doc)))
-      .catch(() => undefined);
-    if (origin === REMOTE_ORIGIN || origin === PERSISTED_ORIGIN) return;
+    if (origin === PERSISTED_ORIGIN) return;
+    this.scheduleDocumentPersistence();
+    if (origin === REMOTE_ORIGIN) return;
     this.queueUpdate(update);
     if (this.stageTimer) clearTimeout(this.stageTimer);
     this.stageTimer = setTimeout(() => {
@@ -275,7 +358,7 @@ export class RealtimeProjectSyncEngine {
       : update;
     if (!this.ready || this.socket?.readyState !== WebSocket.OPEN) {
       this.options.onStatusChange?.("offline", {
-        pendingOps: this.pendingAcks.size + 1,
+        pendingOps: this.pendingOperationCount(),
         retryCount: this.reconnectAttempt,
       });
     }
@@ -303,7 +386,13 @@ export class RealtimeProjectSyncEngine {
         if (!pending) return;
         this.pendingAcks.delete(opId);
         this.queueUpdate(pending.update);
-        pending.reject(new Error("实时项目写入确认超时，更改将在重连后重发。"));
+        const error = new Error("实时项目写入确认超时，更改将在重连后重发。");
+        pending.reject(error);
+        this.options.onStatusChange?.("error", {
+          error: error.message,
+          pendingOps: this.pendingOperationCount(),
+          retryCount: this.reconnectAttempt,
+        });
         this.socket?.close(1012, "Realtime acknowledgement timeout");
       }, 15_000);
       this.pendingAcks.set(opId, { update, timeout, resolve, reject });
@@ -315,7 +404,7 @@ export class RealtimeProjectSyncEngine {
       update: encodeUpdateBase64(update),
     }));
     this.options.onStatusChange?.("syncing", {
-      pendingOps: this.pendingAcks.size,
+      pendingOps: this.pendingOperationCount(),
       retryCount: 0,
       lastAttemptAt: Date.now(),
     });
@@ -324,12 +413,49 @@ export class RealtimeProjectSyncEngine {
 
   private requeuePendingAcks(error: Error) {
     if (!this.pendingAcks.size) return;
-    this.pendingAcks.forEach((pending) => {
-      clearTimeout(pending.timeout);
-      this.queueUpdate(pending.update);
-      pending.reject(error);
-    });
+    const pending = Array.from(this.pendingAcks.values());
     this.pendingAcks.clear();
+    pending.forEach((entry) => {
+      clearTimeout(entry.timeout);
+      this.queueUpdate(entry.update);
+      entry.reject(error);
+    });
+  }
+
+  private pendingOperationCount() {
+    return this.pendingAcks.size + (this.pendingOfflineUpdate ? 1 : 0);
+  }
+
+  private hasSemanticDifferenceFrom(serverDoc: Y.Doc) {
+    return !areProjectDocumentsSemanticallyEqual(this.doc, serverDoc, this.options.codec);
+  }
+
+  private scheduleDocumentPersistence() {
+    this.persistDirty = true;
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void this.flushDocumentPersistence();
+    }, this.options.persistenceDebounceMs ?? 240);
+  }
+
+  private flushDocumentPersistence(): Promise<void> {
+    if (this.persistInFlight) return this.persistInFlight;
+    if (!this.persistDirty) return Promise.resolve();
+    this.persistDirty = false;
+    const checkpoint = Y.encodeStateAsUpdate(this.doc);
+    const task = writeRealtimeDocument(this.storageKey, checkpoint).catch(() => undefined);
+    this.persistInFlight = task;
+    void task.finally(() => {
+      if (this.persistInFlight === task) this.persistInFlight = null;
+      if (!this.persistDirty) return;
+      if (this.disposed) {
+        void this.flushDocumentPersistence();
+      } else {
+        this.scheduleDocumentPersistence();
+      }
+    });
+    return task;
   }
 
   private async applyAndWait(snapshot: ProjectData) {
@@ -350,6 +476,7 @@ export class RealtimeProjectSyncEngine {
     const candidate = readProjectSnapshot<ProjectData & Record<string, unknown>>(this.doc);
     const snapshot = this.options.codec.snapshot(candidate);
     this.latestLocal = snapshot;
+    this.latestLocalFingerprint = this.options.codec.fingerprint(snapshot);
     this.options.onApplyRemote(snapshot);
   }
 }

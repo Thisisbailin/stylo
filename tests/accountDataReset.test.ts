@@ -7,7 +7,6 @@ const TABLES = [
   "agent_traces",
   "agent_sessions",
   "user_seedance_assets",
-  "user_project_updates",
   "user_project_documents",
   "user_project_visibility",
   "user_project_deletions",
@@ -58,7 +57,7 @@ test("project reset deletes all project authority rows in one D1 batch", async (
   assert.doesNotMatch(sql, /INSERT INTO user_project_write_guards/);
   assert.doesNotMatch(sql, /DELETE FROM user_project_write_guards/);
   assert.match(sql, /DELETE FROM user_seedance_assets/);
-  assert.match(sql, /DELETE FROM user_project_updates/);
+  assert.doesNotMatch(sql, /user_project_updates/);
   assert.match(sql, /DELETE FROM user_project_documents/);
   assert.match(sql, /DELETE FROM user_project_visibility/);
   assert.doesNotMatch(sql, /DELETE FROM user_project_deletions/);

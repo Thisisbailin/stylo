@@ -24,7 +24,6 @@ const PROJECT_RESET_PLANS: ResetPlan[] = [
   { table: "agent_traces", sql: "DELETE FROM agent_traces WHERE user_id = ?1", projectScoped: true },
   { table: "agent_sessions", sql: "DELETE FROM agent_sessions WHERE user_id = ?1", projectScoped: true },
   { table: "user_seedance_assets", sql: "DELETE FROM user_seedance_assets WHERE user_id = ?1", projectScoped: true },
-  { table: "user_project_updates", sql: "DELETE FROM user_project_updates WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_documents", sql: "DELETE FROM user_project_documents WHERE user_id = ?1", projectScoped: true },
   { table: "user_project_visibility", sql: "DELETE FROM user_project_visibility WHERE user_id = ?1", projectScoped: true },
   { table: "user_profile_visits", resultKey: "user_profile_visits_inbound", sql: "DELETE FROM user_profile_visits WHERE owner_user_id = ?1", projectScoped: true },

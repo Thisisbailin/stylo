@@ -16,6 +16,10 @@ import { readJsonRequest } from "./_request";
 import type { D1DatabaseLike, PagesContext } from "./_types";
 import { loadAgentProjectState } from "./_agentProjectState";
 import {
+  flushRealtimeProjectProjection,
+  type RealtimeProjectionEnv,
+} from "./_realtimeProjection";
+import {
   createAgentProjectData,
   createAgentProjectPatch,
   createNodeFlowBridgeState,
@@ -31,7 +35,7 @@ import {
   withCorsHeaders,
 } from "./_agentStream";
 
-type AgentEnv = Record<string, unknown> & {
+type AgentEnv = Record<string, unknown> & RealtimeProjectionEnv & {
   DB: D1DatabaseLike;
   CLERK_SECRET_KEY: string;
   CLERK_JWT_KEY?: string;
@@ -178,6 +182,11 @@ export const onRequestPost = async (context: PagesContext<AgentEnv>) => {
           body.run.sessionId,
           sessionOwner
         ).catch(() => false);
+        await flushRealtimeProjectProjection(
+          context.env,
+          sessionOwner,
+          body.run.projectId,
+        );
         const projectState = await loadAgentProjectState(
           context.env.DB,
           sessionOwner,
